@@ -17,7 +17,7 @@ export default async function Home() {
         medeldistanslöpare. Under uppbyggnad.
       </p>
       <Link
-        href={user ? "/private" : "/login"}
+        href={user ? "/calendar" : "/login"}
         className="rounded bg-zinc-950 px-4 py-2 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
       >
         {user ? "Till appen" : "Logga in"}

@@ -17,7 +17,7 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/private");
+  redirect("/calendar");
 }
 
 export async function signup(formData: FormData) {

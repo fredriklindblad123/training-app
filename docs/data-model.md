@@ -128,6 +128,7 @@ create table diary_entries (
   soreness text,
   sleep_hours numeric,
   notes text,
+  day_type text check (day_type in ('training','rest','sick','injured')),  -- driver kalenderns årsvy
   created_at timestamptz not null default now()
 );
 
