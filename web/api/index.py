@@ -35,7 +35,8 @@ SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 INTERNAL_SECRET = os.environ.get("INTERNAL_API_SECRET")
 CRON_SECRET = os.environ.get("CRON_SECRET")
 
-SYNC_DAYS = 7  # hur långt bakåt varje synk (både manuell och cron) tittar
+SYNC_DAYS = 7  # hur långt bakåt en vanlig synk (cron/upprepad "Synka nu") tittar
+FIRST_SYNC_DAYS = 365  # hur långt bakåt den allra första synken för en användare tittar
 
 
 def _sb_headers() -> dict:
@@ -131,7 +132,16 @@ def _sync_one_user(user_id: str) -> dict:
         _mark_connection(user_id, "needs_reauth", f"kunde inte läsa sparad session: {e}")
         return {"user_id": user_id, "ok": False, "error": "needs_reauth"}
 
-    start = date.today() - timedelta(days=SYNC_DAYS)
+    # Första synken för en användare (ingen last_synced_at än) hämtar ett helt
+    # år bakåt istället för det korta dagliga fönstret, så historiken kommer
+    # med direkt efter att man anslutit sitt Garmin-konto.
+    connection_rows = _sb_select(
+        "garmin_connections", "last_synced_at", {"user_id": f"eq.{user_id}"}
+    )
+    is_first_sync = not connection_rows or not connection_rows[0].get("last_synced_at")
+    days = FIRST_SYNC_DAYS if is_first_sync else SYNC_DAYS
+
+    start = date.today() - timedelta(days=days)
     try:
         activities = client.get_activities_by_date(start.isoformat(), date.today().isoformat())
     except GarminConnectAuthenticationError as e:
