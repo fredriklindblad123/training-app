@@ -498,7 +498,10 @@ async def _extract_diary_chunk_safe(
     grupp ska inte fälla hela importen när alla körs parallellt."""
     try:
         return await _extract_diary_chunk(client, chunk_bytes)
-    except Exception:
+    except Exception as e:
+        # Skrivs till Vercels runtime-loggar (`vercel logs`) — utan detta
+        # försvinner den faktiska felorsaken helt när felet sväljs här.
+        print(f"[diary_import] sidgrupp misslyckades: {type(e).__name__}: {e}")
         return []
 
 
