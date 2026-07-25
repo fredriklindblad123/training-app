@@ -10,7 +10,7 @@ export const CATEGORY_VALUES = [
   "repetition",
   "race",
   "strength",
-  "other",
+  "cross_training",
 ] as const;
 
 export type ActivityCategory = (typeof CATEGORY_VALUES)[number];
@@ -23,7 +23,7 @@ export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   repetition: "Räckor",
   race: "Tävling",
   strength: "Styrka",
-  other: "Övrigt",
+  cross_training: "Cross",
 };
 
 // Fast slot-ordning ur den kategoriska 8-färgspaletten. Ordningen är CVD-
@@ -40,7 +40,7 @@ export const CATEGORY_COLORS: Record<
   repetition: { light: "#e87ba4", dark: "#d55181" },
   race: { light: "#008300", dark: "#008300" },
   strength: { light: "#4a3aa7", dark: "#9085e9" },
-  other: { light: "#e34948", dark: "#e66767" },
+  cross_training: { light: "#e34948", dark: "#e66767" },
 };
 
 export function isActivityCategory(value: string): value is ActivityCategory {

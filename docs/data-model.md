@@ -85,7 +85,7 @@ create table activities (
   start_lng double precision,
   raw_data jsonb,                        -- fullständig rådata som backup
   category text check (category in (
-    'easy','long_run','threshold','interval','repetition','race','strength','other'
+    'easy','long_run','threshold','interval','repetition','race','strength','cross_training'
   )),                                     -- medeldistans-taxonomi, satt av trigger vid synk
   category_source text not null default 'auto' check (category_source in ('auto','manual')),
   created_at timestamptz not null default now(),

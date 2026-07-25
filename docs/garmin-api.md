@@ -58,6 +58,13 @@ körningar. `/api/garmin/sync` sätter därför `garmin_connections.status =
 istället för att tyst sluta fungera. Om detta blir ett återkommande problem är
 Strava OAuth (alternativ 1 nedan) fortfarande den robusta långsiktiga lösningen.
 
+**Sportfilter (2026-07-25):** Garmin synkar ibland in aktiviteter som inte är
+relevanta för träningsappen (t.ex. en GPS-loggad båttur, vilket blåste upp
+distansstatistiken felaktigt). `_is_allowed_activity` i `web/api/index.py`
+(speglad i `scripts/sync_garmin.py`) filtrerar nu bort allt utom löpning,
+styrka, cykel, simning och längdskidåkning (uttryckligen *inte*
+utförsskidåkning) innan raden ens sparas i `activities`.
+
 ## Att göra
 
 - [x] Utreda Garmin Connect Developer Program-krav

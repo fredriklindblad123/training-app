@@ -52,6 +52,20 @@ def to_iso_utc(garmin_gmt: str | None) -> str | None:
     return garmin_gmt.replace(" ", "T") + "Z"
 
 
+
+# Bara dessa sporter ska sparas — allt annat (båt, golf, promenad, ...) som
+# Garmin råkar synka ska ignoreras helt. Speglar web/api/index.py.
+_ALLOWED_SUBSTRINGS = ("running", "strength", "cycling", "biking", "swim")
+_ALLOWED_EXACT = {"cross_country_skiing", "skate_skiing"}
+
+
+def is_allowed_activity(a: dict) -> bool:
+    type_key = ((a.get("activityType") or {}).get("typeKey") or "").lower()
+    if any(s in type_key for s in _ALLOWED_SUBSTRINGS):
+        return True
+    return type_key in _ALLOWED_EXACT
+
+
 def map_activity(a: dict, user_id: str) -> dict:
     avg_speed = a.get("averageSpeed")
     return {
@@ -134,7 +148,8 @@ def main():
 
     start = date.today() - timedelta(days=args.days)
     activities = client.get_activities_by_date(start.isoformat(), date.today().isoformat())
-    print(f"Hittade {len(activities)} aktiviteter senaste {args.days} dagarna.")
+    activities = [a for a in activities if is_allowed_activity(a)]
+    print(f"Hittade {len(activities)} matchande aktiviteter senaste {args.days} dagarna.")
 
     if not activities:
         return

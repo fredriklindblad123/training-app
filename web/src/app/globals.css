@@ -13,7 +13,7 @@
   --cat-repetition: #e87ba4;
   --cat-race: #008300;
   --cat-strength: #4a3aa7;
-  --cat-other: #e34948;
+  --cat-cross_training: #e34948;
 }
 
 @theme inline {
@@ -35,7 +35,7 @@
     --cat-repetition: #d55181;
     --cat-race: #008300;
     --cat-strength: #9085e9;
-    --cat-other: #e66767;
+    --cat-cross_training: #e66767;
   }
 }
 

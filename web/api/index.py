@@ -38,6 +38,19 @@ CRON_SECRET = os.environ.get("CRON_SECRET")
 SYNC_DAYS = 7  # hur långt bakåt en vanlig synk (cron/upprepad "Synka nu") tittar
 FIRST_SYNC_DAYS = 365  # hur långt bakåt den allra första synken för en användare tittar
 
+# Bara dessa sporter ska sparas — allt annat (båt, golf, promenad, ...) som
+# Garmin råkar synka ska ignoreras helt, aldrig nå activities-tabellen.
+# Utförskidåkning är medvetet uteslutet — bara längdskidåkning räknas.
+_ALLOWED_SUBSTRINGS = ("running", "strength", "cycling", "biking", "swim")
+_ALLOWED_EXACT = {"cross_country_skiing", "skate_skiing"}
+
+
+def _is_allowed_activity(a: dict) -> bool:
+    type_key = ((a.get("activityType") or {}).get("typeKey") or "").lower()
+    if any(s in type_key for s in _ALLOWED_SUBSTRINGS):
+        return True
+    return type_key in _ALLOWED_EXACT
+
 
 def _sb_headers() -> dict:
     return {
@@ -150,6 +163,8 @@ def _sync_one_user(user_id: str) -> dict:
     except Exception as e:
         _mark_connection(user_id, "error", str(e))
         return {"user_id": user_id, "ok": False, "error": str(e)}
+
+    activities = [a for a in activities if _is_allowed_activity(a)]
 
     if activities:
         _sb_upsert(

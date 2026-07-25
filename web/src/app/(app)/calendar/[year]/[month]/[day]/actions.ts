@@ -56,7 +56,12 @@ export async function saveDiaryEntry(formData: FormData) {
         user_id: user.id,
         source: "manual",
         external_id: externalId,
-        activity_type: categoryRaw === "strength" ? "strength_training" : "running",
+        activity_type:
+          categoryRaw === "strength"
+            ? "strength_training"
+            : categoryRaw === "cross_training"
+              ? "cross_training"
+              : "running",
         name: "Manuellt loggat pass",
         start_time: `${entryDate}T12:00:00Z`,
         distance_meters: distanceMeters,
