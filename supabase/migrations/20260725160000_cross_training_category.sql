@@ -2,49 +2,15 @@
 -- filtrerar bort allt utom löpning/styrka/cykel/simning/längdskidåkning
 -- (se web/api/index.py), finns det ingen anledning till en vag "Övrigt"-
 -- kategori längre — cykel/simning/skidor får en egen, tydlig kategori
--- istället för att klumpas ihop.
-
-update activities set category = 'cross_training' where category = 'other';
-update planned_workouts set workout_type = 'cross_training' where workout_type = 'other';
-
-do $$
-declare
-  v_conname text;
-begin
-  select conname into v_conname
-  from pg_constraint
-  where conrelid = 'activities'::regclass
-    and contype = 'c'
-    and pg_get_constraintdef(oid) like '%category%'
-    and pg_get_constraintdef(oid) not like '%category_source%';
-  if v_conname is not null then
-    execute format('alter table activities drop constraint %I', v_conname);
-  end if;
-end $$;
-
-alter table activities add constraint activities_category_check
-  check (category in (
-    'easy', 'long_run', 'threshold', 'interval', 'repetition', 'race', 'strength', 'cross_training'
-  ));
-
-do $$
-declare
-  v_conname text;
-begin
-  select conname into v_conname
-  from pg_constraint
-  where conrelid = 'planned_workouts'::regclass
-    and contype = 'c'
-    and pg_get_constraintdef(oid) like '%workout_type%';
-  if v_conname is not null then
-    execute format('alter table planned_workouts drop constraint %I', v_conname);
-  end if;
-end $$;
-
-alter table planned_workouts add constraint planned_workouts_workout_type_check
-  check (workout_type in (
-    'easy', 'long_run', 'threshold', 'interval', 'repetition', 'race', 'strength', 'cross_training'
-  ));
+-- istället för att klumpas ihop. Passar även på att fånga upp ev.
+-- kvarvarande 'recovery'-värden från innan strength-migrationen
+-- (20260725130000), ifall den aldrig fick full effekt.
+--
+-- Ordning spelar roll här: categorize_activity måste uppdateras FÖRST,
+-- annars skriver activities_set_category-triggern (before insert/update)
+-- tillbaka de gamla värdena så fort en rad med category_source='auto'
+-- uppdateras — ett vanligt `update ... set category = ...` blir då ett
+-- no-op i praktiken, trots att det rapporteras som lyckat.
 
 create or replace function categorize_activity(
   p_activity_type text,
@@ -122,5 +88,58 @@ begin
 end;
 $$;
 
--- Räkna om automatisk kategorisering med den nya logiken.
+-- Ta bort gamla constrainten (utan att lägga på den nya än — datan är inte
+-- städad förrän omräkningen nedan kört).
+do $$
+declare
+  v_conname text;
+begin
+  select conname into v_conname
+  from pg_constraint
+  where conrelid = 'activities'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) like '%category%'
+    and pg_get_constraintdef(oid) not like '%category_source%';
+  if v_conname is not null then
+    execute format('alter table activities drop constraint %I', v_conname);
+  end if;
+end $$;
+
+-- Tvinga fram omräkning via triggern (som nu kör den nya funktionen) för
+-- alla auto-kategoriserade rader. Manuellt satta rader (category_source =
+-- 'manual') rörs inte.
 update activities set category_source = 'auto' where category_source = 'auto';
+
+-- Datan är städad nu — lägg på den nya constrainten.
+alter table activities add constraint activities_category_check
+  check (category in (
+    'easy', 'long_run', 'threshold', 'interval', 'repetition', 'race', 'strength', 'cross_training'
+  ));
+
+-- planned_workouts har ingen motsvarande trigger, så en vanlig update räcker.
+update planned_workouts set workout_type = 'easy' where workout_type = 'recovery';
+update planned_workouts set workout_type = 'cross_training' where workout_type = 'other';
+update planned_workouts set workout_type = 'cross_training'
+  where workout_type is not null
+    and workout_type not in (
+      'easy', 'long_run', 'threshold', 'interval', 'repetition', 'race', 'strength', 'cross_training'
+    );
+
+do $$
+declare
+  v_conname text;
+begin
+  select conname into v_conname
+  from pg_constraint
+  where conrelid = 'planned_workouts'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) like '%workout_type%';
+  if v_conname is not null then
+    execute format('alter table planned_workouts drop constraint %I', v_conname);
+  end if;
+end $$;
+
+alter table planned_workouts add constraint planned_workouts_workout_type_check
+  check (workout_type in (
+    'easy', 'long_run', 'threshold', 'interval', 'repetition', 'race', 'strength', 'cross_training'
+  ));
