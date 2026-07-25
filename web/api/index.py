@@ -537,6 +537,8 @@ async def diary_import(
     except Exception as e:
         return JSONResponse({"error": f"Kunde inte läsa PDF:en: {e}"}, status_code=400)
 
+    print(f"[diary_import] {len(chunks)} sidgrupper (à {PAGES_PER_CHUNK} sidor)")
+
     client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
     # Kör alla sidgrupper parallellt istället för i sekvens — annars blir
     # den sammanlagda väntetiden lätt för lång för Vercels körtidsgräns.
@@ -544,11 +546,17 @@ async def diary_import(
         *[_extract_diary_chunk_safe(client, c) for c in chunks]
     )
 
+    for i, entries in enumerate(chunk_results):
+        weeks_seen = sorted({e.week for e in entries})
+        print(f"[diary_import] chunk {i}: {len(entries)} poster, veckor={weeks_seen}")
+
     entries_by_key: dict[tuple[int, int], DiaryDayEntry] = {}
     chunk_errors = sum(1 for r in chunk_results if not r)
     for entries in chunk_results:
         for entry in entries:
             entries_by_key[(entry.week, entry.weekday)] = entry
+
+    print(f"[diary_import] {len(entries_by_key)} unika (vecka, veckodag) efter sammanslagning")
 
     if not entries_by_key and chunk_errors > 0:
         return JSONResponse(
