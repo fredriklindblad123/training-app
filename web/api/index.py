@@ -444,8 +444,12 @@ def _week_to_date(week: int, weekday: int, school_year_start: int) -> Optional[s
 # eller (om den ändå gick igenom) Vercels hårda 5-minuters-gräns för
 # serverless-funktioner på gratisplanen. Lösningen är att dela PDF:en i
 # mindre sidgrupper och köra ett snabbare, mindre anrop per grupp.
-PAGES_PER_CHUNK = 6
-CHUNK_MAX_TOKENS = 8000
+# Färre sidor per grupp + högre max_tokens ger gott om utrymme kvar även
+# för väldigt textrika veckor (vissa dagsceller i den här sortens dagbok
+# är flera hundra ord), så svaret inte kapas mitt i JSON:en
+# (stop_reason="max_tokens" ger parsed_output=None, inte ett tydligt fel).
+PAGES_PER_CHUNK = 4
+CHUNK_MAX_TOKENS = 16000
 
 
 def _split_pdf_pages(pdf_bytes: bytes, pages_per_chunk: int) -> list[bytes]:
@@ -488,6 +492,13 @@ async def _extract_diary_chunk(
         ],
         output_format=DiaryExtraction,
     )
+    if response.parsed_output is None:
+        # T.ex. stop_reason="max_tokens" (svaret kapades mitt i JSON:en) eller
+        # "refusal" — logga den faktiska orsaken istället för ett kryptiskt
+        # AttributeError längre upp i kedjan.
+        raise ValueError(
+            f"parsed_output saknas, stop_reason={response.stop_reason!r}"
+        )
     return response.parsed_output.entries
 
 
