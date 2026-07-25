@@ -8,11 +8,20 @@ import {
 } from "@/lib/categories";
 import { formatDuration } from "@/lib/format";
 
+export type SessionDatum = {
+  id: string;
+  date: string;
+  name: string | null;
+  km: number;
+  seconds: number;
+};
+
 export type CategoryDatum = {
   category: ActivityCategory;
   km: number;
   seconds: number;
   count: number;
+  sessions: SessionDatum[];
 };
 
 type Metric = "distance" | "time";
@@ -62,6 +71,16 @@ export function CategoryPieChart({
   const [hovered, setHovered] = useState<ActivityCategory | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number } | null>(null);
   const [showTable, setShowTable] = useState(false);
+  const [expanded, setExpanded] = useState<Set<ActivityCategory>>(new Set());
+
+  function toggleExpanded(category: ActivityCategory) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }
 
   // Fast kategoriordning oavsett vilka som förekommer — identitet ska aldrig
   // hoppa mellan kategorier när urvalet ändras.
@@ -232,31 +251,63 @@ export function CategoryPieChart({
       </button>
 
       {showTable && (
-        <table className="w-full max-w-md text-sm">
+        <table className="w-full max-w-lg text-sm">
           <thead>
             <tr className="text-left text-zinc-500 dark:text-zinc-400">
+              <th className="pr-4 font-normal"></th>
               <th className="pr-4 font-normal">Kategori</th>
               <th className="pr-4 font-normal">Antal</th>
               <th className="pr-4 font-normal">Distans</th>
               <th className="font-normal">Tid</th>
             </tr>
           </thead>
-          <tbody>
-            {rows.map((d) => (
-              <tr key={d.category} className="border-t border-zinc-100 dark:border-zinc-800">
-                <td className="flex items-center gap-2 py-1 pr-4">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                    style={{ backgroundColor: `var(--cat-${d.category})` }}
-                  />
-                  {CATEGORY_LABELS[d.category]}
-                </td>
-                <td className="pr-4">{d.count}</td>
-                <td className="pr-4">{d.km.toFixed(1)} km</td>
-                <td>{formatDuration(d.seconds)}</td>
-              </tr>
-            ))}
-          </tbody>
+          {rows.map((d) => {
+            const isOpen = expanded.has(d.category);
+            return (
+              <tbody key={d.category}>
+                <tr
+                  className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                  onClick={() => toggleExpanded(d.category)}
+                >
+                  <td className="py-1 pl-1 text-zinc-400">
+                    <span
+                      className="inline-block transition-transform"
+                      style={{ transform: isOpen ? "rotate(90deg)" : "rotate(0deg)" }}
+                    >
+                      ▸
+                    </span>
+                  </td>
+                  <td className="flex items-center gap-2 py-1 pr-4">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                      style={{ backgroundColor: `var(--cat-${d.category})` }}
+                    />
+                    {CATEGORY_LABELS[d.category]}
+                  </td>
+                  <td className="pr-4">{d.count}</td>
+                  <td className="pr-4">{d.km.toFixed(1)} km</td>
+                  <td>{formatDuration(d.seconds)}</td>
+                </tr>
+                {isOpen &&
+                  d.sessions
+                    .slice()
+                    .sort((a, b) => a.date.localeCompare(b.date))
+                    .map((s) => (
+                      <tr
+                        key={s.id}
+                        className="border-t border-zinc-50 text-xs text-zinc-500 dark:border-zinc-900 dark:text-zinc-400"
+                      >
+                        <td></td>
+                        <td className="py-1 pr-4" colSpan={2}>
+                          {s.date} — {s.name ?? "Pass"}
+                        </td>
+                        <td className="pr-4">{s.km.toFixed(1)} km</td>
+                        <td>{formatDuration(s.seconds)}</td>
+                      </tr>
+                    ))}
+              </tbody>
+            );
+          })}
         </table>
       )}
     </div>

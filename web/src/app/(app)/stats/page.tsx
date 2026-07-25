@@ -69,9 +69,10 @@ export default async function StatsPage({
   const supabase = await createClient();
   const { data: activities } = await supabase
     .from("activities")
-    .select("distance_meters, duration_seconds, activity_type, category")
+    .select("id, start_time, name, distance_meters, duration_seconds, activity_type, category")
     .gte("start_time", start)
-    .lt("start_time", endExclusive);
+    .lt("start_time", endExclusive)
+    .order("start_time");
 
   // KPI-siffrorna (Distans/Tid/Antal pass) ska bara spegla löpträning — annars
   // smyger sig t.ex. en GPS-loggad båttur in i "Distans" bara för att Garmin
@@ -106,10 +107,18 @@ export default async function StatsPage({
         km: 0,
         seconds: 0,
         count: 0,
+        sessions: [],
       };
       cat.km += (a.distance_meters ?? 0) / 1000;
       cat.seconds += a.duration_seconds ?? 0;
       cat.count += 1;
+      cat.sessions.push({
+        id: a.id,
+        date: a.start_time.slice(0, 10),
+        name: a.name,
+        km: (a.distance_meters ?? 0) / 1000,
+        seconds: a.duration_seconds ?? 0,
+      });
       byCategory.set(a.category, cat);
     }
   }
