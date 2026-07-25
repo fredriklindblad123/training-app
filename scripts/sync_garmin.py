@@ -54,16 +54,23 @@ def to_iso_utc(garmin_gmt: str | None) -> str | None:
 
 
 # Bara dessa sporter ska sparas — allt annat (båt, golf, promenad, ...) som
-# Garmin råkar synka ska ignoreras helt. Speglar web/api/index.py.
-_ALLOWED_SUBSTRINGS = ("running", "strength", "cycling", "biking", "swim")
-_ALLOWED_EXACT = {"cross_country_skiing", "skate_skiing"}
+# Garmin råkar synka ska ignoreras helt. Speglar web/api/index.py. Substr-
+# matchning genomgående, eftersom Garmin har suffix-varianter, t.ex.
+# "cross_country_skiing_ws".
+_ALLOWED_SUBSTRINGS = (
+    "running",
+    "strength",
+    "cycling",
+    "biking",
+    "swim",
+    "cross_country_skiing",
+    "skate_skiing",
+)
 
 
 def is_allowed_activity(a: dict) -> bool:
     type_key = ((a.get("activityType") or {}).get("typeKey") or "").lower()
-    if any(s in type_key for s in _ALLOWED_SUBSTRINGS):
-        return True
-    return type_key in _ALLOWED_EXACT
+    return any(s in type_key for s in _ALLOWED_SUBSTRINGS)
 
 
 def map_activity(a: dict, user_id: str) -> dict:

@@ -41,15 +41,22 @@ FIRST_SYNC_DAYS = 365  # hur långt bakåt den allra första synken för en anv�
 # Bara dessa sporter ska sparas — allt annat (båt, golf, promenad, ...) som
 # Garmin råkar synka ska ignoreras helt, aldrig nå activities-tabellen.
 # Utförskidåkning är medvetet uteslutet — bara längdskidåkning räknas.
-_ALLOWED_SUBSTRINGS = ("running", "strength", "cycling", "biking", "swim")
-_ALLOWED_EXACT = {"cross_country_skiing", "skate_skiing"}
+# Substr-matchning genomgående (inte exakt jämförelse) eftersom Garmin har
+# suffix-varianter, t.ex. "cross_country_skiing_ws".
+_ALLOWED_SUBSTRINGS = (
+    "running",
+    "strength",
+    "cycling",
+    "biking",
+    "swim",
+    "cross_country_skiing",
+    "skate_skiing",
+)
 
 
 def _is_allowed_activity(a: dict) -> bool:
     type_key = ((a.get("activityType") or {}).get("typeKey") or "").lower()
-    if any(s in type_key for s in _ALLOWED_SUBSTRINGS):
-        return True
-    return type_key in _ALLOWED_EXACT
+    return any(s in type_key for s in _ALLOWED_SUBSTRINGS)
 
 
 def _sb_headers() -> dict:
