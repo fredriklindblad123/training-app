@@ -73,15 +73,23 @@ export default async function StatsPage({
     .gte("start_time", start)
     .lt("start_time", endExclusive);
 
-  const totalDistance = (activities ?? []).reduce(
+  // KPI-siffrorna (Distans/Tid/Antal pass) ska bara spegla löpträning — annars
+  // smyger sig t.ex. en GPS-loggad båttur in i "Distans" bara för att Garmin
+  // råkade synka den. "Per aktivitetstyp" nedan visar fortfarande allt, för
+  // överblick.
+  const runningActivities = (activities ?? []).filter((a) =>
+    (a.activity_type ?? "").includes("running"),
+  );
+
+  const totalDistance = runningActivities.reduce(
     (sum, a) => sum + (a.distance_meters ?? 0),
     0,
   );
-  const totalDuration = (activities ?? []).reduce(
+  const totalDuration = runningActivities.reduce(
     (sum, a) => sum + (a.duration_seconds ?? 0),
     0,
   );
-  const sessionCount = activities?.length ?? 0;
+  const sessionCount = runningActivities.length;
 
   const byType = new Map<string, { count: number; distance: number }>();
   const byCategory = new Map<ActivityCategory, CategoryDatum>();
