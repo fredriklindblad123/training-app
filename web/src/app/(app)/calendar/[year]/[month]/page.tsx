@@ -121,12 +121,17 @@ export default async function MonthPage({
             →
           </Link>
         </div>
-        <Link
-          href={`/calendar/${year}`}
-          className="text-sm text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-        >
-          Till årsvyn
-        </Link>
+        <div className="flex gap-2 text-sm">
+          <span className="rounded bg-zinc-950 px-3 py-1 text-white dark:bg-zinc-50 dark:text-zinc-950">
+            Månad
+          </span>
+          <Link
+            href={`/calendar/${year}`}
+            className="rounded border border-zinc-300 px-3 py-1 dark:border-zinc-700"
+          >
+            År
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-zinc-200 bg-zinc-200 text-xs dark:border-zinc-800 dark:bg-zinc-800">

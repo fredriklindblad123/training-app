@@ -85,6 +85,17 @@ export default async function YearPage({
             →
           </Link>
         </div>
+        <div className="flex gap-2 text-sm">
+          <Link
+            href={`/calendar/${year}/${year === new Date().getFullYear() ? new Date().getMonth() + 1 : 1}`}
+            className="rounded border border-zinc-300 px-3 py-1 dark:border-zinc-700"
+          >
+            Månad
+          </Link>
+          <span className="rounded bg-zinc-950 px-3 py-1 text-white dark:bg-zinc-50 dark:text-zinc-950">
+            År
+          </span>
+        </div>
         <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
           {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>).map(
             (key) => (
