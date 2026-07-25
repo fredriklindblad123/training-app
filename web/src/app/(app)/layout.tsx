@@ -6,6 +6,7 @@ import { signOut } from "@/app/login/actions";
 const navLinks = [
   { href: "/calendar", label: "Kalender" },
   { href: "/stats", label: "Statistik" },
+  { href: "/trends", label: "Trender" },
   { href: "/goals", label: "Mål" },
   { href: "/settings", label: "Inställningar" },
 ];
