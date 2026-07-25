@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatMetricValue, type MetricFormatKind } from "@/lib/format";
 
 export type BarDatum = { label: string; value: number };
 
@@ -22,15 +23,16 @@ function niceCeil(value: number): number {
 // legend box needed — the title names it").
 export function BarChart({
   data,
-  formatValue,
+  formatKind,
   emptyLabel = "Ingen data i perioden.",
 }: {
   data: BarDatum[];
-  formatValue: (v: number) => string;
+  formatKind: MetricFormatKind;
   emptyLabel?: string;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
+  const formatValue = (v: number) => formatMetricValue(formatKind, v);
 
   if (data.length === 0) {
     return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;

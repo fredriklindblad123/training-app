@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatMetricValue, type MetricFormatKind } from "@/lib/format";
 
 export type LineDatum = { label: string; value: number | null };
 
@@ -9,15 +10,16 @@ export type LineDatum = { label: string; value: number | null };
 // att falskt binda ihop punkter över data som saknas.
 export function LineChart({
   data,
-  formatValue,
+  formatKind,
   emptyLabel = "Ingen data i perioden.",
 }: {
   data: LineDatum[];
-  formatValue: (v: number) => string;
+  formatKind: MetricFormatKind;
   emptyLabel?: string;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
+  const formatValue = (v: number) => formatMetricValue(formatKind, v);
 
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   if (values.length === 0) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatMetricValue, type MetricFormatKind } from "@/lib/format";
 
 export type ScatterPoint = { x: number; y: number; label: string };
 
@@ -8,16 +9,18 @@ export function ScatterChart({
   data,
   xLabel,
   yLabel,
-  formatX,
-  formatY,
+  xFormatKind,
+  yFormatKind,
 }: {
   data: ScatterPoint[];
   xLabel: string;
   yLabel: string;
-  formatX: (v: number) => string;
-  formatY: (v: number) => string;
+  xFormatKind: MetricFormatKind;
+  yFormatKind: MetricFormatKind;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
+  const formatX = (v: number) => formatMetricValue(xFormatKind, v);
+  const formatY = (v: number) => formatMetricValue(yFormatKind, v);
 
   if (data.length === 0) {
     return (

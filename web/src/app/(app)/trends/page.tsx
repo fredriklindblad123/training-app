@@ -9,8 +9,6 @@ import {
   isoWeekStart,
   weekLabel,
 } from "@/lib/stats-utils";
-import { formatHoursMinutes } from "@/lib/format";
-
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
 
@@ -237,7 +235,7 @@ export default async function TrendsPage({
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
           Veckovolym (löpning)
         </h2>
-        <BarChart data={volumeData} formatValue={(v) => `${v.toFixed(1)} km`} />
+        <BarChart data={volumeData} formatKind="km" />
       </section>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
@@ -247,7 +245,7 @@ export default async function TrendsPage({
           </h2>
           <LineChart
             data={sleepData}
-            formatValue={(v) => formatHoursMinutes(v * 3600)}
+            formatKind="hours"
             emptyLabel="Ingen sömndata ännu — anslut Garmin på /settings."
           />
         </section>
@@ -258,7 +256,7 @@ export default async function TrendsPage({
           </h2>
           <LineChart
             data={rpeData}
-            formatValue={(v) => v.toFixed(1)}
+            formatKind="decimal1"
             emptyLabel="Ingen RPE loggad ännu — fylls i på dagvyn."
           />
         </section>
@@ -269,7 +267,7 @@ export default async function TrendsPage({
           </h2>
           <LineChart
             data={rhrData}
-            formatValue={(v) => `${Math.round(v)} slag/min`}
+            formatKind="bpm"
             emptyLabel="Ingen vilopulsdata ännu."
           />
         </section>
@@ -278,11 +276,7 @@ export default async function TrendsPage({
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
             HRV (snitt/vecka)
           </h2>
-          <LineChart
-            data={hrvData}
-            formatValue={(v) => `${Math.round(v)} ms`}
-            emptyLabel="Ingen HRV-data ännu."
-          />
+          <LineChart data={hrvData} formatKind="ms" emptyLabel="Ingen HRV-data ännu." />
         </section>
       </div>
 
@@ -334,8 +328,8 @@ export default async function TrendsPage({
               data={sleepScoreVsRpe.map(([x, y], i) => ({ x, y, label: `Dag ${i + 1}` }))}
               xLabel="Sömnpoäng"
               yLabel="RPE"
-              formatX={(v) => v.toFixed(0)}
-              formatY={(v) => v.toFixed(1)}
+              xFormatKind="decimal0"
+              yFormatKind="decimal1"
             />
           </div>
         )}
