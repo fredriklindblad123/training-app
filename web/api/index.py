@@ -448,8 +448,8 @@ def _week_to_date(week: int, weekday: int, school_year_start: int) -> Optional[s
 # för väldigt textrika veckor (vissa dagsceller i den här sortens dagbok
 # är flera hundra ord), så svaret inte kapas mitt i JSON:en
 # (stop_reason="max_tokens" ger parsed_output=None, inte ett tydligt fel).
-PAGES_PER_CHUNK = 4
-CHUNK_MAX_TOKENS = 16000
+PAGES_PER_CHUNK = 2
+CHUNK_MAX_TOKENS = 32000
 
 
 def _split_pdf_pages(pdf_bytes: bytes, pages_per_chunk: int) -> list[bytes]:
