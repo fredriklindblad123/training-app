@@ -84,9 +84,24 @@ create table activities (
   start_lat double precision,
   start_lng double precision,
   raw_data jsonb,                        -- fullständig rådata som backup
+  category text check (category in (
+    'easy','long_run','threshold','interval','repetition','race','strength','other'
+  )),                                     -- medeldistans-taxonomi, satt av trigger vid synk
+  category_source text not null default 'auto' check (category_source in ('auto','manual')),
   created_at timestamptz not null default now(),
   unique (user_id, source, external_id)
 );
+```
+
+`category` sätts automatiskt av en trigger (`categorize_activity`, se
+migration `20260725120000_activity_category.sql`) baserat på `activity_type`,
+passnamn (nyckelord från träningsplaner) och Garmins `training_effect_label`,
+med fallback på distans/tid för långpass. En manuell ändring i UI:t sätter
+`category_source = 'manual'`, vilket gör att triggern lämnar värdet ifred vid
+nästa Garmin-synk. `category_source = 'auto'` återställer den automatiska
+kategoriseringen.
+
+```sql
 
 create table activity_splits (
   id uuid primary key default gen_random_uuid(),
@@ -98,6 +113,30 @@ create table activity_splits (
   avg_hr integer,
   elevation_gain numeric,
   unique (activity_id, split_index)
+);
+
+-- garmin_connections + garmin_tokens ------------------------------------------
+-- Multi-user Garmin-koppling (web/api/index.py, migration
+-- 20260725150000_garmin_connections.sql). Varje användare ansluter sitt eget
+-- Garmin-konto via ett formulär i appen (/settings); lösenordet skickas bara
+-- en gång till login-endpointen och sparas aldrig — bara den token
+-- (garth Client.dumps()) som Garmin-inloggningen ger tillbaka, i
+-- garmin_tokens (ingen RLS-policy alls, bara service_role kommer åt den).
+-- garmin_connections har en läs-policy så användaren kan se sin egen
+-- status/senast-synkad, men aldrig token:en.
+
+create table garmin_connections (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  status text not null default 'connected' check (status in ('connected','needs_reauth','error')),
+  last_synced_at timestamptz,
+  last_error text,
+  connected_at timestamptz not null default now()
+);
+
+create table garmin_tokens (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  token text not null,
+  updated_at timestamptz not null default now()
 );
 
 create table planned_workouts (

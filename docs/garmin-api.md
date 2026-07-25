@@ -29,8 +29,38 @@ automatiskt, så det ger i praktiken samma data.
    Garmin-kontouppgifter — fungerar ofta för personligt bruk, men bryter mot
    Garmins användarvillkor och kan sluta fungera utan förvarning
 
+## Uppdatering 2026-07-25: multi-user-synk trots allt på det inofficiella biblioteket
+
+Strava-planen ovan blev aldrig implementerad — `scripts/sync_garmin.py` byggdes
+istället mot `python-garminconnect`/`garth` (alternativ 3), och användes
+manuellt lokalt av en användare. Det är nu ombyggt till multi-user och
+automatiskt:
+
+- **`web/api/index.py`** — en FastAPI-baserad Vercel Python-funktion med två
+  endpoints: `/api/garmin/login` (ansluter ett Garmin-konto till en
+  app-användare, sparar bara en session-token, aldrig lösenordet) och
+  `/api/garmin/sync` (synkar en specifik användare on-demand, eller alla
+  anslutna användare via `vercel.json`s dagliga cron).
+- **`garmin_connections` + `garmin_tokens`** (se data-model.md) — status per
+  användare respektive den sparade token:en.
+- UI: `/settings`-sidan i webappen (anslut-formulär + "Synka nu"-knapp).
+
+**Känd risk, upptäckt vid research 2026-07-25:** `garth` (som både
+`python-garminconnect` och de flesta JS-motsvarigheter bygger på) blev
+formellt **övergivet av sin maintainer under 2026**, efter att Garmin ändrade
+sitt SSO-inloggningsflöde i feb–apr 2026 och orsakade utbredda 429/Cloudflare-
+blockeringar för den här typen av inofficiell inloggning
+(`cyberjunky/python-garminconnect` #337, #344, #348, #350). Automatiserad,
+schemalagd inloggning från en molnserver (vårt cron-jobb) är precis det
+mönster som är mest utsatt för sådan blockering — mer än enstaka manuella
+körningar. `/api/garmin/sync` sätter därför `garmin_connections.status =
+'needs_reauth'` när en synk misslyckas med ett auth-fel, så det syns i UI:t
+istället för att tyst sluta fungera. Om detta blir ett återkommande problem är
+Strava OAuth (alternativ 1 nedan) fortfarande den robusta långsiktiga lösningen.
+
 ## Att göra
 
 - [x] Utreda Garmin Connect Developer Program-krav
-- [ ] Sätta upp Strava API-integration (OAuth + aktivitetshämtning)
+- [x] Multi-user Garmin-synk (inofficiellt bibliotek, se ovan) — klart 2026-07-25
+- [ ] Sätta upp Strava API-integration (OAuth + aktivitetshämtning) — reservplan om/när garth-baserad inloggning slutar fungera pålitligt
 - [ ] Ha FIT-filimport som backup-plan i UI:t

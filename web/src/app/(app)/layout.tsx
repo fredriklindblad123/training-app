@@ -7,6 +7,7 @@ const navLinks = [
   { href: "/calendar", label: "Kalender" },
   { href: "/stats", label: "Statistik" },
   { href: "/goals", label: "Mål" },
+  { href: "/settings", label: "Inställningar" },
 ];
 
 export default async function AppLayout({

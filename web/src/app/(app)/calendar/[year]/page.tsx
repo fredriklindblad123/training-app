@@ -11,6 +11,7 @@ import {
   firstWeekdayOfMonth,
   isValidYear,
 } from "@/lib/calendar-utils";
+import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
 
 export default async function YearPage({
   params,
@@ -25,7 +26,7 @@ export default async function YearPage({
 
   const supabase = await createClient();
 
-  const [statuses, { data: activeGoal }] = await Promise.all([
+  const [statuses, { data: activeGoal }, { data: plannedWorkouts }] = await Promise.all([
     getDayStatuses(supabase, `${year}-01-01`, `${year + 1}-01-01`),
     supabase
       .from("goals")
@@ -34,9 +35,21 @@ export default async function YearPage({
       .order("event_date", { ascending: true })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("planned_workouts")
+      .select("scheduled_date, workout_type")
+      .gte("scheduled_date", `${year}-01-01`)
+      .lt("scheduled_date", `${year + 1}-01-01`),
   ]);
 
   const goalDateKey = activeGoal?.event_date ?? null;
+
+  const plannedMap = new Map<string, ActivityCategory>();
+  for (const pw of plannedWorkouts ?? []) {
+    if (isActivityCategory(pw.workout_type)) {
+      plannedMap.set(pw.scheduled_date, pw.workout_type);
+    }
+  }
 
   let daysUntilGoal: number | null = null;
   if (activeGoal) {
@@ -123,16 +136,32 @@ export default async function YearPage({
                   const key = dateKey(year, month, day);
                   const status = statuses.get(key);
                   const isGoalDay = goalDateKey === key;
+                  const plannedCategory = plannedMap.get(key);
+                  const isFulfilled = status === "training";
                   return (
                     <Link
                       key={key}
                       href={`/calendar/${year}/${month}/${day}`}
-                      title={`${key}${status ? ` – ${STATUS_LABEL[status]}` : ""}`}
+                      title={`${key}${status ? ` – ${STATUS_LABEL[status]}` : ""}${
+                        plannedCategory
+                          ? ` – Planerat: ${CATEGORY_LABELS[plannedCategory]}${
+                              isFulfilled ? " (genomfört)" : ""
+                            }`
+                          : ""
+                      }`}
                       className={`h-4 w-4 rounded-sm ${
                         status
                           ? STATUS_COLOR[status]
                           : "bg-zinc-100 dark:bg-zinc-800"
                       } ${isGoalDay ? "ring-2 ring-amber-500" : ""}`}
+                      style={
+                        plannedCategory
+                          ? {
+                              boxSizing: "border-box",
+                              border: `2px solid var(--cat-${plannedCategory})`,
+                            }
+                          : undefined
+                      }
                     />
                   );
                 })}

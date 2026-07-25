@@ -3,6 +3,17 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Kategorisk palett för träningspass-kategorier (activities.category).
+     Fast slot-ordning, se web/src/lib/categories.ts. */
+  --cat-easy: #2a78d6;
+  --cat-long_run: #eb6834;
+  --cat-threshold: #1baf7a;
+  --cat-interval: #eda100;
+  --cat-repetition: #e87ba4;
+  --cat-race: #008300;
+  --cat-strength: #4a3aa7;
+  --cat-other: #e34948;
 }
 
 @theme inline {
@@ -16,6 +27,15 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --cat-easy: #3987e5;
+    --cat-long_run: #d95926;
+    --cat-threshold: #199e70;
+    --cat-interval: #c98500;
+    --cat-repetition: #d55181;
+    --cat-race: #008300;
+    --cat-strength: #9085e9;
+    --cat-other: #e66767;
   }
 }
 

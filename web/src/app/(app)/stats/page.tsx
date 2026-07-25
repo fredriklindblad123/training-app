@@ -2,6 +2,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { formatDuration, formatKm } from "@/lib/format";
 import { SV_MONTHS, pad2 } from "@/lib/calendar-utils";
+import { isActivityCategory, type ActivityCategory } from "@/lib/categories";
+import { CategoryPieChart, type CategoryDatum } from "@/components/CategoryPieChart";
 
 type Period = "year" | "month" | "week";
 
@@ -51,11 +53,13 @@ function shiftAnchor(period: Period, anchor: Date, dir: 1 | -1): Date {
 export default async function StatsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; date?: string }>;
+  searchParams: Promise<{ period?: string; date?: string; metric?: string }>;
 }) {
-  const { period: periodParam, date: dateParam } = await searchParams;
+  const { period: periodParam, date: dateParam, metric: metricParam } =
+    await searchParams;
   const period: Period =
     periodParam === "month" || periodParam === "week" ? periodParam : "year";
+  const metric: "distance" | "time" = metricParam === "time" ? "time" : "distance";
   const anchor = dateParam ? new Date(`${dateParam}T00:00:00`) : new Date();
 
   const { start, endExclusive, label } = getRange(period, anchor);
@@ -65,7 +69,7 @@ export default async function StatsPage({
   const supabase = await createClient();
   const { data: activities } = await supabase
     .from("activities")
-    .select("distance_meters, duration_seconds, activity_type")
+    .select("distance_meters, duration_seconds, activity_type, category")
     .gte("start_time", start)
     .lt("start_time", endExclusive);
 
@@ -80,13 +84,28 @@ export default async function StatsPage({
   const sessionCount = activities?.length ?? 0;
 
   const byType = new Map<string, { count: number; distance: number }>();
+  const byCategory = new Map<ActivityCategory, CategoryDatum>();
   for (const a of activities ?? []) {
     const type = a.activity_type ?? "okänd";
     const existing = byType.get(type) ?? { count: 0, distance: 0 };
     existing.count += 1;
     existing.distance += a.distance_meters ?? 0;
     byType.set(type, existing);
+
+    if (a.category && isActivityCategory(a.category)) {
+      const cat = byCategory.get(a.category) ?? {
+        category: a.category,
+        km: 0,
+        seconds: 0,
+        count: 0,
+      };
+      cat.km += (a.distance_meters ?? 0) / 1000;
+      cat.seconds += a.duration_seconds ?? 0;
+      cat.count += 1;
+      byCategory.set(a.category, cat);
+    }
   }
+  const categoryData = [...byCategory.values()];
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
@@ -98,7 +117,7 @@ export default async function StatsPage({
           {(["week", "month", "year"] as Period[]).map((p) => (
             <Link
               key={p}
-              href={`/stats?period=${p}`}
+              href={`/stats?period=${p}&metric=${metric}`}
               className={`rounded px-3 py-1 ${
                 period === p
                   ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
@@ -113,7 +132,7 @@ export default async function StatsPage({
 
       <div className="flex items-center gap-4">
         <Link
-          href={`/stats?period=${period}&date=${fmtDate(prevAnchor)}`}
+          href={`/stats?period=${period}&date=${fmtDate(prevAnchor)}&metric=${metric}`}
           className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
         >
           ←
@@ -122,7 +141,7 @@ export default async function StatsPage({
           {label}
         </span>
         <Link
-          href={`/stats?period=${period}&date=${fmtDate(nextAnchor)}`}
+          href={`/stats?period=${period}&date=${fmtDate(nextAnchor)}&metric=${metric}`}
           className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
         >
           →
@@ -133,6 +152,30 @@ export default async function StatsPage({
         <StatTile label="Distans" value={formatKm(totalDistance)} />
         <StatTile label="Tid" value={formatDuration(totalDuration)} />
         <StatTile label="Antal pass" value={`${sessionCount}`} />
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Per kategori
+          </h2>
+          <div className="flex gap-2 text-sm">
+            {(["distance", "time"] as const).map((m) => (
+              <Link
+                key={m}
+                href={`/stats?period=${period}&date=${fmtDate(anchor)}&metric=${m}`}
+                className={`rounded px-3 py-1 ${
+                  metric === m
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 dark:border-zinc-700"
+                }`}
+              >
+                {m === "distance" ? "Distans" : "Tid"}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <CategoryPieChart data={categoryData} metric={metric} />
       </div>
 
       {byType.size > 0 && (
