@@ -16,7 +16,12 @@ import {
   savePlannedWorkout,
   deletePlannedWorkout,
 } from "./actions";
-import { formatDuration, formatPace, formatKm } from "@/lib/format";
+import {
+  formatDuration,
+  formatPace,
+  formatKm,
+  formatHoursMinutes,
+} from "@/lib/format";
 import {
   CATEGORY_LABELS,
   CATEGORY_VALUES,
@@ -49,8 +54,13 @@ export default async function DayPage({
 
   const supabase = await createClient();
 
-  const [{ data: activities }, { data: diaryEntry }, { data: plannedWorkout }, { data: activeGoals }] =
-    await Promise.all([
+  const [
+    { data: activities },
+    { data: diaryEntry },
+    { data: plannedWorkout },
+    { data: activeGoals },
+    { data: dailyMetrics },
+  ] = await Promise.all([
       supabase
         .from("activities")
         .select("*, activity_splits(*)")
@@ -76,6 +86,11 @@ export default async function DayPage({
         .select("id, title")
         .eq("status", "active")
         .order("event_date"),
+      supabase
+        .from("daily_metrics")
+        .select("*")
+        .eq("metric_date", dateStr)
+        .maybeSingle(),
     ]);
 
   // Manuellt loggade pass (source='manual') redigeras nästlat under
@@ -374,6 +389,37 @@ export default async function DayPage({
         ))}
       </section>
 
+      {dailyMetrics && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Sömn &amp; återhämtning
+          </h2>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-zinc-200 p-4 text-sm sm:grid-cols-4 dark:border-zinc-800">
+            <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
+            <Stat
+              label="Sömnpoäng"
+              value={dailyMetrics.sleep_score ? `${dailyMetrics.sleep_score} / 100` : "–"}
+            />
+            <Stat
+              label="Vilopuls"
+              value={dailyMetrics.resting_hr ? `${dailyMetrics.resting_hr} slag/min` : "–"}
+            />
+            <Stat
+              label="HRV (natt)"
+              value={
+                dailyMetrics.hrv_overnight_avg
+                  ? `${Math.round(dailyMetrics.hrv_overnight_avg)} ms`
+                  : "–"
+              }
+            />
+            <Stat label="Djupsömn" value={formatHoursMinutes(dailyMetrics.deep_sleep_seconds)} />
+            <Stat label="REM" value={formatHoursMinutes(dailyMetrics.rem_sleep_seconds)} />
+            <Stat label="Lätt sömn" value={formatHoursMinutes(dailyMetrics.light_sleep_seconds)} />
+            <Stat label="Vaken" value={formatHoursMinutes(dailyMetrics.awake_seconds)} />
+          </div>
+        </section>
+      )}
+
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
           Träningsdagbok
@@ -437,16 +483,28 @@ export default async function DayPage({
                 className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
               />
             </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Sömn (timmar)
+            {/* Sömn kommer automatiskt från Garmin (se sektionen ovan). Fältet
+                behövs bara för dagar då klockan inte användes. Dolt fält när
+                Garmin-data finns, så ett tidigare manuellt värde inte nollas. */}
+            {dailyMetrics && (
               <input
-                type="number"
-                step="0.5"
+                type="hidden"
                 name="sleep_hours"
-                defaultValue={diaryEntry?.sleep_hours ?? ""}
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                value={diaryEntry?.sleep_hours ?? ""}
               />
-            </label>
+            )}
+            {!dailyMetrics && (
+              <label className="flex flex-col gap-1 text-sm">
+                Sömn (timmar)
+                <input
+                  type="number"
+                  step="0.5"
+                  name="sleep_hours"
+                  defaultValue={diaryEntry?.sleep_hours ?? ""}
+                  className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                />
+              </label>
+            )}
           </div>
 
           <label className="flex flex-col gap-1 text-sm">

@@ -38,6 +38,12 @@ CRON_SECRET = os.environ.get("CRON_SECRET")
 SYNC_DAYS = 7  # hur långt bakåt en vanlig synk (cron/upprepad "Synka nu") tittar
 FIRST_SYNC_DAYS = 365  # hur långt bakåt den allra första synken för en användare tittar
 
+# Sömn hämtas en dag per API-anrop, till skillnad från aktiviteter som kommer
+# i ett svep. Fönstret hålls därför kort — 365 anrop skulle ta minuter och
+# nästan säkert trigga Garmins rate-limiting (se docs/garmin-api.md).
+SLEEP_SYNC_DAYS = 7
+FIRST_SLEEP_SYNC_DAYS = 30
+
 # Bara dessa sporter ska sparas — allt annat (båt, golf, promenad, ...) som
 # Garmin råkar synka ska ignoreras helt, aldrig nå activities-tabellen.
 # Utförskidåkning är medvetet uteslutet — bara längdskidåkning räknas.
@@ -140,6 +146,63 @@ def _map_activity(a: dict, user_id: str) -> dict:
     }
 
 
+def _map_sleep(day: str, sleep: dict, user_id: str) -> Optional[dict]:
+    """Plocka ut dagens sömn/återhämtning ur Garmins dailySleepData-svar.
+
+    Returnerar None för dagar utan mätning (klockan inte använd), så vi
+    slipper skriva tomma rader.
+    """
+    dto = sleep.get("dailySleepDTO") or {}
+    if not dto.get("sleepTimeSeconds"):
+        return None
+
+    scores = dto.get("sleepScores") or {}
+    overall = scores.get("overall") or {}
+
+    return {
+        "user_id": user_id,
+        "metric_date": dto.get("calendarDate") or day,
+        "sleep_seconds": dto.get("sleepTimeSeconds"),
+        "deep_sleep_seconds": dto.get("deepSleepSeconds"),
+        "light_sleep_seconds": dto.get("lightSleepSeconds"),
+        "rem_sleep_seconds": dto.get("remSleepSeconds"),
+        "awake_seconds": dto.get("awakeSleepSeconds"),
+        "nap_seconds": dto.get("napTimeSeconds"),
+        "sleep_score": overall.get("value"),
+        "resting_hr": sleep.get("restingHeartRate"),
+        "hrv_overnight_avg": sleep.get("avgOvernightHrv"),
+        "avg_respiration": dto.get("averageRespirationValue"),
+        "avg_sleep_stress": dto.get("avgSleepStress"),
+        "raw_data": dto,
+    }
+
+
+def _sync_sleep(client: Garmin, user_id: str, days: int) -> int:
+    """Hämta sömn/återhämtning dag för dag och spara i daily_metrics.
+
+    Garmins sömn-endpoint tar en dag per anrop, så fönstret hålls kort
+    (se SLEEP_SYNC_DAYS) — ett helt år skulle bli 365 anrop och nästan
+    säkert trigga rate-limiting. Fel på enskilda dagar hoppas över: sömn är
+    sekundärt mot aktiviteterna och ska inte kunna få hela synken att fallera.
+    """
+    rows = []
+    for offset in range(days + 1):
+        day = (date.today() - timedelta(days=offset)).isoformat()
+        try:
+            sleep = client.get_sleep_data(day)
+        except Exception:
+            continue
+        if not sleep:
+            continue
+        row = _map_sleep(day, sleep, user_id)
+        if row:
+            rows.append(row)
+
+    if rows:
+        _sb_upsert("daily_metrics", rows, "user_id,metric_date")
+    return len(rows)
+
+
 def _sync_one_user(user_id: str) -> dict:
     token_rows = _sb_select("garmin_tokens", "token", {"user_id": f"eq.{user_id}"})
     if not token_rows:
@@ -180,10 +243,18 @@ def _sync_one_user(user_id: str) -> dict:
             "user_id,source,external_id",
         )
 
+    sleep_days = FIRST_SLEEP_SYNC_DAYS if is_first_sync else SLEEP_SYNC_DAYS
+    sleep_count = _sync_sleep(client, user_id, sleep_days)
+
     # Spara ev. förnyad token (garth roterar refresh-token vid användning).
     _sb_upsert("garmin_tokens", [{"user_id": user_id, "token": client.garth.dumps()}], "user_id")
     _mark_connection(user_id, "connected", None, synced=True)
-    return {"user_id": user_id, "ok": True, "count": len(activities)}
+    return {
+        "user_id": user_id,
+        "ok": True,
+        "count": len(activities),
+        "sleep_days": sleep_count,
+    }
 
 
 @app.get("/api/garmin/health")

@@ -65,6 +65,21 @@ distansstatistiken felaktigt). `_is_allowed_activity` i `web/api/index.py`
 styrka, cykel, simning och längdskidåkning (uttryckligen *inte*
 utförsskidåkning) innan raden ens sparas i `activities`.
 
+**Sömn & återhämtning (2026-07-25):** synken hämtar även daglig sömndata,
+vilopuls och HRV till `daily_metrics` (se data-model.md), så sömn inte behöver
+skrivas in för hand i dagboken. Viktig skillnad mot aktiviteter: Garmins
+`get_sleep_data` tar **en dag per API-anrop** (aktiviteter kommer i ett svep),
+så ett års backfill skulle bli 365 anrop — flera minuter och en nästan säker
+rate-limiting-träff. Sömnfönstret hålls därför kort och separat:
+`SLEEP_SYNC_DAYS = 7` vid vanlig synk, `FIRST_SLEEP_SYNC_DAYS = 30` vid
+första. Fel på enskilda dagar hoppas över tyst — sömn är sekundärt mot
+aktiviteterna och ska inte kunna få hela synken att fallera.
+
+Datamappningen är verifierad mot ett riktigt API-svar (`dailySleepDTO`), inte
+gissad: `sleepTimeSeconds`, `deep/light/rem/awakeSleepSeconds`,
+`sleepScores.overall.value`, samt `restingHeartRate` och `avgOvernightHrv` på
+toppnivå i svaret.
+
 ## Att göra
 
 - [x] Utreda Garmin Connect Developer Program-krav

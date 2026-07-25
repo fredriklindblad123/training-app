@@ -139,6 +139,34 @@ create table garmin_tokens (
   updated_at timestamptz not null default now()
 );
 
+-- daily_metrics ---------------------------------------------------------------
+-- Daglig återhämtningsdata från Garmin (sömn, vilopuls, HRV), hämtad
+-- automatiskt vid synk. Egen tabell istället för kolumner på diary_entries:
+-- det här är mätdata från klockan, inte användarens anteckningar, och finns
+-- även för dagar utan dagboksinlägg. diary_entries.sleep_hours finns kvar som
+-- manuellt reservalternativ och visas i UI:t bara när Garmin-data saknas.
+-- OBS: Garmins sömn-endpoint tar en dag per anrop, så synkfönstret för sömn
+-- är kortare än för aktiviteter (se docs/garmin-api.md).
+
+create table daily_metrics (
+  user_id uuid not null references profiles(id) on delete cascade,
+  metric_date date not null,
+  sleep_seconds numeric,
+  deep_sleep_seconds numeric,
+  light_sleep_seconds numeric,
+  rem_sleep_seconds numeric,
+  awake_seconds numeric,
+  nap_seconds numeric,
+  sleep_score integer,                   -- sleepScores.overall.value (0-100)
+  resting_hr integer,
+  hrv_overnight_avg numeric,             -- avgOvernightHrv, ms
+  avg_respiration numeric,
+  avg_sleep_stress numeric,
+  raw_data jsonb,
+  synced_at timestamptz not null default now(),
+  primary key (user_id, metric_date)
+);
+
 create table planned_workouts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
