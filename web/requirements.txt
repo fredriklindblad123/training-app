@@ -4,3 +4,4 @@ garth==0.4.47
 requests==2.32.3
 anthropic>=0.70
 python-multipart>=0.0.9
+pypdf>=5.0

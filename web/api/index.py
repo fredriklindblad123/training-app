@@ -25,13 +25,15 @@ Bygger vidare på samma Garmin-integration som scripts/sync_garmin.py
 begränsningar hos det inofficiella biblioteket.
 """
 
+import asyncio
 import base64
+import io
 import os
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Literal, Optional
 
 import requests
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from garminconnect import Garmin, GarminConnectAuthenticationError
@@ -398,8 +400,14 @@ Extrahera EN post per dag som har NÅGOT innehåll (även bara "Vila" eller \
 
 Hoppa över rader/celler som bara innehåller schemainformation utan \
 koppling till träning (skollov-rubriker utan innehåll, lovrubriker utan \
-pass, etc) om de är helt tomma på träningsdata. Läs igenom ALLA sidor i \
-dokumentet och alla veckor, inte bara de första.
+pass, etc) om de är helt tomma på träningsdata.
+
+Detta är ett UTDRAG (vissa sidor) ur ett större dokument, inte hela \
+dagboken. Läs igenom alla sidor i just detta utdrag och extrahera alla \
+veckor/dagar du kan se fullständigt. Om en veckorad verkar avklippt eller \
+ofullständig i det här utdraget (t.ex. bara delvis synlig längst upp eller \
+längst ner), hoppa över den raden helt istället för att gissa — den \
+kommer att täckas av ett annat utdrag.
 """
 
 
@@ -431,6 +439,69 @@ def _week_to_date(week: int, weekday: int, school_year_start: int) -> Optional[s
         return None
 
 
+# En hel läsårsdagbok i ett enda Claude-anrop blåser antingen förbi
+# Anthropic SDK:ns egen "streaming krävs för anrop över ~10 min"-spärr,
+# eller (om den ändå gick igenom) Vercels hårda 5-minuters-gräns för
+# serverless-funktioner på gratisplanen. Lösningen är att dela PDF:en i
+# mindre sidgrupper och köra ett snabbare, mindre anrop per grupp.
+PAGES_PER_CHUNK = 6
+CHUNK_MAX_TOKENS = 8000
+
+
+def _split_pdf_pages(pdf_bytes: bytes, pages_per_chunk: int) -> list[bytes]:
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(io.BytesIO(pdf_bytes))
+    chunks: list[bytes] = []
+    for start in range(0, len(reader.pages), pages_per_chunk):
+        writer = PdfWriter()
+        for page in reader.pages[start : start + pages_per_chunk]:
+            writer.add_page(page)
+        buf = io.BytesIO()
+        writer.write(buf)
+        chunks.append(buf.getvalue())
+    return chunks
+
+
+async def _extract_diary_chunk(
+    client: AsyncAnthropic, chunk_bytes: bytes
+) -> List[DiaryDayEntry]:
+    chunk_b64 = base64.standard_b64encode(chunk_bytes).decode("utf-8")
+    response = await client.messages.parse(
+        model="claude-sonnet-5",
+        max_tokens=CHUNK_MAX_TOKENS,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": chunk_b64,
+                        },
+                    },
+                    {"type": "text", "text": DIARY_EXTRACTION_PROMPT},
+                ],
+            }
+        ],
+        output_format=DiaryExtraction,
+    )
+    return response.parsed_output.entries
+
+
+async def _extract_diary_chunk_safe(
+    client: AsyncAnthropic, chunk_bytes: bytes
+) -> List[DiaryDayEntry]:
+    """Som _extract_diary_chunk, men sväljer fel per sidgrupp — en trasig
+    grupp ska inte fälla hela importen när alla körs parallellt."""
+    try:
+        return await _extract_diary_chunk(client, chunk_bytes)
+    except Exception:
+        return []
+
+
 @app.post("/api/diary/import")
 async def diary_import(
     request: Request,
@@ -447,41 +518,33 @@ async def diary_import(
         )
 
     pdf_bytes = await file.read()
-    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
-
-    client = Anthropic(api_key=ANTHROPIC_API_KEY)
     try:
-        response = client.messages.parse(
-            model="claude-sonnet-5",
-            # Ett läsårs dagbok kan ha över 300 dagsceller med lång fritext —
-            # ge gott om utrymme så svaret inte trunkeras mitt i JSON:en.
-            max_tokens=32000,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": pdf_b64,
-                            },
-                        },
-                        {"type": "text", "text": DIARY_EXTRACTION_PROMPT},
-                    ],
-                }
-            ],
-            output_format=DiaryExtraction,
-        )
+        chunks = _split_pdf_pages(pdf_bytes, PAGES_PER_CHUNK)
     except Exception as e:
-        return JSONResponse({"error": f"Kunde inte tolka PDF:en: {e}"}, status_code=502)
+        return JSONResponse({"error": f"Kunde inte läsa PDF:en: {e}"}, status_code=400)
 
-    extraction = response.parsed_output
+    client = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+    # Kör alla sidgrupper parallellt istället för i sekvens — annars blir
+    # den sammanlagda väntetiden lätt för lång för Vercels körtidsgräns.
+    chunk_results = await asyncio.gather(
+        *[_extract_diary_chunk_safe(client, c) for c in chunks]
+    )
+
+    entries_by_key: dict[tuple[int, int], DiaryDayEntry] = {}
+    chunk_errors = sum(1 for r in chunk_results if not r)
+    for entries in chunk_results:
+        for entry in entries:
+            entries_by_key[(entry.week, entry.weekday)] = entry
+
+    if not entries_by_key and chunk_errors > 0:
+        return JSONResponse(
+            {"error": f"Kunde inte tolka PDF:en (alla {chunk_errors} delar misslyckades)"},
+            status_code=502,
+        )
 
     rows = []
     skipped = 0
-    for entry in extraction.entries:
+    for entry in entries_by_key.values():
         entry_date = _week_to_date(entry.week, entry.weekday, school_year_start)
         if not entry_date:
             skipped += 1
@@ -498,6 +561,11 @@ async def diary_import(
         )
 
     if rows:
-        _sb_upsert("diary_entries", rows, "user_id,entry_date")
+        # Supabase REST har en gräns på antal rader per upsert-anrop — dela
+        # upp i batchar för att vara säker även för ett helt läsår.
+        for i in range(0, len(rows), 200):
+            _sb_upsert("diary_entries", rows[i : i + 200], "user_id,entry_date")
 
-    return JSONResponse({"ok": True, "imported": len(rows), "skipped": skipped})
+    return JSONResponse(
+        {"ok": True, "imported": len(rows), "skipped": skipped, "chunk_errors": chunk_errors}
+    )
