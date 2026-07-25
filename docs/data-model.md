@@ -194,10 +194,24 @@ create table diary_entries (
   mood text,
   soreness text,
   sleep_hours numeric,
-  notes text,
+  notes text,                            -- idrottarens egna ord (manuellt, eller importerat från PDF)
+  session_log text,                      -- rå träningsloggtext, importerad från PDF-dagbok
+  coach_notes text,                      -- tränarens kommentarer, importerad från PDF-dagbok
   day_type text check (day_type in ('training','rest','sick','injured')),  -- driver kalenderns årsvy
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (user_id, entry_date)
 );
+
+-- PDF-dagboksimport (2026-07-25): /api/diary/import (web/api/index.py)
+-- tar emot en uppladdad PDF-träningsdagbok (t.ex. FIG:s mall) direkt från
+-- webbläsaren (kringgår Next.js Server Actions storleksgräns), autentiserar
+-- via användarens egen Supabase-token, och skickar hela PDF:en till Claude
+-- (Anthropic API, native PDF-förståelse) för att tolka tabellstrukturen —
+-- veckonummer, veckodagar, och färgkodade kommentarer (grönt/rosa = idrott-
+-- arens egna, blått/rött = tränarens). Ren textextraktion skulle tappa all
+-- färginformation, vilket gör det svårt att tillförlitligt skilja idrottar-
+-- kommentar från tränarkommentar utan att en modell faktiskt "ser" sidan.
+-- Kräver miljövariabeln ANTHROPIC_API_KEY.
 
 create table reference_documents (
   id uuid primary key default gen_random_uuid(),

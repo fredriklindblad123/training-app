@@ -1,39 +1,50 @@
 """
-Vercel Python-funktion (FastAPI/ASGI) för multi-user Garmin-synk.
+Vercel Python-funktion (FastAPI/ASGI) för multi-user Garmin-synk och
+PDF-dagboksimport.
 
-Två endpoints:
+Endpoints:
   POST /api/garmin/login  - ansluter ett Garmin-konto till en app-användare.
   POST /api/garmin/sync   - synkar aktiviteter, antingen för en specifik
                              användare (on-demand, "Synka nu"-knappen) eller
                              för alla anslutna användare (schemalagd cron).
+  POST /api/diary/import  - tolkar en uppladdad PDF-träningsdagbok med
+                             Claude och fyller i diary_entries per datum.
 
-Skyddas av två separata hemligheter (miljövariabler):
+Skyddas av tre separata mekanismer (miljövariabler):
   INTERNAL_API_SECRET - delas bara med vår egen Next.js-server (server
                          actions), så att ingen utomstående kan trigga
                          inloggning/synk åt en godtycklig user_id.
   CRON_SECRET          - Vercel skickar automatiskt "Authorization: Bearer
                          <CRON_SECRET>" på schemalagda anrop, se vercel.json.
+  Supabase-sessionstoken - /api/diary/import anropas direkt av webbläsaren
+                         (filuppladdning), så den verifierar istället den
+                         inloggade användarens egen Supabase-token.
 
 Bygger vidare på samma Garmin-integration som scripts/sync_garmin.py
 (garminconnect/garth) - se docs/garmin-api.md för bakgrund och kända
 begränsningar hos det inofficiella biblioteket.
 """
 
+import base64
 import os
 from datetime import date, datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Literal, Optional
 
 import requests
-from fastapi import FastAPI, Request
+from anthropic import Anthropic
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from garminconnect import Garmin, GarminConnectAuthenticationError
+from pydantic import BaseModel
 
 app = FastAPI()
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+ANON_KEY = os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 INTERNAL_SECRET = os.environ.get("INTERNAL_API_SECRET")
 CRON_SECRET = os.environ.get("CRON_SECRET")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 SYNC_DAYS = 7  # hur långt bakåt en vanlig synk (cron/upprepad "Synka nu") tittar
 FIRST_SYNC_DAYS = 365  # hur långt bakåt den allra första synken för en användare tittar
@@ -93,6 +104,33 @@ def _sb_select(table: str, select: str, params: dict) -> list[dict]:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def _authenticated_user_id(request: Request) -> Optional[str]:
+    """Verifierar en Supabase-sessionstoken (skickad av webbläsaren direkt,
+    inte via vår Next.js-server) och returnerar den inloggade
+    användarens id, eller None om token saknas/är ogiltig.
+
+    Används av /api/diary/import, som webbläsaren anropar direkt vid
+    filuppladdning (för att slippa Next.js Server Actions body-size-gräns).
+    Vi litar aldrig på en klient-angiven user_id — den hämtas alltid från
+    Supabase utifrån token:en.
+    """
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer ") or not ANON_KEY:
+        return None
+    token = auth_header.removeprefix("Bearer ")
+    try:
+        resp = requests.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={"Authorization": f"Bearer {token}", "apikey": ANON_KEY},
+            timeout=15,
+        )
+        if not resp.ok:
+            return None
+        return resp.json().get("id")
+    except Exception:
+        return None
 
 
 def _mark_connection(
@@ -313,3 +351,153 @@ async def garmin_sync(request: Request):
     connections = _sb_select("garmin_connections", "user_id", {"status": "eq.connected"})
     results = [_sync_one_user(c["user_id"]) for c in connections]
     return JSONResponse({"ok": True, "results": results})
+
+
+# --- PDF-dagboksimport --------------------------------------------------
+# En pappers-/PDF-träningsdagbok (t.ex. FIG:s mall) har en tabell: rader =
+# veckonummer, kolumner = veckodag. Idrottarens egna kommentarer är
+# färgkodade (grönt=bra, rosa=mindre bra) och skiljs från tränarens
+# (blått=kom-ihåg, rött=undvik). Ren textextraktion från en PDF tappar all
+# färginformation och gör det nästan omöjligt att skilja de tre delarna åt
+# tillförlitligt — Claude läser däremot PDF-sidor som bilder och kan se
+# färgerna direkt, vilket är varför vi använder Anthropic API här istället
+# för en regelbaserad tolkare.
+
+DIARY_EXTRACTION_PROMPT = """\
+Det här är en scannad/PDF-baserad träningsdagbok i tabellform. Varje rad \
+börjar med ett veckonummer (kolumnen "V."), och därefter en kolumn per \
+veckodag (Måndag till Söndag).
+
+I varje dags cell kan det finnas flera olika sorters text, ofta \
+färgkodade:
+- Svart text: själva träningsloggen (uppvärmning, intervaller, distans, \
+  tempo, tider) — detta är sessionens faktabeskrivning.
+- Grön eller rosa/magenta text: idrottarens EGEN kommentar/känsla efter \
+  passet (grönt = positivt, rosa = mindre bra/skada/motivation).
+- Blå eller röd text (oftast högst upp i veckans rad, en gång per vecka \
+  snarare än per dag): TRÄNARENS kommentar till idrottaren (blått = kom \
+  ihåg, rött = undvik). Om en tränarkommentar står i en enskild dags-cell, \
+  koppla den till den dagen; om den står lösryckt för hela veckan (t.ex. i \
+  Måndagscellen men avser hela veckan), koppla den till veckans första dag \
+  med faktiskt träningsinnehåll.
+
+Extrahera EN post per dag som har NÅGOT innehåll (även bara "Vila" eller \
+"Sjuk" räknas, men hoppa över helt tomma celler). För varje post, ange:
+- week: veckonumret (heltal, från "V."-kolumnen)
+- weekday: 1 för måndag, 2 för tisdag, ... 7 för söndag (ISO-veckodag)
+- day_type: "training" om det finns ett genomfört pass, "rest" om det bara \
+  står vila/ledigt, "sick" vid sjukdom, "injured" vid skada. Använd null om \
+  osäkert.
+- session_log: den svarta faktatexten om träningen (uppvärmning, \
+  intervaller, tider, distans) ordagrant eller nästan ordagrant. Null om \
+  det inte finns någon träningslogg (t.ex. bara "Vila").
+- athlete_comment: idrottarens egen gröna/rosa kommentar, ordagrant. Null \
+  om ingen sådan finns.
+- coach_comment: tränarens blå/röda kommentar, ordagrant. Null om ingen \
+  sådan finns.
+
+Hoppa över rader/celler som bara innehåller schemainformation utan \
+koppling till träning (skollov-rubriker utan innehåll, lovrubriker utan \
+pass, etc) om de är helt tomma på träningsdata. Läs igenom ALLA sidor i \
+dokumentet och alla veckor, inte bara de första.
+"""
+
+
+class DiaryDayEntry(BaseModel):
+    week: int
+    weekday: int
+    day_type: Optional[Literal["training", "rest", "sick", "injured"]] = None
+    session_log: Optional[str] = None
+    athlete_comment: Optional[str] = None
+    coach_comment: Optional[str] = None
+
+
+class DiaryExtraction(BaseModel):
+    entries: List[DiaryDayEntry]
+
+
+def _week_to_date(week: int, weekday: int, school_year_start: int) -> Optional[str]:
+    """Räknar om (veckonummer, veckodag) till ett kalenderdatum.
+
+    Läsår spänner över årsskiftet: veckor efter sommaren (> 26) hör till
+    school_year_start, veckor på våren (<= 26) hör till school_year_start + 1.
+    """
+    if not (1 <= week <= 53) or not (1 <= weekday <= 7):
+        return None
+    year = school_year_start if week > 26 else school_year_start + 1
+    try:
+        return date.fromisocalendar(year, week, weekday).isoformat()
+    except ValueError:
+        return None
+
+
+@app.post("/api/diary/import")
+async def diary_import(
+    request: Request,
+    file: UploadFile = File(...),
+    school_year_start: int = Form(...),
+):
+    user_id = _authenticated_user_id(request)
+    if not user_id:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+
+    if not ANTHROPIC_API_KEY:
+        return JSONResponse(
+            {"error": "ANTHROPIC_API_KEY är inte konfigurerad på servern"}, status_code=500
+        )
+
+    pdf_bytes = await file.read()
+    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    try:
+        response = client.messages.parse(
+            model="claude-sonnet-5",
+            # Ett läsårs dagbok kan ha över 300 dagsceller med lång fritext —
+            # ge gott om utrymme så svaret inte trunkeras mitt i JSON:en.
+            max_tokens=32000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": pdf_b64,
+                            },
+                        },
+                        {"type": "text", "text": DIARY_EXTRACTION_PROMPT},
+                    ],
+                }
+            ],
+            output_format=DiaryExtraction,
+        )
+    except Exception as e:
+        return JSONResponse({"error": f"Kunde inte tolka PDF:en: {e}"}, status_code=502)
+
+    extraction = response.parsed_output
+
+    rows = []
+    skipped = 0
+    for entry in extraction.entries:
+        entry_date = _week_to_date(entry.week, entry.weekday, school_year_start)
+        if not entry_date:
+            skipped += 1
+            continue
+        rows.append(
+            {
+                "user_id": user_id,
+                "entry_date": entry_date,
+                "day_type": entry.day_type,
+                "session_log": entry.session_log,
+                "notes": entry.athlete_comment,
+                "coach_notes": entry.coach_comment,
+            }
+        )
+
+    if rows:
+        _sb_upsert("diary_entries", rows, "user_id,entry_date")
+
+    return JSONResponse({"ok": True, "imported": len(rows), "skipped": skipped})

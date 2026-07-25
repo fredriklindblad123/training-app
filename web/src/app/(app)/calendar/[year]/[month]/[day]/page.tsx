@@ -424,6 +424,32 @@ export default async function DayPage({
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
           Träningsdagbok
         </h2>
+
+        {(diaryEntry?.session_log || diaryEntry?.coach_notes) && (
+          <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+            {diaryEntry?.session_log && (
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Träningslogg (importerad)
+                </div>
+                <div className="whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">
+                  {diaryEntry.session_log}
+                </div>
+              </div>
+            )}
+            {diaryEntry?.coach_notes && (
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Tränarens kommentar
+                </div>
+                <div className="whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">
+                  {diaryEntry.coach_notes}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <form
           action={saveDiaryEntry}
           className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"

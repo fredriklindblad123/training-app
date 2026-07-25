@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { connectGarmin, syncGarminNow } from "./actions";
+import { DiaryPdfImport } from "@/components/DiaryPdfImport";
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Ansluten",
@@ -108,6 +109,18 @@ export default async function SettingsPage({
             {connection ? "Anslut på nytt" : "Anslut Garmin"}
           </button>
         </form>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          Importera träningsdagbok (PDF)
+        </h2>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Ladda upp en PDF-träningsdagbok (t.ex. FIG:s mall) så läser Claude
+          igenom den och fyller i dagboken per datum — träningslogg, dina egna
+          kommentarer och tränarens kommentarer hamnar i separata fält.
+        </p>
+        <DiaryPdfImport />
       </section>
     </div>
   );
