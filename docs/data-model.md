@@ -202,16 +202,12 @@ create table diary_entries (
   unique (user_id, entry_date)
 );
 
--- PDF-dagboksimport (2026-07-25): /api/diary/import (web/api/index.py)
--- tar emot en uppladdad PDF-träningsdagbok (t.ex. FIG:s mall) direkt från
--- webbläsaren (kringgår Next.js Server Actions storleksgräns), autentiserar
--- via användarens egen Supabase-token, och skickar hela PDF:en till Claude
--- (Anthropic API, native PDF-förståelse) för att tolka tabellstrukturen —
--- veckonummer, veckodagar, och färgkodade kommentarer (grönt/rosa = idrott-
--- arens egna, blått/rött = tränarens). Ren textextraktion skulle tappa all
--- färginformation, vilket gör det svårt att tillförlitligt skilja idrottar-
--- kommentar från tränarkommentar utan att en modell faktiskt "ser" sidan.
--- Kräver miljövariabeln ANTHROPIC_API_KEY.
+-- PDF-dagboksimport (t.ex. FIG:s mall) sker inte via appen — fanns tidigare
+-- som /api/diary/import (uppladdning + Anthropic-tolkning), men görs sen
+-- 2026-07-26 istället manuellt några gånger per år: veckonummer, veckodagar
+-- och färgkodade kommentarer (grönt/rosa = idrottarens egna, blått/rött =
+-- tränarens) tolkas ur PDF:ens text-/färg-/positionsdata och skrivs direkt
+-- till session_log/notes/coach_notes ovan.
 
 create table reference_documents (
   id uuid primary key default gen_random_uuid(),
