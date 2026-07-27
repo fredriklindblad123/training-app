@@ -305,11 +305,12 @@ aldrig som bedömning.
 | P3.1 | Menscykel & energitillgänglighet | Ej påbörjad — bygg sist, med störst omsorg |
 | P3.2 | AI-insikter | Ej påbörjad — kostnadsförbehåll gäller |
 
-**Största kvarvarande begränsningen:** intensitetsfördelningen (P1.3) visar
-74,4 % på/över tröskel, vilket är Garmins felkalibrerade autozoner och inte
-atletens fysiologi. Zontiderna är förberäknade av klockan, som aldrig avslöjar
-pulsgränserna den räknat mot. En sann fördelning kräver puls per sekund ur
-`get_activity_details()`. Det är den enskilt mest värdefulla nästa uppgiften.
+**Största kvarvarande begränsningen:** intensitetsfördelningen (P1.3) mäter
+Garmins autozoner, inte atletens fysiologi. Utrett 2026-07-27: problemet är
+**kalibrering, inte upplösning** — sju slag/min på tröskeln flyttar
+fördelningen 24 procentenheter, medan puls per sekund bara ändrar den med
+några få procent. Inga personliga trösklar är satta och inga laktatvärden
+finns. Nästa steg är därför ett tröskeltest, inte ett kodbygge. Se P1.3.
 
 **Näst största:** korrelationerna räknar nu på 170 parade dagar (var 0), men
 sambanden är svaga — HRV ↔ känsla ger r = 0,25, övriga ligger kring noll. En
@@ -791,11 +792,52 @@ bekräftar att Garmins autozoner är fel kalibrerade för den här atleten.
 Sektionen visar därför en tydlig varning om att siffrorna mäter klockans
 modell, inte fysiologin.
 
-**För att få en sann intensitetsfördelning krävs puls per sekund** ur
-`get_activity_details()` (samma anrop som P0.2 behöver för varvdata), som
-sedan zonindelas mot de personliga gränserna i egen kod. Det bör göras
-tillsammans med P0.2 — annars förblir den här sektionen en indikation snarare
-än ett mått.
+### Kalibreringen är blockeraren, inte upplösningen (utrett 2026-07-27)
+
+Den ursprungliga slutsatsen ovan — att pulsdata per sekund är det som saknas
+— visade sig vara fel prioritering. Materialet räknades om med varvdata där
+den finns och passets snittpuls annars, mot olika antaganden om var tröskeln
+ligger:
+
+| Antagande | Lugnt | Mellan | Tröskel+ |
+|---|---|---|---|
+| LT2 = 173 | 5,0 % | 53,8 % | **41,2 %** |
+| LT2 = 180 | 13,4 % | 69,9 % | **16,7 %** |
+
+**Sju slag/min på tröskeln flyttar fördelningen 24 procentenheter.** Att gå
+från varvdata till puls per sekund ändrar svaret med några få procent. Det är
+alltså inte upplösningen som avgör om siffran betyder något, utan var
+gränserna sätts — och `lt1_hr`, `lt2_hr`, `threshold_hr_low/high` och `max_hr`
+är alla `null`, utan ett enda laktatvärde att härleda dem ur.
+
+**Ordningen som gäller:**
+
+1. **Bestäm LT2 på riktigt.** Ingen kodändring utan ett träningspass.
+   Laktattest ger både LT1 och LT2 och har redan inmatning på dagvyn.
+   Ett fälttest duger: 30 minuter maxinsats, snittpuls för de sista 20
+   minuterna ≈ LT2. Ur befintlig data går intervallet bara att begränsa till
+   173–182 (maxpuls 204 observerad på Terräng-SM, snitt 194 över ~16 min),
+   vilket enligt tabellen ovan är alldeles för brett.
+2. **Fyll i värdena** under Inställningar → Personligt tröskelband.
+3. **Först därefter** är puls per sekund värt besväret. Verifierat att det
+   fungerar: `get_activity_details()` ger `directHeartRate` per sampling,
+   1 100 värden för ett 36-minuterspass. Men svaret är **943 kB**, så 666 pass
+   blir ~650 MB och lika många anrop. Lagra de beräknade zonsekunderna mot de
+   personliga trösklarna — aldrig samplingarna själva.
+
+**Observation som gäller oavsett kalibrering:** de lugna distanspassen ligger
+på snittpuls 165 av max 204, alltså **81 % av max**. Lugn löpning brukar ligga
+på 65–75 %. Tröskelpassen ligger på 173 i median — bara åtta slag högre. Om
+det stämmer är skillnaden mellan lugnt och kvalitet nästan utsuddad, vilket är
+precis det mönster den här sektionen finns för att fånga. Det är sannolikt den
+mest handlingsbara insikten i hela dokumentet, men kan inte slås fast utan en
+riktig LT1.
+
+**Metodfälla att undvika vid omräkning:** varvdata finns bara för de 242 pass
+som har fler än ett varv, alltså nästan uteslutande kvalitetspass. Att räkna
+fördelningen enbart på `activity_splits` ger därför en kraftig snedvridning
+uppåt (52 % tröskel+ i ett första försök). Enkelvarviga distanspass måste med,
+via passets egen snittpuls.
 
 ---
 
