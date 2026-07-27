@@ -7,8 +7,9 @@ träningsdagbok, långsiktig planering, AI-förslag via RAG.
 ## Översikt över tabeller
 
 - **profiles** – en rad per användare (utökar Supabase auth.users)
-- **goals** – långsiktigt mål, t.ex. en tävling om ett år
-- **plan_phases** – periodiseringsblock inom ett mål (grundträning, uppbyggnad, skärpning, nedtrappning)
+- **season_blocks** – periodiseringsblock i säsongen (grund, uppbyggnad, skärpning, tävling, nedtrappning, vila)
+- **competitions** + **competition_events** – planerade tävlingar och grenar
+- **week_templates** + **week_template_items** – återkommande veckoupplägg som rullas ut till planned_workouts
 - **planned_workouts** – enskilda planerade pass i kalendern
 - **activities** – faktiskt genomförda pass, synkade från Garmin/Strava (eller manuellt inlagda)
 - **activity_splits** – delsträckor/intervaller inom ett genomfört pass
@@ -30,26 +31,75 @@ create table profiles (
   created_at timestamptz not null default now()
 );
 
-create table goals (
+-- Planering (2026-07-27): säsongsblock, tävlingar och veckomallar ersätter
+-- goals/plan_phases som planeringsmodell. Se supabase/migrations/
+-- 20260727120000_planning.sql. goals och plan_phases lämnas kvar i databasen
+-- men används inte längre av appen — befintliga mål migrerades till
+-- competitions med en gren vardera.
+--
+-- Varför inte plan_phases: den kräver goal_id (not null), alltså att varje
+-- period tillhör ett mål. Periodiseringen hör till säsongen, inte till en
+-- enskild tävling — grundperioden finns oavsett vilka lopp som ligger i maj.
+
+create table season_blocks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
-  title text not null,                  -- t.ex. "SM 1500m 2027"
-  event_date date not null,
-  target_result text,                   -- t.ex. "3:45"
-  distance_meters integer,
-  notes text,
-  status text not null default 'active' check (status in ('active','completed','abandoned')),
-  created_at timestamptz not null default now()
-);
-
-create table plan_phases (
-  id uuid primary key default gen_random_uuid(),
-  goal_id uuid not null references goals(id) on delete cascade,
-  name text not null,                   -- "Grundträning", "Uppbyggnad", "Skärpning", "Nedtrappning"
+  name text not null,
+  block_type text not null check (block_type in (
+    'grund','uppbyggnad','skarpning','tavling','nedtrappning','vila')),
+  season text check (season in ('indoor','outdoor')),  -- null = ren träningsperiod
   start_date date not null,
   end_date date not null,
   focus text,
+  created_at timestamptz not null default now(),
+  constraint season_blocks_dates_ok check (end_date >= start_date)
+);
+
+create table competitions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  competition_date date not null,
+  location text,
+  venue text check (venue in ('indoor','outdoor')),
+  priority text not null default 'C' check (priority in ('A','B','C')),
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+-- Egen tabell för grenar: hon kan springa både 800 m och 1500 m samma helg.
+create table competition_events (
+  id uuid primary key default gen_random_uuid(),
+  competition_id uuid not null references competitions(id) on delete cascade,
+  event text not null,                   -- "1500m", "2000m hinder"
+  target_result text,
+  actual_result text,
+  placement integer,
   sort_order integer not null default 0
+);
+
+-- Veckomall som rullas ut över ett block, så samma vecka aldrig fylls i två
+-- gånger. Utrullningen hoppar över dagar som redan har ett planerat pass.
+create table week_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  name text not null,
+  block_type text,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create table week_template_items (
+  id uuid primary key default gen_random_uuid(),
+  template_id uuid not null references week_templates(id) on delete cascade,
+  weekday smallint not null check (weekday between 1 and 7),   -- 1 = måndag
+  slot smallint not null default 1 check (slot between 1 and 3),
+  workout_type text not null,
+  title text,
+  description text,
+  target_distance_meters integer,
+  target_duration_seconds integer,
+  unique (template_id, weekday, slot)
 );
 
 create table activities (
@@ -181,6 +231,9 @@ create table planned_workouts (
   target_pace_seconds_per_km integer,
   status text not null default 'planned' check (status in ('planned','completed','skipped','modified')),
   linked_activity_id uuid references activities(id) on delete set null,
+  block_id uuid references season_blocks(id) on delete set null,
+  slot smallint not null default 1 check (slot between 1 and 3),  -- 2 pass/dag = dubbeltröskel
+  template_id uuid references week_templates(id) on delete set null,  -- proveniens, för att kunna ångra en utrullning
   created_at timestamptz not null default now()
 );
 
