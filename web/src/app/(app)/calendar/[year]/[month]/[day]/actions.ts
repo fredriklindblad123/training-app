@@ -35,54 +35,6 @@ export async function saveDiaryEntry(formData: FormData) {
     await supabase.from("diary_entries").insert(payload);
   }
 
-  // Kategori är en underhierarki av dagtyp: bara relevant när dagtyp=träning
-  // och det inte redan finns ett synkat Garmin-pass (då redigeras kategori
-  // per-pass istället, se updateActivityCategory).
-  const categoryRaw = formData.get("category") as string;
-  const distanceRaw = formData.get("distance_km") as string;
-  const durationRaw = formData.get("duration_min") as string;
-  const externalId = entryDate; // ett manuellt pass per dag
-
-  if (dayTypeRaw === "training" && isActivityCategory(categoryRaw)) {
-    const distanceMeters = distanceRaw ? Number(distanceRaw) * 1000 : null;
-    const durationSeconds = durationRaw ? Number(durationRaw) * 60 : null;
-    const avgPace =
-      distanceMeters && durationSeconds && distanceMeters > 0
-        ? durationSeconds / (distanceMeters / 1000)
-        : null;
-
-    await supabase.from("activities").upsert(
-      {
-        user_id: user.id,
-        source: "manual",
-        external_id: externalId,
-        activity_type:
-          categoryRaw === "strength"
-            ? "strength_training"
-            : categoryRaw === "cross_training"
-              ? "cross_training"
-              : "running",
-        name: "Manuellt loggat pass",
-        start_time: `${entryDate}T12:00:00Z`,
-        distance_meters: distanceMeters,
-        duration_seconds: durationSeconds,
-        avg_pace_seconds_per_km: avgPace,
-        category: categoryRaw,
-        category_source: "manual",
-      },
-      { onConflict: "user_id,source,external_id" },
-    );
-  } else {
-    // Dagtyp ändrad bort från träning, eller kategori nollställd — ta bort
-    // ett ev. tidigare manuellt loggat pass för dagen. No-op om inget finns.
-    await supabase
-      .from("activities")
-      .delete()
-      .eq("user_id", user.id)
-      .eq("source", "manual")
-      .eq("external_id", externalId);
-  }
-
   revalidatePath("/calendar", "layout");
   revalidatePath("/stats", "layout");
 }
@@ -106,66 +58,6 @@ export async function updateActivityCategory(formData: FormData) {
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/stats", "layout");
-}
-
-export async function savePlannedWorkout(formData: FormData) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
-
-  const workoutId = formData.get("workout_id") as string;
-  const scheduledDate = formData.get("scheduled_date") as string;
-  const workoutType = formData.get("workout_type") as string;
-
-  if (!isActivityCategory(workoutType)) {
-    // Tom kategori = ta bort planeringen för dagen.
-    if (workoutId) {
-      await supabase
-        .from("planned_workouts")
-        .delete()
-        .eq("id", workoutId)
-        .eq("user_id", user.id);
-    }
-    revalidatePath("/calendar", "layout");
-    return;
-  }
-
-  const blockIdRaw = formData.get("block_id") as string;
-  const distanceRaw = formData.get("target_distance_km") as string;
-  const durationRaw = formData.get("target_duration_min") as string;
-  const description = (formData.get("description") as string) || null;
-
-  const targetDistanceMeters = distanceRaw ? Math.round(Number(distanceRaw) * 1000) : null;
-  const targetDurationSeconds = durationRaw ? Math.round(Number(durationRaw) * 60) : null;
-  const targetPaceSecondsPerKm =
-    targetDistanceMeters && targetDurationSeconds && targetDistanceMeters > 0
-      ? Math.round(targetDurationSeconds / (targetDistanceMeters / 1000))
-      : null;
-
-  const payload = {
-    user_id: user.id,
-    block_id: blockIdRaw || null,
-    scheduled_date: scheduledDate,
-    workout_type: workoutType,
-    description,
-    target_distance_meters: targetDistanceMeters,
-    target_duration_seconds: targetDurationSeconds,
-    target_pace_seconds_per_km: targetPaceSecondsPerKm,
-  };
-
-  if (workoutId) {
-    await supabase
-      .from("planned_workouts")
-      .update(payload)
-      .eq("id", workoutId)
-      .eq("user_id", user.id);
-  } else {
-    await supabase.from("planned_workouts").insert(payload);
-  }
-
-  revalidatePath("/calendar", "layout");
 }
 
 export async function deletePlannedWorkout(formData: FormData) {
@@ -265,6 +157,125 @@ export async function deleteLactateReading(formData: FormData) {
     .delete()
     .eq("id", readingId)
     .eq("user_id", user.id);
+
+  revalidatePath("/calendar", "layout");
+}
+
+
+// --- Egna pass -------------------------------------------------------------
+// Flera egna pass per dag ska gå att logga, oavsett om dagen redan har
+// Garmin-pass: ett styrkepass på kvällen efter ett löppass på morgonen är
+// normalfallet, inte undantaget. Tidigare låg logiken inbakad i
+// dagboksformuläret med external_id = datumet, vilket via unik-constrainten
+// (user_id, source, external_id) tillät exakt ett eget pass per dag — och
+// bara på dagar utan Garmin-data.
+
+export async function saveManualActivity(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const activityId = (formData.get("activity_id") as string) || null;
+  const entryDate = formData.get("entry_date") as string;
+  const category = formData.get("category") as string;
+  if (!entryDate || !isActivityCategory(category)) return;
+
+  const time = ((formData.get("start_time") as string) || "12:00").slice(0, 5);
+  const distanceRaw = formData.get("distance_km") as string;
+  const durationRaw = formData.get("duration_min") as string;
+  const name = ((formData.get("name") as string) || "").trim();
+
+  const distanceMeters = distanceRaw ? Number(distanceRaw) * 1000 : null;
+  const durationSeconds = durationRaw ? Number(durationRaw) * 60 : null;
+  const avgPace =
+    distanceMeters && durationSeconds && distanceMeters > 0
+      ? durationSeconds / (distanceMeters / 1000)
+      : null;
+
+  const payload = {
+    user_id: user.id,
+    source: "manual",
+    activity_type:
+      category === "strength"
+        ? "strength_training"
+        : category === "cross_training"
+          ? "cross_training"
+          : "running",
+    name: name || "Eget pass",
+    // Riktig tid, inte en fast middagstid: passgrupperingen delar dagen i
+    // flera pass när det skiljer mer än ett par timmar, så utan tid skulle
+    // morgonens löpning och kvällens styrka slås ihop till ett pass.
+    start_time: `${entryDate}T${time}:00Z`,
+    distance_meters: distanceMeters,
+    duration_seconds: durationSeconds,
+    avg_pace_seconds_per_km: avgPace,
+    category,
+    category_source: "manual",
+  };
+
+  if (activityId) {
+    await supabase.from("activities").update(payload).eq("id", activityId);
+  } else {
+    await supabase.from("activities").insert({
+      ...payload,
+      // Slumpad nyckel i stället för datumet: unik-constrainten på
+      // (user_id, source, external_id) är det som annars begränsar till ett
+      // eget pass per dag.
+      external_id: `manual:${crypto.randomUUID()}`,
+    });
+  }
+
+  revalidatePath("/calendar", "layout");
+  revalidatePath("/stats", "layout");
+  revalidatePath("/trends");
+}
+
+export async function deleteManualActivity(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const id = formData.get("activity_id") as string;
+  if (!user || !id) return;
+
+  // Bara egna pass får raderas härifrån — Garmin-pass hämtas om vid nästa
+  // synk ändå och ska inte gå att ta bort av misstag.
+  await supabase.from("activities").delete().eq("id", id).eq("source", "manual");
+
+  revalidatePath("/calendar", "layout");
+  revalidatePath("/stats", "layout");
+  revalidatePath("/trends");
+}
+
+// --- Planerade pass --------------------------------------------------------
+
+export async function addPlannedWorkout(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const scheduledDate = formData.get("scheduled_date") as string;
+  const workoutType = formData.get("workout_type") as string;
+  if (!scheduledDate || !workoutType) return;
+
+  const distanceRaw = formData.get("target_distance_km") as string;
+  const durationRaw = formData.get("target_duration_min") as string;
+
+  await supabase.from("planned_workouts").insert({
+    user_id: user.id,
+    scheduled_date: scheduledDate,
+    slot: Number(formData.get("slot")) || 1,
+    workout_type: workoutType,
+    title: ((formData.get("title") as string) || "").trim() || null,
+    description: ((formData.get("description") as string) || "").trim() || null,
+    target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
+    target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
+    block_id: (formData.get("block_id") as string) || null,
+  });
 
   revalidatePath("/calendar", "layout");
 }

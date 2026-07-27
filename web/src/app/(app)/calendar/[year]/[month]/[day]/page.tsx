@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PlanVsActual, type PlannedWorkout } from "@/components/PlanVsActual";
+import { ManualSessions, type ManualActivity } from "@/components/ManualSessions";
+import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
 import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
 import {
   SV_MONTHS,
@@ -12,10 +14,12 @@ import {
   isValidDay,
 } from "@/lib/calendar-utils";
 import {
+  addPlannedWorkout,
+  saveManualActivity,
+  deleteManualActivity,
   saveDiaryEntry,
   updateActivityCategory,
   resetActivityCategory,
-  savePlannedWorkout,
   deletePlannedWorkout,
   addLactateReading,
   deleteLactateReading,
@@ -31,7 +35,6 @@ import {
   CATEGORY_VALUES,
   isActivityCategory,
 } from "@/lib/categories";
-import { TrainingDayFields } from "@/components/TrainingDayFields";
 
 const LACTATE_CONTEXT_LABELS: Record<string, string> = {
   test: "Test",
@@ -120,11 +123,12 @@ export default async function DayPage({
     (activities ?? []) as unknown as SessionActivity[],
   );
 
-  // Manuellt loggade pass (source='manual') redigeras nästlat under
-  // Dagtyp=Träning i dagboksformuläret istället för i Garmin-data-listan.
+  // Egna pass (source='manual') redigeras i sin egen sektion, separat från
+  // Garmin-listan. Flera per dag stöds, även när dagen redan har Garmin-pass
+  // — ett styrkepass på kvällen efter morgonens löpning är normalfallet.
   const garminActivities = (activities ?? []).filter((a) => a.source !== "manual");
-  const manualActivity = (activities ?? []).find((a) => a.source === "manual") ?? null;
-  const hasOutcome = garminActivities.length > 0 || !!manualActivity;
+  const manualActivities = (activities ?? []).filter((a) => a.source === "manual");
+  const hasOutcome = garminActivities.length > 0 || manualActivities.length > 0;
 
   const todayStr = dateKey(
     new Date().getFullYear(),
@@ -179,110 +183,29 @@ export default async function DayPage({
 
         <PlanVsActual planned={(plannedWorkouts ?? []) as PlannedWorkout[]} sessions={daySessions} />
 
-        <form
-          action={savePlannedWorkout}
-          className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <input type="hidden" name="scheduled_date" value={dateStr} />
-          <input type="hidden" name="workout_id" value={plannedWorkout?.id ?? ""} />
+        <PlannedSessions
+          dateStr={dateStr}
+          planned={(plannedWorkouts ?? []) as PlannedRow[]}
+          blocks={activeBlocks ?? []}
+          addAction={addPlannedWorkout}
+          deleteAction={deletePlannedWorkout}
+        />
+      </section>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <label className="flex flex-col gap-1 text-sm">
-              Kategori
-              <select
-                name="workout_type"
-                defaultValue={
-                  isActivityCategory(plannedWorkout?.workout_type ?? "")
-                    ? plannedWorkout!.workout_type
-                    : ""
-                }
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <option value="">Ej satt</option>
-                {CATEGORY_VALUES.map((c) => (
-                  <option key={c} value={c}>
-                    {CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Mål-distans (km)
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                name="target_distance_km"
-                defaultValue={
-                  plannedWorkout?.target_distance_meters
-                    ? (plannedWorkout.target_distance_meters / 1000).toFixed(1)
-                    : ""
-                }
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Mål-tid (min)
-              <input
-                type="number"
-                min="0"
-                name="target_duration_min"
-                defaultValue={
-                  plannedWorkout?.target_duration_seconds
-                    ? String(Math.round(plannedWorkout.target_duration_seconds / 60))
-                    : ""
-                }
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Kopplat block
-              <select
-                name="block_id"
-                defaultValue={plannedWorkout?.block_id ?? ""}
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <option value="">Inget</option>
-                {activeBlocks?.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          <label className="flex flex-col gap-1 text-sm">
-            Beskrivning
-            <textarea
-              name="description"
-              rows={2}
-              placeholder="t.ex. 6x1000m @ 3:15/km, 2 min vila"
-              defaultValue={plannedWorkout?.description ?? ""}
-              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </label>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-            >
-              Spara planering
-            </button>
-          </div>
-        </form>
-        {plannedWorkout && (
-          <form action={deletePlannedWorkout} className="w-fit">
-            <input type="hidden" name="workout_id" value={plannedWorkout.id} />
-            <button
-              type="submit"
-              className="text-xs text-zinc-400 underline hover:text-zinc-950 dark:hover:text-zinc-50"
-            >
-              ta bort planering
-            </button>
-          </form>
-        )}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          Egna pass
+        </h2>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Träning som inte kommer från klockan — styrka, cykel, simning eller ett löppass du
+          glömt starta klockan på. Flera per dag går bra.
+        </p>
+        <ManualSessions
+          dateStr={dateStr}
+          activities={manualActivities as ManualActivity[]}
+          saveAction={saveManualActivity}
+          deleteAction={deleteManualActivity}
+        />
       </section>
 
       <section className="flex flex-col gap-4">
@@ -476,7 +399,7 @@ export default async function DayPage({
           <input
             type="hidden"
             name="activity_id"
-            value={garminActivities[0]?.id ?? manualActivity?.id ?? ""}
+            value={garminActivities[0]?.id ?? manualActivities[0]?.id ?? ""}
           />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <label className="flex flex-col gap-1 text-sm">
@@ -618,22 +541,6 @@ export default async function DayPage({
           <input type="hidden" name="entry_id" value={diaryEntry?.id ?? ""} />
 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {garminActivities.length === 0 ? (
-              <TrainingDayFields
-                defaultDayType={diaryEntry?.day_type ?? ""}
-                defaultCategory={manualActivity?.category ?? ""}
-                defaultDistanceKm={
-                  manualActivity?.distance_meters
-                    ? (manualActivity.distance_meters / 1000).toFixed(1)
-                    : ""
-                }
-                defaultDurationMin={
-                  manualActivity?.duration_seconds
-                    ? String(Math.round(manualActivity.duration_seconds / 60))
-                    : ""
-                }
-              />
-            ) : (
               <label className="flex flex-col gap-1 text-sm">
                 Dagtyp
                 <select
@@ -648,7 +555,7 @@ export default async function DayPage({
                   <option value="injured">Skadad</option>
                 </select>
               </label>
-            )}
+
             <label className="flex flex-col gap-1 text-sm">
               RPE (1–10)
               <input
