@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PlanVsActual, type PlannedWorkout } from "@/components/PlanVsActual";
 import { ManualSessions, type ManualActivity } from "@/components/ManualSessions";
 import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
+import { DaySection } from "@/components/DaySection";
 import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
 import {
   SV_MONTHS,
@@ -30,6 +31,7 @@ import {
 } from "@/lib/format";
 import {
   CATEGORY_LABELS,
+  type ActivityCategory,
   CATEGORY_VALUES,
   isActivityCategory,
 } from "@/lib/categories";
@@ -106,9 +108,11 @@ export default async function DayPage({
   // passet är jämförbart med en plan (se 1.3 i docs/insikter-roadmap.md).
   const hasPlan = (plannedWorkouts ?? []).length > 0;
 
+
   const daySessions = groupActivitiesIntoSessions(
     (activities ?? []) as unknown as SessionActivity[],
   );
+
 
   // Egna pass (source='manual') redigeras i sin egen sektion, separat från
   // Garmin-listan. Flera per dag stöds, även när dagen redan har Garmin-pass
@@ -116,6 +120,45 @@ export default async function DayPage({
   const garminActivities = (activities ?? []).filter((a) => a.source !== "manual");
   const manualActivities = (activities ?? []).filter((a) => a.source === "manual");
   const hasOutcome = garminActivities.length > 0 || manualActivities.length > 0;
+
+  // Sammanfattningsrader: målet är att man ska slippa öppna en sektion för att
+  // veta om den innehåller något.
+  const dayKm = daySessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
+  const daySeconds = daySessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
+
+  const plannedSummary = hasPlan
+    ? (plannedWorkouts ?? [])
+        .map((p) => p.title || CATEGORY_LABELS[p.workout_type as ActivityCategory] || p.workout_type)
+        .join(" · ")
+    : "Inget planerat";
+
+  const doneSummary =
+    daySessions.length === 0
+      ? "Inget pass"
+      : `${daySessions.length} ${daySessions.length === 1 ? "pass" : "pass"} · ${formatKm(dayKm * 1000)} · ${formatDuration(daySeconds)}`;
+
+  const manualSummary =
+    manualActivities.length === 0
+      ? "Inga egna pass"
+      : `${manualActivities.length} st`;
+
+  const diarySummary = diaryEntry?.notes
+    ? diaryEntry.notes.replace(/\s+/g, " ").slice(0, 70) +
+      (diaryEntry.notes.length > 70 ? "…" : "")
+    : "Ingen anteckning";
+
+  const sleepSummary = dailyMetrics
+    ? [
+        formatHoursMinutes(dailyMetrics.sleep_seconds),
+        dailyMetrics.sleep_score != null ? `poäng ${dailyMetrics.sleep_score}` : null,
+        dailyMetrics.resting_hr != null ? `vilopuls ${dailyMetrics.resting_hr}` : null,
+        dailyMetrics.hrv_overnight_avg != null
+          ? `HRV ${Math.round(dailyMetrics.hrv_overnight_avg)} ms`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "Ingen mätning";
 
   const todayStr = dateKey(
     new Date().getFullYear(),
@@ -152,21 +195,29 @@ export default async function DayPage({
             →
           </Link>
         </div>
-        <Link
-          href={`/calendar/${year}/${month}`}
-          className="text-sm text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-        >
-          Till månadsvyn
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {daySessions.length > 0 && (
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">{doneSummary}</span>
+          )}
+          <Link
+            href={`/calendar/${year}/${month}`}
+            className="text-sm text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
+          >
+            Till månadsvyn
+          </Link>
+        </div>
       </div>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            {hasPlan ? "Plan mot utfall" : "Planerat pass"}
-          </h2>
-          <PlanStatusBadge status={planStatus} />
-        </div>
+      <DaySection
+        title={hasPlan ? "Plan mot utfall" : "Planerat pass"}
+        summary={
+          <span className="flex items-center gap-2">
+            {plannedSummary}
+            <PlanStatusBadge status={planStatus} />
+          </span>
+        }
+        defaultOpen={hasPlan}
+      >
 
         {/* Jämförelsen visas bara när det finns en plan att jämföra mot. Utan
             plan blir den en upprepning av passlistan nedanför, plus en tom
@@ -185,12 +236,9 @@ export default async function DayPage({
           addAction={addPlannedWorkout}
           deleteAction={deletePlannedWorkout}
         />
-      </section>
+      </DaySection>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          Genomförda pass
-        </h2>
+      <DaySection title="Genomförda pass" summary={doneSummary} defaultOpen={daySessions.length > 0}>
         {garminActivities.length === 0 && (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Inget synkat pass den här dagen.
@@ -311,12 +359,9 @@ export default async function DayPage({
             )}
           </div>
         ))}
-      </section>
+      </DaySection>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          Egna pass (utanför klockan)
-        </h2>
+      <DaySection title="Egna pass" summary={manualSummary}>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Träning som inte kommer från klockan — styrka, cykel, simning eller ett löppass du
           glömt starta klockan på. Flera per dag går bra.
@@ -327,12 +372,9 @@ export default async function DayPage({
           saveAction={saveManualActivity}
           deleteAction={deleteManualActivity}
         />
-      </section>
+      </DaySection>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          Träningsdagbok
-        </h2>
+      <DaySection title="Träningsdagbok" summary={diarySummary} defaultOpen={!!diaryEntry?.notes}>
 
         {(diaryEntry?.session_log || diaryEntry?.coach_notes) && (
           <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 text-sm dark:border-zinc-800">
@@ -443,13 +485,10 @@ export default async function DayPage({
             Spara
           </button>
         </form>
-      </section>
+      </DaySection>
 
       {dailyMetrics && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Sömn &amp; återhämtning
-          </h2>
+        <DaySection title="Sömn &amp; återhämtning" summary={sleepSummary}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-zinc-200 p-4 text-sm sm:grid-cols-4 dark:border-zinc-800">
             <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
             <Stat
@@ -473,7 +512,7 @@ export default async function DayPage({
             <Stat label="Lätt sömn" value={formatHoursMinutes(dailyMetrics.light_sleep_seconds)} />
             <Stat label="Vaken" value={formatHoursMinutes(dailyMetrics.awake_seconds)} />
           </div>
-        </section>
+        </DaySection>
       )}
     </div>
   );
