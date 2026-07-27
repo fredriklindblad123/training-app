@@ -38,6 +38,7 @@ import {
   weekLabel,
 } from "@/lib/stats-utils";
 import { formatHoursMinutes } from "@/lib/format";
+import { analyzeDiaryNote } from "@/lib/diary-text";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
@@ -202,6 +203,12 @@ export default async function TrendsPage({
   const injuredDaysByWeek = new Map<string, string[]>();
   const rpeByDay = new Map<string, number>();
   const feelingByDay = new Map<string, number>();
+  // P2.2: känsla härledd ur dagbokstexten. Hålls medvetet åtskild från
+  // feelingByDay (atletens egen incheckning) — en maskinellt tolkad siffra
+  // får aldrig se ut som något hon själv svarat. Den finns för att det är
+  // enda sättet att få subjektiv historik *bakåt*: de självrapporterade
+  // fälten är tomma i hela den befintliga dagboken.
+  const derivedFeelingByDay = new Map<string, number>();
 
   for (const entry of diaryEntries ?? []) {
     const day: string = entry.entry_date;
@@ -209,6 +216,8 @@ export default async function TrendsPage({
     if (entry.notes) {
       const label = `${day.slice(8, 10)}/${day.slice(5, 7)}`;
       notesByWeek.set(wk, [...(notesByWeek.get(wk) ?? []), `${label}: ${entry.notes}`]);
+      const analysis = analyzeDiaryNote(entry.notes);
+      if (analysis.score != null) derivedFeelingByDay.set(day, analysis.score);
     }
     if (entry.day_type === "sick") {
       sickDaysByWeek.set(wk, [...(sickDaysByWeek.get(wk) ?? []), day]);
@@ -468,6 +477,27 @@ export default async function TrendsPage({
       title: "HRV ↔ dagens belastning",
       description: "Morgon-HRV mot hur tung träningen samma dag blev.",
       pairs: pairsFrom(hrvValueByDay, loadByDay),
+      needsRpe: false,
+    },
+    // P2.2: de här tre är de enda som har underlag längre bakåt än den
+    // dagliga incheckningen, eftersom känslan läses ur dagbokstexten.
+    {
+      title: "HRV ↔ känsla (ur dagbokstext)",
+      description:
+        "Morgon-HRV mot hur dagen beskrivs i dina egna dagboksord. Tolkad text, inte en siffra du själv satt.",
+      pairs: pairsFrom(hrvValueByDay, derivedFeelingByDay),
+      needsRpe: false,
+    },
+    {
+      title: "Sömnpoäng ↔ känsla (ur dagbokstext)",
+      description: "Nattens sömnpoäng mot hur dagen beskrivs i dagboken.",
+      pairs: pairsFrom(sleepScoreByDay, derivedFeelingByDay),
+      needsRpe: false,
+    },
+    {
+      title: "Vilopuls ↔ känsla (ur dagbokstext)",
+      description: "Förhöjd vilopuls mot hur dagen beskrivs i dagboken.",
+      pairs: pairsFrom(rhrValueByDay, derivedFeelingByDay),
       needsRpe: false,
     },
   ].map((c) => {
