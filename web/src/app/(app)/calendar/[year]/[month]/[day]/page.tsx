@@ -21,8 +21,6 @@ import {
   updateActivityCategory,
   resetActivityCategory,
   deletePlannedWorkout,
-  addLactateReading,
-  deleteLactateReading,
 } from "./actions";
 import {
   formatDuration,
@@ -35,12 +33,6 @@ import {
   CATEGORY_VALUES,
   isActivityCategory,
 } from "@/lib/categories";
-
-const LACTATE_CONTEXT_LABELS: Record<string, string> = {
-  test: "Test",
-  workout: "Pass",
-  race: "Tävling",
-};
 
 export default async function DayPage({
   params,
@@ -72,7 +64,6 @@ export default async function DayPage({
     { data: plannedWorkouts },
     { data: activeBlocks },
     { data: dailyMetrics },
-    { data: lactateReadings },
   ] = await Promise.all([
       supabase
         .from("activities")
@@ -104,12 +95,6 @@ export default async function DayPage({
         .select("*")
         .eq("metric_date", dateStr)
         .maybeSingle(),
-      supabase
-        .from("lactate_readings")
-        .select("*")
-        .gte("measured_at", dateStr)
-        .lt("measured_at", nextDateStr)
-        .order("measured_at"),
     ]);
 
   // Formuläret nedan redigerar dagens första planerade pass; jämförelsen
@@ -119,6 +104,8 @@ export default async function DayPage({
   // Jämförelsen görs mot passet, inte mot enskilda aktiviteter: uppvärmning,
   // huvudpass och nerjogg loggas separat i Garmin och bara det sammanslagna
   // passet är jämförbart med en plan (se 1.3 i docs/insikter-roadmap.md).
+  const hasPlan = (plannedWorkouts ?? []).length > 0;
+
   const daySessions = groupActivitiesIntoSessions(
     (activities ?? []) as unknown as SessionActivity[],
   );
@@ -176,12 +163,20 @@ export default async function DayPage({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Plan mot utfall
+            {hasPlan ? "Plan mot utfall" : "Planerat pass"}
           </h2>
           <PlanStatusBadge status={planStatus} />
         </div>
 
-        <PlanVsActual planned={(plannedWorkouts ?? []) as PlannedWorkout[]} sessions={daySessions} />
+        {/* Jämförelsen visas bara när det finns en plan att jämföra mot. Utan
+            plan blir den en upprepning av passlistan nedanför, plus en tom
+            vänsterkolumn — sämre än att inte visa något alls. */}
+        {hasPlan && (
+          <PlanVsActual
+            planned={(plannedWorkouts ?? []) as PlannedWorkout[]}
+            sessions={daySessions}
+          />
+        )}
 
         <PlannedSessions
           dateStr={dateStr}
@@ -192,25 +187,9 @@ export default async function DayPage({
         />
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          Egna pass
-        </h2>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Träning som inte kommer från klockan — styrka, cykel, simning eller ett löppass du
-          glömt starta klockan på. Flera per dag går bra.
-        </p>
-        <ManualSessions
-          dateStr={dateStr}
-          activities={manualActivities as ManualActivity[]}
-          saveAction={saveManualActivity}
-          deleteAction={deleteManualActivity}
-        />
-      </section>
-
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          Garmin-data
+          Genomförda pass
         </h2>
         {garminActivities.length === 0 && (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -335,173 +314,20 @@ export default async function DayPage({
       </section>
 
       <section className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Laktattest
-          </h2>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Garmins autozoner är en gissning — laktat vid stegrande fart visar
-            var din faktiska tröskel ligger. Ett värde per steg i testet.
-          </p>
-        </div>
-
-        {lactateReadings && lactateReadings.length > 0 && (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400">
-                <th className="pr-3 font-normal">Tid</th>
-                <th className="pr-3 font-normal">Laktat</th>
-                <th className="pr-3 font-normal">Fart</th>
-                <th className="pr-3 font-normal">Puls</th>
-                <th className="pr-3 font-normal">Sammanhang</th>
-                <th className="font-normal">Anteckning</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {lactateReadings.map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-t border-zinc-100 text-zinc-900 dark:border-zinc-800 dark:text-zinc-100"
-                >
-                  <td className="py-1 pr-3">
-                    {new Date(r.measured_at).toLocaleTimeString("sv-SE", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td className="pr-3">{r.lactate_mmol} mmol/L</td>
-                  <td className="pr-3">{formatPace(r.pace_seconds_per_km)}</td>
-                  <td className="pr-3">{r.heart_rate ?? "–"}</td>
-                  <td className="pr-3">{LACTATE_CONTEXT_LABELS[r.context ?? ""] ?? "–"}</td>
-                  <td className="text-zinc-500 dark:text-zinc-400">{r.note ?? ""}</td>
-                  <td>
-                    <form action={deleteLactateReading}>
-                      <input type="hidden" name="reading_id" value={r.id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-zinc-400 underline hover:text-zinc-950 dark:hover:text-zinc-50"
-                      >
-                        ta bort
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <form
-          action={addLactateReading}
-          className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <input
-            type="hidden"
-            name="activity_id"
-            value={garminActivities[0]?.id ?? manualActivities[0]?.id ?? ""}
-          />
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <label className="flex flex-col gap-1 text-sm">
-              Laktat (mmol/L)
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                name="lactate_mmol"
-                required
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Fart – min/km
-              <input
-                type="number"
-                min="0"
-                name="pace_min"
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Fart – sek/km
-              <input
-                type="number"
-                min="0"
-                max="59"
-                name="pace_sek"
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Puls
-              <input
-                type="number"
-                min="0"
-                name="heart_rate"
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Sammanhang
-              <select
-                name="context"
-                defaultValue="test"
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <option value="test">Test</option>
-                <option value="workout">Pass</option>
-                <option value="race">Tävling</option>
-              </select>
-            </label>
-          </div>
-          <label className="flex flex-col gap-1 text-sm">
-            Anteckning
-            <input
-              type="text"
-              name="note"
-              placeholder="t.ex. steg 3 av 5"
-              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-            />
-          </label>
-          <button
-            type="submit"
-            className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-          >
-            Lägg till mätvärde
-          </button>
-        </form>
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          Egna pass (utanför klockan)
+        </h2>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Träning som inte kommer från klockan — styrka, cykel, simning eller ett löppass du
+          glömt starta klockan på. Flera per dag går bra.
+        </p>
+        <ManualSessions
+          dateStr={dateStr}
+          activities={manualActivities as ManualActivity[]}
+          saveAction={saveManualActivity}
+          deleteAction={deleteManualActivity}
+        />
       </section>
-
-      {dailyMetrics && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Sömn &amp; återhämtning
-          </h2>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-zinc-200 p-4 text-sm sm:grid-cols-4 dark:border-zinc-800">
-            <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
-            <Stat
-              label="Sömnpoäng"
-              value={dailyMetrics.sleep_score ? `${dailyMetrics.sleep_score} / 100` : "–"}
-            />
-            <Stat
-              label="Vilopuls"
-              value={dailyMetrics.resting_hr ? `${dailyMetrics.resting_hr} slag/min` : "–"}
-            />
-            <Stat
-              label="HRV (natt)"
-              value={
-                dailyMetrics.hrv_overnight_avg
-                  ? `${Math.round(dailyMetrics.hrv_overnight_avg)} ms`
-                  : "–"
-              }
-            />
-            <Stat label="Djupsömn" value={formatHoursMinutes(dailyMetrics.deep_sleep_seconds)} />
-            <Stat label="REM" value={formatHoursMinutes(dailyMetrics.rem_sleep_seconds)} />
-            <Stat label="Lätt sömn" value={formatHoursMinutes(dailyMetrics.light_sleep_seconds)} />
-            <Stat label="Vaken" value={formatHoursMinutes(dailyMetrics.awake_seconds)} />
-          </div>
-        </section>
-      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
@@ -618,6 +444,37 @@ export default async function DayPage({
           </button>
         </form>
       </section>
+
+      {dailyMetrics && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Sömn &amp; återhämtning
+          </h2>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-zinc-200 p-4 text-sm sm:grid-cols-4 dark:border-zinc-800">
+            <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
+            <Stat
+              label="Sömnpoäng"
+              value={dailyMetrics.sleep_score ? `${dailyMetrics.sleep_score} / 100` : "–"}
+            />
+            <Stat
+              label="Vilopuls"
+              value={dailyMetrics.resting_hr ? `${dailyMetrics.resting_hr} slag/min` : "–"}
+            />
+            <Stat
+              label="HRV (natt)"
+              value={
+                dailyMetrics.hrv_overnight_avg
+                  ? `${Math.round(dailyMetrics.hrv_overnight_avg)} ms`
+                  : "–"
+              }
+            />
+            <Stat label="Djupsömn" value={formatHoursMinutes(dailyMetrics.deep_sleep_seconds)} />
+            <Stat label="REM" value={formatHoursMinutes(dailyMetrics.rem_sleep_seconds)} />
+            <Stat label="Lätt sömn" value={formatHoursMinutes(dailyMetrics.light_sleep_seconds)} />
+            <Stat label="Vaken" value={formatHoursMinutes(dailyMetrics.awake_seconds)} />
+          </div>
+        </section>
+      )}
     </div>
   );
 }
