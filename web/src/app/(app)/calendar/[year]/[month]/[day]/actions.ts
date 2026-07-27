@@ -132,7 +132,7 @@ export async function savePlannedWorkout(formData: FormData) {
     return;
   }
 
-  const goalIdRaw = formData.get("goal_id") as string;
+  const blockIdRaw = formData.get("block_id") as string;
   const distanceRaw = formData.get("target_distance_km") as string;
   const durationRaw = formData.get("target_duration_min") as string;
   const description = (formData.get("description") as string) || null;
@@ -146,7 +146,7 @@ export async function savePlannedWorkout(formData: FormData) {
 
   const payload = {
     user_id: user.id,
-    goal_id: goalIdRaw || null,
+    block_id: blockIdRaw || null,
     scheduled_date: scheduledDate,
     workout_type: workoutType,
     description,

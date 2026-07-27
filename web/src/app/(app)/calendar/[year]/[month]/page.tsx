@@ -13,14 +13,16 @@ import {
   isValidYear,
   isValidMonth,
 } from "@/lib/calendar-utils";
-import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
+import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
+import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
 import { computeCheckInStats } from "@/lib/checkin";
 import { DailyCheckIn } from "@/components/DailyCheckIn";
 
 type DayInfo = {
   status?: DayStatus;
   activities: { id: string; name: string | null; distanceMeters: number | null }[];
-  planned?: ActivityCategory;
+  /** Alla dagens planerade passtyper, i slot-ordning. Flera vid dubbelpass. */
+  planned?: string[];
 };
 
 function formatKm(meters: number | null): string {
@@ -74,7 +76,8 @@ export default async function MonthPage({
         .not("day_type", "is", null),
       supabase
         .from("planned_workouts")
-        .select("scheduled_date, workout_type")
+        .select("scheduled_date, workout_type, slot")
+        .order("slot")
         .gte("scheduled_date", monthStart)
         .lt("scheduled_date", monthEndExclusive),
       isCurrentMonth ? supabase.auth.getUser() : Promise.resolve(null),
@@ -135,9 +138,11 @@ export default async function MonthPage({
     days.set(key, existing);
   }
   for (const pw of plannedWorkouts ?? []) {
-    if (!isActivityCategory(pw.workout_type)) continue;
     const existing = days.get(pw.scheduled_date) ?? { activities: [] };
-    existing.planned = pw.workout_type;
+    // Planerad vila har ingen motsvarighet bland genomförda pass och därför
+    // ingen kategorifärg — men den är meningsfull att se i kalendern, så den
+    // filtreras inte bort som tidigare.
+    existing.planned = [...(existing.planned ?? []), pw.workout_type];
     days.set(pw.scheduled_date, existing);
   }
 
@@ -218,24 +223,32 @@ export default async function MonthPage({
               className="flex min-h-24 flex-col gap-1 bg-white p-2 hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800"
             >
               <span className="text-zinc-500 dark:text-zinc-400">{day}</span>
-              {info?.planned && (
-                <span
-                  className="inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
-                  style={
-                    info.activities.length > 0
-                      ? {
-                          border: `1.5px solid var(--cat-${info.planned})`,
-                          color: `var(--cat-${info.planned})`,
-                        }
-                      : { backgroundColor: `var(--cat-${info.planned})`, color: "white" }
-                  }
-                  title={`Planerat: ${CATEGORY_LABELS[info.planned]}${
-                    info.activities.length > 0 ? " (genomfört)" : ""
-                  }`}
-                >
-                  Planerat: {CATEGORY_LABELS[info.planned]}
-                </span>
-              )}
+              {info?.planned?.map((type, i) => {
+                const color = workoutTypeColorVar(type);
+                const label = isActivityCategory(type)
+                  ? CATEGORY_LABELS[type]
+                  : (WORKOUT_LABELS[type as WorkoutType] ?? type);
+                const done = info.activities.length > 0;
+                return (
+                  <span
+                    key={`${type}-${i}`}
+                    className="inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
+                    style={
+                      // Fylld ruta = planerat men ännu inte genomfört. Ihålig =
+                      // dagen har ett utfall, så planen är avklarad eller
+                      // åtminstone besvarad.
+                      color
+                        ? done
+                          ? { border: `1.5px solid ${color}`, color }
+                          : { backgroundColor: color, color: "white" }
+                        : { border: "1.5px dashed var(--color-zinc-400, #a1a1aa)" }
+                    }
+                    title={`Planerat: ${label}${done ? " (dagen har utfall)" : ""}`}
+                  >
+                    {label}
+                  </span>
+                );
+              })}
               {info?.status && (
                 <span
                   className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[info.status]}`}

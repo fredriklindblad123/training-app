@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { PlanVsActual, type PlannedWorkout } from "@/components/PlanVsActual";
+import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
 import {
   SV_MONTHS,
   dateKey,
@@ -28,7 +30,6 @@ import {
   CATEGORY_LABELS,
   CATEGORY_VALUES,
   isActivityCategory,
-  type ActivityCategory,
 } from "@/lib/categories";
 import { TrainingDayFields } from "@/components/TrainingDayFields";
 
@@ -65,8 +66,8 @@ export default async function DayPage({
   const [
     { data: activities },
     { data: diaryEntry },
-    { data: plannedWorkout },
-    { data: activeGoals },
+    { data: plannedWorkouts },
+    { data: activeBlocks },
     { data: dailyMetrics },
     { data: lactateReadings },
   ] = await Promise.all([
@@ -83,18 +84,18 @@ export default async function DayPage({
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle(),
+      // Alla dagens planerade pass, inte bara ett: dubbeltröskel innebär två
+      // riktiga pass samma dag och båda ska kunna jämföras mot sitt utfall.
       supabase
         .from("planned_workouts")
         .select("*")
         .eq("scheduled_date", dateStr)
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
+        .order("slot", { ascending: true }),
       supabase
-        .from("goals")
-        .select("id, title")
-        .eq("status", "active")
-        .order("event_date"),
+        .from("season_blocks")
+        .select("id, name, start_date, end_date")
+        .lte("start_date", dateStr)
+        .gte("end_date", dateStr),
       supabase
         .from("daily_metrics")
         .select("*")
@@ -107,6 +108,17 @@ export default async function DayPage({
         .lt("measured_at", nextDateStr)
         .order("measured_at"),
     ]);
+
+  // Formuläret nedan redigerar dagens första planerade pass; jämförelsen
+  // ovanför visar alla.
+  const plannedWorkout = (plannedWorkouts ?? [])[0] ?? null;
+
+  // Jämförelsen görs mot passet, inte mot enskilda aktiviteter: uppvärmning,
+  // huvudpass och nerjogg loggas separat i Garmin och bara det sammanslagna
+  // passet är jämförbart med en plan (se 1.3 i docs/insikter-roadmap.md).
+  const daySessions = groupActivitiesIntoSessions(
+    (activities ?? []) as unknown as SessionActivity[],
+  );
 
   // Manuellt loggade pass (source='manual') redigeras nästlat under
   // Dagtyp=Träning i dagboksformuläret istället för i Garmin-data-listan.
@@ -160,17 +172,12 @@ export default async function DayPage({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Planerat pass
+            Plan mot utfall
           </h2>
           <PlanStatusBadge status={planStatus} />
         </div>
 
-        {plannedWorkout && hasOutcome && (
-          <PlanVsOutcome
-            plannedWorkout={plannedWorkout}
-            outcome={garminActivities[0] ?? manualActivity}
-          />
-        )}
+        <PlanVsActual planned={(plannedWorkouts ?? []) as PlannedWorkout[]} sessions={daySessions} />
 
         <form
           action={savePlannedWorkout}
@@ -229,16 +236,16 @@ export default async function DayPage({
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              Kopplat mål
+              Kopplat block
               <select
-                name="goal_id"
-                defaultValue={plannedWorkout?.goal_id ?? ""}
+                name="block_id"
+                defaultValue={plannedWorkout?.block_id ?? ""}
                 className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <option value="">Inget</option>
-                {activeGoals?.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.title}
+                {activeBlocks?.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
                   </option>
                 ))}
               </select>
@@ -739,62 +746,6 @@ function PlanStatusBadge({
     <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${className}`}>
       {label}
     </span>
-  );
-}
-
-function PlanVsOutcome({
-  plannedWorkout,
-  outcome,
-}: {
-  plannedWorkout: {
-    workout_type: string;
-    target_distance_meters: number | null;
-    target_duration_seconds: number | null;
-  };
-  outcome: {
-    category: string | null;
-    distance_meters: number | null;
-    duration_seconds: number | null;
-  };
-}) {
-  const plannedLabel = isActivityCategory(plannedWorkout.workout_type)
-    ? CATEGORY_LABELS[plannedWorkout.workout_type]
-    : "–";
-  const outcomeCategory = outcome.category;
-  const outcomeLabel = isActivityCategory(outcomeCategory ?? "")
-    ? CATEGORY_LABELS[outcomeCategory as ActivityCategory]
-    : "–";
-  const matched = plannedWorkout.workout_type === outcomeCategory;
-
-  return (
-    <div className="grid grid-cols-2 gap-x-6 gap-y-1 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-      <div>
-        <div className="text-xs text-zinc-500 dark:text-zinc-400">Planerat</div>
-        <div className="text-zinc-900 dark:text-zinc-100">
-          {plannedLabel}
-          {plannedWorkout.target_distance_meters
-            ? ` · ${formatKm(plannedWorkout.target_distance_meters)}`
-            : ""}
-          {plannedWorkout.target_duration_seconds
-            ? ` · ${formatDuration(plannedWorkout.target_duration_seconds)}`
-            : ""}
-        </div>
-      </div>
-      <div>
-        <div className="text-xs text-zinc-500 dark:text-zinc-400">Utfall</div>
-        <div
-          className={
-            matched
-              ? "text-zinc-900 dark:text-zinc-100"
-              : "text-amber-600 dark:text-amber-400"
-          }
-        >
-          {outcomeLabel}
-          {outcome.distance_meters ? ` · ${formatKm(outcome.distance_meters)}` : ""}
-          {outcome.duration_seconds ? ` · ${formatDuration(outcome.duration_seconds)}` : ""}
-        </div>
-      </div>
-    </div>
   );
 }
 

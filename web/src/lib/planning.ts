@@ -81,14 +81,27 @@ export const COMMON_EVENTS = [
   "Stafett",
 ] as const;
 
-/** Passtyper i en veckomall. Speglar planned_workouts.workout_type. */
+/**
+ * Passtyper i en veckomall och i `planned_workouts.workout_type`.
+ *
+ * Medvetet identiska med `activities.category` (se lib/categories.ts), plus
+ * `rest` som bara finns i planen. Tidigare använde planeringen ett eget
+ * ordförråd (`tempo`, `long`) medan utfallet använde ett annat (`threshold`,
+ * `long_run`). Det gjorde två saker fel samtidigt: färgvariablerna
+ * `--cat-tempo` och `--cat-long` finns inte, så planerade pass ritades utan
+ * färg — och viktigare, plan och utfall gick inte att jämföra alls. Hela
+ * poängen med att visa dem sida vid sida är att kunna se om det som
+ * planerades också blev det som gjordes.
+ */
 export const WORKOUT_TYPES = [
   "easy",
-  "long",
-  "tempo",
+  "long_run",
+  "threshold",
   "interval",
+  "repetition",
   "race",
   "strength",
+  "cross_training",
   "rest",
 ] as const;
 
@@ -96,13 +109,23 @@ export type WorkoutType = (typeof WORKOUT_TYPES)[number];
 
 export const WORKOUT_LABELS: Record<WorkoutType, string> = {
   easy: "Lugn distans",
-  long: "Långpass",
-  tempo: "Tröskel",
+  long_run: "Långpass",
+  threshold: "Tröskel",
   interval: "Intervaller",
+  repetition: "Räckor",
   race: "Tävling",
   strength: "Styrka",
+  cross_training: "Cross",
   rest: "Vila",
 };
+
+/** Vilodagar har ingen motsvarighet bland genomförda pass — allt annat
+ * matchar en `ActivityCategory` rakt av. */
+export function workoutTypeColorVar(type: string): string | null {
+  return type === "rest" || !(WORKOUT_TYPES as readonly string[]).includes(type)
+    ? null
+    : `var(--cat-${type})`;
+}
 
 export const WEEKDAY_LABELS = [
   "Måndag",
