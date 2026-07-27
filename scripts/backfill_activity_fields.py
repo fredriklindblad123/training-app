@@ -58,6 +58,8 @@ ROUNDED_INT_FIELDS = {
     "moderate_intensity_minutes": "moderateIntensityMinutes",
     "vigorous_intensity_minutes": "vigorousIntensityMinutes",
 }
+# Kolumner vars tecken vänds mot Garmins råvärde, se kommentar i build_update.
+NEGATED_FIELDS = {"body_battery_drain"}
 # Specialfall: avgGradeAdjustedSpeed är m/s och måste konverteras till
 # sek/km, precis som avg_pace_seconds_per_km görs i web/api/index.py.
 GAP_COLUMN = "avg_gap_seconds_per_km"
@@ -106,7 +108,14 @@ def build_update(row: dict) -> Optional[dict]:
 
     for column, source_field in ROUNDED_INT_FIELDS.items():
         value = raw.get(source_field)
-        update[column] = round(value) if value is not None else None
+        if value is not None:
+            # differenceBodyBattery är slut minus start, alltså negativ när
+            # passet kostat energi. Kolumnen heter drain och ska vara ett
+            # positivt tapp — annars ritas ett större tapp som ett lägre
+            # värde. Samma vändning görs i _map_activity i web/api/index.py.
+            update[column] = -round(value) if column in NEGATED_FIELDS else round(value)
+        else:
+            update[column] = None
         any_present = any_present or value is not None
 
     gap = pace_seconds_per_km(raw.get(GAP_SOURCE_FIELD))

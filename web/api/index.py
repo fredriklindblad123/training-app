@@ -163,8 +163,12 @@ def _map_activity(a: dict, user_id: str) -> dict:
         "avg_vertical_ratio": a.get("avgVerticalRatio"),
         "avg_gap_seconds_per_km": _pace_seconds_per_km(a.get("avgGradeAdjustedSpeed")),
         "fastest_1k_seconds": a.get("fastestSplit_1000"),
+        # Garmins differenceBodyBattery är slut minus start, alltså negativ när
+        # passet kostat energi (−11 = batteriet föll 11). Kolumnen heter drain
+        # och ska därför vara ett positivt tapp, annars ritas ett större tapp
+        # som ett lägre värde i varje diagram som rör fältet.
         "body_battery_drain": (
-            round(a["differenceBodyBattery"])
+            -round(a["differenceBodyBattery"])
             if a.get("differenceBodyBattery") is not None
             else None
         ),
