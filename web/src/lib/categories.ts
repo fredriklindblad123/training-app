@@ -7,7 +7,6 @@ export const CATEGORY_VALUES = [
   "long_run",
   "threshold",
   "interval",
-  "repetition",
   "race",
   "strength",
   "cross_training",
@@ -20,13 +19,16 @@ export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   long_run: "Långpass",
   threshold: "Tröskel",
   interval: "Intervaller",
-  repetition: "Räckor",
   race: "Tävling",
   strength: "Styrka",
-  cross_training: "Cross",
+  cross_training: "Alternativ träning",
 };
 
-// Fast slot-ordning ur den kategoriska 8-färgspaletten. Ordningen är CVD-
+// 'repetition' (Räckor) slogs ihop med 'interval' 2026-07-27 — uppdelningen
+// avgjordes i praktiken av vad passet råkade heta, inte av hur det såg ut. Se
+// migration 20260727140000_merge_repetition_into_interval.sql.
+//
+// Fast slot-ordning ur den kategoriska paletten. Ordningen är CVD-
 // säkerhetsmekanismen (validerad, se dataviz-riktlinjer) och ska inte ändras
 // utan att paletten valideras om.
 export const CATEGORY_COLORS: Record<
@@ -37,7 +39,6 @@ export const CATEGORY_COLORS: Record<
   long_run: { light: "#eb6834", dark: "#d95926" },
   threshold: { light: "#1baf7a", dark: "#199e70" },
   interval: { light: "#eda100", dark: "#c98500" },
-  repetition: { light: "#e87ba4", dark: "#d55181" },
   race: { light: "#008300", dark: "#008300" },
   strength: { light: "#4a3aa7", dark: "#9085e9" },
   cross_training: { light: "#e34948", dark: "#e66767" },

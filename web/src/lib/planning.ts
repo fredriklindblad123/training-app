@@ -45,7 +45,7 @@ export const BLOCK_COLOR_VARS: Record<BlockType, string> = {
   uppbyggnad: "var(--cat-threshold)",
   skarpning: "var(--cat-interval)",
   tavling: "var(--cat-race)",
-  nedtrappning: "var(--cat-repetition)",
+  nedtrappning: "var(--cat-strength)",
   vila: "var(--cat-cross_training)",
 };
 
@@ -98,7 +98,6 @@ export const WORKOUT_TYPES = [
   "long_run",
   "threshold",
   "interval",
-  "repetition",
   "race",
   "strength",
   "cross_training",
@@ -112,10 +111,9 @@ export const WORKOUT_LABELS: Record<WorkoutType, string> = {
   long_run: "Långpass",
   threshold: "Tröskel",
   interval: "Intervaller",
-  repetition: "Räckor",
   race: "Tävling",
   strength: "Styrka",
-  cross_training: "Cross",
+  cross_training: "Alternativ träning",
   rest: "Vila",
 };
 

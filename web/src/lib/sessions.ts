@@ -111,7 +111,6 @@ const QUALITY_NAME_PATTERN =
 const QUALITY_CATEGORIES: ReadonlySet<string> = new Set([
   "threshold",
   "interval",
-  "repetition",
 ]);
 
 /** Kvalitetskategori ur passnamnet, i fallande specificitet. Behövs åt båda
@@ -121,7 +120,7 @@ const QUALITY_CATEGORIES: ReadonlySet<string> = new Set([
 function qualityCategoryFromName(name: string): ActivityCategory | null {
   if (/tröskel|threshold|tempo/i.test(name)) return "threshold";
   if (/intervall|interval|vo2/i.test(name)) return "interval";
-  if (QUALITY_NAME_PATTERN.test(name)) return "repetition";
+  if (QUALITY_NAME_PATTERN.test(name)) return "interval";
   return null;
 }
 
