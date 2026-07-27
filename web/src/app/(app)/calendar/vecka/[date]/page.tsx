@@ -16,6 +16,7 @@ import {
 import { formatDuration, formatKm } from "@/lib/format";
 import { SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
+import { mentionsStrength } from "@/lib/diary-text";
 
 /* Veckovyn. Den saknades helt tidigare, trots att veckan är den enhet
  * träningen faktiskt planeras i — en veckomall är en vecka, och ett
@@ -109,7 +110,7 @@ export default async function WeekPage({
       .order("slot"),
     supabase
       .from("diary_entries")
-      .select("entry_date, day_type, notes")
+      .select("entry_date, day_type, notes, session_log")
       .gte("entry_date", from)
       .lte("entry_date", to),
     supabase
@@ -148,7 +149,7 @@ export default async function WeekPage({
   }
 
   const diaryByDay = new Map(
-    (diaryRows ?? []).map((d) => [d.entry_date as string, d as { day_type: string | null; notes: string | null }]),
+    (diaryRows ?? []).map((d) => [d.entry_date as string, d as { day_type: string | null; notes: string | null; session_log: string | null }]),
   );
   const competitionsByDay = new Map<string, { name: string; priority: string }[]>();
   for (const c of competitionRows ?? []) {
@@ -335,6 +336,22 @@ export default async function WeekPage({
                 </div>
               ))}
 
+              {/* Styrka enligt dagbokstexten. Ingen aktivitet finns — därav
+                  den nedtonade stilen och parentesen. */}
+              {mentionsStrength(diary?.session_log) && (
+                <div
+                  className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400"
+                  title="Styrka nämnd i träningsloggen — inget pass loggat med volym"
+                >
+                  <span
+                    className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full opacity-60"
+                    style={{ backgroundColor: "var(--cat-strength)" }}
+                    aria-hidden="true"
+                  />
+                  <span>Styrka (ur loggen)</span>
+                </div>
+              )}
+
               {/* Avvikelse: bara när båda finns och typerna skiljer sig */}
               {mismatch && (
                 <div className="text-[10px] text-amber-700 dark:text-amber-400">
@@ -368,6 +385,14 @@ export default async function WeekPage({
             aria-hidden="true"
           />
           Genomfört
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full opacity-60"
+            style={{ backgroundColor: "var(--cat-strength)" }}
+            aria-hidden="true"
+          />
+          Styrka nämnd i loggen (inget pass med volym)
         </span>
         <span className="text-amber-700 dark:text-amber-400">
           Gul text = utfallet blev en annan passtyp än planerat

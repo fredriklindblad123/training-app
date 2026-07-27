@@ -216,3 +216,31 @@ export function analyzeDiaryNote(text: string | null | undefined): DiaryTextAnal
 export function scoreToFeeling(score: number): number {
   return Math.min(5, Math.max(1, Math.round(3 + score * 2)));
 }
+
+/* ---------------------------------------------------------------------------
+ * Styrketräning som bara finns i texten.
+ *
+ * 94 av 259 dagboksdagar nämner styrka eller gym i träningsloggen, men noll
+ * styrkepass finns i activities — hon startar inte klockan för dem. Kategorin
+ * "Styrka" fanns därför men syntes aldrig.
+ *
+ * Ingen aktivitet skapas av detta. Texten skiljer inte tillförlitligt på ett
+ * eget gympass ("Morgonträning: Stabiliseringsstyrka i gymmet") och ett
+ * tillägg efter ett löppass ("Distans 45 min 9 km + bålstyrka"), och ~40 fall
+ * är genuint tvetydiga. Att skapa pass av dem hade blåst upp passräkning och
+ * kategorifördelning med gissningar. Det här är en *indikation* på att styrka
+ * förekom, inte ett pass med volym — och ska visas som det.
+ * ------------------------------------------------------------------------ */
+
+const STRENGTH_PATTERN =
+  /(styrka|styrketräning|marklyft|knäböj|\bgym\b|cirkelträning|stabiliserings)/i;
+
+/** Sant när träningsloggen nämner styrketräning. Kör på `session_log`, inte
+ * på `notes`: loggen beskriver vad som gjordes, anteckningarna hur det
+ * kändes ("kändes starkt" är ingen styrketräning). */
+export function mentionsStrength(sessionLog: string | null | undefined): boolean {
+  if (!sessionLog) return false;
+  // "rehab" räknas inte som styrka — det är återhämtningsarbete och skulle
+  // annars märka upp varje skadedag som styrkepass.
+  return STRENGTH_PATTERN.test(sessionLog);
+}
