@@ -283,6 +283,41 @@ aldrig som bedömning.
 
 ---
 
+## 2b. Status per förslag (2026-07-27)
+
+| | Förslag | Status |
+|---|---|---|
+| P0.1 | Backfill sömn/HRV | **Klar.** 312 dagar, 0 fel. Överlapp dagbok ∩ sömn: 0 → **241 dagar** |
+| P0.2 | Lap-/intervalldata | **Klar.** 242 aktiviteter, 3 206 varv, 0 fel |
+| P0.3 | Mappa raw_data-fält | **Klar.** 654 rader backfillade |
+| P0.3b | Laktat + tröskelband | **Klar.** Inmatning på dagvy + `/settings` |
+| P0.4 | Daglig check-in | **Klar.** Fyra tryck, sparar automatiskt |
+| P0.5 | Pass som analysenhet | **Klar.** Tröskel 53,4 % → 18,7 %, `long_run` 0 → 23 |
+| P1.1 | Belastning vs återhämtning | **Klar.** ComboChart, två paneler, baslinjeband |
+| P1.2 | Baslinjeavvikelse & dagsstatus | **Klar.** 2+ markörer utanför → föreslår sänkt belastning |
+| P1.3 | Intensitetsfördelning | **Delvis.** Byggd, men siffran är osäker — se varningen nedan |
+| P1.4 | Formkurva (EF) | **Klar.** 134 pass klarar filtret (21 före P0.5) |
+| P1.5 | Träningsblock som tidsenhet | Ej påbörjad |
+| P2.1 | Passkvalitet nyckelpass | **Klar.** 19 återkommande signaturer |
+| P2.2 | Dagbokstext → data | **Klar.** 183 av 214 dagar fick känslopoäng |
+| P2.3 | Tävlingsanalys | Ej påbörjad |
+| P2.4 | Skade-/sjukdomstidslinje | Ej påbörjad |
+| P3.1 | Menscykel & energitillgänglighet | Ej påbörjad — bygg sist, med störst omsorg |
+| P3.2 | AI-insikter | Ej påbörjad — kostnadsförbehåll gäller |
+
+**Största kvarvarande begränsningen:** intensitetsfördelningen (P1.3) visar
+74,4 % på/över tröskel, vilket är Garmins felkalibrerade autozoner och inte
+atletens fysiologi. Zontiderna är förberäknade av klockan, som aldrig avslöjar
+pulsgränserna den räknat mot. En sann fördelning kräver puls per sekund ur
+`get_activity_details()`. Det är den enskilt mest värdefulla nästa uppgiften.
+
+**Näst största:** korrelationerna räknar nu på 170 parade dagar (var 0), men
+sambanden är svaga — HRV ↔ känsla ger r = 0,25, övriga ligger kring noll. En
+trolig confounder är att ett hårt intervallpass känns tungt oavsett sömn.
+Att kontrollera för dagens belastning bör göras innan några slutsatser dras.
+
+---
+
 ## 3. Prioriteringsordning
 
 ```
