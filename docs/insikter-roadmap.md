@@ -744,6 +744,24 @@ zonindelning så snart de är ifyllda, och fall tillbaka på Garmins zoner förs
 när de saknas. Visa alltid vilka gränser som används och gör dem redigerbara.
 Utan detta mäter hela grafen klockans gissning snarare än Alices fysiologi.
 
+⚠️ **Hårdare begränsning än väntat (upptäckt vid implementationen
+2026-07-27):** `hr_zone_1..5_seconds` är *förberäknade av Garmin*. Klockan
+levererar sekunder per zon men **aldrig pulsgränserna den räknat mot**. Ett
+ifyllt personligt tröskelband kan därför bara fungera som facit att jämföra
+mot — det kan inte räkna om staplarna.
+
+Uppmätt utfall på riktig data blev **74,4 % på/över tröskel och 5,1 % lugnt**
+(zon 4 ensam 53,6 %), vilket är fysiologiskt orimligt för ett träningsår och
+bekräftar att Garmins autozoner är fel kalibrerade för den här atleten.
+Sektionen visar därför en tydlig varning om att siffrorna mäter klockans
+modell, inte fysiologin.
+
+**För att få en sann intensitetsfördelning krävs puls per sekund** ur
+`get_activity_details()` (samma anrop som P0.2 behöver för varvdata), som
+sedan zonindelas mot de personliga gränserna i egen kod. Det bör göras
+tillsammans med P0.2 — annars förblir den här sektionen en indikation snarare
+än ett mått.
+
 ---
 
 ## P1.4 — Formkurva (Efficiency Factor)
