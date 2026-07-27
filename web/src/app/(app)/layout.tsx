@@ -7,7 +7,7 @@ const navLinks = [
   { href: "/calendar", label: "Kalender" },
   { href: "/stats", label: "Statistik" },
   { href: "/trends", label: "Trender" },
-  { href: "/goals", label: "Mål" },
+  { href: "/planering", label: "Planering" },
   { href: "/settings", label: "Inställningar" },
 ];
 
