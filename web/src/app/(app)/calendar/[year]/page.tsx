@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDayStatuses } from "@/lib/day-status";
+import { BlockBand, HorizonToggle, type BandBlock } from "@/components/CalendarHorizon";
 import {
   SV_MONTHS,
   STATUS_COLOR,
@@ -26,13 +27,14 @@ export default async function YearPage({
 
   const supabase = await createClient();
 
-  const [statuses, { data: activeGoal }, { data: plannedWorkouts }] = await Promise.all([
+  const [statuses, { data: nextCompetition }, { data: plannedWorkouts }, { data: seasonBlocks }] =
+    await Promise.all([
     getDayStatuses(supabase, `${year}-01-01`, `${year + 1}-01-01`),
     supabase
-      .from("goals")
-      .select("id, title, event_date")
-      .eq("status", "active")
-      .order("event_date", { ascending: true })
+      .from("competitions")
+      .select("id, name, competition_date, priority")
+      .gte("competition_date", `${year}-01-01`)
+      .order("competition_date", { ascending: true })
       .limit(1)
       .maybeSingle(),
     supabase
@@ -40,9 +42,14 @@ export default async function YearPage({
       .select("scheduled_date, workout_type")
       .gte("scheduled_date", `${year}-01-01`)
       .lt("scheduled_date", `${year + 1}-01-01`),
+    supabase
+      .from("season_blocks")
+      .select("id, name, block_type, start_date, end_date, focus")
+      .lte("start_date", `${year}-12-31`)
+      .gte("end_date", `${year}-01-01`),
   ]);
 
-  const goalDateKey = activeGoal?.event_date ?? null;
+  const goalDateKey = nextCompetition?.competition_date ?? null;
 
   const plannedMap = new Map<string, ActivityCategory>();
   for (const pw of plannedWorkouts ?? []) {
@@ -52,14 +59,14 @@ export default async function YearPage({
   }
 
   let daysUntilGoal: number | null = null;
-  if (activeGoal) {
+  if (nextCompetition) {
     const today = new Date();
     const todayMidnight = new Date(
       today.getFullYear(),
       today.getMonth(),
       today.getDate(),
     );
-    const eventDate = new Date(`${activeGoal.event_date}T00:00:00`);
+    const eventDate = new Date(`${nextCompetition.competition_date}T00:00:00`);
     daysUntilGoal = Math.round(
       (eventDate.getTime() - todayMidnight.getTime()) / 86_400_000,
     );
@@ -85,17 +92,14 @@ export default async function YearPage({
             →
           </Link>
         </div>
-        <div className="flex gap-2 text-sm">
-          <Link
-            href={`/calendar/${year}/${year === new Date().getFullYear() ? new Date().getMonth() + 1 : 1}`}
-            className="rounded border border-zinc-300 px-3 py-1 dark:border-zinc-700"
-          >
-            Månad
-          </Link>
-          <span className="rounded bg-zinc-950 px-3 py-1 text-white dark:bg-zinc-50 dark:text-zinc-950">
-            År
-          </span>
-        </div>
+        <HorizonToggle
+          current="year"
+          weekHref={`/calendar/vecka/${new Date().toISOString().slice(0, 10)}`}
+          monthHref={`/calendar/${year}/${
+            year === new Date().getFullYear() ? new Date().getMonth() + 1 : 1
+          }`}
+          yearHref={`/calendar/${year}`}
+        />
         <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
           {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>).map(
             (key) => (
@@ -108,18 +112,24 @@ export default async function YearPage({
         </div>
       </div>
 
-      {activeGoal && (
+      {nextCompetition && (
         <Link
-          href={`/goals`}
+          href={`/planering`}
           className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
         >
-          🎯 <strong>{activeGoal.title}</strong> — {activeGoal.event_date}
+          🎯 <strong>{nextCompetition.name}</strong> — {nextCompetition.competition_date}
           {daysUntilGoal !== null &&
             (daysUntilGoal >= 0
               ? ` (om ${daysUntilGoal} dagar)`
               : ` (${Math.abs(daysUntilGoal)} dagar sedan)`)}
         </Link>
       )}
+      <BlockBand
+        blocks={(seasonBlocks ?? []) as BandBlock[]}
+        from={`${year}-01-01`}
+        to={`${year}-12-31`}
+      />
+
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
         {SV_MONTHS.map((monthName, idx) => {

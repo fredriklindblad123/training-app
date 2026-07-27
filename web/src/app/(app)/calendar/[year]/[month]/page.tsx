@@ -16,6 +16,7 @@ import {
 import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
 import { computeCheckInStats } from "@/lib/checkin";
+import { BlockBand, HorizonToggle, type BandBlock } from "@/components/CalendarHorizon";
 import { DailyCheckIn } from "@/components/DailyCheckIn";
 
 type DayInfo = {
@@ -59,6 +60,7 @@ export default async function MonthPage({
   const [
     { data: activities },
     { data: diaryEntries },
+    { data: seasonBlocks },
     { data: plannedWorkouts },
     userResult,
   ] = await Promise.all([
@@ -74,6 +76,11 @@ export default async function MonthPage({
         .gte("entry_date", monthStart)
         .lt("entry_date", monthEndExclusive)
         .not("day_type", "is", null),
+      supabase
+        .from("season_blocks")
+        .select("id, name, block_type, start_date, end_date, focus")
+        .lte("start_date", monthEndExclusive)
+        .gte("end_date", monthStart),
       supabase
         .from("planned_workouts")
         .select("scheduled_date, workout_type, slot")
@@ -183,18 +190,19 @@ export default async function MonthPage({
             →
           </Link>
         </div>
-        <div className="flex gap-2 text-sm">
-          <span className="rounded bg-zinc-950 px-3 py-1 text-white dark:bg-zinc-50 dark:text-zinc-950">
-            Månad
-          </span>
-          <Link
-            href={`/calendar/${year}`}
-            className="rounded border border-zinc-300 px-3 py-1 dark:border-zinc-700"
-          >
-            År
-          </Link>
-        </div>
+        <HorizonToggle
+          current="month"
+          weekHref={`/calendar/vecka/${monthStart}`}
+          monthHref={`/calendar/${year}/${month}`}
+          yearHref={`/calendar/${year}`}
+        />
       </div>
+
+      <BlockBand
+        blocks={(seasonBlocks ?? []) as BandBlock[]}
+        from={monthStart}
+        to={monthEndExclusive}
+      />
 
       <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-zinc-200 bg-zinc-200 text-xs dark:border-zinc-800 dark:bg-zinc-800">
         {SV_WEEKDAYS_SHORT.map((wd) => (
