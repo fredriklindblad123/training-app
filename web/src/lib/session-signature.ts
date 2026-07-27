@@ -110,6 +110,14 @@ function activeReps(laps: SignatureLap[]): SignatureLap[] {
  * aktiva mot 1 vilovarv och räknas därför korrekt bort.
  *
  * Sista repetitionen saknar ofta ett efterföljande vilovarv, därav −1.
+ *
+ * Känd begränsning: pass som växlar fart utan att stanna — "rolling 400s",
+ * fartlek — har inga vilovarv och faller därför bort trots att de är
+ * kvalitetsarbete. Regeln är medvetet konservativ åt det hållet: ett bortfallet
+ * pass syns som att vyn har mindre underlag, medan ett inkluderat autolap-pass
+ * hade förorenat jämförelserna med kilometrar ur lugna distanspass. Att i
+ * stället skilja dem åt på varierande varvlängd fungerar inte — ett distanspass
+ * med stegringar får också varierade varv.
  */
 function looksLikeIntervals(laps: SignatureLap[], activeCount: number): boolean {
   const rest = laps.filter((l) => l.split_type === "rest").length;

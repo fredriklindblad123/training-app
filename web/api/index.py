@@ -48,6 +48,20 @@ FIRST_SYNC_DAYS = 365  # hur långt bakåt den allra första synken för en anv�
 SLEEP_SYNC_DAYS = 7
 FIRST_SLEEP_SYNC_DAYS = 30
 
+# Varvdata kostar ett Garmin-anrop per pass. Taket skyddar mot att den första
+# synken för en användare (ett helt år bakåt) drar hundratals anrop och både
+# spränger Vercels femminutersgräns och triggar rate-limiting. Historik hämtas
+# i stället med scripts/backfill_activity_splits.py.
+SPLITS_PER_SYNC = 10
+
+# Andel av passets snabbaste varv som krävs för att räknas som aktivt varv.
+# Separationen i verklig data är knivskarp: ca 4,5 m/s för en 400:a mot
+# 0,8 m/s för joggvila.
+ACTIVE_SPEED_RATIO = 0.55
+
+# Kortare varv än så är nästan alltid en felryckning på klockan.
+MIN_LAP_SECONDS = 5
+
 # Bara dessa sporter ska sparas — allt annat (båt, golf, promenad, ...) som
 # Garmin råkar synka ska ignoreras helt, aldrig nå activities-tabellen.
 # Utförskidåkning är medvetet uteslutet — bara längdskidåkning räknas.
@@ -243,6 +257,119 @@ def _sync_sleep(client: Garmin, user_id: str, days: int) -> int:
     return len(rows)
 
 
+def _classify_laps(laps: list[dict]) -> list[str]:
+    """Aktivt eller vila per varv, utifrån fart relativt passets snabbaste.
+
+    Garmins eget intensityType duger inte — det är "INTERVAL" för samtliga
+    varv i ett intervallpass, även vilovarven. Speglar
+    scripts/backfill_activity_splits.py; håll dem i synk.
+    """
+    speeds = []
+    for lap in laps:
+        dur = lap.get("duration") or 0
+        dist = lap.get("distance") or 0
+        speeds.append(dist / dur if dur > 0 else 0.0)
+
+    fastest = max(speeds) if speeds else 0.0
+    if fastest <= 0:
+        return ["active"] * len(laps)
+    return ["active" if s >= fastest * ACTIVE_SPEED_RATIO else "rest" for s in speeds]
+
+
+def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
+    """Hämta varvdata för nya pass med fler än ett varv.
+
+    Ett Garmin-anrop per pass, så antalet begränsas hårt: en vanlig dag har
+    ett strukturerat pass, medan den allra första synken för en användare
+    hämtar ett helt år och skulle kunna ge hundratals anrop — det spränger
+    både Vercels femminutersgräns och Garmins rate-limiting. Historik hämtas
+    därför med scripts/backfill_activity_splits.py, som kan köras lokalt i
+    lugn takt.
+
+    Fel sväljs per pass: varvdata är sekundärt mot aktiviteterna och ska
+    aldrig kunna fälla hela synken.
+    """
+    candidates = [
+        a for a in activities
+        if (a.get("lapCount") or 0) > 1 and a.get("activityId") is not None
+    ]
+    if not candidates:
+        return 0
+
+    # Nyast först — hinner taket ta slut är det de senaste passen som betyder
+    # mest, och resten fångas av backfill-skriptet.
+    candidates.sort(key=lambda a: a.get("startTimeGMT") or "", reverse=True)
+    candidates = candidates[:SPLITS_PER_SYNC]
+
+    # activity_splits pekar på activities.id, men upserten ovan returnerar
+    # inga id:n (return=minimal). De måste därför läsas tillbaka via
+    # external_id, som är Garmins activityId.
+    external_ids = [str(a["activityId"]) for a in candidates]
+    rows = _sb_select(
+        "activities",
+        "id,external_id",
+        {"user_id": f"eq.{user_id}", "external_id": f"in.({','.join(external_ids)})"},
+    )
+    id_by_external = {r["external_id"]: r["id"] for r in rows}
+    if not id_by_external:
+        return 0
+
+    # Hoppa över pass som redan har varv, så upprepade synkar inte gör om
+    # jobbet mot Garmin.
+    existing = {
+        r["activity_id"]
+        for r in _sb_select(
+            "activity_splits",
+            "activity_id",
+            {"activity_id": f"in.({','.join(id_by_external.values())})"},
+        )
+    }
+
+    written = 0
+    for activity in candidates:
+        activity_id = id_by_external.get(str(activity["activityId"]))
+        if not activity_id or activity_id in existing:
+            continue
+        try:
+            data = client.get_activity_splits(activity["activityId"])
+        except Exception:
+            continue
+
+        laps = [
+            lap for lap in ((data or {}).get("lapDTOs") or [])
+            if (lap.get("duration") or 0) >= MIN_LAP_SECONDS
+        ]
+        if not laps:
+            continue
+
+        kinds = _classify_laps(laps)
+        _sb_upsert(
+            "activity_splits",
+            [
+                {
+                    "activity_id": activity_id,
+                    "split_index": i,
+                    "split_type": kind,
+                    "distance_meters": lap.get("distance"),
+                    "duration_seconds": lap.get("duration"),
+                    "avg_pace_seconds_per_km": _pace_seconds_per_km(lap.get("averageSpeed")),
+                    "avg_gap_seconds_per_km": _pace_seconds_per_km(lap.get("avgGradeAdjustedSpeed")),
+                    "avg_hr": round(lap["averageHR"]) if lap.get("averageHR") is not None else None,
+                    "max_hr": round(lap["maxHR"]) if lap.get("maxHR") is not None else None,
+                    "avg_cadence": lap.get("averageRunCadence"),
+                    "avg_power": lap.get("averagePower"),
+                    "elevation_gain": lap.get("elevationGain"),
+                    "start_time": lap.get("startTimeGMT"),
+                }
+                for i, (lap, kind) in enumerate(zip(laps, kinds))
+            ],
+            "activity_id,split_index",
+        )
+        written += 1
+
+    return written
+
+
 def _sync_one_user(user_id: str) -> dict:
     token_rows = _sb_select("garmin_tokens", "token", {"user_id": f"eq.{user_id}"})
     if not token_rows:
@@ -283,6 +410,13 @@ def _sync_one_user(user_id: str) -> dict:
             "user_id,source,external_id",
         )
 
+    # Varvdata efter att aktiviteterna sparats — den behöver deras databas-id.
+    try:
+        split_count = _sync_splits(client, user_id, activities)
+    except Exception:
+        # Varvdata är sekundärt och får aldrig fälla synken.
+        split_count = 0
+
     sleep_days = FIRST_SLEEP_SYNC_DAYS if is_first_sync else SLEEP_SYNC_DAYS
     sleep_count = _sync_sleep(client, user_id, sleep_days)
 
@@ -294,6 +428,7 @@ def _sync_one_user(user_id: str) -> dict:
         "ok": True,
         "count": len(activities),
         "sleep_days": sleep_count,
+        "split_activities": split_count,
     }
 
 

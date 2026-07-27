@@ -255,6 +255,15 @@ create table diary_entries (
   unique (user_id, entry_date)
 );
 
+-- OBLIGATORISKT EFTER VARJE DAGBOKSIMPORT: kör
+-- scripts/fix_diary_day_types.py. Språkmodellen som tolkar PDF:en sätter
+-- day_type per dag och missar återkommande sjukdagar — vid den första
+-- importen var bara 4 av 25 dagar med sjukdomstext märkta 'sick', vilket
+-- gjorde att sjukperioder inte syntes i kalendern alls. Skriptet bygger
+-- regeln på träningsloggen (en logg som börjar med "Vila" eller "Sjuk"
+-- betyder ingen träning) i stället för på om Garmin har data den dagen,
+-- eftersom styrkepass och tävlingar ofta loggas utan klocka.
+--
 -- PDF-dagboksimport (t.ex. FIG:s mall) sker inte via appen — fanns tidigare
 -- som /api/diary/import (uppladdning + Anthropic-tolkning), men görs sen
 -- 2026-07-26 istället manuellt några gånger per år: veckonummer, veckodagar
