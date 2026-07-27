@@ -41,6 +41,8 @@ import { formatHoursMinutes } from "@/lib/format";
 import { analyzeDiaryNote } from "@/lib/diary-text";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { DailyStatus } from "@/components/DailyStatus";
+import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
+import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
@@ -315,6 +317,36 @@ export default async function TrendsPage({
     })),
     todayKey,
   );
+
+  // --- P2.1: passkvalitet för återkommande nyckelpass ------------------------
+  // Varven hämtas för periodens aktiviteter och grupperas på signatur, dvs
+  // vad som faktiskt genomfördes (antal och längd på aktiva varv) — passnamnen
+  // är för inkonsekventa för att gruppera på.
+  const activityIds = sessions.flatMap((s) => s.activities.map((a) => a.id));
+  const dateByActivityId = new Map<string, string>();
+  for (const session of sessions) {
+    for (const a of session.activities) dateByActivityId.set(a.id, session.date);
+  }
+
+  let signatureGroups: SignatureGroup[] = [];
+  if (activityIds.length > 0) {
+    const { data: lapRows } = await supabase
+      .from("activity_splits")
+      .select("activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr")
+      .in("activity_id", activityIds)
+      .order("split_index");
+
+    const lapsByActivity = new Map<string, SignatureLap[]>();
+    for (const lap of (lapRows ?? []) as SignatureLap[]) {
+      lapsByActivity.set(lap.activity_id, [...(lapsByActivity.get(lap.activity_id) ?? []), lap]);
+    }
+
+    const occurrences = [...lapsByActivity.entries()]
+      .map(([id, laps]) => toOccurrence(id, dateByActivityId.get(id) ?? "", laps))
+      .filter((o): o is NonNullable<typeof o> => o != null && o.date !== "");
+
+    signatureGroups = groupBySignature(occurrences);
+  }
 
   const hrvWeekly = weeklyMeans(weekSeries, hrvByDay);
   const rhrWeekly = weeklyMeans(weekSeries, rhrByDay);
@@ -785,6 +817,14 @@ export default async function TrendsPage({
       </section>
 
       {/* ================= D. Korrelationer ================================ */}
+      {/* ============ P2.1: passkvalitet ============ */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          Passkvalitet: återkommande nyckelpass
+        </h2>
+        <SessionQuality groups={signatureGroups} />
+      </section>
+
       <section className="flex flex-col gap-4">
         <div>
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Korrelationer</h2>
