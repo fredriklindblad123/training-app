@@ -43,6 +43,9 @@ export type SessionSignature = {
   totalReps: number;
   /** Summerad distans i det kvalitativa arbetet, exklusive vila. */
   activeMeters: number;
+  /** Den repdistans som står för mest av passets kvalitetsarbete. Det är den
+   * som grupperingen sker på — se groupBySignature. */
+  dominantDistanceMeters: number;
 };
 
 /**
@@ -93,6 +96,27 @@ function activeReps(laps: SignatureLap[]): SignatureLap[] {
 }
 
 /**
+ * Ser varvstrukturen ut som ett intervallpass?
+ *
+ * Autolap per kilometer producerar varv som ser ut som repetitioner: ett
+ * jämnt 8 km-distanspass blir "8×1000 m", vilket hamnade i vyn som ett
+ * återkommande nyckelpass och inte gick att skilja från riktiga
+ * tusenmetersintervaller.
+ *
+ * Skillnaden ligger i vilan. Ett riktigt intervallpass växlar arbete och
+ * återhämtning, så vilovarven är ungefär lika många som de aktiva (15/15,
+ * 10/10, 6/6 i verklig data). Autolap har inga vilovarv alls, eftersom farten
+ * är jämn hela vägen. Ett distanspass med några stegringar hamnar på 15
+ * aktiva mot 1 vilovarv och räknas därför korrekt bort.
+ *
+ * Sista repetitionen saknar ofta ett efterföljande vilovarv, därav −1.
+ */
+function looksLikeIntervals(laps: SignatureLap[], activeCount: number): boolean {
+  const rest = laps.filter((l) => l.split_type === "rest").length;
+  return rest >= activeCount - 1;
+}
+
+/**
  * Bygger en signatur ur ett passs varv.
  *
  * Endast varv märkta `active` räknas — vilan varierar i längd och skulle
@@ -104,6 +128,7 @@ export function buildSessionSignature(laps: SignatureLap[]): SessionSignature | 
 
   // Ett enda varv är en rak löprunda, inte ett intervallpass.
   if (active.length < 2) return null;
+  if (!looksLikeIntervals(laps, active.length)) return null;
 
   const groups: RepGroup[] = [];
   for (const lap of active) {
@@ -122,12 +147,17 @@ export function buildSessionSignature(laps: SignatureLap[]): SessionSignature | 
     .map((g) => `${g.count}×${g.distanceMeters} m`)
     .join(" + ");
 
+  const dominant = [...groups].sort(
+    (a, b) => b.count * b.distanceMeters - a.count * a.distanceMeters,
+  )[0];
+
   return {
     key,
     label,
     groups,
     totalReps: active.length,
     activeMeters: groups.reduce((sum, g) => sum + g.count * g.distanceMeters, 0),
+    dominantDistanceMeters: dominant.distanceMeters,
   };
 }
 
@@ -135,32 +165,61 @@ export function buildSessionSignature(laps: SignatureLap[]): SessionSignature | 
 export type SignatureOccurrence = {
   activityId: string;
   date: string;
+  /** Passets kategori. Ingår i grupperingsnyckeln: samma varvupplägg körs på
+   * helt olika intensitet beroende på om det är ett tröskelpass eller ett
+   * intervallpass, och då är snittiderna inte jämförbara. */
+  category: string | null;
   signature: SessionSignature;
-  /** Snitt över de aktiva varven, sekunder. */
+  /** Snitt över repetitionerna vid passets dominerande distans, sekunder.
+   * Räknas medvetet inte över alla varv: ett pass med 2×1000 m och 8×200 m
+   * skulle då få ett snitt på ~89 s, vilket varken beskriver tusenmetrarna
+   * eller tvåhundrorna. */
   meanRepSeconds: number;
-  /** Snittpuls över aktiva varv, viktad på tid. */
+  /** Snittpuls för samma repetitioner, viktad på tid. */
   meanRepHr: number | null;
   laps: SignatureLap[];
 };
 
+export type SignatureGroupResult = {
+  category: string | null;
+  /** Repdistansen gruppen handlar om, t.ex. 400. */
+  distanceMeters: number;
+  occurrences: SignatureOccurrence[];
+};
+
 /**
- * Grupperar genomföranden på signatur och returnerar bara de signaturer som
- * förekommer mer än en gång — ett pass som körts en enda gång säger inget om
- * utveckling, vilket är hela poängen med vyn.
+ * Grupperar genomföranden på passtyp och dominerande repdistans.
+ *
+ * Exakt signatur visade sig vara fel enhet: av 106 pass med intervallstruktur
+ * fanns 102 unika signaturer, och bara fyra förekom mer än en gång. Atleten
+ * upprepar i praktiken aldrig samma pass exakt — hon varierar antal och
+ * kombination hela tiden. Gruppering på exakt signatur gav därför nästan inga
+ * jämförelser alls.
+ *
+ * Dominerande repdistans ger däremot riktiga underlag (300 m: 18 pass, 400 m:
+ * 12, 1000 m: 10) och är dessutom hur en tränare faktiskt följer utvecklingen
+ * — "hur går 400:orna?". Passtypen ingår i nyckeln eftersom en 400:a i ett
+ * tröskelpass och en i ett intervallpass springs på helt olika fart.
+ *
+ * Förbehållet: en 400:a ur 15×400 är inte fullt jämförbar med en ur 5×400.
+ * Antalet repetitioner visas därför per genomförande, så läsaren kan väga in
+ * det själv i stället för att jämförelsen tyst låtsas vara exakt.
  */
 export function groupBySignature(
   occurrences: SignatureOccurrence[],
   { minOccurrences = 2 }: { minOccurrences?: number } = {},
-): { signature: SessionSignature; occurrences: SignatureOccurrence[] }[] {
+): SignatureGroupResult[] {
   const byKey = new Map<string, SignatureOccurrence[]>();
   for (const occ of occurrences) {
-    byKey.set(occ.signature.key, [...(byKey.get(occ.signature.key) ?? []), occ]);
+    const key = `${occ.category ?? "okänd"}|${occ.signature.dominantDistanceMeters}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), occ]);
   }
 
   return [...byKey.entries()]
     .filter(([, list]) => list.length >= minOccurrences)
     .map(([, list]) => ({
-      signature: list[0].signature,
+      category: list[0].category,
+      distanceMeters: list[0].signature.dominantDistanceMeters,
       occurrences: [...list].sort((a, b) => a.date.localeCompare(b.date)),
     }))
     .sort((a, b) => b.occurrences.length - a.occurrences.length);
@@ -171,17 +230,21 @@ export function toOccurrence(
   activityId: string,
   date: string,
   laps: SignatureLap[],
+  category: string | null,
 ): SignatureOccurrence | null {
   const signature = buildSessionSignature(laps);
   if (!signature) return null;
 
-  // Samma filtrering som signaturen bygger på — annars räknas strövarv in i
-  // snittiden trots att de inte finns i signaturen.
-  const active = activeReps(laps);
+  // Bara repetitionerna vid den dominerande distansen. Grupperingen sker på
+  // den distansen, så snittet måste beskriva just den — annars jämförs tal
+  // som blandat in helt andra repetitionslängder.
+  const active = activeReps(laps).filter(
+    (l) => roundRepDistance(l.distance_meters as number) === signature.dominantDistanceMeters,
+  );
   const times = active.map((l) => l.duration_seconds as number);
   const meanRepSeconds = times.reduce((a, b) => a + b, 0) / times.length;
 
-  // Tidsviktad puls: ett 2000-metersvarv ska väga tyngre än ett 200-meters.
+  // Tidsviktad puls: ett långt varv ska väga tyngre än ett kort.
   const withHr = active.filter((l) => l.avg_hr != null);
   const hrWeight = withHr.reduce((sum, l) => sum + (l.duration_seconds as number), 0);
   const meanRepHr =
@@ -190,5 +253,5 @@ export function toOccurrence(
         hrWeight
       : null;
 
-  return { activityId, date, signature, meanRepSeconds, meanRepHr, laps };
+  return { activityId, date, category, signature, meanRepSeconds, meanRepHr, laps };
 }

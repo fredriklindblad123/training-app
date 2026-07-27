@@ -1,4 +1,5 @@
-import type { SignatureOccurrence, SessionSignature } from "@/lib/session-signature";
+import type { SignatureOccurrence, SignatureGroupResult } from "@/lib/session-signature";
+import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
 
 /* P2.1: passkvalitet för återkommande nyckelpass.
  *
@@ -7,10 +8,7 @@ import type { SignatureOccurrence, SessionSignature } from "@/lib/session-signat
  * sekunderna ("290,4 mot 302,0"), inte uppskatta dem ur en kurva. Ett
  * diagram hade dolt precis den precisionen som är hela poängen. */
 
-export type SignatureGroup = {
-  signature: SessionSignature;
-  occurrences: SignatureOccurrence[];
-};
+export type SignatureGroup = SignatureGroupResult;
 
 function fmtTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -35,6 +33,9 @@ function OccurrenceRow({
       <td className="py-1.5 pr-3 whitespace-nowrap text-zinc-600 dark:text-zinc-400">
         {occurrence.date}
       </td>
+      <td className="py-1.5 pr-3 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
+        {occurrence.signature.label}
+      </td>
       <td className="py-1.5 pr-3 text-right tabular-nums font-medium text-zinc-900 dark:text-zinc-100">
         {fmtTime(occurrence.meanRepSeconds)}
         {isBest && (
@@ -57,7 +58,7 @@ function OccurrenceRow({
 }
 
 function SignatureCard({ group }: { group: SignatureGroup }) {
-  const { signature, occurrences } = group;
+  const { category, distanceMeters, occurrences } = group;
   const best = occurrences.reduce((a, b) => (a.meanRepSeconds <= b.meanRepSeconds ? a : b));
   // Nyast först — den senaste körningen är den man vill se direkt.
   const shown = [...occurrences].reverse().slice(0, 8);
@@ -71,8 +72,17 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
     <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800" open={false}>
       <summary className="cursor-pointer list-none">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <span className="font-medium text-zinc-900 dark:text-zinc-100">
-            {signature.label}
+          <span className="flex items-center gap-2 font-medium text-zinc-900 dark:text-zinc-100">
+            {isActivityCategory(category ?? "") && (
+              <span
+                className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: categoryColorVar(category as never) }}
+                aria-hidden="true"
+              />
+            )}
+            {isActivityCategory(category ?? "")
+              ? `${CATEGORY_LABELS[category as never]} · ${distanceMeters} m`
+              : `${distanceMeters} m`}
           </span>
           <span className="text-sm text-zinc-500 dark:text-zinc-400">
             {occurrences.length} genomföranden · bäst {fmtTime(best.meanRepSeconds)}{" "}
@@ -101,6 +111,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
           <thead>
             <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400">
               <th className="pb-1 font-normal">Datum</th>
+              <th className="pb-1 font-normal">Upplägg</th>
               <th className="pb-1 text-right font-normal">Snitt/rep</th>
               <th className="pb-1 text-right font-normal">Mot bäst</th>
               <th className="pb-1 text-right font-normal">Puls</th>
@@ -141,12 +152,16 @@ export function SessionQuality({ groups }: { groups: SignatureGroup[] }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        Pass grupperas på vad som faktiskt genomfördes — antal och längd på de aktiva
-        varven — inte på passets namn, som varierar för samma session. Jämförelsen som
-        betyder något är om samma pass går snabbare vid samma eller lägre puls.
+        Pass grupperas på passtyp och på den repdistans som dominerar
+        kvalitetsarbetet — inte på passets namn, som varierar för samma session, och inte
+        på exakt upplägg: av 106 intervallpass fanns 102 olika upplägg, så exakta
+        upprepningar finns nästan inte. Ett tröskelpass på 400 m och ett intervallpass på
+        400 m hålls isär, eftersom de springs på helt olika fart.
+        {" "}En 400:a ur 15×400 är inte fullt jämförbar med en ur 5×400 — därför visas
+        upplägget per rad, så du kan väga in det själv.
       </p>
       {groups.map((g) => (
-        <SignatureCard key={g.signature.key} group={g} />
+        <SignatureCard key={`${g.category ?? "okänd"}|${g.distanceMeters}`} group={g} />
       ))}
     </div>
   );

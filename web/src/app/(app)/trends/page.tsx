@@ -324,8 +324,15 @@ export default async function TrendsPage({
   // är för inkonsekventa för att gruppera på.
   const activityIds = sessions.flatMap((s) => s.activities.map((a) => a.id));
   const dateByActivityId = new Map<string, string>();
+  // Passets kategori, inte fragmentets: uppvärmningen i ett intervallpass är
+  // märkt easy men passet är ett intervallpass, och det är den nivån
+  // grupperingen ska ske på.
+  const categoryByActivityId = new Map<string, string | null>();
   for (const session of sessions) {
-    for (const a of session.activities) dateByActivityId.set(a.id, session.date);
+    for (const a of session.activities) {
+      dateByActivityId.set(a.id, session.date);
+      categoryByActivityId.set(a.id, session.category ?? null);
+    }
   }
 
   let signatureGroups: SignatureGroup[] = [];
@@ -342,7 +349,9 @@ export default async function TrendsPage({
     }
 
     const occurrences = [...lapsByActivity.entries()]
-      .map(([id, laps]) => toOccurrence(id, dateByActivityId.get(id) ?? "", laps))
+      .map(([id, laps]) =>
+        toOccurrence(id, dateByActivityId.get(id) ?? "", laps, categoryByActivityId.get(id) ?? null),
+      )
       .filter((o): o is NonNullable<typeof o> => o != null && o.date !== "");
 
     signatureGroups = groupBySignature(occurrences);
