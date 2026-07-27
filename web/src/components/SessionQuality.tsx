@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { SignatureOccurrence, SignatureGroupResult } from "@/lib/session-signature";
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
 
@@ -9,6 +10,13 @@ import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/cat
  * diagram hade dolt precis den precisionen som är hela poängen. */
 
 export type SignatureGroup = SignatureGroupResult;
+
+/** "2026-01-05" -> "/calendar/2026/1/5". Dagvyn tar månad och dag utan
+ * inledande nollor. */
+function dayHref(date: string): string {
+  const [y, m, d] = date.split("-");
+  return `/calendar/${y}/${Number(m)}/${Number(d)}`;
+}
 
 function fmtTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -30,8 +38,15 @@ function OccurrenceRow({
 
   return (
     <tr className="border-t border-zinc-100 dark:border-zinc-800">
-      <td className="py-1.5 pr-3 whitespace-nowrap text-zinc-600 dark:text-zinc-400">
-        {occurrence.date}
+      <td className="py-1.5 pr-3 whitespace-nowrap">
+        {/* Länk till dagvyn — därifrån finns hela passet: varvtabell,
+            dagbokstext och nattens sömndata. */}
+        <Link
+          href={dayHref(occurrence.date)}
+          className="text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+        >
+          {occurrence.date}
+        </Link>
       </td>
       <td className="py-1.5 pr-3 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
         {occurrence.signature.label}
@@ -114,7 +129,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
               <th className="pb-1 font-normal">Upplägg</th>
               <th className="pb-1 text-right font-normal">Snitt/rep</th>
               <th className="pb-1 text-right font-normal">Mot bäst</th>
-              <th className="pb-1 text-right font-normal">Puls</th>
+              <th className="pb-1 pr-3 text-right font-normal">Puls</th>
               <th className="pb-1 font-normal">Varvtider</th>
             </tr>
           </thead>

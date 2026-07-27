@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   CATEGORY_LABELS,
   CATEGORY_VALUES,
@@ -25,6 +26,13 @@ export type CategoryDatum = {
 };
 
 type Metric = "distance" | "time";
+
+/** "2026-01-05" -> "/calendar/2026/1/5". Dagvyn tar månad och dag utan
+ * inledande nollor. */
+function dayHref(date: string): string {
+  const [y, m, d] = date.split("-");
+  return `/calendar/${y}/${Number(m)}/${Number(d)}`;
+}
 
 function metricValue(d: CategoryDatum, metric: Metric): number {
   return metric === "distance" ? d.km : d.seconds;
@@ -299,7 +307,15 @@ export function CategoryPieChart({
                       >
                         <td></td>
                         <td className="py-1 pr-4" colSpan={2}>
-                          {s.date} — {s.name ?? "Pass"}
+                          {/* Länk till dagvyn: raden är ofta startpunkten för
+                              "vad hände egentligen den dagen?" — dit finns
+                              varvtider, dagbokstext och sömndata. */}
+                          <Link
+                            href={dayHref(s.date)}
+                            className="underline-offset-2 hover:text-zinc-900 hover:underline dark:hover:text-zinc-100"
+                          >
+                            {s.date} — {s.name ?? "Pass"}
+                          </Link>
                         </td>
                         <td className="pr-4">{s.km.toFixed(1)} km</td>
                         <td>{formatDuration(s.seconds)}</td>
