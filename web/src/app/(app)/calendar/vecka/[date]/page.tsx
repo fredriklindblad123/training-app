@@ -47,15 +47,25 @@ function typeLabel(type: string): string {
   return WORKOUT_LABELS[type as WorkoutType] ?? type;
 }
 
-function Dot({ type, dashed = false }: { type: string | null; dashed?: boolean }) {
+/**
+ * Ihålig ring = planerat (en avsikt), fylld prick = genomfört (något som
+ * hänt). Skillnaden bär hela informationen i veckovyn, så den ska gå att
+ * uppfatta utan att läsa någon etikett.
+ */
+function Marker({ type, planned }: { type: string | null; planned: boolean }) {
   const color = type ? workoutTypeColorVar(type) : null;
   return (
     <span
-      className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
+      className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
       style={
-        color
-          ? { backgroundColor: color }
-          : { border: dashed ? "1.5px dashed currentColor" : "1.5px solid currentColor" }
+        planned
+          ? {
+              // Ring i passets färg, ihålig mitt. Vila saknar färg och blir
+              // streckad i stället.
+              border: color ? `2px solid ${color}` : "1.5px dashed currentColor",
+              backgroundColor: "transparent",
+            }
+          : { backgroundColor: color ?? "currentColor" }
       }
       aria-hidden="true"
     />
@@ -221,30 +231,57 @@ export default async function WeekPage({
           const done = sessionsByDay.get(key) ?? [];
           const diary = diaryByDay.get(key);
           const comps = competitionsByDay.get(key) ?? [];
-          const status = (diary?.day_type ?? (done.length > 0 ? "training" : null)) as
-            | DayStatus
-            | null;
+          const diaryStatus = (diary?.day_type ?? null) as DayStatus | null;
+          // "Tränade" ovanpå ett synligt pass är ren upprepning. Badgen visas
+          // bara när den säger något listan inte redan gör: en avvikande
+          // dagtyp, eller att dagen är märkt som träning utan att något pass
+          // finns loggat.
+          const showStatus =
+            diaryStatus != null && (diaryStatus !== "training" || done.length === 0);
+          const isEmpty = planned.length === 0 && done.length === 0 && !diaryStatus;
+          // Jämför bara första planerade mot första genomförda: ordningen är
+          // den koppling som finns, och en fullständig parning hör hemma i
+          // dagvyn snarare än i en cell på 150 pixlar.
+          const mismatch =
+            planned.length > 0 &&
+            done.length > 0 &&
+            planned[0].workout_type !== "rest" &&
+            done[0].category != null &&
+            planned[0].workout_type !== done[0].category;
           const isToday = key === todayKey;
 
           return (
             <Link
               key={key}
               href={`/calendar/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`}
-              className={`flex min-h-40 flex-col gap-1.5 rounded border p-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
+              className={`flex min-h-36 flex-col gap-2 rounded border p-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
                 isToday
                   ? "border-zinc-900 dark:border-zinc-100"
-                  : "border-zinc-200 dark:border-zinc-800"
+                  : isEmpty
+                    ? "border-zinc-100 dark:border-zinc-800/60"
+                    : "border-zinc-200 dark:border-zinc-800"
               }`}
             >
-              <div className="flex items-baseline justify-between">
-                <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+              <div className="flex items-baseline justify-between gap-1">
+                <span
+                  className={`text-xs font-semibold ${
+                    isEmpty
+                      ? "text-zinc-400 dark:text-zinc-600"
+                      : "text-zinc-900 dark:text-zinc-100"
+                  }`}
+                >
                   {SV_WEEKDAYS_SHORT[i]} {d.getDate()}
                 </span>
-                {status && (
+                {showStatus && diaryStatus && (
                   <span
-                    className={`rounded px-1 py-0.5 text-[10px] text-white ${STATUS_COLOR[status]}`}
+                    className={`rounded px-1 py-0.5 text-[10px] text-white ${STATUS_COLOR[diaryStatus]}`}
+                    title={
+                      diaryStatus === "training"
+                        ? "Dagboken säger träning, men inget pass är loggat"
+                        : STATUS_LABEL[diaryStatus]
+                    }
                   >
-                    {STATUS_LABEL[status]}
+                    {diaryStatus === "training" ? "Ej loggat" : STATUS_LABEL[diaryStatus]}
                   </span>
                 )}
               </div>
@@ -258,64 +295,83 @@ export default async function WeekPage({
                 </div>
               ))}
 
-              {/* Planerat */}
-              {planned.length > 0 && (
-                <div className="flex flex-col gap-0.5">
-                  <div className="text-[10px] tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
-                    Plan
-                  </div>
-                  {planned.map((p) => (
-                    <div key={p.id} className="flex items-start gap-1.5 text-[11px]">
-                      <Dot type={p.workout_type} dashed={p.workout_type === "rest"} />
-                      <span className="text-zinc-700 dark:text-zinc-300">
-                        {(p.slot ?? 1) > 1 && (
-                          <span className="text-zinc-400">
-                            {(SLOT_LABELS[p.slot as number] ?? "").slice(0, 2)}{" "}
-                          </span>
-                        )}
-                        {p.title ?? typeLabel(p.workout_type)}
-                        {p.target_duration_seconds
-                          ? ` · ${Math.round(p.target_duration_seconds / 60)}′`
-                          : ""}
+              {/* Planerat: ihåliga ringar, dämpad text */}
+              {planned.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400"
+                  title="Planerat"
+                >
+                  <Marker type={p.workout_type} planned />
+                  <span>
+                    {(p.slot ?? 1) > 1 && (
+                      <span className="text-zinc-400 dark:text-zinc-500">
+                        {(SLOT_LABELS[p.slot as number] ?? "").slice(0, 2).toLowerCase()}{" "}
                       </span>
-                    </div>
-                  ))}
+                    )}
+                    {p.title ?? typeLabel(p.workout_type)}
+                    {p.target_duration_seconds
+                      ? ` · ${Math.round(p.target_duration_seconds / 60)}′`
+                      : ""}
+                  </span>
                 </div>
-              )}
+              ))}
 
-              {/* Utfall */}
-              {done.length > 0 && (
-                <div className="flex flex-col gap-0.5">
-                  <div className="text-[10px] tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
-                    Utfall
-                  </div>
-                  {done.map((s) => (
-                    <div key={s.id} className="flex items-start gap-1.5 text-[11px]">
-                      <Dot type={s.category} />
-                      <span className="text-zinc-900 dark:text-zinc-100">
-                        {s.category ? typeLabel(s.category) : "Pass"}
-                        {s.distanceMeters ? ` · ${formatKm(s.distanceMeters)}` : ""}
-                        {s.durationSeconds
-                          ? ` · ${Math.round(s.durationSeconds / 60)}′`
-                          : ""}
-                      </span>
-                    </div>
-                  ))}
+              {/* Genomfört: fyllda prickar, full kontrast */}
+              {done.map((sess) => (
+                <div
+                  key={sess.id}
+                  className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-900 dark:text-zinc-100"
+                  title="Genomfört"
+                >
+                  <Marker type={sess.category} planned={false} />
+                  <span>
+                    <span className="font-medium">
+                      {sess.category ? typeLabel(sess.category) : "Pass"}
+                    </span>
+                    {sess.distanceMeters ? ` · ${formatKm(sess.distanceMeters)}` : ""}
+                    {sess.durationSeconds ? ` · ${Math.round(sess.durationSeconds / 60)}′` : ""}
+                  </span>
                 </div>
-              )}
+              ))}
 
-              {planned.length === 0 && done.length === 0 && !status && (
-                <span className="text-[11px] text-zinc-300 dark:text-zinc-700">—</span>
+              {/* Avvikelse: bara när båda finns och typerna skiljer sig */}
+              {mismatch && (
+                <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                  Annan typ än planerat
+                </div>
               )}
 
               {diary?.notes && (
-                <p className="mt-auto line-clamp-3 text-[10px] text-zinc-500 dark:text-zinc-400">
+                <p className="mt-auto line-clamp-3 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
                   {diary.notes}
                 </p>
               )}
             </Link>
           );
         })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-500 dark:text-zinc-400">
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ border: "2px solid var(--cat-easy)" }}
+            aria-hidden="true"
+          />
+          Planerat
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: "var(--cat-easy)" }}
+            aria-hidden="true"
+          />
+          Genomfört
+        </span>
+        <span className="text-amber-700 dark:text-amber-400">
+          Gul text = utfallet blev en annan passtyp än planerat
+        </span>
       </div>
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
