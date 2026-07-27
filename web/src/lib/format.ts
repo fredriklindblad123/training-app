@@ -33,7 +33,14 @@ export function formatHoursMinutes(seconds: number | null | undefined): string {
 // Namngivna formatvarianter istället för att skicka formatterfunktioner som
 // props till "use client"-komponenter — funktioner går inte att serialisera
 // över server/klient-gränsen i Next.js, men en sträng gör.
-export type MetricFormatKind = "km" | "hours" | "bpm" | "ms" | "decimal1" | "decimal0";
+export type MetricFormatKind =
+  | "km"
+  | "hours"
+  | "bpm"
+  | "ms"
+  | "decimal2"
+  | "decimal1"
+  | "decimal0";
 
 export function formatMetricValue(kind: MetricFormatKind, value: number): string {
   switch (kind) {
@@ -45,6 +52,8 @@ export function formatMetricValue(kind: MetricFormatKind, value: number): string
       return `${Math.round(value)} slag/min`;
     case "ms":
       return `${Math.round(value)} ms`;
+    case "decimal2":
+      return value.toFixed(2);
     case "decimal1":
       return value.toFixed(1);
     case "decimal0":

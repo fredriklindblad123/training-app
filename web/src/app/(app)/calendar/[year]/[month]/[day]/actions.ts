@@ -208,3 +208,63 @@ export async function resetActivityCategory(formData: FormData) {
   revalidatePath("/calendar", "layout");
   revalidatePath("/stats", "layout");
 }
+
+const LACTATE_CONTEXTS = ["test", "workout", "race"];
+
+// P0.3b: laktatvärden från ett laktattest (stegrande fart, ett stick per
+// steg) — flera värden per pass måste gå att lägga in, därför en egen rad
+// per mätvärde istället för en kolumn på activities. measured_at sätts till
+// insättningstillfället (inte ett formulärfält) så ordningen på sticken blir
+// rätt utan extra friktion i UI:t.
+export async function addLactateReading(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const mmolRaw = formData.get("lactate_mmol") as string;
+  if (!mmolRaw) return;
+
+  const activityId = (formData.get("activity_id") as string) || null;
+  const paceMinRaw = formData.get("pace_min") as string;
+  const paceSekRaw = formData.get("pace_sek") as string;
+  const hrRaw = formData.get("heart_rate") as string;
+  const contextRaw = (formData.get("context") as string) || "test";
+  const note = (formData.get("note") as string) || null;
+
+  const paceMin = paceMinRaw ? Number(paceMinRaw) : 0;
+  const paceSek = paceSekRaw ? Number(paceSekRaw) : 0;
+  const paceSecondsPerKm = paceMinRaw || paceSekRaw ? paceMin * 60 + paceSek : null;
+
+  await supabase.from("lactate_readings").insert({
+    user_id: user.id,
+    activity_id: activityId,
+    lactate_mmol: Number(mmolRaw),
+    pace_seconds_per_km: paceSecondsPerKm,
+    heart_rate: hrRaw ? Number(hrRaw) : null,
+    context: LACTATE_CONTEXTS.includes(contextRaw) ? contextRaw : "test",
+    note,
+  });
+
+  revalidatePath("/calendar", "layout");
+}
+
+export async function deleteLactateReading(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const readingId = formData.get("reading_id") as string;
+  if (!readingId) return;
+
+  await supabase
+    .from("lactate_readings")
+    .delete()
+    .eq("id", readingId)
+    .eq("user_id", user.id);
+
+  revalidatePath("/calendar", "layout");
+}

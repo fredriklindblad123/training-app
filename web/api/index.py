@@ -114,6 +114,13 @@ def _to_iso_utc(garmin_gmt: Optional[str]) -> Optional[str]:
     return garmin_gmt.replace(" ", "T") + "Z"
 
 
+def _pace_seconds_per_km(speed_m_per_s: Optional[float]) -> Optional[float]:
+    """Konvertera m/s (Garmins averageSpeed/avgGradeAdjustedSpeed) till sek/km."""
+    if not speed_m_per_s:
+        return None
+    return 1000 / speed_m_per_s
+
+
 def _map_activity(a: dict, user_id: str) -> dict:
     avg_speed = a.get("averageSpeed")
     return {
@@ -125,7 +132,7 @@ def _map_activity(a: dict, user_id: str) -> dict:
         "start_time": _to_iso_utc(a.get("startTimeGMT")),
         "duration_seconds": a.get("duration"),
         "distance_meters": a.get("distance"),
-        "avg_pace_seconds_per_km": (1000 / avg_speed) if avg_speed else None,
+        "avg_pace_seconds_per_km": _pace_seconds_per_km(avg_speed),
         "avg_hr": round(a["averageHR"]) if a.get("averageHR") is not None else None,
         "max_hr": round(a["maxHR"]) if a.get("maxHR") is not None else None,
         "hr_zone_1_seconds": a.get("hrTimeInZone_1"),
@@ -146,6 +153,35 @@ def _map_activity(a: dict, user_id: str) -> dict:
         "location_name": a.get("locationName"),
         "start_lat": a.get("startLatitude"),
         "start_lng": a.get("startLongitude"),
+        # P0.3 (docs/insikter-roadmap.md): fält som redan fanns i raw_data
+        # men aldrig mappats till egna kolumner. Se även
+        # scripts/backfill_activity_fields.py för retroaktiv ifyllning.
+        "avg_power": a.get("avgPower"),
+        "norm_power": a.get("normPower"),
+        "avg_ground_contact_time": a.get("avgGroundContactTime"),
+        "avg_vertical_oscillation": a.get("avgVerticalOscillation"),
+        "avg_vertical_ratio": a.get("avgVerticalRatio"),
+        "avg_gap_seconds_per_km": _pace_seconds_per_km(a.get("avgGradeAdjustedSpeed")),
+        "fastest_1k_seconds": a.get("fastestSplit_1000"),
+        # Garmins differenceBodyBattery är slut minus start, alltså negativ när
+        # passet kostat energi (−11 = batteriet föll 11). Kolumnen heter drain
+        # och ska därför vara ett positivt tapp, annars ritas ett större tapp
+        # som ett lägre värde i varje diagram som rör fältet.
+        "body_battery_drain": (
+            -round(a["differenceBodyBattery"])
+            if a.get("differenceBodyBattery") is not None
+            else None
+        ),
+        "moderate_intensity_minutes": (
+            round(a["moderateIntensityMinutes"])
+            if a.get("moderateIntensityMinutes") is not None
+            else None
+        ),
+        "vigorous_intensity_minutes": (
+            round(a["vigorousIntensityMinutes"])
+            if a.get("vigorousIntensityMinutes") is not None
+            else None
+        ),
         "raw_data": a,
     }
 

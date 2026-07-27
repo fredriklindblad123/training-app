@@ -1,16 +1,55 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { BarChart, type BarDatum } from "@/components/charts/BarChart";
-import { LineChart, type LineDatum } from "@/components/charts/LineChart";
 import { ScatterChart } from "@/components/charts/ScatterChart";
 import {
-  pearsonCorrelation,
+  ComboChart,
+  type ComboEvent,
+  type ComboLoadStack,
+  type ComboPeriod,
+  type ComboSeries,
+} from "@/components/charts/ComboChart";
+import {
+  IntensityChart,
+  type IntensityWeek,
+} from "@/components/charts/IntensityChart";
+import {
+  EfficiencyChart,
+  type EfficiencyPoint,
+  type EfficiencyRace,
+} from "@/components/charts/EfficiencyChart";
+import {
+  EMPTY_THRESHOLD_PROFILE,
+  emptyZoneSeconds,
+  type ThresholdProfile,
+  type ZoneSeconds,
+} from "@/lib/intensity";
+import {
+  SESSION_ACTIVITY_COLUMNS,
+  groupActivitiesIntoSessions,
+  type SessionActivity,
+  type TrainingSession,
+} from "@/lib/sessions";
+import {
   correlationStrengthLabel,
   isoWeekStart,
+  mean,
+  median,
+  pearsonCorrelation,
   weekLabel,
 } from "@/lib/stats-utils";
+import { formatHoursMinutes } from "@/lib/format";
+
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
+
+/** EF-filtret enligt P1.4: bara jämförbara pass, aldrig intervaller. */
+const EF_MIN_SECONDS = 20 * 60;
+const EF_CATEGORIES = ["easy", "long_run"] as const;
+
+const MONTHS_SHORT = [
+  "jan", "feb", "mar", "apr", "maj", "jun",
+  "jul", "aug", "sep", "okt", "nov", "dec",
+];
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -38,9 +77,48 @@ function buildWeekSeries(weeks: number): string[] {
   return series;
 }
 
-function avg(values: number[]): number | null {
-  if (values.length === 0) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
+/** "V.31, 28 juli–3 aug" — kort etikett på axeln, lång i panelen. */
+function weekRangeLabel(monday: string): string {
+  const from = new Date(`${monday}T00:00:00`);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 6);
+  const fromPart = `${from.getDate()} ${MONTHS_SHORT[from.getMonth()]}`;
+  const toPart = `${to.getDate()} ${MONTHS_SHORT[to.getMonth()]}`;
+  return `${weekLabel(monday)}, ${fromPart}–${toPart}`;
+}
+
+function formatDateRange(from: string | null, to: string | null): string {
+  if (!from || !to) return "ingen data";
+  return from === to ? from : `${from} – ${to}`;
+}
+
+/** Min/max-datum i en samling dagnycklar. */
+function dateRange(days: Iterable<string>): { from: string | null; to: string | null } {
+  let from: string | null = null;
+  let to: string | null = null;
+  for (const day of days) {
+    if (from == null || day < from) from = day;
+    if (to == null || day > to) to = day;
+  }
+  return { from, to };
+}
+
+/** Veckovisa medelvärden ur dagsvärden. `null` där veckan saknar mätning —
+ * aldrig 0, aldrig interpolerat. */
+function weeklyMeans(
+  weekSeries: string[],
+  byDay: Map<string, number[]>,
+): (number | null)[] {
+  const byWeek = new Map<string, number[]>();
+  for (const [day, values] of byDay) {
+    const wk = isoWeekStart(day);
+    byWeek.set(wk, [...(byWeek.get(wk) ?? []), ...values]);
+  }
+  return weekSeries.map((wk) => mean(byWeek.get(wk) ?? []));
+}
+
+function countWeeksWithData(values: (number | null)[]): number {
+  return values.filter((v) => v != null).length;
 }
 
 export default async function TrendsPage({
@@ -56,164 +134,409 @@ export default async function TrendsPage({
 
   const weekSeries = buildWeekSeries(weeks);
   const startDate = weekSeries[0];
+  const todayKey = toDateKey(new Date());
 
   const supabase = await createClient();
-  const [{ data: activities }, { data: dailyMetrics }, { data: diaryEntries }] =
-    await Promise.all([
-      supabase
-        .from("activities")
-        .select("start_time, distance_meters, duration_seconds, activity_type, aerobic_training_effect")
-        .gte("start_time", startDate)
-        .order("start_time"),
-      supabase
-        .from("daily_metrics")
-        .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
-        .gte("metric_date", startDate)
-        .order("metric_date"),
-      supabase
-        .from("diary_entries")
-        .select("entry_date, rpe")
-        .gte("entry_date", startDate)
-        .not("rpe", "is", null),
-    ]);
 
-  const runningActivities = (activities ?? []).filter((a) =>
-    (a.activity_type ?? "").includes("running"),
+  // Tröskelkolumnerna (P0.3b) kan saknas i databasen när migrationen ännu inte
+  // är körd. Den frågan får därför gå separat och felet sväljas: sidan ska
+  // fungera utan dem, bara med en tydligare brasklapp om zongränserna.
+  const [
+    { data: activityRows },
+    { data: dailyMetrics },
+    { data: diaryEntries },
+    profileResult,
+  ] = await Promise.all([
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", startDate)
+      .order("start_time"),
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+      .gte("metric_date", startDate)
+      .order("metric_date"),
+    supabase
+      .from("diary_entries")
+      .select("entry_date, rpe, feeling, day_type, notes")
+      .gte("entry_date", startDate)
+      .order("entry_date"),
+    supabase
+      .from("profiles")
+      .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr")
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const profileRow = profileResult.error ? null : profileResult.data;
+  const thresholdProfile: ThresholdProfile = profileRow
+    ? {
+        thresholdHrLow: profileRow.threshold_hr_low ?? null,
+        thresholdHrHigh: profileRow.threshold_hr_high ?? null,
+        maxHr: profileRow.max_hr ?? null,
+        lt1Hr: profileRow.lt1_hr ?? null,
+        lt2Hr: profileRow.lt2_hr ?? null,
+      }
+    : EMPTY_THRESHOLD_PROFILE;
+
+  // --- Pass, inte aktiviteter (P0.5/1.3) -------------------------------------
+  // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
+  // inte härleda radtypen och faller tillbaka på GenericStringError[]. Kolumn-
+  // listan och SessionActivity definieras bredvid varandra i lib/sessions.ts
+  // och hålls i synk där — därför är omvägen via unknown säker här.
+  const sessions: TrainingSession[] = groupActivitiesIntoSessions(
+    (activityRows ?? []) as unknown as SessionActivity[],
   );
 
-  // --- Veckoaggregering -----------------------------------------------------
-  const weeklyKm = new Map<string, number>();
-  for (const a of runningActivities) {
-    const wk = isoWeekStart(a.start_time.slice(0, 10));
-    weeklyKm.set(wk, (weeklyKm.get(wk) ?? 0) + (a.distance_meters ?? 0) / 1000);
+  const sessionsByWeek = new Map<string, TrainingSession[]>();
+  for (const session of sessions) {
+    const wk = isoWeekStart(session.date);
+    sessionsByWeek.set(wk, [...(sessionsByWeek.get(wk) ?? []), session]);
   }
 
-  const weeklySleepByWeek = new Map<string, number[]>();
-  const weeklyRhrByWeek = new Map<string, number[]>();
-  const weeklyHrvByWeek = new Map<string, number[]>();
-  for (const m of dailyMetrics ?? []) {
-    const wk = isoWeekStart(m.metric_date);
-    if (m.sleep_seconds != null) {
-      weeklySleepByWeek.set(wk, [...(weeklySleepByWeek.get(wk) ?? []), m.sleep_seconds / 3600]);
-    }
-    if (m.resting_hr != null) {
-      weeklyRhrByWeek.set(wk, [...(weeklyRhrByWeek.get(wk) ?? []), m.resting_hr]);
-    }
-    if (m.hrv_overnight_avg != null) {
-      weeklyHrvByWeek.set(wk, [...(weeklyHrvByWeek.get(wk) ?? []), m.hrv_overnight_avg]);
-    }
-  }
+  // --- A. Huvudgrafen: belastning vs återhämtning (P1.1) ---------------------
 
-  const weeklyRpeByWeek = new Map<string, number[]>();
-  for (const e of diaryEntries ?? []) {
-    const wk = isoWeekStart(e.entry_date);
-    weeklyRpeByWeek.set(wk, [...(weeklyRpeByWeek.get(wk) ?? []), e.rpe as number]);
-  }
-
-  const volumeData: BarDatum[] = weekSeries.map((wk) => ({
-    label: weekLabel(wk),
-    value: weeklyKm.get(wk) ?? 0,
-  }));
-  const sleepData: LineDatum[] = weekSeries.map((wk) => ({
-    label: weekLabel(wk),
-    value: avg(weeklySleepByWeek.get(wk) ?? []),
-  }));
-  const rhrData: LineDatum[] = weekSeries.map((wk) => ({
-    label: weekLabel(wk),
-    value: avg(weeklyRhrByWeek.get(wk) ?? []),
-  }));
-  const hrvData: LineDatum[] = weekSeries.map((wk) => ({
-    label: weekLabel(wk),
-    value: avg(weeklyHrvByWeek.get(wk) ?? []),
-  }));
-  const rpeData: LineDatum[] = weekSeries.map((wk) => ({
-    label: weekLabel(wk),
-    value: avg(weeklyRpeByWeek.get(wk) ?? []),
-  }));
-
-  // --- Dagsnivå för korrelationer --------------------------------------------
-  const metricsByDay = new Map<
-    string,
-    { sleepScore?: number; sleepHours?: number; restingHr?: number; hrv?: number }
-  >();
-  for (const m of dailyMetrics ?? []) {
-    metricsByDay.set(m.metric_date, {
-      sleepScore: m.sleep_score ?? undefined,
-      sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : undefined,
-      restingHr: m.resting_hr ?? undefined,
-      hrv: m.hrv_overnight_avg ?? undefined,
-    });
-  }
-
+  const notesByWeek = new Map<string, string[]>();
+  const sickDaysByWeek = new Map<string, string[]>();
+  const injuredDaysByWeek = new Map<string, string[]>();
   const rpeByDay = new Map<string, number>();
-  for (const e of diaryEntries ?? []) {
-    rpeByDay.set(e.entry_date, e.rpe as number);
+  const feelingByDay = new Map<string, number>();
+
+  for (const entry of diaryEntries ?? []) {
+    const day: string = entry.entry_date;
+    const wk = isoWeekStart(day);
+    if (entry.notes) {
+      const label = `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+      notesByWeek.set(wk, [...(notesByWeek.get(wk) ?? []), `${label}: ${entry.notes}`]);
+    }
+    if (entry.day_type === "sick") {
+      sickDaysByWeek.set(wk, [...(sickDaysByWeek.get(wk) ?? []), day]);
+    }
+    if (entry.day_type === "injured") {
+      injuredDaysByWeek.set(wk, [...(injuredDaysByWeek.get(wk) ?? []), day]);
+    }
+    if (entry.rpe != null) rpeByDay.set(day, entry.rpe);
+    if (entry.feeling != null) feelingByDay.set(day, entry.feeling);
   }
 
-  const trainingEffectByDay = new Map<string, number[]>();
-  for (const a of runningActivities) {
-    if (a.aerobic_training_effect == null) continue;
-    const day = a.start_time.slice(0, 10);
-    trainingEffectByDay.set(day, [
-      ...(trainingEffectByDay.get(day) ?? []),
-      a.aerobic_training_effect,
-    ]);
+  const periods: ComboPeriod[] = weekSeries.map((wk) => ({
+    key: wk,
+    label: weekLabel(wk),
+    fullLabel: weekRangeLabel(wk),
+    // Dagbokens egna ord för veckan. Kopplingen siffra ↔ text är hela poängen
+    // med panelen, så texten kortas inte ner — den kapas bara i antal inlägg.
+    note: (notesByWeek.get(wk) ?? []).slice(0, 4).join("\n") || null,
+  }));
+
+  const load: ComboLoadStack[] = weekSeries.map((wk) => {
+    const stack: ComboLoadStack = {};
+    for (const session of sessionsByWeek.get(wk) ?? []) {
+      if (session.trainingLoad <= 0) continue;
+      stack[session.category] = (stack[session.category] ?? 0) + session.trainingLoad;
+    }
+    return stack;
+  });
+
+  // Dagsvärden → veckovisa medelvärden för återhämtningsserierna.
+  const hrvByDay = new Map<string, number[]>();
+  const rhrByDay = new Map<string, number[]>();
+  const sleepByDay = new Map<string, number[]>();
+  const sleepScoreByDay = new Map<string, number>();
+  const sleepHoursByDay = new Map<string, number>();
+  const hrvValueByDay = new Map<string, number>();
+  const rhrValueByDay = new Map<string, number>();
+
+  for (const metric of dailyMetrics ?? []) {
+    const day: string = metric.metric_date;
+    if (metric.hrv_overnight_avg != null) {
+      hrvByDay.set(day, [metric.hrv_overnight_avg]);
+      hrvValueByDay.set(day, metric.hrv_overnight_avg);
+    }
+    if (metric.resting_hr != null) {
+      rhrByDay.set(day, [metric.resting_hr]);
+      rhrValueByDay.set(day, metric.resting_hr);
+    }
+    if (metric.sleep_seconds != null) {
+      sleepByDay.set(day, [metric.sleep_seconds / 3600]);
+      sleepHoursByDay.set(day, metric.sleep_seconds / 3600);
+    }
+    if (metric.sleep_score != null) sleepScoreByDay.set(day, metric.sleep_score);
   }
 
-  const sleepScoreVsRpe: [number, number][] = [];
-  const hrvVsRpe: [number, number][] = [];
-  const rhrVsRpe: [number, number][] = [];
-  const sleepHoursVsRpe: [number, number][] = [];
-  const sleepScoreVsEffect: [number, number][] = [];
+  const hrvWeekly = weeklyMeans(weekSeries, hrvByDay);
+  const rhrWeekly = weeklyMeans(weekSeries, rhrByDay);
+  const sleepWeekly = weeklyMeans(weekSeries, sleepByDay);
+  const rpeWeekly = weeklyMeans(
+    weekSeries,
+    new Map([...rpeByDay].map(([day, value]) => [day, [value]])),
+  );
+  const feelingWeekly = weeklyMeans(
+    weekSeries,
+    new Map([...feelingByDay].map(([day, value]) => [day, [value]])),
+  );
 
-  for (const [day, m] of metricsByDay) {
-    const rpe = rpeByDay.get(day);
-    if (rpe != null) {
-      if (m.sleepScore != null) sleepScoreVsRpe.push([m.sleepScore, rpe]);
-      if (m.hrv != null) hrvVsRpe.push([m.hrv, rpe]);
-      if (m.restingHr != null) rhrVsRpe.push([m.restingHr, rpe]);
-      if (m.sleepHours != null) sleepHoursVsRpe.push([m.sleepHours, rpe]);
+  // --- C. Formkurva (P1.4) — beräknad på passnivå, aldrig per aktivitet -----
+  const efPoints: EfficiencyPoint[] = sessions
+    .filter(
+      (s) =>
+        (EF_CATEGORIES as readonly string[]).includes(s.category) &&
+        s.durationSeconds >= EF_MIN_SECONDS &&
+        s.avgHr != null &&
+        s.avgHr > 0 &&
+        s.distanceMeters > 0,
+    )
+    .map((s) => ({
+      id: s.id,
+      date: s.date,
+      ef: s.distanceMeters / s.durationSeconds / (s.avgHr as number),
+      label: s.dominantActivity.name ?? "Pass",
+      category: s.category as EfficiencyPoint["category"],
+      durationSeconds: s.durationSeconds,
+      distanceMeters: s.distanceMeters,
+      avgHr: s.avgHr as number,
+    }));
+
+  // Veckans EF som eget lager i huvudgrafen — "fart" i Almgrens fyra axlar.
+  const efByWeek = new Map<string, number[]>();
+  for (const point of efPoints) {
+    const wk = isoWeekStart(point.date);
+    // Meter per hjärtslag, samma enhet som formkurvan visar.
+    efByWeek.set(wk, [...(efByWeek.get(wk) ?? []), point.ef * 60]);
+  }
+  const efWeekly = weekSeries.map((wk) => median(efByWeek.get(wk) ?? []));
+
+  const candidateSeries: ComboSeries[] = [
+    {
+      id: "hrv",
+      label: "HRV",
+      values: hrvWeekly,
+      formatKind: "ms",
+      higherIsBetter: true,
+      defaultVisible: true,
+    },
+    {
+      id: "rhr",
+      label: "Vilopuls",
+      values: rhrWeekly,
+      formatKind: "bpm",
+      higherIsBetter: false,
+      defaultVisible: true,
+    },
+    {
+      id: "sleep",
+      label: "Sömn",
+      values: sleepWeekly,
+      formatKind: "hours",
+      higherIsBetter: true,
+      defaultVisible: true,
+    },
+    {
+      id: "ef",
+      label: "Formkurva (m/slag)",
+      values: efWeekly,
+      formatKind: "decimal2",
+      higherIsBetter: true,
+    },
+    {
+      id: "rpe",
+      label: "RPE",
+      values: rpeWeekly,
+      formatKind: "decimal1",
+      higherIsBetter: false,
+    },
+    {
+      id: "feeling",
+      label: "Känsla",
+      values: feelingWeekly,
+      formatKind: "decimal1",
+      higherIsBetter: true,
+    },
+  ];
+
+  // Ett lager som aldrig har ett enda värde är en knapp som inte gör något.
+  // Serier utan data lyfts ur diagrammet och redovisas i täckningspanelen.
+  const series = candidateSeries.filter((s) => s.values.some((v) => v != null));
+  const missingSeries = candidateSeries.filter((s) => s.values.every((v) => v == null));
+
+  const raceSessions = sessions.filter((s) => s.category === "race");
+
+  const events: ComboEvent[] = [
+    ...[...sickDaysByWeek].map(([wk, days]) => ({
+      periodKey: wk,
+      kind: "sick" as const,
+      label: `Sjuk ${days.length} ${days.length === 1 ? "dag" : "dagar"}`,
+    })),
+    ...[...injuredDaysByWeek].map(([wk, days]) => ({
+      periodKey: wk,
+      kind: "injured" as const,
+      label: `Skadad ${days.length} ${days.length === 1 ? "dag" : "dagar"}`,
+    })),
+    ...raceSessions.map((s) => ({
+      periodKey: isoWeekStart(s.date),
+      kind: "race" as const,
+      label: s.dominantActivity.name?.trim() || "Tävling",
+    })),
+  ];
+
+  const efRaces: EfficiencyRace[] = raceSessions.map((s) => ({
+    date: s.date,
+    label: s.dominantActivity.name?.trim() || "Tävling",
+  }));
+
+  // --- B. Intensitetsfördelning (P1.3) --------------------------------------
+  const intensityWeeks: IntensityWeek[] = weekSeries.map((wk) => {
+    const zoneSeconds: ZoneSeconds = emptyZoneSeconds();
+    for (const session of sessionsByWeek.get(wk) ?? []) {
+      zoneSeconds[0] += session.hrZone1Seconds;
+      zoneSeconds[1] += session.hrZone2Seconds;
+      zoneSeconds[2] += session.hrZone3Seconds;
+      zoneSeconds[3] += session.hrZone4Seconds;
+      zoneSeconds[4] += session.hrZone5Seconds;
     }
-    const effect = avg(trainingEffectByDay.get(day) ?? []);
-    if (m.sleepScore != null && effect != null) {
-      sleepScoreVsEffect.push([m.sleepScore, effect]);
+    return { key: wk, label: weekLabel(wk), fullLabel: weekRangeLabel(wk), zoneSeconds };
+  });
+
+  const sessionsWithZoneData = sessions.filter((s) => s.hrZoneTotalSeconds > 0).length;
+
+  // --- Sammanfattande siffror för perioden ----------------------------------
+  const totalDistanceKm = sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
+  const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
+  const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
+
+  // --- D. Korrelationer, på pass i stället för aktiviteter -------------------
+  const loadByDay = new Map<string, number>();
+  for (const session of sessions) {
+    loadByDay.set(session.date, (loadByDay.get(session.date) ?? 0) + session.trainingLoad);
+  }
+
+  const metricDays = new Set([
+    ...hrvValueByDay.keys(),
+    ...rhrValueByDay.keys(),
+    ...sleepHoursByDay.keys(),
+    ...sleepScoreByDay.keys(),
+  ]);
+  const rpeDays = new Set(rpeByDay.keys());
+  const metricRange = dateRange(metricDays);
+  const rpeRange = dateRange(rpeDays);
+  const overlapDays = [...metricDays].filter((day) => rpeDays.has(day)).length;
+
+  function pairsFrom(
+    x: Map<string, number>,
+    y: Map<string, number>,
+  ): [number, number][] {
+    const out: [number, number][] = [];
+    for (const [day, xv] of x) {
+      const yv = y.get(day);
+      if (yv != null) out.push([xv, yv]);
     }
+    return out;
   }
 
   const correlations = [
     {
       title: "Sömnpoäng ↔ RPE",
       description: "Hur väl sov du natten innan, jämfört med hur ansträngande passet kändes.",
-      pairs: sleepScoreVsRpe,
+      pairs: pairsFrom(sleepScoreByDay, rpeByDay),
+      needsRpe: true,
     },
     {
       title: "HRV ↔ RPE",
       description: "Din morgon-HRV jämfört med upplevd ansträngning samma dag.",
-      pairs: hrvVsRpe,
+      pairs: pairsFrom(hrvValueByDay, rpeByDay),
+      needsRpe: true,
     },
     {
       title: "Vilopuls ↔ RPE",
       description: "Förhöjd vilopuls (ofta tecken på otillräcklig återhämtning) mot RPE.",
-      pairs: rhrVsRpe,
+      pairs: pairsFrom(rhrValueByDay, rpeByDay),
+      needsRpe: true,
     },
     {
       title: "Sömntid ↔ RPE",
       description: "Antal timmars sömn mot upplevd ansträngning.",
-      pairs: sleepHoursVsRpe,
+      pairs: pairsFrom(sleepHoursByDay, rpeByDay),
+      needsRpe: true,
     },
     {
-      title: "Sömnpoäng ↔ Träningseffekt",
-      description: "Garmins egen träningseffekt-siffra mot sömnkvalitet.",
-      pairs: sleepScoreVsEffect,
+      title: "Sömnpoäng ↔ dagens belastning",
+      description: "Sömnkvalitet mot summerad träningsbelastning för dagens pass.",
+      pairs: pairsFrom(sleepScoreByDay, loadByDay),
+      needsRpe: false,
     },
-  ].map((c) => ({ ...c, r: pearsonCorrelation(c.pairs) }));
+    {
+      title: "HRV ↔ dagens belastning",
+      description: "Morgon-HRV mot hur tung träningen samma dag blev.",
+      pairs: pairsFrom(hrvValueByDay, loadByDay),
+      needsRpe: false,
+    },
+  ].map((c) => {
+    const r = pearsonCorrelation(c.pairs);
+    let reason: string | null = null;
+    if (r == null) {
+      if (metricDays.size === 0) {
+        reason =
+          "Ingen sömn-, HRV- eller vilopulsdata i perioden. Synka Garmin på /settings.";
+      } else if (c.needsRpe && rpeDays.size === 0) {
+        reason =
+          "Ingen RPE är ifylld i perioden. RPE fylls i på kalendersidan — utan den finns inget att korrelera mot.";
+      } else if (c.needsRpe && overlapDays === 0) {
+        reason =
+          `Måtten täcker olika perioder: återhämtningsdata finns ${formatDateRange(metricRange.from, metricRange.to)}, ` +
+          `RPE finns ${formatDateRange(rpeRange.from, rpeRange.to)}. Det finns alltså ingen dag där båda är mätta.`;
+      } else {
+        reason = `Bara ${c.pairs.length} ${c.pairs.length === 1 ? "dag" : "dagar"} med båda måtten (minst 5 krävs).`;
+      }
+    }
+    return { ...c, r, reason };
+  });
+
+  const sleepScoreVsRpe = correlations[0].pairs;
+
+  const coverage = [
+    {
+      label: "HRV",
+      weeksWithData: countWeeksWithData(hrvWeekly),
+      range: dateRange(hrvValueByDay.keys()),
+    },
+    {
+      label: "Vilopuls",
+      weeksWithData: countWeeksWithData(rhrWeekly),
+      range: dateRange(rhrValueByDay.keys()),
+    },
+    {
+      label: "Sömn",
+      weeksWithData: countWeeksWithData(sleepWeekly),
+      range: dateRange(sleepHoursByDay.keys()),
+    },
+    {
+      label: "Formkurva",
+      weeksWithData: countWeeksWithData(efWeekly),
+      range: dateRange(efPoints.map((p) => p.date)),
+    },
+    {
+      label: "RPE",
+      weeksWithData: countWeeksWithData(rpeWeekly),
+      range: dateRange(rpeDays),
+    },
+    {
+      label: "Känsla",
+      weeksWithData: countWeeksWithData(feelingWeekly),
+      range: dateRange(feelingByDay.keys()),
+    },
+  ];
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
-          Trender
-        </h1>
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Trender</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Allt på den här sidan räknas per <strong className="font-medium">pass</strong>, inte
+            per Garmin-aktivitet: uppvärmning, huvudpass och nerjogg slås ihop till ett pass
+            innan något summeras.
+          </p>
+        </div>
         <div className="flex gap-2 text-sm">
           {WEEK_OPTIONS.map((w) => (
             <Link
@@ -231,63 +554,167 @@ export default async function TrendsPage({
         </div>
       </div>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          Veckovolym (löpning)
-        </h2>
-        <BarChart data={volumeData} formatKind="km" />
-      </section>
+      {/* --- Periodens siffror i klartext, innan något diagram -------------- */}
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "Pass", value: String(sessions.length) },
+          { label: "Distans", value: `${totalDistanceKm.toFixed(0)} km` },
+          { label: "Träningstid", value: formatHoursMinutes(totalSeconds) },
+          { label: "Träningsbelastning", value: totalLoad.toFixed(0) },
+        ].map((tile) => (
+          <div
+            key={tile.label}
+            className="flex flex-col gap-1 rounded border border-zinc-200 p-4 dark:border-zinc-800"
+          >
+            <dt className="text-sm text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
+            <dd className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+              {tile.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Sömn (snitt/vecka)
-          </h2>
-          <LineChart
-            data={sleepData}
-            formatKind="hours"
-            emptyLabel="Ingen sömndata ännu — anslut Garmin på /settings."
-          />
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            RPE (snitt/vecka)
-          </h2>
-          <LineChart
-            data={rpeData}
-            formatKind="decimal1"
-            emptyLabel="Ingen RPE loggad ännu — fylls i på dagvyn."
-          />
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Vilopuls (snitt/vecka)
-          </h2>
-          <LineChart
-            data={rhrData}
-            formatKind="bpm"
-            emptyLabel="Ingen vilopulsdata ännu."
-          />
-        </section>
-
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            HRV (snitt/vecka)
-          </h2>
-          <LineChart data={hrvData} formatKind="ms" emptyLabel="Ingen HRV-data ännu." />
-        </section>
-      </div>
-
+      {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
       <section className="flex flex-col gap-4">
         <div>
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Korrelationer
+            Belastning och återhämtning
           </h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Pearson-korrelation mellan -1 och 1. Kräver minst 5 dagar med båda
-            måtten för att räknas ut. Ett samband är inte samma sak som orsak.
+            Staplarna är veckans summerade träningsbelastning, stackad på passkategori.
+            Linjerna nedanför visar avvikelse mot din egen baslinje i SD-enheter — 0 är ditt
+            normala, ±1 kanten på ditt normalintervall. Håll pekaren över en vecka för
+            siffrorna och dina egna dagboksord.
+          </p>
+        </div>
+
+        <ComboChart
+          periods={periods}
+          load={load}
+          series={series}
+          events={events}
+          loadLabel="Träningsbelastning"
+          height={380}
+          emptyLabel="Inga pass i perioden."
+          ariaLabel="Veckans träningsbelastning per passkategori, med återhämtningsmarkörer"
+        />
+
+        {/* Datatäckning: en serie som saknas ska förklaras, inte tigas ihjäl. */}
+        <details className="rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+          <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400">
+            Datatäckning för lagren ({series.length} av {candidateSeries.length} har data i
+            perioden)
+          </summary>
+          <div className="mt-3 w-full max-w-full overflow-x-auto">
+            <table className="w-full min-w-max text-left text-sm">
+              <thead>
+                <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Lager
+                  </th>
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Veckor med data
+                  </th>
+                  <th scope="col" className="py-1 font-normal">
+                    Period med mätvärden
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {coverage.map((row) => (
+                  <tr key={row.label} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <th scope="row" className="py-1 pr-4 font-normal">
+                      {row.label}
+                    </th>
+                    <td className="py-1 pr-4 tabular-nums">
+                      {row.weeksWithData} av {weeks}
+                    </td>
+                    <td className="py-1 tabular-nums">
+                      {formatDateRange(row.range.from, row.range.to)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-3 text-zinc-600 dark:text-zinc-400">
+            Sömn-, HRV- och vilopulsserierna börjar den dag Garmin-synken började hämta
+            dagsdata — allt före det är tomt, inte noll. Luckor ritas som brutna linjer och
+            fylls aldrig i genom interpolation. Baslinjen kräver dessutom minst fyra
+            mätvärden i ett åtta veckor långt fönster, så de första veckorna med data får
+            ingen punkt alls: en baslinje byggd på ett par mätningar är brus.
+            {missingSeries.length > 0 && (
+              <>
+                {" "}
+                Lager utan ett enda värde i perioden är helt bortlyfta ur diagrammet:{" "}
+                {missingSeries.map((s) => s.label).join(", ")}.
+              </>
+            )}
+          </p>
+        </details>
+      </section>
+
+      {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Intensitetsfördelning
+          </h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
+            {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
+            Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
+          </p>
+        </div>
+
+        <IntensityChart
+          weeks={intensityWeeks}
+          profile={thresholdProfile}
+          emptyLabel="Ingen pulszondata i perioden."
+        />
+      </section>
+
+      {/* ================= C. Formkurva (P1.4) ============================= */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Formkurva (Efficiency Factor)
+          </h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt
+            rätt håll. Bara lugna pass och långpass på minst 20 minuter med registrerad
+            snittpuls räknas — intervaller går inte att jämföra med distanslöpning.{" "}
+            {efPoints.length} pass i perioden klarar filtret.
+          </p>
+        </div>
+
+        <EfficiencyChart
+          points={efPoints}
+          races={efRaces}
+          fromDate={startDate}
+          toDate={todayKey}
+          emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
+        />
+
+        <p className="rounded border border-zinc-200 p-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+          <strong className="font-medium text-zinc-900 dark:text-zinc-100">
+            Läs kurvan försiktigt.
+          </strong>{" "}
+          Efficiency Factor påverkas kraftigt av värme, uttorkning, stress, höjd och
+          underlag. En dipp i juli är sannolikt vädret, inte formen. Kurvan är dessutom
+          räknad på rå fart — ett kuperat pass ser sämre ut än ett platt även när
+          ansträngningen är densamma. Använd den för att se riktningen över månader, aldrig
+          för att bedöma ett enskilt pass.
+        </p>
+      </section>
+
+      {/* ================= D. Korrelationer ================================ */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Korrelationer</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Pearson-korrelation mellan -1 och 1, räknad på dagar där båda måtten finns. Kräver
+            minst 5 sådana dagar. Ett samband är inte samma sak som orsak.
           </p>
         </div>
 
@@ -311,9 +738,7 @@ export default async function TrendsPage({
                   </div>
                 </>
               ) : (
-                <div className="text-xs text-zinc-400">
-                  För lite data ännu ({c.pairs.length} dagar, minst 5 krävs)
-                </div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">{c.reason}</div>
               )}
             </div>
           ))}
