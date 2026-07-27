@@ -39,6 +39,8 @@ import {
 } from "@/lib/stats-utils";
 import { formatHoursMinutes } from "@/lib/format";
 import { analyzeDiaryNote } from "@/lib/diary-text";
+import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
+import { DailyStatus } from "@/components/DailyStatus";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
@@ -272,6 +274,47 @@ export default async function TrendsPage({
     }
     if (metric.sleep_score != null) sleepScoreByDay.set(day, metric.sleep_score);
   }
+
+  // --- P1.2: dagsstatus mot personlig baslinje -------------------------------
+  // Baslinjen behöver 60 dagar bakåt, alltså längre historik än det valda
+  // diagramfönstret. Egen fråga hellre än att låta veckoväljaren styra hur
+  // baslinjen ser ut — den ska vara densamma oavsett vad man tittar på.
+  const statusFrom = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - (BASELINE_WINDOW_DAYS + 5));
+    return d.toISOString().slice(0, 10);
+  })();
+
+  const [{ data: statusMetrics }, { data: statusDiary }] = await Promise.all([
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+      .gte("metric_date", statusFrom),
+    supabase
+      .from("diary_entries")
+      .select("entry_date, notes")
+      .gte("entry_date", statusFrom),
+  ]);
+
+  const derivedByDayForStatus = new Map<string, number>();
+  for (const e of statusDiary ?? []) {
+    if (!e.notes) continue;
+    const a = analyzeDiaryNote(e.notes);
+    // Skalas till 1–5 så markören blir läsbar bredvid de andra.
+    if (a.feeling != null) derivedByDayForStatus.set(e.entry_date, a.feeling);
+  }
+
+  const dailyStatus = computeDailyStatus(
+    (statusMetrics ?? []).map((m) => ({
+      date: m.metric_date as string,
+      hrv: m.hrv_overnight_avg,
+      restingHr: m.resting_hr,
+      sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
+      sleepScore: m.sleep_score,
+      feeling: derivedByDayForStatus.get(m.metric_date as string) ?? null,
+    })),
+    todayKey,
+  );
 
   const hrvWeekly = weeklyMeans(weekSeries, hrvByDay);
   const rhrWeekly = weeklyMeans(weekSeries, rhrByDay);
@@ -603,6 +646,9 @@ export default async function TrendsPage({
           </div>
         ))}
       </dl>
+
+      {/* ================= P1.2: dagsstatus mot baslinje ================== */}
+      <DailyStatus status={dailyStatus} />
 
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
       <section className="flex flex-col gap-4">
