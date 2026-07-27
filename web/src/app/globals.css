@@ -14,6 +14,18 @@
   --cat-race: #008300;
   --cat-strength: #4a3aa7;
   --cat-cross_training: #e34948;
+
+  /* Ordinal blå ramp för pulszon 1–5 (P1.3). Zonerna är *ordnade* efter
+     intensitet, inte fristående kategorier, så de ska ha en enhue-ramp och
+     inte den kategoriska paletten — annars dubbelkodas ordning som identitet.
+     Stegen är hämtade ur samma blå sekventiella ramp som paletten definierar
+     och validerade som ordinal ramp (monoton ljushet, ΔL ≥ 0,06 mellan steg,
+     ljusaste steget ≥ 2:1 mot ytan) i både ljust och mörkt läge. */
+  --zone-1: #86b6ef;
+  --zone-2: #5598e7;
+  --zone-3: #2a78d6;
+  --zone-4: #1c5cab;
+  --zone-5: #104281;
 }
 
 @theme inline {
@@ -36,6 +48,15 @@
     --cat-race: #008300;
     --cat-strength: #9085e9;
     --cat-cross_training: #e66767;
+
+    /* Rampen vänds i mörkt läge: det lägsta steget ska ligga närmast ytan,
+       vilket på svart botten betyder mörkast — inte ljusast. Samma hue, samma
+       antal steg, egen validering mot den mörka ytan. */
+    --zone-1: #184f95;
+    --zone-2: #256abf;
+    --zone-3: #3987e5;
+    --zone-4: #6da7ec;
+    --zone-5: #9ec5f4;
   }
 }
 

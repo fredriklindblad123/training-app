@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { connectGarmin, syncGarminNow } from "./actions";
+import { connectGarmin, syncGarminNow, saveThresholds } from "./actions";
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Ansluten",
@@ -17,6 +17,10 @@ export default async function SettingsPage({
   const { data: connection } = await supabase
     .from("garmin_connections")
     .select("status, last_synced_at, last_error")
+    .maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr")
     .maybeSingle();
 
   return (
@@ -107,6 +111,82 @@ export default async function SettingsPage({
           >
             {connection ? "Anslut på nytt" : "Anslut Garmin"}
           </button>
+        </form>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          Personligt tröskelband
+        </h2>
+        <p className="max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+          Garmins autozoner är en gissning baserad på ålder och maxpuls —
+          Andreas Almgren styr istället tröskelträning mot ett eget kalibrerat
+          pulsband (för honom 167–178 slag/min), satt utifrån vad ett
+          laktattest faktiskt visar. Fyll i vad du vet; resten kan lämnas tomt
+          tills ett test finns.
+        </p>
+        <form
+          action={saveThresholds}
+          className="grid grid-cols-2 gap-3 rounded border border-zinc-200 p-4 sm:max-w-lg sm:grid-cols-3 dark:border-zinc-800"
+        >
+          <label className="flex flex-col gap-1 text-sm">
+            Tröskelband låg
+            <input
+              type="number"
+              min="0"
+              name="threshold_hr_low"
+              defaultValue={profile?.threshold_hr_low ?? ""}
+              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Tröskelband hög
+            <input
+              type="number"
+              min="0"
+              name="threshold_hr_high"
+              defaultValue={profile?.threshold_hr_high ?? ""}
+              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Maxpuls
+            <input
+              type="number"
+              min="0"
+              name="max_hr"
+              defaultValue={profile?.max_hr ?? ""}
+              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            LT1 (aerob tröskel)
+            <input
+              type="number"
+              min="0"
+              name="lt1_hr"
+              defaultValue={profile?.lt1_hr ?? ""}
+              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            LT2 (anaerob tröskel)
+            <input
+              type="number"
+              min="0"
+              name="lt2_hr"
+              defaultValue={profile?.lt2_hr ?? ""}
+              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <div className="col-span-2 sm:col-span-3">
+            <button
+              type="submit"
+              className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+            >
+              Spara tröskelband
+            </button>
+          </div>
         </form>
       </section>
     </div>

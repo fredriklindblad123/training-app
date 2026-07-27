@@ -50,6 +50,63 @@ Oanvända endpoints i `garminconnect`-klienten: `get_activity_splits()`,
 `get_hrv_data()`, `get_training_readiness()`, `get_training_status()`,
 `get_race_predictions()`.
 
+### 1.3 Aktivitet ≠ pass (upptäckt under implementationen 2026-07-26)
+
+Alice loggar **uppvärmning, huvudpass och nerjogg som tre separata
+Garmin-aktiviteter**. Av 277 träningsdagar har 97 exakt tre aktiviteter och
+bara 159 har en. De vanligaste "passnamnen" är `Uppvärmning` (105 st),
+`Nerjogg` (101 st) och `Distans` (97 st).
+
+Ett typiskt pass ser alltså ut så här i databasen:
+
+```
+2025-07-31  'Uppvärmning'                easy        3.00 km  15.0 min  hr=166
+2025-07-31  '5x2min + 5x1min 90sek vila' threshold   4.94 km  29.1 min  hr=172
+2025-07-31  'Nerjogg'                    threshold   2.01 km  10.2 min  hr=176
+```
+
+**Tre konsekvenser, alla allvarliga:**
+
+1. **Autokategoriseringen är systematiskt fel.** **268 av 502 aktiviteter
+   (53 %) är märkta `threshold`**, och `long_run` har **noll** aktiviteter.
+   Ingen medeldistanslöpare tränar 53 % tröskel.
+
+   Orsaken är **två oberoende fel**, inte ett (verifierat mot databasen
+   2026-07-26 — den första hypotesen, att allt berodde på ärvd puls, var
+   bara halva sanningen):
+
+   | Namn på de 268 tröskelmärkta | Antal | Vad som är fel |
+   |---|---|---|
+   | `Distans` | 89 | **Inte ett fragment.** Vanliga distanspass, median 40 min, som `categorize_activity()` märker som tröskel via sin fallback på Garmins `training_effect_label` — 77 st `TEMPO`, 17 st `LACTATE_THRESHOLD`. |
+   | `Uppvärmning` | 58 | Fragment som ärver pulsen från passet det leder in i |
+   | `Nerjogg` | 44 | Fragment som ärver pulsen från passet det följer på |
+
+   Fragmenteringen förklarar alltså ungefär 38 % av felet och
+   `training_effect_label`-fallbacken ungefär 33 %. **Båda måste hanteras** —
+   att bara slå ihop fragment räcker inte, vilket bekräftades i
+   implementationen: den ursprungligen föreslagna regeln gav *sämre* utfall
+   (59 % tröskel) innan kravet på belägg för kvalitetskategori lades till.
+
+   **Sidoinsikt värd att följa upp:** att Garmin etiketterar hennes vanliga
+   40-minuterspass som `TEMPO`/`LACTATE_THRESHOLD` kan vara mer än en
+   dataartefakt. Det är precis det mönster P1.3 finns för att upptäcka — att
+   lugna pass smyger upp i mittenzonen. Slutsatsen kräver dock att
+   pulszonerna är rätt kalibrerade (P0.3b), annars mäter man klockans
+   gissning.
+
+2. **Per-aktivitet-analys är strukturellt fel.** En 15-minuters uppvärmning
+   vid puls 166 är inte ett "lugnt distanspass". Efficiency Factor (P1.4) per
+   aktivitet mäter fragment, inte träning — filtret `easy/long_run + ≥20 min`
+   ger bara 21 träffar på ett helt år, och de flesta av dem är fel sorts pass.
+
+3. **Rätt analysenhet är dagen/passet, inte aktiviteten.** Summering av
+   zontider över dagens fragment är däremot korrekt — därför är P1.3
+   (intensitetsfördelning i tid) opåverkad, medan allt som grupperar *per
+   kategori* eller *per aktivitet* är det inte.
+
+Detta ger ett nytt fundamentförslag, **P0.5**, som bör byggas före P1.1 och
+P1.4.
+
 ---
 
 ## 2. Vad eliten och forskningen faktiskt följer
@@ -235,6 +292,7 @@ P0  Fundament — utan detta kan inga insikter beräknas
     P0.3  Mappa fält som redan finns i raw_data   ← billigast, gör först
     P0.3b Laktat + personligt tröskelband (manuell inmatning)
     P0.4  Daglig subjektiv check-in
+    P0.5  Pass som analysenhet, inte aktivitet  ← blockerar P1.1, P1.4, P2.1
 
 P1  Kombinerade grafer — det som efterfrågats
     P1.1  Belastning vs återhämtning (huvudgrafen)
@@ -464,6 +522,93 @@ Retroaktiv historik löses i stället av P2.2 (textparsning).
 
 ---
 
+## P0.5 — Pass som analysenhet, inte aktivitet
+
+**Förutsättning för P1.1, P1.4 och P2.1.** Se 1.3 för bakgrunden.
+
+**Problem.** Uppvärmning, huvudpass och nerjogg ligger som separata rader i
+`activities`. Kategorin sätts per fragment, med puls som ärvts från det
+föregående fragmentet. Det gör att 53 % av allt är märkt `threshold` och att
+`long_run` aldrig förekommer.
+
+**Lösning i två steg.**
+
+### Steg 1 — gruppera fragment till pass
+
+En vy eller materialiserad tabell `training_sessions` som slår ihop
+aktiviteter som hör till samma pass. Gruppera på `user_id` + datum, och dela
+upp i flera pass samma dag om det är mer än ~2,5 timmar mellan slutet på en
+aktivitet och starten på nästa (Almgrens dubbeltröskel innebär två *riktiga*
+pass per dag — de får inte slås ihop till ett).
+
+Per pass: summerad tid, summerad distans, summerad `training_load`, summerade
+zontider, viktad snittpuls, max av maxpuls, samt en passkategori.
+
+### Steg 2 — kategorisera på passnivå
+
+Passets kategori ska bestämmas av **passets hårdaste meningsfulla del**, inte
+av fragmenten var för sig. Praktisk regel:
+
+- Fragment vars namn matchar `uppvärmning|nerjogg|jogg|warm|cool` **exkluderas
+  från kategoribeslutet** men räknas med i passets volym och zontid.
+
+  ⚠️ **Fallgrop som redan bitit:** den regexen matchar också `joggvila` inuti
+  riktiga huvudpassnamn — `"8x2min 60sek joggvila + 6x30sek backe"` blir
+  exkluderat, uppvärmningen tar över, och årets hårdaste pass klassas som
+  lugna. Ett fragment får räknas som uppvärmning/nerjogg endast om namnet
+  matchar warmup-mönstret **och inte** kvalitetsmönstret. (Implementerat så i
+  `web/src/lib/sessions.ts`.)
+- Passets kategori = kategorin för det kvarvarande fragment som har högst
+  `training_load`.
+- Saknas kvarvarande fragment (t.ex. en dag med bara "Distans") används det
+  längsta fragmentet.
+- `long_run` sätts på passnivå utifrån **passets totala** tid/distans — det är
+  därför den kategorin aldrig fått träffar i dag.
+
+**Fallgrop — den dyra.** `activities` har en `BEFORE INSERT OR UPDATE`-trigger
+(`activities_set_category` → `set_activity_category()`) som räknar om
+`category` vid varje UPDATE när `category_source = 'auto'`. En vanlig
+`UPDATE ... SET category = ...` blir därför **tyst verkningslös** — Postgres
+rapporterar "Success" utan att något ändrats. Ordningen måste vara:
+uppdatera funktionen först, därefter tvinga omräkning, och verifiera med
+`SELECT category, count(*) GROUP BY category` före och efter. Lita aldrig på
+utfallet utan att räkna om.
+
+**Rekommendation:** rör hellre inte `activities.category` alls. Lägg
+passkategorin på den nya passnivån och låt aktivitetskategorin vara — då
+undviks triggern helt, och fragmentkategorin behåller sitt värde i dagvyn.
+
+**Två regler till som visade sig nödvändiga vid implementationen:**
+
+1. **Kvalitetskategori kräver belägg.** Är dominantfragmentets kategori
+   `threshold`/`interval`/`repetition` utan belägg → sätt `easy`. Belägg =
+   namnet beskriver kvalitetsarbete, eller passet är strukturerat (≥3 fragment,
+   eller ≥2 varav ett är uppvärmning/nerjogg — atleten delar bara upp
+   kvalitetsdagar). Utan denna regel överlever de 89 `Distans`-passen ovan.
+2. **Omvänd promotion.** Korta ryckpass (`6x150m`, `Backe 5x30sek + 10x15sek`)
+   får `BASE`-etikett av Garmin och skulle bli `easy` trots att namnet säger
+   vad de var → namnet vinner över etiketten.
+
+**Utfall (verifierat på 502 aktiviteter):** 283 pass. Tröskel **53,4 % →
+18,7 %**, `long_run` **0 → 23**. `long_run`-tröskeln sattes till ≥ 55 min
+**eller** ≥ 11 km — den befintliga SQL-funktionens 15 km / 75 min är ett
+maratonmått och orsaken till noll träffar. Gränsen ligger i ett tomt band i
+fördelningen (normaldistans 35–45 min, långpass 60–64 min), så en planerad
+timme som klockas 59:40 inte hamnar fel.
+
+**Kvarstående svagheter, medvetet accepterade:** 13 pass går inte att klassa
+säkert (oftast dagar där bara uppvärmning + nerjogg loggats och huvudpasset
+saknas i Garmin) och blir `easy`. `repetition` landar på 20,8 %, vilket är
+högt relativt tröskel — namnfallbacken mappar allt `NxM` som inte säger
+"tröskel"/"intervall" dit. Att skilja på repslängd kräver lap-data (P0.2).
+Fördelningen i *zontid* (P1.3) är opåverkad av detta.
+
+**Klart när:** `/stats` och `/trends` räknar på pass, och kategorifördelningen
+ser rimlig ut för en medeldistanslöpare (tröskel bör hamna långt under 53 %,
+och `long_run` ska få träffar).
+
+---
+
 ## P1.1 — "Belastning vs återhämtning": huvudgrafen
 
 Det här är den kombinerade grafen som efterfrågats. En vy, fyra datakällor,
@@ -489,6 +634,8 @@ tänkt att vara appens startsida på sikt.
 - **Staplar (vänster y-axel):** summa `training_load` per vecka, stackad per
   `category` med befintliga färger från `web/src/lib/categories.ts`. Använd
   `training_load`, inte km — km jämför inte intervaller med långpass rättvist.
+  **Stacka på passkategori (P0.5), inte aktivitetskategori** — annars visar
+  grafen att 53 % av träningen är tröskel, vilket är en artefakt (1.3).
 - **Linje 1 (höger y-axel):** HRV, 7-dagars rullande snitt. Rita **baslinjeband**
   (±1 SD över 60 dagar) som svagt fält bakom linjen — det är avvikelsen som
   betyder något, inte nivån.
@@ -616,6 +763,12 @@ Filtrera hårt — annars blir kurvan brus:
 - Minst 20 minuter
 - `avg_hr` måste finnas
 - Använd **GAP** i stället för rå fart när P0.3 är på plats (kuperat vs platt)
+
+**Kritiskt: kör detta på passnivå (P0.5), inte per aktivitet.** Mätt per
+aktivitet ger filtret ovan bara **21 träffar på ett helt år**, och de flesta
+är uppvärmningsfragment snarare än distanspass — se 1.3. På passnivå blir
+underlaget både större och rätt sorts pass. Bygg alltså inte P1.4 förrän P0.5
+är på plats; gör man det ändå blir formkurvan självsäkert fel.
 
 **UI:** scatter med en punkt per pass + rullande trendlinje (t.ex. 4-veckors
 median). Tävlingsresultat som markörer på samma tidsaxel — då syns det direkt

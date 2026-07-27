@@ -14,6 +14,8 @@ import {
   isValidMonth,
 } from "@/lib/calendar-utils";
 import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
+import { computeCheckInStats } from "@/lib/checkin";
+import { DailyCheckIn } from "@/components/DailyCheckIn";
 
 type DayInfo = {
   status?: DayStatus;
@@ -45,8 +47,19 @@ export default async function MonthPage({
 
   const supabase = await createClient();
 
-  const [{ data: activities }, { data: diaryEntries }, { data: plannedWorkouts }] =
-    await Promise.all([
+  const now = new Date();
+  const todayStr = dateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  // Dagens incheckning (P0.4) hör hemma på landningssidan (/calendar redirect-
+  // ar hit till innevarande månad) — inte på en godtycklig månad man bläddrat
+  // till, då skulle "dagens check-in" sakna sammanhang.
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+
+  const [
+    { data: activities },
+    { data: diaryEntries },
+    { data: plannedWorkouts },
+    userResult,
+  ] = await Promise.all([
       supabase
         .from("activities")
         .select("id, start_time, name, distance_meters")
@@ -64,7 +77,42 @@ export default async function MonthPage({
         .select("scheduled_date, workout_type")
         .gte("scheduled_date", monthStart)
         .lt("scheduled_date", monthEndExclusive),
+      isCurrentMonth ? supabase.auth.getUser() : Promise.resolve(null),
     ]);
+
+  let checkIn: {
+    initialDone: boolean;
+    initialScores: {
+      feeling: number | null;
+      effort: number | null;
+      soreness: number | null;
+      motivation: number | null;
+    };
+    initialStats: { streakDays: number; weeklyAvgFeeling: number | null };
+  } | null = null;
+
+  const user = userResult?.data.user ?? null;
+  if (isCurrentMonth && user) {
+    const { data: todayEntry } = await supabase
+      .from("diary_entries")
+      .select("feeling, motivation, soreness_level, rpe")
+      .eq("user_id", user.id)
+      .eq("entry_date", todayStr)
+      .maybeSingle();
+
+    const initialStats = await computeCheckInStats(supabase, user.id, todayStr);
+
+    checkIn = {
+      initialDone: todayEntry?.feeling != null,
+      initialScores: {
+        feeling: todayEntry?.feeling ?? null,
+        effort: todayEntry?.rpe != null ? Math.round(todayEntry.rpe / 2) : null,
+        soreness: todayEntry?.soreness_level ?? null,
+        motivation: todayEntry?.motivation ?? null,
+      },
+      initialStats,
+    };
+  }
 
   const days = new Map<string, DayInfo>();
   for (const entry of diaryEntries ?? []) {
@@ -103,6 +151,15 @@ export default async function MonthPage({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+      {checkIn && (
+        <DailyCheckIn
+          entryDate={todayStr}
+          initialDone={checkIn.initialDone}
+          initialScores={checkIn.initialScores}
+          initialStats={checkIn.initialStats}
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link

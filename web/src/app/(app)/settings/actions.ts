@@ -67,3 +67,32 @@ export async function syncGarminNow() {
   revalidatePath("/calendar", "layout");
   revalidatePath("/stats", "layout");
 }
+
+// P0.3b: personligt kalibrerat tröskelband (Almgren: 167–178 slag/min för
+// tröskelarbete) istället för klockans gissade autozoner. Fälten är
+// nullable — de flesta har inget laktattest att kalibrera mot ännu.
+function parseIntOrNull(raw: FormDataEntryValue | null): number | null {
+  const value = raw as string;
+  return value ? Math.round(Number(value)) : null;
+}
+
+export async function saveThresholds(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase
+    .from("profiles")
+    .update({
+      lt1_hr: parseIntOrNull(formData.get("lt1_hr")),
+      lt2_hr: parseIntOrNull(formData.get("lt2_hr")),
+      threshold_hr_low: parseIntOrNull(formData.get("threshold_hr_low")),
+      threshold_hr_high: parseIntOrNull(formData.get("threshold_hr_high")),
+      max_hr: parseIntOrNull(formData.get("max_hr")),
+    })
+    .eq("id", user.id);
+
+  revalidatePath("/settings");
+}

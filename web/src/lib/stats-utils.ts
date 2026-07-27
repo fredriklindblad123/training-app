@@ -44,6 +44,88 @@ export function isoWeekStart(dateStr: string): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Aritmetiskt medelvärde. null för tom lista (hellre än NaN som smittar vidare). */
+export function mean(values: number[]): number | null {
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+/** Median. Robust mot enstaka utstickare, vilket är poängen när baslinjen ska
+ * beskriva "det normala" och inte påverkas av en enskild sjukvecka. */
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/** Stickprovsstandardavvikelse (n−1). Kräver minst 2 värden. */
+export function standardDeviation(values: number[]): number | null {
+  if (values.length < 2) return null;
+  const m = values.reduce((a, b) => a + b, 0) / values.length;
+  const sumSq = values.reduce((acc, v) => acc + (v - m) * (v - m), 0);
+  return Math.sqrt(sumSq / (values.length - 1));
+}
+
+/** Personlig baslinje för en markör: centrum + spridning över ett fönster.
+ * `n` = antal faktiska mätvärden bakom siffrorna, så anropande kod kan visa
+ * "bygger baslinje — n av N" istället för att låtsas att den är färdig. */
+export type Baseline = { center: number; sd: number; n: number };
+
+/** Rullande baslinje per position, enligt 2.4/P1.2 i insikter-roadmap.md:
+ * centrum = median över fönstret (robust), spridning = SD (n−1).
+ *
+ * Fönstret är *bakåtblickande och inklusive punkten själv*. Att ta med
+ * punkten dämpar signalen med ca 1/window, men alternativet (exkludera den)
+ * blir instabilt när det bara finns en handfull mätningar — och glest data är
+ * normalfallet här. Positioner med färre än `minPoints` mätvärden får `null`:
+ * en baslinje byggd på fem dagar är brus, och då ska ingenting ritas alls
+ * hellre än något som ser ut som en bedömning.
+ *
+ * `null` i indata är en lucka (ingen mätning) och hoppas över — den räknas
+ * varken som noll eller interpoleras. */
+export function rollingBaseline(
+  values: (number | null)[],
+  options: { window?: number; minPoints?: number } = {},
+): (Baseline | null)[] {
+  const window = options.window ?? 8;
+  const minPoints = options.minPoints ?? 4;
+
+  return values.map((_, i) => {
+    const from = Math.max(0, i - window + 1);
+    const sample = values.slice(from, i + 1).filter((v): v is number => v != null);
+    if (sample.length < minPoints) return null;
+    const center = median(sample);
+    const sd = standardDeviation(sample);
+    if (center == null || sd == null || sd <= 0) return null;
+    return { center, sd, n: sample.length };
+  });
+}
+
+/** Avvikelse i SD-enheter mot baslinjen. Skalan är poängen: 0 = ditt normala,
+ * ±1 = kanten på ditt normalintervall — samma tolkning för HRV som för
+ * vilopuls som för sömn, vilket är det som gör att de får dela y-axel. */
+export function baselineDeviation(
+  value: number | null,
+  baseline: Baseline | null,
+): number | null {
+  if (value == null || baseline == null || baseline.sd <= 0) return null;
+  return (value - baseline.center) / baseline.sd;
+}
+
+/** Avrundning uppåt till ett "snyggt" axelmax (1/2/5 × tiopotens). */
+export function niceCeil(value: number): number {
+  if (value <= 0) return 1;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+  const normalized = value / magnitude;
+  let niceNormalized: number;
+  if (normalized <= 1) niceNormalized = 1;
+  else if (normalized <= 2) niceNormalized = 2;
+  else if (normalized <= 5) niceNormalized = 5;
+  else niceNormalized = 10;
+  return niceNormalized * magnitude;
+}
+
 /** Kort etikett för en veckas måndagsdatum, t.ex. "V.31". */
 export function weekLabel(mondayDateStr: string): string {
   const date = new Date(`${mondayDateStr}T00:00:00`);

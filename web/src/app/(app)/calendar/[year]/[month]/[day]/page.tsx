@@ -15,6 +15,8 @@ import {
   resetActivityCategory,
   savePlannedWorkout,
   deletePlannedWorkout,
+  addLactateReading,
+  deleteLactateReading,
 } from "./actions";
 import {
   formatDuration,
@@ -29,6 +31,12 @@ import {
   type ActivityCategory,
 } from "@/lib/categories";
 import { TrainingDayFields } from "@/components/TrainingDayFields";
+
+const LACTATE_CONTEXT_LABELS: Record<string, string> = {
+  test: "Test",
+  workout: "Pass",
+  race: "Tävling",
+};
 
 export default async function DayPage({
   params,
@@ -60,6 +68,7 @@ export default async function DayPage({
     { data: plannedWorkout },
     { data: activeGoals },
     { data: dailyMetrics },
+    { data: lactateReadings },
   ] = await Promise.all([
       supabase
         .from("activities")
@@ -91,6 +100,12 @@ export default async function DayPage({
         .select("*")
         .eq("metric_date", dateStr)
         .maybeSingle(),
+      supabase
+        .from("lactate_readings")
+        .select("*")
+        .gte("measured_at", dateStr)
+        .lt("measured_at", nextDateStr)
+        .order("measured_at"),
     ]);
 
   // Manuellt loggade pass (source='manual') redigeras nästlat under
@@ -387,6 +402,144 @@ export default async function DayPage({
             )}
           </div>
         ))}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Laktattest
+          </h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            Garmins autozoner är en gissning — laktat vid stegrande fart visar
+            var din faktiska tröskel ligger. Ett värde per steg i testet.
+          </p>
+        </div>
+
+        {lactateReadings && lactateReadings.length > 0 && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400">
+                <th className="pr-3 font-normal">Tid</th>
+                <th className="pr-3 font-normal">Laktat</th>
+                <th className="pr-3 font-normal">Fart</th>
+                <th className="pr-3 font-normal">Puls</th>
+                <th className="pr-3 font-normal">Sammanhang</th>
+                <th className="font-normal">Anteckning</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {lactateReadings.map((r) => (
+                <tr
+                  key={r.id}
+                  className="border-t border-zinc-100 text-zinc-900 dark:border-zinc-800 dark:text-zinc-100"
+                >
+                  <td className="py-1 pr-3">
+                    {new Date(r.measured_at).toLocaleTimeString("sv-SE", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </td>
+                  <td className="pr-3">{r.lactate_mmol} mmol/L</td>
+                  <td className="pr-3">{formatPace(r.pace_seconds_per_km)}</td>
+                  <td className="pr-3">{r.heart_rate ?? "–"}</td>
+                  <td className="pr-3">{LACTATE_CONTEXT_LABELS[r.context ?? ""] ?? "–"}</td>
+                  <td className="text-zinc-500 dark:text-zinc-400">{r.note ?? ""}</td>
+                  <td>
+                    <form action={deleteLactateReading}>
+                      <input type="hidden" name="reading_id" value={r.id} />
+                      <button
+                        type="submit"
+                        className="text-xs text-zinc-400 underline hover:text-zinc-950 dark:hover:text-zinc-50"
+                      >
+                        ta bort
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <form
+          action={addLactateReading}
+          className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
+        >
+          <input
+            type="hidden"
+            name="activity_id"
+            value={garminActivities[0]?.id ?? manualActivity?.id ?? ""}
+          />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <label className="flex flex-col gap-1 text-sm">
+              Laktat (mmol/L)
+              <input
+                type="number"
+                step="0.1"
+                min="0"
+                name="lactate_mmol"
+                required
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Fart – min/km
+              <input
+                type="number"
+                min="0"
+                name="pace_min"
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Fart – sek/km
+              <input
+                type="number"
+                min="0"
+                max="59"
+                name="pace_sek"
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Puls
+              <input
+                type="number"
+                min="0"
+                name="heart_rate"
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Sammanhang
+              <select
+                name="context"
+                defaultValue="test"
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <option value="test">Test</option>
+                <option value="workout">Pass</option>
+                <option value="race">Tävling</option>
+              </select>
+            </label>
+          </div>
+          <label className="flex flex-col gap-1 text-sm">
+            Anteckning
+            <input
+              type="text"
+              name="note"
+              placeholder="t.ex. steg 3 av 5"
+              className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          </label>
+          <button
+            type="submit"
+            className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+          >
+            Lägg till mätvärde
+          </button>
+        </form>
       </section>
 
       {dailyMetrics && (
