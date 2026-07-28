@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 
 const navLinks = [
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/calendar", label: "Kalender" },
   { href: "/stats", label: "Statistik" },
   { href: "/trends", label: "Trender" },

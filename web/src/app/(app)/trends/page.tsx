@@ -45,13 +45,9 @@ import { DailyStatus } from "@/components/DailyStatus";
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 import { addZoneSeconds, bandsFromZones, zoneTotal, BAND_LABELS, type BandKey } from "@/lib/intensity";
-import {
-  addDays as planAddDays,
-  BLOCK_LABELS,
-  mondayOf,
-  type BlockType,
-} from "@/lib/planning";
+import { addDays as planAddDays, BLOCK_LABELS, type BlockType } from "@/lib/planning";
 import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
+import { buildWeekSeries, buildWeekSeriesForRange, toDateKey, weekRangeLabel } from "@/lib/week-series";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
@@ -68,53 +64,6 @@ type SeasonBlockRow = {
 /** EF-filtret enligt P1.4: bara jämförbara pass, aldrig intervaller. */
 const EF_MIN_SECONDS = 20 * 60;
 const EF_CATEGORIES = ["easy", "long_run"] as const;
-
-const MONTHS_SHORT = [
-  "jan", "feb", "mar", "apr", "maj", "jun",
-  "jul", "aug", "sep", "okt", "nov", "dec",
-];
-
-function pad2(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-function toDateKey(d: Date): string {
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
-/** Alla måndagsdatum (YYYY-MM-DD) från `weeks` veckor bakåt fram till
- * innevarande vecka, så diagrammen visar kontinuitet även för veckor helt
- * utan data. */
-function buildWeekSeries(weeks: number): string[] {
-  const today = new Date();
-  const currentMonday = new Date(today);
-  const day = (currentMonday.getDay() + 6) % 7;
-  currentMonday.setDate(currentMonday.getDate() - day);
-
-  const series: string[] = [];
-  for (let i = weeks - 1; i >= 0; i--) {
-    const monday = new Date(currentMonday);
-    monday.setDate(monday.getDate() - i * 7);
-    series.push(toDateKey(monday));
-  }
-  return series;
-}
-
-/** Måndagsdatum från och med blockets startvecka till och med dess slutvecka
- * (P1.5) — samma form som `buildWeekSeries`, men bunden av ett block i
- * stället för antal veckor bakåt från idag. Delvisa första/sista veckor är
- * normalfallet: ett block börjar sällan på en måndag. */
-function buildWeekSeriesForRange(fromDateKey: string, toDateKey_: string): string[] {
-  const series: string[] = [];
-  for (
-    let monday = mondayOf(fromDateKey);
-    monday <= mondayOf(toDateKey_);
-    monday = planAddDays(monday, 7)
-  ) {
-    series.push(toDateKey(monday));
-  }
-  return series;
-}
 
 /** Sammandrag för ett enskilt block, till P1.5-jämförelseläget. Räknat helt
  * fristående från sidans huvudfönster — jämförelsen ska kunna ställa två
@@ -310,16 +259,6 @@ function blockComparisonRows(
       b: b.raceLabels.length > 0 ? b.raceLabels.join(", ") : "inga",
     },
   ];
-}
-
-/** "V.31, 28 juli–3 aug" — kort etikett på axeln, lång i panelen. */
-function weekRangeLabel(monday: string): string {
-  const from = new Date(`${monday}T00:00:00`);
-  const to = new Date(from);
-  to.setDate(to.getDate() + 6);
-  const fromPart = `${from.getDate()} ${MONTHS_SHORT[from.getMonth()]}`;
-  const toPart = `${to.getDate()} ${MONTHS_SHORT[to.getMonth()]}`;
-  return `${weekLabel(monday)}, ${fromPart}–${toPart}`;
 }
 
 function formatDateRange(from: string | null, to: string | null): string {
@@ -562,21 +501,10 @@ export default async function TrendsPage({
           return d.toISOString().slice(0, 10);
         })();
 
-        const [{ data: statusMetrics }, { data: statusDiary }] = await Promise.all([
-          supabase
-            .from("daily_metrics")
-            .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
-            .gte("metric_date", statusFrom),
-          supabase.from("diary_entries").select("entry_date, notes").gte("entry_date", statusFrom),
-        ]);
-
-        const derivedByDayForStatus = new Map<string, number>();
-        for (const e of statusDiary ?? []) {
-          if (!e.notes) continue;
-          const a = analyzeDiaryNote(e.notes);
-          // Skalas till 1–5 så markören blir läsbar bredvid de andra.
-          if (a.feeling != null) derivedByDayForStatus.set(e.entry_date, a.feeling);
-        }
+        const { data: statusMetrics } = await supabase
+          .from("daily_metrics")
+          .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+          .gte("metric_date", statusFrom);
 
         return computeDailyStatus(
           (statusMetrics ?? []).map((m) => ({
@@ -585,7 +513,6 @@ export default async function TrendsPage({
             restingHr: m.resting_hr,
             sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
             sleepScore: m.sleep_score,
-            feeling: derivedByDayForStatus.get(m.metric_date as string) ?? null,
           })),
           todayKey,
         );

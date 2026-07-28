@@ -76,13 +76,6 @@ export const STATUS_MARKERS: StatusMarkerSpec[] = [
     direction: "higher_is_better",
     hint: "Garmins sammanvägning av sömnens längd och kvalitet.",
   },
-  {
-    key: "feeling",
-    label: "Känsla",
-    unit: "",
-    direction: "higher_is_better",
-    hint: "Tolkad ur dina egna dagboksord, inte en siffra du själv satt.",
-  },
 ];
 
 export type MarkerStatus = {
@@ -113,14 +106,20 @@ export type DailyStatus = {
   evaluated: number;
 };
 
-/** En dags mätvärden. Alla fält valfria: luckor är normalfallet. */
+/** En dags mätvärden. Alla fält valfria: luckor är normalfallet.
+ *
+ * `feeling` (känsla tolkad ur dagbokstexten, P2.2) fanns tidigare som en
+ * femte markör här men togs bort 2026-07-28 — den var ofta tom (kräver en
+ * dagbokstext att tolka) och dubblerade den mycket tydligare manuella
+ * incheckningen (P0.4, se DailyCheckIn) som nu visas som egna KPI-ringar på
+ * /dashboard. Den textbaserade tolkningen lever kvar för sitt eget syfte i
+ * /trends korrelationskort ("HRV ↔ känsla ur dagbokstext"). */
 export type DailyStatusInput = {
   date: string;
   hrv?: number | null;
   restingHr?: number | null;
   sleepHours?: number | null;
   sleepScore?: number | null;
-  feeling?: number | null;
 };
 
 function valuesInWindow(
@@ -145,13 +144,20 @@ function shiftDays(dateKey: string, days: number): string {
  *
  * `rows` behöver inte vara sorterade eller kompletta — luckor hoppas över,
  * aldrig interpoleras.
+ *
+ * `currentWindowDays` (default `CURRENT_WINDOW_DAYS`, dvs. senaste veckan)
+ * låter anroparen byta ut "nu"-fönstret — /dashboard använder det för att
+ * "nuläget" ska matcha den valda perioden (idag/7 dagar/månad/år) i stället
+ * för att alltid vara låst till senaste veckan. Baslinjefönstret ändras
+ * aldrig — det är referensen, inte det som visas.
  */
 export function computeDailyStatus(
   rows: DailyStatusInput[],
   today: string,
+  currentWindowDays: number = CURRENT_WINDOW_DAYS,
 ): DailyStatus {
   const baselineFrom = shiftDays(today, -BASELINE_WINDOW_DAYS);
-  const currentFrom = shiftDays(today, -CURRENT_WINDOW_DAYS);
+  const currentFrom = shiftDays(today, -currentWindowDays);
 
   const markers: MarkerStatus[] = STATUS_MARKERS.map((spec) => {
     const key = spec.key as keyof Omit<DailyStatusInput, "date">;

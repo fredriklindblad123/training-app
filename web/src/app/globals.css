@@ -25,6 +25,19 @@
   --zone-3: #2a78d6;
   --zone-4: #1c5cab;
   --zone-5: #104281;
+
+  /* KPI-ring-status (components/KpiRing.tsx): samma tregradiga bedömning
+     (bra/håll koll/avviker) som används genomgående, plus en neutral ton för
+     mått utan gott/dåligt (t.ex. upplevd ansträngning) och en dämpad ton för
+     "väntar på data". Satta som variabler och applicerade via inline style
+     i stället för Tailwinds stroke-*-klasser, samma mönster som --cat-* —
+     en ring är en SVG-stroke, och det mönstret är det som är beprövat att
+     faktiskt färgläggas korrekt i båda teman i den här appen. */
+  --status-good: #059669;
+  --status-watch: #d97706;
+  --status-concern: #dc2626;
+  --status-neutral: #6366f1;
+  --status-unknown: #d4d4d8;
 }
 
 @theme inline {
@@ -55,6 +68,12 @@
     --zone-3: #3987e5;
     --zone-4: #6da7ec;
     --zone-5: #9ec5f4;
+
+    --status-good: #34d399;
+    --status-watch: #fbbf24;
+    --status-concern: #f87171;
+    --status-neutral: #818cf8;
+    --status-unknown: #3f3f46;
   }
 }
 

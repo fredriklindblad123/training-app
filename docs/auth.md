@@ -15,7 +15,7 @@ efter att ha klickat länken.
 Rätt fix är att ändra mallens länk till:
 
 ```
-{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/calendar
+{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email&next=/dashboard
 ```
 
 **Detta går inte att göra på Supabase Free-planen** med inbyggd
