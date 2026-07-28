@@ -30,6 +30,7 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import {
+  coefficientOfVariation,
   correlationStrengthLabel,
   isoWeekStart,
   mean,
@@ -43,9 +44,26 @@ import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { DailyStatus } from "@/components/DailyStatus";
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
+import { addZoneSeconds, bandsFromZones, zoneTotal, BAND_LABELS, type BandKey } from "@/lib/intensity";
+import {
+  addDays as planAddDays,
+  BLOCK_LABELS,
+  mondayOf,
+  type BlockType,
+} from "@/lib/planning";
+import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
+
+type SeasonBlockRow = {
+  id: string;
+  name: string;
+  block_type: BlockType;
+  start_date: string;
+  end_date: string;
+  focus: string | null;
+};
 
 /** EF-filtret enligt P1.4: bara jämförbara pass, aldrig intervaller. */
 const EF_MIN_SECONDS = 20 * 60;
@@ -80,6 +98,218 @@ function buildWeekSeries(weeks: number): string[] {
     series.push(toDateKey(monday));
   }
   return series;
+}
+
+/** Måndagsdatum från och med blockets startvecka till och med dess slutvecka
+ * (P1.5) — samma form som `buildWeekSeries`, men bunden av ett block i
+ * stället för antal veckor bakåt från idag. Delvisa första/sista veckor är
+ * normalfallet: ett block börjar sällan på en måndag. */
+function buildWeekSeriesForRange(fromDateKey: string, toDateKey_: string): string[] {
+  const series: string[] = [];
+  for (
+    let monday = mondayOf(fromDateKey);
+    monday <= mondayOf(toDateKey_);
+    monday = planAddDays(monday, 7)
+  ) {
+    series.push(toDateKey(monday));
+  }
+  return series;
+}
+
+/** Sammandrag för ett enskilt block, till P1.5-jämförelseläget. Räknat helt
+ * fristående från sidans huvudfönster — jämförelsen ska kunna ställa två
+ * block mot varandra oavsett vilket (om något) som är valt som huvudvy. */
+type BlockAggregate = {
+  block: SeasonBlockRow;
+  sessionCount: number;
+  totalDistanceKm: number;
+  totalSeconds: number;
+  totalLoad: number;
+  avgWeeklyLoad: number | null;
+  loadCv: number | null;
+  categoryPct: Partial<Record<ActivityCategory, number>>;
+  bandPct: Record<BandKey, number>;
+  avgSleepHours: number | null;
+  avgHrv: number | null;
+  avgRestingHr: number | null;
+  sickDays: number;
+  injuredDays: number;
+  raceLabels: string[];
+};
+
+async function loadBlockAggregate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  block: SeasonBlockRow,
+): Promise<BlockAggregate> {
+  const endExclusive = toDateKey(planAddDays(new Date(`${block.end_date}T00:00:00`), 1));
+
+  const [{ data: activityRows }, { data: dailyMetrics }, { data: diaryEntries }] =
+    await Promise.all([
+      supabase
+        .from("activities")
+        .select(SESSION_ACTIVITY_COLUMNS)
+        .gte("start_time", block.start_date)
+        .lt("start_time", endExclusive)
+        .order("start_time"),
+      supabase
+        .from("daily_metrics")
+        .select("metric_date, sleep_seconds, resting_hr, hrv_overnight_avg")
+        .gte("metric_date", block.start_date)
+        .lt("metric_date", endExclusive),
+      supabase
+        .from("diary_entries")
+        .select("entry_date, day_type")
+        .gte("entry_date", block.start_date)
+        .lt("entry_date", endExclusive),
+    ]);
+
+  const sessions = groupActivitiesIntoSessions(
+    (activityRows ?? []) as unknown as SessionActivity[],
+  );
+  const blockWeeks = buildWeekSeriesForRange(block.start_date, block.end_date);
+
+  const loadByWeek = new Map<string, number>();
+  const loadByCategory = new Map<string, number>();
+  const zones = emptyZoneSeconds();
+  const raceLabels: string[] = [];
+  for (const s of sessions) {
+    const wk = isoWeekStart(s.date);
+    loadByWeek.set(wk, (loadByWeek.get(wk) ?? 0) + s.trainingLoad);
+    loadByCategory.set(s.category, (loadByCategory.get(s.category) ?? 0) + s.trainingLoad);
+    addZoneSeconds(zones, [
+      s.hrZone1Seconds,
+      s.hrZone2Seconds,
+      s.hrZone3Seconds,
+      s.hrZone4Seconds,
+      s.hrZone5Seconds,
+    ]);
+    if (s.category === "race") raceLabels.push(s.dominantActivity.name?.trim() || "Tävling");
+  }
+
+  const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
+  const weeklyLoadTotals = blockWeeks.map((wk) => loadByWeek.get(wk) ?? 0);
+  const loadCv =
+    weeklyLoadTotals.filter((v) => v > 0).length >= 2
+      ? coefficientOfVariation(weeklyLoadTotals)
+      : null;
+
+  const categoryPct: Partial<Record<ActivityCategory, number>> = {};
+  if (totalLoad > 0) {
+    for (const [cat, catLoad] of loadByCategory) {
+      if (isActivityCategory(cat)) categoryPct[cat] = catLoad / totalLoad;
+    }
+  }
+
+  const bands = bandsFromZones(zones);
+  const bandTotal = zoneTotal(zones);
+  const bandPct: Record<BandKey, number> = {
+    easy: bandTotal > 0 ? bands.easy / bandTotal : 0,
+    middle: bandTotal > 0 ? bands.middle / bandTotal : 0,
+    threshold: bandTotal > 0 ? bands.threshold / bandTotal : 0,
+  };
+
+  const sleepHours = (dailyMetrics ?? [])
+    .map((m) => m.sleep_seconds)
+    .filter((v): v is number => v != null)
+    .map((v) => v / 3600);
+  const hrvValues = (dailyMetrics ?? [])
+    .map((m) => m.hrv_overnight_avg)
+    .filter((v): v is number => v != null);
+  const rhrValues = (dailyMetrics ?? [])
+    .map((m) => m.resting_hr)
+    .filter((v): v is number => v != null);
+
+  return {
+    block,
+    sessionCount: sessions.length,
+    totalDistanceKm: sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000,
+    totalSeconds: sessions.reduce((sum, s) => sum + s.durationSeconds, 0),
+    totalLoad,
+    avgWeeklyLoad: blockWeeks.length > 0 ? totalLoad / blockWeeks.length : null,
+    loadCv,
+    categoryPct,
+    bandPct,
+    avgSleepHours: mean(sleepHours),
+    avgHrv: mean(hrvValues),
+    avgRestingHr: mean(rhrValues),
+    sickDays: (diaryEntries ?? []).filter((e) => e.day_type === "sick").length,
+    injuredDays: (diaryEntries ?? []).filter((e) => e.day_type === "injured").length,
+    raceLabels,
+  };
+}
+
+const primaryButtonClass =
+  "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
+
+function formatPct(v: number): string {
+  return `${Math.round(v * 100)}%`;
+}
+
+/** Kategorifördelningen som en kort läsbar rad, t.ex. "Lugn distans 52 %,
+ * Tröskel 24 %, Intervaller 18 %" — bara kategorier med belastning i
+ * blocket, störst först. */
+function categoryBreakdownLabel(pct: Partial<Record<ActivityCategory, number>>): string {
+  const entries = Object.entries(pct) as [ActivityCategory, number][];
+  if (entries.length === 0) return "–";
+  return entries
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, v]) => `${CATEGORY_LABELS[cat]} ${formatPct(v)}`)
+    .join(", ");
+}
+
+/** Radlista för blockjämförelsetabellen (P1.5) — volym, intensitetsfördelning,
+ * sömn, sjuk-/skadedagar och tävlingsresultat, precis den listan
+ * insikter-roadmapen efterfrågar för "vad gav det i tävling efteråt". */
+function blockComparisonRows(
+  a: BlockAggregate,
+  b: BlockAggregate,
+): { label: string; a: string; b: string }[] {
+  return [
+    { label: "Period", a: `${a.block.start_date} – ${a.block.end_date}`, b: `${b.block.start_date} – ${b.block.end_date}` },
+    { label: "Blocktyp", a: BLOCK_LABELS[a.block.block_type], b: BLOCK_LABELS[b.block.block_type] },
+    { label: "Pass", a: String(a.sessionCount), b: String(b.sessionCount) },
+    { label: "Distans", a: `${a.totalDistanceKm.toFixed(0)} km`, b: `${b.totalDistanceKm.toFixed(0)} km` },
+    { label: "Träningstid", a: formatHoursMinutes(a.totalSeconds), b: formatHoursMinutes(b.totalSeconds) },
+    { label: "Träningsbelastning", a: a.totalLoad.toFixed(0), b: b.totalLoad.toFixed(0) },
+    {
+      label: "Snitt/vecka",
+      a: a.avgWeeklyLoad != null ? a.avgWeeklyLoad.toFixed(0) : "–",
+      b: b.avgWeeklyLoad != null ? b.avgWeeklyLoad.toFixed(0) : "–",
+    },
+    {
+      label: "Konsekvens (CV)",
+      a: a.loadCv != null ? a.loadCv.toFixed(2) : "för kort period",
+      b: b.loadCv != null ? b.loadCv.toFixed(2) : "för kort period",
+    },
+    { label: "Passkategorier", a: categoryBreakdownLabel(a.categoryPct), b: categoryBreakdownLabel(b.categoryPct) },
+    {
+      label: `${BAND_LABELS.easy} / ${BAND_LABELS.threshold}`,
+      a: `${formatPct(a.bandPct.easy)} / ${formatPct(a.bandPct.threshold)}`,
+      b: `${formatPct(b.bandPct.easy)} / ${formatPct(b.bandPct.threshold)}`,
+    },
+    {
+      label: "Snittsömn",
+      a: a.avgSleepHours != null ? formatHoursMinutes(a.avgSleepHours * 3600) : "ingen data",
+      b: b.avgSleepHours != null ? formatHoursMinutes(b.avgSleepHours * 3600) : "ingen data",
+    },
+    {
+      label: "Snitt-HRV",
+      a: a.avgHrv != null ? `${Math.round(a.avgHrv)} ms` : "ingen data",
+      b: b.avgHrv != null ? `${Math.round(b.avgHrv)} ms` : "ingen data",
+    },
+    {
+      label: "Snitt vilopuls",
+      a: a.avgRestingHr != null ? `${Math.round(a.avgRestingHr)} slag/min` : "ingen data",
+      b: b.avgRestingHr != null ? `${Math.round(b.avgRestingHr)} slag/min` : "ingen data",
+    },
+    { label: "Sjukdagar", a: String(a.sickDays), b: String(b.sickDays) },
+    { label: "Skadedagar", a: String(a.injuredDays), b: String(b.injuredDays) },
+    {
+      label: "Tävlingar",
+      a: a.raceLabels.length > 0 ? a.raceLabels.join(", ") : "inga",
+      b: b.raceLabels.length > 0 ? b.raceLabels.join(", ") : "inga",
+    },
+  ];
 }
 
 /** "V.31, 28 juli–3 aug" — kort etikett på axeln, lång i panelen. */
@@ -129,19 +359,48 @@ function countWeeksWithData(values: (number | null)[]): number {
 export default async function TrendsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ weeks?: string }>;
+  searchParams: Promise<{ weeks?: string; block?: string; compareA?: string; compareB?: string }>;
 }) {
-  const { weeks: weeksParam } = await searchParams;
+  const {
+    weeks: weeksParam,
+    block: blockParam,
+    compareA: compareAParam,
+    compareB: compareBParam,
+  } = await searchParams;
   const weeksNum = Number(weeksParam);
   const weeks: WeekOption = (WEEK_OPTIONS as readonly number[]).includes(weeksNum)
     ? (weeksNum as WeekOption)
     : 12;
 
-  const weekSeries = buildWeekSeries(weeks);
-  const startDate = weekSeries[0];
+  const supabase = await createClient();
   const todayKey = toDateKey(new Date());
 
-  const supabase = await createClient();
+  // P1.5: träningsblock som tidsenhet. Blocken hämtas alltid (billigt, en
+  // rad per block) så att både väljaren och jämförelseläget kan använda dem,
+  // oavsett om ett block faktiskt är valt just nu. Bara påbörjade block visas
+  // som väljare — ett framtida planerat block har per definition ingen data
+  // att visa, och skulle bara se trasigt ut om man klickade på det.
+  const { data: blockRows } = await supabase
+    .from("season_blocks")
+    .select("id, name, block_type, start_date, end_date, focus")
+    .lte("start_date", todayKey)
+    .order("start_date", { ascending: false });
+  const blocks: SeasonBlockRow[] = blockRows ?? [];
+  const activeBlock = blockParam ? (blocks.find((b) => b.id === blockParam) ?? null) : null;
+
+  // Blockvyn byter ut det rullande fönstret mot blockets egna datum — allt
+  // nedanför (ComboChart, IntensityChart, EfficiencyChart, korrelationerna)
+  // är redan generiskt över "en serie perioder mellan startDate och nu", så
+  // det enda som behöver bytas ut är själva fönstret.
+  const weekSeries = activeBlock
+    ? buildWeekSeriesForRange(activeBlock.start_date, activeBlock.end_date)
+    : buildWeekSeries(weeks);
+  const startDate = activeBlock ? activeBlock.start_date : weekSeries[0];
+  // Exklusiv övre gräns — bara satt i blockvy. Utan block gäller "fram till
+  // nu", precis som tidigare.
+  const endDateExclusive = activeBlock
+    ? toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))
+    : null;
 
   // Tröskelkolumnerna (P0.3b) kan saknas i databasen när migrationen ännu inte
   // är körd. Den frågan får därför gå separat och felet sväljas: sidan ska
@@ -152,21 +411,30 @@ export default async function TrendsPage({
     { data: diaryEntries },
     profileResult,
   ] = await Promise.all([
-    supabase
-      .from("activities")
-      .select(SESSION_ACTIVITY_COLUMNS)
-      .gte("start_time", startDate)
-      .order("start_time"),
-    supabase
-      .from("daily_metrics")
-      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
-      .gte("metric_date", startDate)
-      .order("metric_date"),
-    supabase
-      .from("diary_entries")
-      .select("entry_date, rpe, feeling, day_type, notes")
-      .gte("entry_date", startDate)
-      .order("entry_date"),
+    (() => {
+      let q = supabase
+        .from("activities")
+        .select(SESSION_ACTIVITY_COLUMNS)
+        .gte("start_time", startDate);
+      if (endDateExclusive) q = q.lt("start_time", endDateExclusive);
+      return q.order("start_time");
+    })(),
+    (() => {
+      let q = supabase
+        .from("daily_metrics")
+        .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+        .gte("metric_date", startDate);
+      if (endDateExclusive) q = q.lt("metric_date", endDateExclusive);
+      return q.order("metric_date");
+    })(),
+    (() => {
+      let q = supabase
+        .from("diary_entries")
+        .select("entry_date, rpe, feeling, day_type, notes")
+        .gte("entry_date", startDate);
+      if (endDateExclusive) q = q.lt("entry_date", endDateExclusive);
+      return q.order("entry_date");
+    })(),
     supabase
       .from("profiles")
       .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr")
@@ -281,42 +549,47 @@ export default async function TrendsPage({
   // Baslinjen behöver 60 dagar bakåt, alltså längre historik än det valda
   // diagramfönstret. Egen fråga hellre än att låta veckoväljaren styra hur
   // baslinjen ser ut — den ska vara densamma oavsett vad man tittar på.
-  const statusFrom = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - (BASELINE_WINDOW_DAYS + 5));
-    return d.toISOString().slice(0, 10);
-  })();
+  //
+  // I blockvy (P1.5) är frågan "avviker något just nu" inte meningsfull för
+  // ett historiskt block — statuskortet visas därför bara i rullande-fönster-
+  // läge, och frågan hoppas helt över i blockvy.
+  const dailyStatus = activeBlock
+    ? null
+    : await (async () => {
+        const statusFrom = (() => {
+          const d = new Date();
+          d.setDate(d.getDate() - (BASELINE_WINDOW_DAYS + 5));
+          return d.toISOString().slice(0, 10);
+        })();
 
-  const [{ data: statusMetrics }, { data: statusDiary }] = await Promise.all([
-    supabase
-      .from("daily_metrics")
-      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
-      .gte("metric_date", statusFrom),
-    supabase
-      .from("diary_entries")
-      .select("entry_date, notes")
-      .gte("entry_date", statusFrom),
-  ]);
+        const [{ data: statusMetrics }, { data: statusDiary }] = await Promise.all([
+          supabase
+            .from("daily_metrics")
+            .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+            .gte("metric_date", statusFrom),
+          supabase.from("diary_entries").select("entry_date, notes").gte("entry_date", statusFrom),
+        ]);
 
-  const derivedByDayForStatus = new Map<string, number>();
-  for (const e of statusDiary ?? []) {
-    if (!e.notes) continue;
-    const a = analyzeDiaryNote(e.notes);
-    // Skalas till 1–5 så markören blir läsbar bredvid de andra.
-    if (a.feeling != null) derivedByDayForStatus.set(e.entry_date, a.feeling);
-  }
+        const derivedByDayForStatus = new Map<string, number>();
+        for (const e of statusDiary ?? []) {
+          if (!e.notes) continue;
+          const a = analyzeDiaryNote(e.notes);
+          // Skalas till 1–5 så markören blir läsbar bredvid de andra.
+          if (a.feeling != null) derivedByDayForStatus.set(e.entry_date, a.feeling);
+        }
 
-  const dailyStatus = computeDailyStatus(
-    (statusMetrics ?? []).map((m) => ({
-      date: m.metric_date as string,
-      hrv: m.hrv_overnight_avg,
-      restingHr: m.resting_hr,
-      sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
-      sleepScore: m.sleep_score,
-      feeling: derivedByDayForStatus.get(m.metric_date as string) ?? null,
-    })),
-    todayKey,
-  );
+        return computeDailyStatus(
+          (statusMetrics ?? []).map((m) => ({
+            date: m.metric_date as string,
+            hrv: m.hrv_overnight_avg,
+            restingHr: m.resting_hr,
+            sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
+            sleepScore: m.sleep_score,
+            feeling: derivedByDayForStatus.get(m.metric_date as string) ?? null,
+          })),
+          todayKey,
+        );
+      })();
 
   // --- P2.1: passkvalitet för återkommande nyckelpass ------------------------
   // Varven hämtas för periodens aktiviteter och grupperas på signatur, dvs
@@ -497,6 +770,18 @@ export default async function TrendsPage({
   const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
   const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
 
+  // --- P1.5: konsekvens inom blocket ------------------------------------
+  // Variationskoefficienten för veckobelastning — Almgrens "quite consistent
+  // within that period" (2.3 i insikter-roadmapen). Bara meningsfull när
+  // fönstret är ett faktiskt block: en rullande 12-veckorsvy blandar per
+  // definition olika träningsfaser och en låg/hög CV där säger inget om
+  // konsekvens, bara att fönstret råkar spänna över olika sorters veckor.
+  const weeklyLoadTotals = load.map((stack) => Object.values(stack).reduce((a, b) => a + b, 0));
+  const loadCv =
+    activeBlock && weeklyLoadTotals.filter((v) => v > 0).length >= 2
+      ? coefficientOfVariation(weeklyLoadTotals)
+      : null;
+
   // --- D. Korrelationer, på pass i stället för aktiviteter -------------------
   const loadByDay = new Map<string, number>();
   for (const session of sessions) {
@@ -640,31 +925,77 @@ export default async function TrendsPage({
     },
   ];
 
+  // --- P1.5: blockjämförelse -------------------------------------------
+  // Fristående från fönstret/blocket ovan — man kan stå i en rullande
+  // 12-veckorsvy och samtidigt jämföra två tidigare block, t.ex. samma
+  // blocktyp mellan två säsonger.
+  const compareBlockA = compareAParam ? (blocks.find((b) => b.id === compareAParam) ?? null) : null;
+  const compareBlockB = compareBParam ? (blocks.find((b) => b.id === compareBParam) ?? null) : null;
+  const [compareAggregateA, compareAggregateB] =
+    compareBlockA && compareBlockB && compareBlockA.id !== compareBlockB.id
+      ? await Promise.all([
+          loadBlockAggregate(supabase, compareBlockA),
+          loadBlockAggregate(supabase, compareBlockB),
+        ])
+      : [null, null];
+
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Trender</h1>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Allt på den här sidan räknas per <strong className="font-medium">pass</strong>, inte
-            per Garmin-aktivitet: uppvärmning, huvudpass och nerjogg slås ihop till ett pass
-            innan något summeras.
-          </p>
+          {activeBlock ? (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <strong className="font-medium text-zinc-900 dark:text-zinc-100">
+                {activeBlock.name}
+              </strong>{" "}
+              ({BLOCK_LABELS[activeBlock.block_type]}), {activeBlock.start_date} –{" "}
+              {activeBlock.end_date}
+              {activeBlock.focus ? ` — ${activeBlock.focus}` : ""}. Räknas per{" "}
+              <strong className="font-medium">pass</strong>, inte per Garmin-aktivitet.
+            </p>
+          ) : (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Allt på den här sidan räknas per <strong className="font-medium">pass</strong>, inte
+              per Garmin-aktivitet: uppvärmning, huvudpass och nerjogg slås ihop till ett pass
+              innan något summeras.
+            </p>
+          )}
         </div>
-        <div className="flex gap-2 text-sm">
-          {WEEK_OPTIONS.map((w) => (
-            <Link
-              key={w}
-              href={`/trends?weeks=${w}`}
-              className={`rounded px-3 py-1 ${
-                weeks === w
-                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                  : "border border-zinc-300 dark:border-zinc-700"
-              }`}
-            >
-              {w} veckor
-            </Link>
-          ))}
+        <div className="flex flex-col items-end gap-2 text-sm">
+          <div className="flex gap-2">
+            {WEEK_OPTIONS.map((w) => (
+              <Link
+                key={w}
+                href={`/trends?weeks=${w}`}
+                className={`rounded px-3 py-1 ${
+                  !activeBlock && weeks === w
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 dark:border-zinc-700"
+                }`}
+              >
+                {w} veckor
+              </Link>
+            ))}
+          </div>
+          {blocks.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {blocks.map((b) => (
+                <Link
+                  key={b.id}
+                  href={`/trends?block=${b.id}`}
+                  title={`${BLOCK_LABELS[b.block_type]}, ${b.start_date} – ${b.end_date}`}
+                  className={`rounded px-3 py-1 ${
+                    activeBlock?.id === b.id
+                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      : "border border-zinc-300 dark:border-zinc-700"
+                  }`}
+                >
+                  {b.name}
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -675,6 +1006,9 @@ export default async function TrendsPage({
           { label: "Distans", value: `${totalDistanceKm.toFixed(0)} km` },
           { label: "Träningstid", value: formatHoursMinutes(totalSeconds) },
           { label: "Träningsbelastning", value: totalLoad.toFixed(0) },
+          ...(loadCv != null
+            ? [{ label: "Konsekvens (CV)", value: loadCv.toFixed(2), hint: "lägre = jämnare vecka för vecka" }]
+            : []),
         ].map((tile) => (
           <div
             key={tile.label}
@@ -684,12 +1018,18 @@ export default async function TrendsPage({
             <dd className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
               {tile.value}
             </dd>
+            {"hint" in tile && (
+              <dd className="text-xs text-zinc-500 dark:text-zinc-400">{tile.hint}</dd>
+            )}
           </div>
         ))}
       </dl>
 
       {/* ================= P1.2: dagsstatus mot baslinje ================== */}
-      <DailyStatus status={dailyStatus} />
+      {/* Visas bara i rullande-fönster-läge — "avviker något just nu" är
+          inte en meningsfull fråga när man tittar bakåt på ett avslutat
+          block. */}
+      {dailyStatus && <DailyStatus status={dailyStatus} />}
 
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
       <section className="flex flex-col gap-4">
@@ -809,7 +1149,7 @@ export default async function TrendsPage({
           points={efPoints}
           races={efRaces}
           fromDate={startDate}
-          toDate={todayKey}
+          toDate={activeBlock ? activeBlock.end_date : todayKey}
           emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
         />
 
@@ -884,6 +1224,98 @@ export default async function TrendsPage({
           </div>
         )}
       </section>
+
+      {/* ================= P1.5: blockjämförelse ============================ */}
+      {blocks.length >= 2 && (
+        <section className="flex flex-col gap-4">
+          <div>
+            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+              Jämför block
+            </h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Ställ två block mot varandra, t.ex. samma blocktyp mellan två säsonger — volym,
+              intensitetsfördelning, sömn, sjuk-/skadedagar och tävlingsresultat.
+            </p>
+          </div>
+
+          <form action="/trends" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="text-zinc-600 dark:text-zinc-400">Block A</span>
+              <select
+                name="compareA"
+                defaultValue={compareAParam ?? ""}
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <option value="" disabled>
+                  Välj block
+                </option>
+                {blocks.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({BLOCK_LABELS[b.block_type]}, {b.start_date} – {b.end_date})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-zinc-600 dark:text-zinc-400">Block B</span>
+              <select
+                name="compareB"
+                defaultValue={compareBParam ?? ""}
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <option value="" disabled>
+                  Välj block
+                </option>
+                {blocks.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({BLOCK_LABELS[b.block_type]}, {b.start_date} – {b.end_date})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className={primaryButtonClass}>
+              Jämför
+            </button>
+          </form>
+
+          {compareAParam && compareBParam && !(compareAggregateA && compareAggregateB) && (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Kunde inte jämföra — välj två olika block.
+            </p>
+          )}
+
+          {compareAggregateA && compareAggregateB && (
+            <div className="w-full max-w-full overflow-x-auto">
+              <table className="w-full min-w-max text-left text-sm">
+                <thead>
+                  <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                    <th scope="col" className="py-1 pr-4 font-normal">
+                      Mått
+                    </th>
+                    <th scope="col" className="py-1 pr-4 font-normal">
+                      {compareAggregateA.block.name}
+                    </th>
+                    <th scope="col" className="py-1 font-normal">
+                      {compareAggregateB.block.name}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                  {blockComparisonRows(compareAggregateA, compareAggregateB).map((row) => (
+                    <tr key={row.label}>
+                      <th scope="row" className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400">
+                        {row.label}
+                      </th>
+                      <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
+                      <td className="py-1.5 tabular-nums">{row.b}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

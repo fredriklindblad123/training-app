@@ -67,6 +67,17 @@ export function standardDeviation(values: number[]): number | null {
   return Math.sqrt(sumSq / (values.length - 1));
 }
 
+/** Variationskoefficient (SD / medelvärde), enligt P1.5 i insikter-roadmap.md:
+ * lågt värde = jämn belastning vecka för vecka inom ett block, högt värde =
+ * ryckig träning. Oberoende av skala, till skillnad från ren SD — vilket är
+ * poängen när blocken jämförs mot varandra och har olika volymnivå. */
+export function coefficientOfVariation(values: number[]): number | null {
+  const m = mean(values);
+  const sd = standardDeviation(values);
+  if (m == null || sd == null || m <= 0) return null;
+  return sd / m;
+}
+
 /** Personlig baslinje för en markör: centrum + spridning över ett fönster.
  * `n` = antal faktiska mätvärden bakom siffrorna, så anropande kod kan visa
  * "bygger baslinje — n av N" istället för att låtsas att den är färdig. */

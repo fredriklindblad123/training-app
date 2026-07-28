@@ -297,7 +297,7 @@ aldrig som bedömning.
 | P1.2 | Baslinjeavvikelse & dagsstatus | **Klar.** 2+ markörer utanför → föreslår sänkt belastning |
 | P1.3 | Intensitetsfördelning | **Delvis.** Byggd, men siffran är osäker — se varningen nedan |
 | P1.4 | Formkurva (EF) | **Klar.** 134 pass klarar filtret (21 före P0.5) |
-| P1.5 | Träningsblock som tidsenhet | Ej påbörjad |
+| P1.5 | Träningsblock som tidsenhet | **Klar.** Blockväljare på `/trends`, konsekvens-CV, tvåblocksjämförelse |
 | P2.1 | Passkvalitet nyckelpass | **Klar.** 19 återkommande signaturer |
 | P2.2 | Dagbokstext → data | **Klar.** 183 av 214 dagar fick känslopoäng |
 | P2.3 | Tävlingsanalys | Ej påbörjad |
@@ -912,6 +912,29 @@ jämförelseläge som lägger två block bredvid varandra.
 fungera. Föreslå block automatiskt ur datan (t.ex. via `day_type`-mönster och
 volymskiften) och låt användaren justera — annars blir funktionen aldrig
 använd, precis som `planned_workouts` (2 rader).
+
+**Utfall (byggt 2026-07-28).** `plan_phases` var redan stale när det här
+avsnittet skrevs: en migration daterad samma dag som roadmapen
+(`20260727120000_planning.sql`) ersatte den med `season_blocks` — samma form
+(namn, start/slut, fokus, typ) plus en färdig skapa/ta bort-UI på
+`/planering` (`SeasonTimeline`, `lib/planning.ts`). Byggt mot `season_blocks`
+i stället, ingen ny tabell eller UI för blockskapande behövdes.
+
+Blockväljaren på `/trends` (`?block=<id>`) byter ut `startDate`/`weekSeries`
+mot blockets egna gränser i stället för att lägga till ett parallellt
+kodspår — ComboChart, IntensityChart, EfficiencyChart och korrelationerna var
+redan generiska över "en periodserie mellan startDate och slutdatum", så
+samtliga P1-grafer växlar automatiskt till blockvy utan egna ändringar.
+Statuskortet (P1.2) döljs i blockvy — "avviker något just nu" är fel fråga
+för ett avslutat block.
+
+Konsekvensmåttet (CV) visas som en femte sammanfattningsruta, bara i blockvy
+(en rullande 12-veckorsvy blandar per definition olika träningsfaser, så CV
+där mäter fönstrets bredd snarare än konsekvens). Blockjämförelsen är en
+egen sektion längst ned på `/trends`, fristående från huvudvyn — två
+`<select>`-block via `?compareA=&compareB=`, en tabell med volym,
+passkategorier, lugnt/tröskel-fördelning, sömn, HRV, vilopuls, sjuk-/
+skadedagar och tävlingsresultat sida vid sida.
 
 ---
 
