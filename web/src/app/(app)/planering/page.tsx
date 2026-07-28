@@ -17,12 +17,9 @@ import {
   WORKOUT_TYPES,
   toDateKey,
   weeksBetween,
-  type BlockType,
 } from "@/lib/planning";
 import {
   addTemplateItem,
-  applyTemplate,
-  clearTemplateWorkouts,
   createBlock,
   createCompetition,
   createTemplate,
@@ -32,6 +29,7 @@ import {
   deleteTemplateItem,
   saveEventResult,
   suggestPeriodisation,
+  updateBlock,
 } from "./actions";
 
 const input =
@@ -54,22 +52,35 @@ export default async function PlaneringPage() {
   const supabase = await createClient();
   const today = toDateKey(new Date());
 
-  const [{ data: blocks }, { data: competitions }, { data: templates }, { data: plannedCounts }] =
-    await Promise.all([
-      supabase.from("season_blocks").select("*").order("start_date"),
-      supabase
-        .from("competitions")
-        .select("*, competition_events(*)")
-        .order("competition_date"),
-      supabase
-        .from("week_templates")
-        .select("*, week_template_items(*)")
-        .order("created_at"),
-      supabase
-        .from("planned_workouts")
-        .select("scheduled_date")
-        .gte("scheduled_date", today),
-    ]);
+  const [
+    { data: blocks },
+    { data: competitions },
+    { data: templates },
+    { data: plannedCounts },
+    { data: blockTemplateLinks },
+  ] = await Promise.all([
+    supabase.from("season_blocks").select("*").order("start_date"),
+    supabase
+      .from("competitions")
+      .select("*, competition_events(*)")
+      .order("competition_date"),
+    supabase
+      .from("week_templates")
+      .select("*, week_template_items(*)")
+      .order("created_at"),
+    supabase
+      .from("planned_workouts")
+      .select("scheduled_date")
+      .gte("scheduled_date", today),
+    // Vilka mallar som redan rullats ut i vilket block — härlett ur de
+    // planerade passens egna block_id/template_id, eftersom det inte finns
+    // någon separat koppling lagrad någon annanstans (se applyTemplate).
+    supabase
+      .from("planned_workouts")
+      .select("block_id, template_id")
+      .not("block_id", "is", null)
+      .not("template_id", "is", null),
+  ]);
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
   // fokustexten, därav den utökade typen här.
@@ -88,6 +99,15 @@ export default async function PlaneringPage() {
 
   const nextA = competitionList.find((c) => c.priority === "A" && c.competition_date >= today);
   const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
+
+  const templateNameById = new Map((templates ?? []).map((t) => [t.id as string, t.name as string]));
+  const templateIdsByBlock = new Map<string, Set<string>>();
+  for (const row of blockTemplateLinks ?? []) {
+    const blockId = row.block_id as string;
+    const set = templateIdsByBlock.get(blockId) ?? new Set<string>();
+    set.add(row.template_id as string);
+    templateIdsByBlock.set(blockId, set);
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
@@ -175,57 +195,274 @@ export default async function PlaneringPage() {
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
+        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+          Klicka på ett block för att redigera det eller hantera dess veckomallar. Ett pass som
+          läggs till i en mall dyker automatiskt upp i kalendern för varje block av den typen.
+        </p>
 
         {blockList.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[42rem] text-sm">
-              <thead>
-                <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400">
-                  <th className="pb-1 font-normal">Namn</th>
-                  <th className="pb-1 font-normal">Typ</th>
-                  <th className="pb-1 font-normal">Säsong</th>
-                  <th className="pb-1 font-normal">Period</th>
-                  <th className="pb-1 font-normal">Veckor</th>
-                  <th className="pb-1 font-normal">Fokus</th>
-                  <th className="pb-1" />
-                </tr>
-              </thead>
-              <tbody>
-                {blockList.map((b) => (
-                  <tr key={b.id} className="border-t border-zinc-100 dark:border-zinc-800">
-                    <td className="py-1.5 pr-3 font-medium text-zinc-900 dark:text-zinc-100">
-                      {b.name}
-                    </td>
-                    <td className="py-1.5 pr-3 text-zinc-600 dark:text-zinc-400">
+          <div className="flex flex-col gap-2">
+            {blockList.map((b) => {
+              const linkedNames = [...(templateIdsByBlock.get(b.id) ?? [])]
+                .map((id) => templateNameById.get(id))
+                .filter((n): n is string => n != null);
+              // Mallar hör till en blocktyp (t ex "grund"), inte till ett
+              // specifikt block — samma mall kan alltså återanvändas av flera
+              // block av samma typ över säsonger. Det är därför den visas
+              // här i stället för i en egen lista: den hör hemma där den
+              // faktiskt används.
+              const matchingTemplates = (templates ?? []).filter(
+                (t) => t.block_type === b.block_type,
+              );
+
+              return (
+                <details
+                  key={b.id}
+                  className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
+                >
+                  <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{b.name}</span>
+                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
                       {BLOCK_LABELS[b.block_type]}
-                    </td>
-                    <td className="py-1.5 pr-3 text-zinc-600 dark:text-zinc-400">
-                      {b.season ? SEASON_LABELS[b.season] : "—"}
-                    </td>
-                    <td className="py-1.5 pr-3 whitespace-nowrap text-zinc-600 dark:text-zinc-400">
-                      {b.start_date} – {b.end_date}
-                    </td>
-                    <td className="py-1.5 pr-3 tabular-nums text-zinc-600 dark:text-zinc-400">
-                      {weeksBetween(b.start_date, b.end_date)}
-                    </td>
-                    <td className="py-1.5 pr-3 text-zinc-500 dark:text-zinc-400">
-                      {b.focus ?? "—"}
-                    </td>
-                    <td className="py-1.5 text-right">
-                      <form action={deleteBlock}>
-                        <input type="hidden" name="id" value={b.id} />
-                        <button
-                          type="submit"
-                          className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                        >
-                          Ta bort
+                      {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""} · {b.start_date} –{" "}
+                      {b.end_date} · {weeksBetween(b.start_date, b.end_date)} veckor
+                      {linkedNames.length > 0 ? ` · ${linkedNames.join(", ")}` : ""}
+                    </span>
+                  </summary>
+
+                  <div className="mt-4 flex flex-col gap-4">
+                    <form
+                      action={updateBlock}
+                      className="flex flex-wrap items-end gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
+                    >
+                      <input type="hidden" name="id" value={b.id} />
+                      <Field label="Namn">
+                        <input name="name" defaultValue={b.name} required className={input} />
+                      </Field>
+                      <Field label="Typ">
+                        <select name="block_type" defaultValue={b.block_type} className={input}>
+                          {BLOCK_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {BLOCK_LABELS[t]}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Säsong">
+                        <select name="season" defaultValue={b.season ?? ""} className={input}>
+                          <option value="">Ingen</option>
+                          <option value="indoor">{SEASON_LABELS.indoor}</option>
+                          <option value="outdoor">{SEASON_LABELS.outdoor}</option>
+                        </select>
+                      </Field>
+                      <Field label="Från">
+                        <input
+                          type="date"
+                          name="start_date"
+                          defaultValue={b.start_date}
+                          required
+                          className={input}
+                        />
+                      </Field>
+                      <Field label="Till">
+                        <input
+                          type="date"
+                          name="end_date"
+                          defaultValue={b.end_date}
+                          required
+                          className={input}
+                        />
+                      </Field>
+                      <Field label="Fokus">
+                        <input name="focus" defaultValue={b.focus ?? ""} className={input} />
+                      </Field>
+                      <button type="submit" className={primaryBtn}>
+                        Spara ändringar
+                      </button>
+                    </form>
+
+                    <div className="border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                      <div className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        Veckomallar för {BLOCK_LABELS[b.block_type]}
+                      </div>
+
+                      {matchingTemplates.length === 0 && (
+                        <p className="text-sm text-zinc-400 dark:text-zinc-600">
+                          Ingen mall för den här blocktypen än.
+                        </p>
+                      )}
+
+                      <div className="flex flex-col gap-2">
+                        {matchingTemplates.map((t) => {
+                          const items = (t.week_template_items ?? []) as {
+                            id: string;
+                            weekday: number;
+                            slot: number;
+                            workout_type: string;
+                            title: string | null;
+                            description: string | null;
+                          }[];
+                          const isLinked = linkedNames.includes(t.name as string);
+                          return (
+                            <details
+                              key={t.id}
+                              className="rounded border border-zinc-200 p-3 dark:border-zinc-800"
+                            >
+                              <summary className="cursor-pointer">
+                                <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                                  {t.name}
+                                </span>
+                                <span className="ml-2 text-sm text-zinc-500 dark:text-zinc-400">
+                                  {items.length} pass/vecka
+                                  {isLinked ? " · utrullad i det här blocket" : ""}
+                                </span>
+                              </summary>
+
+                              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-7">
+                                {WEEKDAY_LABELS.map((label, wi) => {
+                                  const day = items
+                                    .filter((it) => it.weekday === wi + 1)
+                                    .sort((a, b2) => a.slot - b2.slot);
+                                  return (
+                                    <div key={label} className="flex flex-col gap-1">
+                                      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                                        {label.slice(0, 3)}
+                                      </div>
+                                      {day.length === 0 && (
+                                        <div className="text-xs text-zinc-300 dark:text-zinc-700">
+                                          —
+                                        </div>
+                                      )}
+                                      {day.map((it) => (
+                                        <div
+                                          key={it.id}
+                                          className="rounded bg-zinc-100 px-1.5 py-1 text-xs dark:bg-zinc-800"
+                                        >
+                                          <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                                            {WORKOUT_LABELS[
+                                              it.workout_type as keyof typeof WORKOUT_LABELS
+                                            ] ?? it.workout_type}
+                                          </div>
+                                          {it.title && (
+                                            <div className="text-zinc-600 dark:text-zinc-400">
+                                              {it.title}
+                                            </div>
+                                          )}
+                                          {it.slot > 1 && (
+                                            <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
+                                              {SLOT_LABELS[it.slot]}
+                                            </div>
+                                          )}
+                                          <form action={deleteTemplateItem}>
+                                            <input type="hidden" name="id" value={it.id} />
+                                            <button
+                                              type="submit"
+                                              className="mt-0.5 text-[10px] text-zinc-400 hover:text-red-600"
+                                            >
+                                              ta bort
+                                            </button>
+                                          </form>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <form
+                                action={addTemplateItem}
+                                className="mt-4 flex flex-wrap items-end gap-2"
+                              >
+                                <input type="hidden" name="template_id" value={t.id} />
+                                <Field label="Dag">
+                                  <select name="weekday" className={input} defaultValue="1">
+                                    {WEEKDAY_LABELS.map((d, wi) => (
+                                      <option key={d} value={wi + 1}>
+                                        {d}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Pass">
+                                  <select name="slot" className={input} defaultValue="1">
+                                    {[1, 2, 3].map((s) => (
+                                      <option key={s} value={s}>
+                                        {SLOT_LABELS[s]}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Typ">
+                                  <select name="workout_type" className={input} defaultValue="easy">
+                                    {WORKOUT_TYPES.map((w) => (
+                                      <option key={w} value={w}>
+                                        {WORKOUT_LABELS[w]}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </Field>
+                                <Field label="Rubrik">
+                                  <input name="title" placeholder="10x400m" className={input} />
+                                </Field>
+                                <Field label="Minuter">
+                                  <input
+                                    name="target_duration_minutes"
+                                    type="number"
+                                    min="0"
+                                    className={`${input} w-24`}
+                                  />
+                                </Field>
+                                <button type="submit" className={ghostBtn}>
+                                  Lägg till pass
+                                </button>
+                              </form>
+
+                              <form action={deleteTemplate} className="mt-3">
+                                <input type="hidden" name="id" value={t.id} />
+                                <button
+                                  type="submit"
+                                  className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                                >
+                                  Ta bort hela mallen
+                                </button>
+                              </form>
+                            </details>
+                          );
+                        })}
+                      </div>
+
+                      <form
+                        action={createTemplate}
+                        className="mt-3 flex flex-wrap items-end gap-3"
+                      >
+                        <input type="hidden" name="block_type" value={b.block_type} />
+                        <Field label="Ny mall för den här blocktypen">
+                          <input
+                            name="name"
+                            required
+                            placeholder="Grundvecka med dubbeltröskel"
+                            className={input}
+                          />
+                        </Field>
+                        <button type="submit" className={ghostBtn}>
+                          Skapa mall
                         </button>
                       </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+
+                    <form action={deleteBlock}>
+                      <input type="hidden" name="id" value={b.id} />
+                      <button
+                        type="submit"
+                        className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                      >
+                        Ta bort block
+                      </button>
+                    </form>
+                  </div>
+                </details>
+              );
+            })}
           </div>
         )}
 
@@ -420,202 +657,6 @@ export default async function PlaneringPage() {
             </button>
           </form>
         </details>
-      </section>
-
-      {/* ---------------- Veckomallar ---------------- */}
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Veckomallar</h2>
-        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          En mall beskriver en typisk vecka. Rulla ut den över ett block så skapas passen för
-          varje vecka i intervallet. Dagar som redan har ett planerat pass lämnas orörda, så
-          en utrullning aldrig skriver över något du lagt in för hand.
-        </p>
-
-        {(templates ?? []).map((t) => {
-          const items = (t.week_template_items ?? []) as {
-            id: string;
-            weekday: number;
-            slot: number;
-            workout_type: string;
-            title: string | null;
-            description: string | null;
-          }[];
-          return (
-            <details key={t.id} className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-              <summary className="cursor-pointer">
-                <span className="font-medium text-zinc-900 dark:text-zinc-100">{t.name}</span>
-                <span className="ml-2 text-sm text-zinc-500 dark:text-zinc-400">
-                  {items.length} pass/vecka
-                  {t.block_type ? ` · ${BLOCK_LABELS[t.block_type as BlockType]}` : ""}
-                </span>
-              </summary>
-
-              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-7">
-                {WEEKDAY_LABELS.map((label, i) => {
-                  const day = items
-                    .filter((it) => it.weekday === i + 1)
-                    .sort((a, b) => a.slot - b.slot);
-                  return (
-                    <div key={label} className="flex flex-col gap-1">
-                      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                        {label.slice(0, 3)}
-                      </div>
-                      {day.length === 0 && (
-                        <div className="text-xs text-zinc-300 dark:text-zinc-700">—</div>
-                      )}
-                      {day.map((it) => (
-                        <div
-                          key={it.id}
-                          className="rounded bg-zinc-100 px-1.5 py-1 text-xs dark:bg-zinc-800"
-                        >
-                          <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                            {WORKOUT_LABELS[it.workout_type as keyof typeof WORKOUT_LABELS] ??
-                              it.workout_type}
-                          </div>
-                          {it.title && (
-                            <div className="text-zinc-600 dark:text-zinc-400">{it.title}</div>
-                          )}
-                          {it.slot > 1 && (
-                            <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
-                              {SLOT_LABELS[it.slot]}
-                            </div>
-                          )}
-                          <form action={deleteTemplateItem}>
-                            <input type="hidden" name="id" value={it.id} />
-                            <button
-                              type="submit"
-                              className="mt-0.5 text-[10px] text-zinc-400 hover:text-red-600"
-                            >
-                              ta bort
-                            </button>
-                          </form>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <form action={addTemplateItem} className="mt-4 flex flex-wrap items-end gap-2">
-                <input type="hidden" name="template_id" value={t.id} />
-                <Field label="Dag">
-                  <select name="weekday" className={input} defaultValue="1">
-                    {WEEKDAY_LABELS.map((d, i) => (
-                      <option key={d} value={i + 1}>
-                        {d}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Pass">
-                  <select name="slot" className={input} defaultValue="1">
-                    {[1, 2, 3].map((s) => (
-                      <option key={s} value={s}>
-                        {SLOT_LABELS[s]}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Typ">
-                  <select name="workout_type" className={input} defaultValue="easy">
-                    {WORKOUT_TYPES.map((w) => (
-                      <option key={w} value={w}>
-                        {WORKOUT_LABELS[w]}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Rubrik">
-                  <input name="title" placeholder="10x400m" className={input} />
-                </Field>
-                <Field label="Minuter">
-                  <input
-                    name="target_duration_minutes"
-                    type="number"
-                    min="0"
-                    className={`${input} w-24`}
-                  />
-                </Field>
-                <button type="submit" className={ghostBtn}>
-                  Lägg till pass
-                </button>
-              </form>
-
-              <div className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                <form action={applyTemplate} className="flex flex-wrap items-end gap-2">
-                  <input type="hidden" name="template_id" value={t.id} />
-                  <Field label="Rulla ut i block">
-                    <select name="block_id" className={input} defaultValue="">
-                      <option value="">Inget block</option>
-                      {blockList.map((b) => (
-                        <option key={b.id} value={b.id}>
-                          {b.name} ({b.start_date} – {b.end_date})
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Från">
-                    <input type="date" name="from" required className={input} />
-                  </Field>
-                  <Field label="Till">
-                    <input type="date" name="to" required className={input} />
-                  </Field>
-                  <button type="submit" className={primaryBtn}>
-                    Rulla ut
-                  </button>
-                </form>
-                <form action={clearTemplateWorkouts} className="mt-2 flex flex-wrap items-end gap-2">
-                  <input type="hidden" name="template_id" value={t.id} />
-                  <Field label="Ångra från">
-                    <input type="date" name="from" required className={input} />
-                  </Field>
-                  <Field label="Till">
-                    <input type="date" name="to" required className={input} />
-                  </Field>
-                  <button type="submit" className={ghostBtn}>
-                    Ta bort mallens pass i intervallet
-                  </button>
-                </form>
-                <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-                  Ångra tar bara bort pass som den här mallen skapat och som fortfarande är
-                  planerade — aldrig pass du lagt in själv eller redan genomfört.
-                </p>
-              </div>
-
-              <form action={deleteTemplate} className="mt-3">
-                <input type="hidden" name="id" value={t.id} />
-                <button
-                  type="submit"
-                  className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                >
-                  Ta bort hela mallen
-                </button>
-              </form>
-            </details>
-          );
-        })}
-
-        <form
-          action={createTemplate}
-          className="flex flex-wrap items-end gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <Field label="Ny mall">
-            <input name="name" required placeholder="Grundvecka med dubbeltröskel" className={input} />
-          </Field>
-          <Field label="Hör till blocktyp">
-            <select name="block_type" className={input} defaultValue="">
-              <option value="">—</option>
-              {BLOCK_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {BLOCK_LABELS[t]}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <button type="submit" className={primaryBtn}>
-            Skapa mall
-          </button>
-        </form>
       </section>
     </div>
   );

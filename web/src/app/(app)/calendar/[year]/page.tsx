@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDayStatuses } from "@/lib/day-status";
-import { BlockBand, HorizonToggle, type BandBlock } from "@/components/CalendarHorizon";
+import { HorizonToggle, type BandBlock } from "@/components/CalendarHorizon";
 import {
   SV_MONTHS,
   STATUS_COLOR,
@@ -13,6 +13,7 @@ import {
   isValidYear,
 } from "@/lib/calendar-utils";
 import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
+import { BLOCK_COLOR_VARS, blocksInRange } from "@/lib/planning";
 
 export default async function YearPage({
   params,
@@ -50,6 +51,7 @@ export default async function YearPage({
   ]);
 
   const goalDateKey = nextCompetition?.competition_date ?? null;
+  const blocks = (seasonBlocks ?? []) as BandBlock[];
 
   const plannedMap = new Map<string, ActivityCategory>();
   for (const pw of plannedWorkouts ?? []) {
@@ -101,14 +103,15 @@ export default async function YearPage({
           yearHref={`/calendar/${year}`}
         />
         <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
-          {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>).map(
-            (key) => (
+          {/* "Ledig" har ingen egen färg i kalendern — se lib/day-status.ts. */}
+          {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>)
+            .filter((key) => key !== "rest")
+            .map((key) => (
               <span key={key} className="flex items-center gap-1">
                 <span className={`h-3 w-3 rounded-sm ${STATUS_COLOR[key]}`} />
                 {STATUS_LABEL[key]}
               </span>
-            ),
-          )}
+            ))}
         </div>
       </div>
 
@@ -124,13 +127,6 @@ export default async function YearPage({
               : ` (${Math.abs(daysUntilGoal)} dagar sedan)`)}
         </Link>
       )}
-      <BlockBand
-        blocks={(seasonBlocks ?? []) as BandBlock[]}
-        from={`${year}-01-01`}
-        to={`${year}-12-31`}
-      />
-
-
       <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
         {SV_MONTHS.map((monthName, idx) => {
           const month = idx + 1;
@@ -140,15 +136,38 @@ export default async function YearPage({
             ...Array.from({ length: offset }, () => null),
             ...Array.from({ length: numDays }, (_, i) => i + 1),
           ];
+          const monthStart = dateKey(year, month, 1);
+          const monthEnd = dateKey(year, month, numDays);
+          // Årsvyns dagar är för små (16px) för egna block-markeringar, så
+          // blocken listas i stället som etiketter under månadsnamnet — det
+          // ger samma information (vilket block täcker månaden) utan att
+          // rutnätet behöver plats för en stapel per dag.
+          const monthBlocks = blocksInRange(blocks, monthStart, monthEnd);
 
           return (
             <div key={month} className="flex flex-col gap-2">
-              <Link
-                href={`/calendar/${year}/${month}`}
-                className="text-sm font-medium text-zinc-800 hover:underline dark:text-zinc-200"
-              >
-                {monthName}
-              </Link>
+              <div className="flex flex-col gap-0.5">
+                <Link
+                  href={`/calendar/${year}/${month}`}
+                  className="text-sm font-medium text-zinc-800 hover:underline dark:text-zinc-200"
+                >
+                  {monthName}
+                </Link>
+                {monthBlocks.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {monthBlocks.map((b) => (
+                      <span
+                        key={b.id}
+                        className="rounded px-1 py-0.5 text-[9px] font-medium text-white"
+                        style={{ backgroundColor: BLOCK_COLOR_VARS[b.block_type] }}
+                        title={`${b.name}, ${b.start_date} – ${b.end_date}${b.focus ? `. ${b.focus}` : ""}`}
+                      >
+                        {b.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-7 gap-1">
                 {cells.map((day, i) => {
                   if (day === null) {
@@ -177,10 +196,7 @@ export default async function YearPage({
                       } ${isGoalDay ? "ring-2 ring-amber-500" : ""}`}
                       style={
                         plannedCategory
-                          ? {
-                              boxSizing: "border-box",
-                              border: `2px solid var(--cat-${plannedCategory})`,
-                            }
+                          ? { boxSizing: "border-box", border: `2px solid var(--cat-${plannedCategory})` }
                           : undefined
                       }
                     />

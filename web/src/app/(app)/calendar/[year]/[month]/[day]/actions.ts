@@ -13,21 +13,26 @@ export async function saveDiaryEntry(formData: FormData) {
 
   const entryId = formData.get("entry_id") as string;
   const entryDate = formData.get("entry_date") as string;
-  const notes = (formData.get("notes") as string) || null;
-  const rpeRaw = formData.get("rpe") as string;
-  const mood = (formData.get("mood") as string) || null;
-  const sleepRaw = formData.get("sleep_hours") as string;
-  const dayTypeRaw = formData.get("day_type") as string;
 
-  const payload = {
+  // Dagtyp-rutan högst upp och dagboksformuläret längre ner skickar båda hit,
+  // men bara med sina egna fält — bygg payloaden av det som faktiskt kom med
+  // (formData.has, inte bara get) så att ett sparat dagtyp-val aldrig nollar
+  // ut anteckningar, och tvärtom. rpe/mood sätts inte alls längre härifrån
+  // (RPE fylls i via den dagliga incheckningen på /dashboard i stället).
+  const payload: Record<string, unknown> = {
     user_id: user.id,
     entry_date: entryDate,
-    notes,
-    rpe: rpeRaw ? Number(rpeRaw) : null,
-    mood,
-    sleep_hours: sleepRaw ? Number(sleepRaw) : null,
-    day_type: dayTypeRaw || null,
   };
+  if (formData.has("notes")) {
+    payload.notes = (formData.get("notes") as string) || null;
+  }
+  if (formData.has("sleep_hours")) {
+    const sleepRaw = formData.get("sleep_hours") as string;
+    payload.sleep_hours = sleepRaw ? Number(sleepRaw) : null;
+  }
+  if (formData.has("day_type")) {
+    payload.day_type = (formData.get("day_type") as string) || null;
+  }
 
   if (entryId) {
     await supabase.from("diary_entries").update(payload).eq("id", entryId);
@@ -250,6 +255,10 @@ export async function deleteManualActivity(formData: FormData) {
 }
 
 // --- Planerade pass --------------------------------------------------------
+// De flesta pass skapas via veckomallar på /planering, men ett enskilt extra
+// pass (t ex ett läger-tillfälle som inte hör till mallen) går att lägga in
+// direkt här. Det kräver ett aktivt block för dagen — block_id sätts alltid
+// av sidan, aldrig av formuläret, så ett pass aldrig kan hamna utan block.
 
 export async function addPlannedWorkout(formData: FormData) {
   const supabase = await createClient();
@@ -259,8 +268,9 @@ export async function addPlannedWorkout(formData: FormData) {
   if (!user) return;
 
   const scheduledDate = formData.get("scheduled_date") as string;
+  const blockId = formData.get("block_id") as string;
   const workoutType = formData.get("workout_type") as string;
-  if (!scheduledDate || !workoutType) return;
+  if (!scheduledDate || !blockId || !workoutType) return;
 
   const distanceRaw = formData.get("target_distance_km") as string;
   const durationRaw = formData.get("target_duration_min") as string;
@@ -274,8 +284,38 @@ export async function addPlannedWorkout(formData: FormData) {
     description: ((formData.get("description") as string) || "").trim() || null,
     target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
     target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
-    block_id: (formData.get("block_id") as string) || null,
+    block_id: blockId,
   });
+
+  revalidatePath("/calendar", "layout");
+}
+
+export async function updatePlannedWorkout(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const workoutId = formData.get("workout_id") as string;
+  const workoutType = formData.get("workout_type") as string;
+  if (!workoutId || !workoutType) return;
+
+  const distanceRaw = formData.get("target_distance_km") as string;
+  const durationRaw = formData.get("target_duration_min") as string;
+
+  await supabase
+    .from("planned_workouts")
+    .update({
+      workout_type: workoutType,
+      slot: Number(formData.get("slot")) || 1,
+      title: ((formData.get("title") as string) || "").trim() || null,
+      description: ((formData.get("description") as string) || "").trim() || null,
+      target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
+      target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
+    })
+    .eq("id", workoutId)
+    .eq("user_id", user.id);
 
   revalidatePath("/calendar", "layout");
 }

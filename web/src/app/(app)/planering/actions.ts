@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
+  datesForWeekday,
   generateFromTemplate,
   suggestBlocks,
   toDateKey,
@@ -10,6 +11,9 @@ import {
   type SeasonKind,
   type TemplateItem,
 } from "@/lib/planning";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type BlockRange = { id: string; start_date: string; end_date: string };
 
 function str(form: FormData, key: string): string | null {
   const v = form.get(key);
@@ -37,6 +41,94 @@ async function currentUserId() {
   return { supabase, userId: user?.id ?? null };
 }
 
+/**
+ * Rullar ut en mall i ett block automatiskt. Ersätter det tidigare manuella
+ * "Rulla ut"-steget: så fort ett block finns för en blocktyp, eller ett pass
+ * läggs till i en mall för den typen, ska det synas i kalendern direkt.
+ *
+ * Hoppar över dagar som redan har ett planerat pass i samma slot, så att
+ * körningen aldrig skriver över något som lagts in för hand och kan köras om
+ * (t ex efter att ett blocks datum ändrats) utan att skapa dubbletter.
+ */
+async function syncTemplateIntoBlock(
+  supabase: SupabaseServerClient,
+  userId: string,
+  templateId: string,
+  block: BlockRange,
+) {
+  const { data: items } = await supabase
+    .from("week_template_items")
+    .select(
+      "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds",
+    )
+    .eq("template_id", templateId);
+  if (!items || items.length === 0) return;
+
+  const { data: existing } = await supabase
+    .from("planned_workouts")
+    .select("scheduled_date, slot")
+    .eq("user_id", userId)
+    .gte("scheduled_date", block.start_date)
+    .lte("scheduled_date", block.end_date);
+
+  const existingKeys = new Set((existing ?? []).map((w) => `${w.scheduled_date}|${w.slot ?? 1}`));
+
+  const rows = generateFromTemplate({
+    userId,
+    templateId,
+    blockId: block.id,
+    items: items as TemplateItem[],
+    from: block.start_date,
+    to: block.end_date,
+    existingKeys,
+  });
+
+  for (let i = 0; i < rows.length; i += 200) {
+    await supabase.from("planned_workouts").insert(rows.slice(i, i + 200));
+  }
+}
+
+/** Synkar alla mallar för ett blocks typ in i blocket — anropas när ett block
+ * skapas eller ändras (nytt datumintervall, eller ny typ). */
+async function syncBlockWithTemplates(
+  supabase: SupabaseServerClient,
+  userId: string,
+  block: BlockRange & { block_type: string },
+) {
+  const { data: templates } = await supabase
+    .from("week_templates")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("block_type", block.block_type);
+  for (const t of templates ?? []) {
+    await syncTemplateIntoBlock(supabase, userId, t.id as string, block);
+  }
+}
+
+/** Synkar en mall in i alla befintliga block av dess typ — anropas när ett
+ * pass läggs till i mallen. */
+async function syncTemplateAcrossBlocks(
+  supabase: SupabaseServerClient,
+  userId: string,
+  templateId: string,
+) {
+  const { data: template } = await supabase
+    .from("week_templates")
+    .select("block_type")
+    .eq("id", templateId)
+    .maybeSingle();
+  if (!template?.block_type) return;
+
+  const { data: blocks } = await supabase
+    .from("season_blocks")
+    .select("id, start_date, end_date")
+    .eq("user_id", userId)
+    .eq("block_type", template.block_type);
+  for (const b of (blocks ?? []) as BlockRange[]) {
+    await syncTemplateIntoBlock(supabase, userId, templateId, b);
+  }
+}
+
 // --- Säsongsblock ----------------------------------------------------------
 
 export async function createBlock(formData: FormData) {
@@ -52,14 +144,56 @@ export async function createBlock(formData: FormData) {
   // bättre än ett 500-fel när någon vänt på datumen.
   if (end < start) return;
 
-  await supabase.from("season_blocks").insert({
-    user_id: userId,
-    name,
-    block_type: blockType,
-    season: str(formData, "season"),
+  const { data: block } = await supabase
+    .from("season_blocks")
+    .insert({
+      user_id: userId,
+      name,
+      block_type: blockType,
+      season: str(formData, "season"),
+      start_date: start,
+      end_date: end,
+      focus: str(formData, "focus"),
+    })
+    .select("id, start_date, end_date, block_type")
+    .single();
+
+  if (block) await syncBlockWithTemplates(supabase, userId, block);
+
+  refresh();
+}
+
+export async function updateBlock(formData: FormData) {
+  const { supabase, userId } = await currentUserId();
+  const id = str(formData, "id");
+  if (!userId || !id) return;
+
+  const name = str(formData, "name");
+  const start = str(formData, "start_date");
+  const end = str(formData, "end_date");
+  const blockType = str(formData, "block_type") as BlockType | null;
+  if (!name || !start || !end || !blockType) return;
+  if (end < start) return;
+
+  await supabase
+    .from("season_blocks")
+    .update({
+      name,
+      block_type: blockType,
+      season: str(formData, "season"),
+      start_date: start,
+      end_date: end,
+      focus: str(formData, "focus"),
+    })
+    .eq("id", id);
+
+  // T ex ett förlängt slutdatum ska direkt ge fler pass i kalendern, utan
+  // ett separat "rulla ut igen"-steg.
+  await syncBlockWithTemplates(supabase, userId, {
+    id,
     start_date: start,
     end_date: end,
-    focus: str(formData, "focus"),
+    block_type: blockType,
   });
 
   refresh();
@@ -220,6 +354,10 @@ export async function addTemplateItem(formData: FormData) {
     { onConflict: "template_id,weekday,slot" },
   );
 
+  // Passet ska synas i kalendern direkt, i varje block som redan finns för
+  // mallens blocktyp — inget separat "rulla ut"-steg.
+  await syncTemplateAcrossBlocks(supabase, userId, templateId);
+
   refresh();
 }
 
@@ -227,83 +365,44 @@ export async function deleteTemplateItem(formData: FormData) {
   const { supabase, userId } = await currentUserId();
   const id = str(formData, "id");
   if (!userId || !id) return;
-  await supabase.from("week_template_items").delete().eq("id", id);
-  refresh();
-}
 
-/**
- * Rullar ut en veckomall över ett datumintervall.
- *
- * Hoppar över dagar som redan har ett planerat pass i samma slot, så att en
- * utrullning aldrig skriver över något som lagts in för hand — och så att
- * samma mall kan rullas ut igen efter att intervallet förlängts, utan att
- * skapa dubbletter.
- */
-export async function applyTemplate(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
-  if (!userId) return;
-
-  const templateId = str(formData, "template_id");
-  const from = str(formData, "from");
-  const to = str(formData, "to");
-  const blockId = str(formData, "block_id");
-  if (!templateId || !from || !to || to < from) return;
-
-  const { data: items } = await supabase
+  const { data: item } = await supabase
     .from("week_template_items")
-    .select("weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds")
-    .eq("template_id", templateId);
+    .select("template_id, weekday, slot")
+    .eq("id", id)
+    .maybeSingle();
 
-  if (!items || items.length === 0) return;
+  await supabase.from("week_template_items").delete().eq("id", id);
 
-  const { data: existing } = await supabase
-    .from("planned_workouts")
-    .select("scheduled_date, slot")
-    .eq("user_id", userId)
-    .gte("scheduled_date", from)
-    .lte("scheduled_date", to);
-
-  const existingKeys = new Set(
-    (existing ?? []).map((w) => `${w.scheduled_date}|${w.slot ?? 1}`),
-  );
-
-  const rows = generateFromTemplate({
-    userId,
-    templateId,
-    blockId,
-    items: items as TemplateItem[],
-    from,
-    to,
-    existingKeys,
-  });
-
-  // Utan pass att skapa är allt redan planerat — inget fel, bara inget att göra.
-  if (rows.length > 0) {
-    for (let i = 0; i < rows.length; i += 200) {
-      await supabase.from("planned_workouts").insert(rows.slice(i, i + 200));
+  // Tar bort exakt de kalenderrader det här passet skapade (aldrig genomförda
+  // pass eller sådant som lagts in för hand — de saknar template_id, och
+  // status filtreras till "planned"), i alla block av mallens blocktyp.
+  if (item) {
+    const { data: template } = await supabase
+      .from("week_templates")
+      .select("block_type")
+      .eq("id", item.template_id)
+      .maybeSingle();
+    if (template?.block_type) {
+      const { data: blocks } = await supabase
+        .from("season_blocks")
+        .select("start_date, end_date")
+        .eq("user_id", userId)
+        .eq("block_type", template.block_type);
+      for (const b of blocks ?? []) {
+        const dates = datesForWeekday(b.start_date, b.end_date, item.weekday);
+        if (dates.length === 0) continue;
+        await supabase
+          .from("planned_workouts")
+          .delete()
+          .eq("user_id", userId)
+          .eq("template_id", item.template_id)
+          .eq("slot", item.slot)
+          .eq("status", "planned")
+          .in("scheduled_date", dates);
+      }
     }
   }
-
-  refresh();
-}
-
-/** Tar bort pass som en viss mall skapat i ett intervall. Rör aldrig pass
- * som lagts in för hand, eftersom de saknar template_id. */
-export async function clearTemplateWorkouts(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
-  const templateId = str(formData, "template_id");
-  const from = str(formData, "from");
-  const to = str(formData, "to");
-  if (!userId || !templateId || !from || !to) return;
-
-  await supabase
-    .from("planned_workouts")
-    .delete()
-    .eq("user_id", userId)
-    .eq("template_id", templateId)
-    .eq("status", "planned")
-    .gte("scheduled_date", from)
-    .lte("scheduled_date", to);
 
   refresh();
 }

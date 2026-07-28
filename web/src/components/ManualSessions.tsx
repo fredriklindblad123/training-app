@@ -139,7 +139,7 @@ export function ManualSessions({
 
       <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
         <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
-          Lägg till eget pass
+          Lägg till genomfört pass manuellt
         </summary>
         <form action={saveAction} className="mt-3 flex flex-wrap items-end gap-3">
           <input type="hidden" name="entry_date" value={dateStr} />

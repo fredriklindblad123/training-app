@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { BlockBand, HorizonToggle, type BandBlock } from "@/components/CalendarHorizon";
+import { HorizonToggle } from "@/components/CalendarHorizon";
 import {
   CATEGORY_LABELS,
   isActivityCategory,
@@ -93,7 +93,6 @@ export default async function WeekPage({
     { data: activityRows },
     { data: plannedRows },
     { data: diaryRows },
-    { data: blockRows },
     { data: competitionRows },
   ] = await Promise.all([
     supabase
@@ -113,11 +112,6 @@ export default async function WeekPage({
       .select("entry_date, day_type, notes, session_log")
       .gte("entry_date", from)
       .lte("entry_date", to),
-    supabase
-      .from("season_blocks")
-      .select("id, name, block_type, start_date, end_date, focus")
-      .lte("start_date", to)
-      .gte("end_date", from),
     supabase
       .from("competitions")
       .select("id, name, competition_date, priority")
@@ -201,8 +195,6 @@ export default async function WeekPage({
         />
       </div>
 
-      <BlockBand blocks={(blockRows ?? []) as BandBlock[]} from={from} to={to} />
-
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { label: "Pass", value: String(sessions.length) },
@@ -232,7 +224,10 @@ export default async function WeekPage({
           const done = sessionsByDay.get(key) ?? [];
           const diary = diaryByDay.get(key);
           const comps = competitionsByDay.get(key) ?? [];
-          const diaryStatus = (diary?.day_type ?? null) as DayStatus | null;
+          // "Ledig" visas inte som egen status — se lib/day-status.ts.
+          const diaryStatus = (
+            diary?.day_type === "rest" ? null : (diary?.day_type ?? null)
+          ) as DayStatus | null;
           // "Tränade" ovanpå ett synligt pass är ren upprepning. Badgen visas
           // bara när den säger något listan inte redan gör: en avvikande
           // dagtyp, eller att dagen är märkt som träning utan att något pass

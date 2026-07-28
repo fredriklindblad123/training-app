@@ -49,6 +49,27 @@ export const BLOCK_COLOR_VARS: Record<BlockType, string> = {
   vila: "var(--cat-cross_training)",
 };
 
+/** Blocket som täcker ett givet datum, om något. Kalendervyerna (vecka,
+ * månad, år) använder den här för att färga in dagar/månader efter block i
+ * stället för att visa blocken som ett separat band ovanför rutnätet. */
+export function blockForDate<T extends { start_date: string; end_date: string }>(
+  blocks: T[],
+  dateKey: string,
+): T | null {
+  return blocks.find((b) => b.start_date <= dateKey && b.end_date >= dateKey) ?? null;
+}
+
+/** Alla block som helt eller delvis överlappar ett intervall — årsvyns
+ * månadsrader är för smala för dagvisa markeringar, så där listas i stället
+ * vilka block som förekommer under månaden. */
+export function blocksInRange<T extends { start_date: string; end_date: string }>(
+  blocks: T[],
+  from: string,
+  to: string,
+): T[] {
+  return blocks.filter((b) => b.start_date <= to && b.end_date >= from);
+}
+
 export type SeasonKind = "indoor" | "outdoor";
 
 export const SEASON_LABELS: Record<SeasonKind, string> = {
@@ -253,6 +274,20 @@ export function generateFromTemplate({
   }
 
   return out;
+}
+
+/** Alla datum (YYYY-MM-DD) i ett intervall som faller på en given veckodag
+ * (1=måndag..7=söndag, samma räkning som `TemplateItem.weekday`). Används för
+ * att ta bort exakt de kalenderrader ett borttaget mallpass skapat, utan att
+ * röra passen på andra dagar. */
+export function datesForWeekday(from: string, to: string, weekday: number): string[] {
+  const dates: string[] = [];
+  const end = new Date(`${to}T00:00:00`);
+  for (let d = new Date(`${from}T00:00:00`); d <= end; d = addDays(d, 1)) {
+    const dow = ((d.getDay() + 6) % 7) + 1;
+    if (dow === weekday) dates.push(toDateKey(d));
+  }
+  return dates;
 }
 
 // --- Periodiseringsförslag -------------------------------------------------

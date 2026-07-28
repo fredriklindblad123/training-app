@@ -15,9 +15,7 @@ import {
 } from "@/lib/calendar-utils";
 import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
-import { computeCheckInStats } from "@/lib/checkin";
-import { BlockBand, HorizonToggle, type BandBlock } from "@/components/CalendarHorizon";
-import { DailyCheckIn } from "@/components/DailyCheckIn";
+import { HorizonToggle } from "@/components/CalendarHorizon";
 
 type DayInfo = {
   status?: DayStatus;
@@ -50,83 +48,31 @@ export default async function MonthPage({
 
   const supabase = await createClient();
 
-  const now = new Date();
-  const todayStr = dateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
-  // Dagens incheckning (P0.4) hör hemma på landningssidan (/calendar redirect-
-  // ar hit till innevarande månad) — inte på en godtycklig månad man bläddrat
-  // till, då skulle "dagens check-in" sakna sammanhang.
-  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
-
-  const [
-    { data: activities },
-    { data: diaryEntries },
-    { data: seasonBlocks },
-    { data: plannedWorkouts },
-    userResult,
-  ] = await Promise.all([
-      supabase
-        .from("activities")
-        .select("id, start_time, name, distance_meters")
-        .gte("start_time", monthStart)
-        .lt("start_time", monthEndExclusive)
-        .order("start_time"),
-      supabase
-        .from("diary_entries")
-        .select("entry_date, day_type")
-        .gte("entry_date", monthStart)
-        .lt("entry_date", monthEndExclusive)
-        .not("day_type", "is", null),
-      supabase
-        .from("season_blocks")
-        .select("id, name, block_type, start_date, end_date, focus")
-        .lte("start_date", monthEndExclusive)
-        .gte("end_date", monthStart),
-      supabase
-        .from("planned_workouts")
-        .select("scheduled_date, workout_type, slot")
-        .order("slot")
-        .gte("scheduled_date", monthStart)
-        .lt("scheduled_date", monthEndExclusive),
-      isCurrentMonth ? supabase.auth.getUser() : Promise.resolve(null),
-    ]);
-
-  let checkIn: {
-    initialDone: boolean;
-    initialScores: {
-      feeling: number | null;
-      effort: number | null;
-      soreness: number | null;
-      motivation: number | null;
-    };
-    initialStats: { streakDays: number; weeklyAvgFeeling: number | null };
-  } | null = null;
-
-  const user = userResult?.data.user ?? null;
-  if (isCurrentMonth && user) {
-    const { data: todayEntry } = await supabase
+  const [{ data: activities }, { data: diaryEntries }, { data: plannedWorkouts }] = await Promise.all([
+    supabase
+      .from("activities")
+      .select("id, start_time, name, distance_meters")
+      .gte("start_time", monthStart)
+      .lt("start_time", monthEndExclusive)
+      .order("start_time"),
+    supabase
       .from("diary_entries")
-      .select("feeling, motivation, soreness_level, rpe")
-      .eq("user_id", user.id)
-      .eq("entry_date", todayStr)
-      .maybeSingle();
-
-    const initialStats = await computeCheckInStats(supabase, user.id, todayStr);
-
-    checkIn = {
-      initialDone: todayEntry?.feeling != null,
-      initialScores: {
-        feeling: todayEntry?.feeling ?? null,
-        effort: todayEntry?.rpe != null ? Math.round(todayEntry.rpe / 2) : null,
-        soreness: todayEntry?.soreness_level ?? null,
-        motivation: todayEntry?.motivation ?? null,
-      },
-      initialStats,
-    };
-  }
+      .select("entry_date, day_type")
+      .gte("entry_date", monthStart)
+      .lt("entry_date", monthEndExclusive)
+      .not("day_type", "is", null),
+    supabase
+      .from("planned_workouts")
+      .select("scheduled_date, workout_type, slot")
+      .order("slot")
+      .gte("scheduled_date", monthStart)
+      .lt("scheduled_date", monthEndExclusive),
+  ]);
 
   const days = new Map<string, DayInfo>();
   for (const entry of diaryEntries ?? []) {
-    if (entry.day_type) {
+    // "Ledig" visas inte som egen status — se lib/day-status.ts.
+    if (entry.day_type && entry.day_type !== "rest") {
       days.set(entry.entry_date, {
         status: entry.day_type as DayStatus,
         activities: [],
@@ -163,15 +109,6 @@ export default async function MonthPage({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      {checkIn && (
-        <DailyCheckIn
-          entryDate={todayStr}
-          initialDone={checkIn.initialDone}
-          initialScores={checkIn.initialScores}
-          initialStats={checkIn.initialStats}
-        />
-      )}
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link
@@ -197,12 +134,6 @@ export default async function MonthPage({
           yearHref={`/calendar/${year}`}
         />
       </div>
-
-      <BlockBand
-        blocks={(seasonBlocks ?? []) as BandBlock[]}
-        from={monthStart}
-        to={monthEndExclusive}
-      />
 
       <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-zinc-200 bg-zinc-200 text-xs dark:border-zinc-800 dark:bg-zinc-800">
         {SV_WEEKDAYS_SHORT.map((wd) => (
@@ -242,13 +173,11 @@ export default async function MonthPage({
                     key={`${type}-${i}`}
                     className="inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
                     style={
-                      // Fylld ruta = planerat men ännu inte genomfört. Ihålig =
-                      // dagen har ett utfall, så planen är avklarad eller
-                      // åtminstone besvarad.
+                      // Alltid genomskinlig bakgrund — planerat är planerat,
+                      // oavsett om dagen råkar ha ett utfall också. Genomförda
+                      // pass syns redan som egna rader nedanför.
                       color
-                        ? done
-                          ? { border: `1.5px solid ${color}`, color }
-                          : { backgroundColor: color, color: "white" }
+                        ? { border: `1.5px solid ${color}`, color }
                         : { border: "1.5px dashed var(--color-zinc-400, #a1a1aa)" }
                     }
                     title={`Planerat: ${label}${done ? " (dagen har utfall)" : ""}`}

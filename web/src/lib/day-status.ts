@@ -31,7 +31,10 @@ export async function getDayStatuses(
   ]);
 
   for (const entry of diaryEntries ?? []) {
-    if (entry.day_type) {
+    // "Ledig" visas inte som en egen status i kalendern — att inget pass
+    // finns loggat säger redan det, och en egen färg för det gjorde
+    // rutnätet plottrigt utan att tillföra information.
+    if (entry.day_type && entry.day_type !== "rest") {
       statuses.set(entry.entry_date, entry.day_type as DayStatus);
     }
   }
