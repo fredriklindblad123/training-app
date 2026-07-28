@@ -139,9 +139,7 @@ export function LineChart({
                 strokeWidth={2}
                 pointerEvents="none"
               >
-                <title>
-                  {d.label}: {formatValue(d.value)}
-                </title>
+                <title>{`${d.label}: ${formatValue(d.value)}`}</title>
               </circle>
               {i % labelStep === 0 && (
                 <text

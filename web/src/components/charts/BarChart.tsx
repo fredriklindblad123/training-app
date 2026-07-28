@@ -113,9 +113,7 @@ export function BarChart({
                 onPointerMove={() => setHovered(i)}
                 tabIndex={0}
               >
-                <title>
-                  {d.label}: {formatValue(d.value)}
-                </title>
+                <title>{`${d.label}: ${formatValue(d.value)}`}</title>
               </rect>
               {i % labelStep === 0 && (
                 <text

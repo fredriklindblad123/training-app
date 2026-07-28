@@ -254,9 +254,7 @@ export function EfficiencyChart({
               strokeWidth={1.5}
               paintOrder="stroke"
             >
-              <title>
-                Tävling {formatShortDate(race.date)}: {race.label}
-              </title>
+              <title>{`Tävling ${formatShortDate(race.date)}: ${race.label}`}</title>
             </path>
           </g>
         ))}
@@ -288,10 +286,7 @@ export function EfficiencyChart({
               onFocus={() => setHovered(p.id)}
               onBlur={() => setHovered(null)}
             >
-              <title>
-                {formatShortDate(p.date)} {p.label}:{" "}
-                {(p.ef * METERS_PER_BEAT).toFixed(2)} m/slag
-              </title>
+              <title>{`${formatShortDate(p.date)} ${p.label}: ${(p.ef * METERS_PER_BEAT).toFixed(2)} m/slag`}</title>
             </circle>
           );
         })}

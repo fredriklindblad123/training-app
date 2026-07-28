@@ -255,11 +255,7 @@ export function IntensityChart({
                           transition: "opacity 120ms",
                         }}
                       >
-                        <title>
-                          {week.fullLabel} — {ZONE_LABELS[segment.zone]}:{" "}
-                          {segment.share.toFixed(0)} % (
-                          {formatHoursMinutesShort(week.zoneSeconds[segment.zone])})
-                        </title>
+                        <title>{`${week.fullLabel} — ${ZONE_LABELS[segment.zone]}: ${segment.share.toFixed(0)} % (${formatHoursMinutesShort(week.zoneSeconds[segment.zone])})`}</title>
                       </path>
                     );
                   })}

@@ -87,9 +87,7 @@ export function ScatterChart({
             onPointerEnter={() => setHovered(i)}
             onPointerMove={() => setHovered(i)}
           >
-            <title>
-              {d.label}: {formatX(d.x)}, {formatY(d.y)}
-            </title>
+            <title>{`${d.label}: ${formatX(d.x)}, ${formatY(d.y)}`}</title>
           </circle>
         ))}
 

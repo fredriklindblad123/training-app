@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ScatterChart } from "@/components/charts/ScatterChart";
+import { BarChart, type BarDatum } from "@/components/charts/BarChart";
 import {
   ComboChart,
   type ComboEvent,
@@ -40,13 +41,16 @@ import {
 } from "@/lib/stats-utils";
 import { formatHoursMinutes } from "@/lib/format";
 import { analyzeDiaryNote } from "@/lib/diary-text";
-import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
-import { DailyStatus } from "@/components/DailyStatus";
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 import { addZoneSeconds, bandsFromZones, zoneTotal, BAND_LABELS, type BandKey } from "@/lib/intensity";
 import { addDays as planAddDays, BLOCK_LABELS, type BlockType } from "@/lib/planning";
-import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
+import {
+  CATEGORY_LABELS,
+  CATEGORY_VALUES,
+  isActivityCategory,
+  type ActivityCategory,
+} from "@/lib/categories";
 import { buildWeekSeries, buildWeekSeriesForRange, toDateKey, weekRangeLabel } from "@/lib/week-series";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
@@ -298,14 +302,40 @@ function countWeeksWithData(values: (number | null)[]): number {
 export default async function TrendsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ weeks?: string; block?: string; compareA?: string; compareB?: string }>;
+  searchParams: Promise<{
+    weeks?: string;
+    block?: string;
+    compareA?: string;
+    compareB?: string;
+    volumeCategories?: string | string[];
+    volumeFiltered?: string;
+  }>;
 }) {
   const {
     weeks: weeksParam,
     block: blockParam,
     compareA: compareAParam,
     compareB: compareBParam,
+    volumeCategories: volumeCategoriesParam,
+    volumeFiltered: volumeFilteredParam,
   } = await searchParams;
+
+  // Distans-/tid-diagrammen (nedan) ska kunna avgränsas till valda
+  // passkategorier — annars räknas t ex cykel och styrka in i "tränade km"
+  // som om det vore löpning. Ett dolt fält (`volumeFiltered`) skiljer "inget
+  // filter valt än" (formuläret aldrig skickat → visa allt) från "användaren
+  // bockade ur allt" (formuläret skickat, men tomt) — annars kan HTML-
+  // formulär inte skilja de fallen åt när alla kryssrutor är avbockade.
+  const selectedVolumeCategories: Set<ActivityCategory> = volumeFilteredParam
+    ? new Set(
+        (Array.isArray(volumeCategoriesParam)
+          ? volumeCategoriesParam
+          : volumeCategoriesParam
+            ? [volumeCategoriesParam]
+            : []
+        ).filter(isActivityCategory),
+      )
+    : new Set(CATEGORY_VALUES);
   const weeksNum = Number(weeksParam);
   const weeks: WeekOption = (WEEK_OPTIONS as readonly number[]).includes(weeksNum)
     ? (weeksNum as WeekOption)
@@ -484,40 +514,6 @@ export default async function TrendsPage({
     if (metric.sleep_score != null) sleepScoreByDay.set(day, metric.sleep_score);
   }
 
-  // --- P1.2: dagsstatus mot personlig baslinje -------------------------------
-  // Baslinjen behöver 60 dagar bakåt, alltså längre historik än det valda
-  // diagramfönstret. Egen fråga hellre än att låta veckoväljaren styra hur
-  // baslinjen ser ut — den ska vara densamma oavsett vad man tittar på.
-  //
-  // I blockvy (P1.5) är frågan "avviker något just nu" inte meningsfull för
-  // ett historiskt block — statuskortet visas därför bara i rullande-fönster-
-  // läge, och frågan hoppas helt över i blockvy.
-  const dailyStatus = activeBlock
-    ? null
-    : await (async () => {
-        const statusFrom = (() => {
-          const d = new Date();
-          d.setDate(d.getDate() - (BASELINE_WINDOW_DAYS + 5));
-          return d.toISOString().slice(0, 10);
-        })();
-
-        const { data: statusMetrics } = await supabase
-          .from("daily_metrics")
-          .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
-          .gte("metric_date", statusFrom);
-
-        return computeDailyStatus(
-          (statusMetrics ?? []).map((m) => ({
-            date: m.metric_date as string,
-            hrv: m.hrv_overnight_avg,
-            restingHr: m.resting_hr,
-            sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
-            sleepScore: m.sleep_score,
-          })),
-          todayKey,
-        );
-      })();
-
   // --- P2.1: passkvalitet för återkommande nyckelpass ------------------------
   // Varven hämtas för periodens aktiviteter och grupperas på signatur, dvs
   // vad som faktiskt genomfördes (antal och längd på aktiva varv) — passnamnen
@@ -599,6 +595,32 @@ export default async function TrendsPage({
   }
   const efWeekly = weekSeries.map((wk) => median(efByWeek.get(wk) ?? []));
 
+  // Veckans distans och tid som egna lager. Till skillnad från HRV/sömn (en
+  // mätning man antingen har eller saknar) är en vecka utan träning ett
+  // riktigt värde, inte en lucka — därför summeras dessa till 0 snarare än
+  // null, samma princip som träningsbelastningens staplar.
+  const distanceByWeek = new Map<string, number>();
+  const durationByWeek = new Map<string, number>();
+  for (const session of sessions) {
+    if (!selectedVolumeCategories.has(session.category)) continue;
+    const wk = isoWeekStart(session.date);
+    distanceByWeek.set(wk, (distanceByWeek.get(wk) ?? 0) + session.distanceMeters / 1000);
+    durationByWeek.set(wk, (durationByWeek.get(wk) ?? 0) + session.durationSeconds / 3600);
+  }
+  const distanceWeekly = weekSeries.map((wk) => distanceByWeek.get(wk) ?? 0);
+  const durationWeekly = weekSeries.map((wk) => durationByWeek.get(wk) ?? 0);
+  // Egna diagram med råa värden, inte avvikelse mot baslinje — "hur många km
+  // och minuter" är en fråga om nivå, inte om det gått upp eller ner mot det
+  // egna normala (till skillnad från HRV/vilopuls/sömn ovan).
+  const distanceBarData: BarDatum[] = weekSeries.map((wk, i) => ({
+    label: weekLabel(wk),
+    value: distanceWeekly[i],
+  }));
+  const durationBarData: BarDatum[] = weekSeries.map((wk, i) => ({
+    label: weekLabel(wk),
+    value: durationWeekly[i],
+  }));
+
   const candidateSeries: ComboSeries[] = [
     {
       id: "hrv",
@@ -630,6 +652,15 @@ export default async function TrendsPage({
       values: efWeekly,
       formatKind: "decimal2",
       higherIsBetter: true,
+      // "Fart" i Almgrens fyra axlar (2.3) — ska gå att skilja från
+      // puls-/sömnlagren i en blick, därför en egen färg i stället för bläck
+      // som de övriga, och aktiv från start. Bokstavlig hex snarare än en
+      // CSS-variabel: linjens `stroke` via `var(--...)` visade sig inte slå
+      // igenom i alla webbläsare (staplarnas `fill` gör det, men den här
+      // linjen gjorde det inte) — en ren hexfärg är mer robust och läsbar i
+      // både ljust och mörkt läge.
+      color: "#0891b2",
+      defaultVisible: true,
     },
     {
       id: "rpe",
@@ -691,11 +722,6 @@ export default async function TrendsPage({
   });
 
   const sessionsWithZoneData = sessions.filter((s) => s.hrZoneTotalSeconds > 0).length;
-
-  // --- Sammanfattande siffror för perioden ----------------------------------
-  const totalDistanceKm = sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
-  const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
-  const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
 
   // --- P1.5: konsekvens inom blocket ------------------------------------
   // Variationskoefficienten för veckobelastning — Almgrens "quite consistent
@@ -926,37 +952,23 @@ export default async function TrendsPage({
         </div>
       </div>
 
-      {/* --- Periodens siffror i klartext, innan något diagram -------------- */}
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Pass", value: String(sessions.length) },
-          { label: "Distans", value: `${totalDistanceKm.toFixed(0)} km` },
-          { label: "Träningstid", value: formatHoursMinutes(totalSeconds) },
-          { label: "Träningsbelastning", value: totalLoad.toFixed(0) },
-          ...(loadCv != null
-            ? [{ label: "Konsekvens (CV)", value: loadCv.toFixed(2), hint: "lägre = jämnare vecka för vecka" }]
-            : []),
-        ].map((tile) => (
-          <div
-            key={tile.label}
-            className="flex flex-col gap-1 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-          >
-            <dt className="text-sm text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
+      {/* Pass/distans/tid/belastning och dagens status mot baslinjen visas på
+          /dashboard i stället — den här sidan är för djupdykningen, inte
+          sammanfattningen. Konsekvens (CV) hör bara hemma i blockvy och finns
+          inte på dashboarden, så den är kvar här. */}
+      {loadCv != null && (
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="flex flex-col gap-1 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+            <dt className="text-sm text-zinc-500 dark:text-zinc-400">Konsekvens (CV)</dt>
             <dd className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {tile.value}
+              {loadCv.toFixed(2)}
             </dd>
-            {"hint" in tile && (
-              <dd className="text-xs text-zinc-500 dark:text-zinc-400">{tile.hint}</dd>
-            )}
+            <dd className="text-xs text-zinc-500 dark:text-zinc-400">
+              lägre = jämnare vecka för vecka
+            </dd>
           </div>
-        ))}
-      </dl>
-
-      {/* ================= P1.2: dagsstatus mot baslinje ================== */}
-      {/* Visas bara i rullande-fönster-läge — "avviker något just nu" är
-          inte en meningsfull fråga när man tittar bakåt på ett avslutat
-          block. */}
-      {dailyStatus && <DailyStatus status={dailyStatus} />}
+        </dl>
+      )}
 
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
       <section className="flex flex-col gap-4">
@@ -979,6 +991,9 @@ export default async function TrendsPage({
           events={events}
           loadLabel="Träningsbelastning"
           height={380}
+          // HRV/vilopuls/sömn (återhämtning) + formkurva (fart) aktiva från
+          // start — fyra i stället för standardtaket på tre.
+          maxVisibleSeries={4}
           emptyLabel="Inga pass i perioden."
           ariaLabel="Veckans träningsbelastning per passkategori, med återhämtningsmarkörer"
         />
@@ -1036,6 +1051,61 @@ export default async function TrendsPage({
             )}
           </p>
         </details>
+      </section>
+
+      {/* ================= Distans och tid per vecka ========================= */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Distans och tid per vecka
+          </h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Välj vilka passkategorier som ska räknas med — annars blandas t ex cykel och
+            styrka in i &quot;tränade km&quot;.
+          </p>
+        </div>
+
+        <form method="get" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          {weeksParam && <input type="hidden" name="weeks" value={weeksParam} />}
+          {blockParam && <input type="hidden" name="block" value={blockParam} />}
+          <input type="hidden" name="volumeFiltered" value="1" />
+          {CATEGORY_VALUES.map((c) => (
+            <label key={c} className="inline-flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                name="volumeCategories"
+                value={c}
+                defaultChecked={selectedVolumeCategories.has(c)}
+              />
+              {CATEGORY_LABELS[c]}
+            </label>
+          ))}
+          <button
+            type="submit"
+            className="rounded border border-zinc-300 px-3 py-1 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          >
+            Uppdatera
+          </button>
+        </form>
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
+          <div className="flex flex-1 flex-col gap-2">
+            <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Distans per vecka
+            </h3>
+            <BarChart data={distanceBarData} formatKind="km" emptyLabel="Inga pass i perioden." />
+          </div>
+          <div className="flex flex-1 flex-col gap-2">
+            <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Träningstid per vecka
+            </h3>
+            <BarChart
+              data={durationBarData}
+              formatKind="hours"
+              emptyLabel="Inga pass i perioden."
+            />
+          </div>
+        </div>
       </section>
 
       {/* ================= B. Intensitetsfördelning (P1.3) ================== */}

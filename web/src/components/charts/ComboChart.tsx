@@ -516,10 +516,7 @@ export function ComboChart({
                       transition: "opacity 120ms",
                     }}
                   >
-                    <title>
-                      {period.fullLabel ?? period.label} — {CATEGORY_LABELS[segment.category]}:{" "}
-                      {formatLoad(segment.value)}
-                    </title>
+                    <title>{`${period.fullLabel ?? period.label} — ${CATEGORY_LABELS[segment.category]}: ${formatLoad(segment.value)}`}</title>
                   </path>
                 );
               })}
@@ -631,11 +628,7 @@ export function ComboChart({
                   paintOrder="stroke"
                   style={serie.color ? { fill: serie.color } : undefined}
                 >
-                  <title>
-                    {periods[i].fullLabel ?? periods[i].label} — {serie.label}:{" "}
-                    {formatMetricValue(serie.formatKind, serie.values[i] as number)} (
-                    {formatSigned(deviations[i] as number)} SD)
-                  </title>
+                  <title>{`${periods[i].fullLabel ?? periods[i].label} — ${serie.label}: ${formatMetricValue(serie.formatKind, serie.values[i] as number)} (${formatSigned(deviations[i] as number)} SD)`}</title>
                 </path>
               ))}
             </g>
@@ -662,10 +655,7 @@ export function ComboChart({
                     strokeWidth={1.5}
                     paintOrder="stroke"
                   >
-                    <title>
-                      {EVENT_STYLES[event.kind].label}: {event.label} (
-                      {period.fullLabel ?? period.label})
-                    </title>
+                    <title>{`${EVENT_STYLES[event.kind].label}: ${event.label} (${period.fullLabel ?? period.label})`}</title>
                   </path>
                 );
               })}
