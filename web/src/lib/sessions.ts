@@ -51,7 +51,7 @@ export type TrainingSession = {
   id: string;
   userId: string;
   /** YYYY-MM-DD. Sliceat ur `start_time` precis som resten av appen gör
-   * (kalender, /stats, /trends), så passdatum och dagvy alltid stämmer. */
+   * (kalender, /dashboard, /trends), så passdatum och dagvy alltid stämmer. */
   date: string;
   /** ISO-tid för första fragmentets start. */
   startTime: string;

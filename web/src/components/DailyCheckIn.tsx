@@ -9,11 +9,15 @@ type Scores = Record<ScoreKey, number | null>;
 
 type CheckInStats = { streakDays: number; weeklyAvgFeeling: number | null };
 
-// Två färgskalor med olika betydelse: "må bra"-frågorna (känsla, motivation)
-// går rött→grönt (dåligt→bra), medan "intensitets"-frågorna (ansträngning,
-// ömhet) går kallt→hett (lågt→högt) — högt är inte "bra" för de senare, bara
-// mer. Samma femgradiga knapprads-mönster (ord + färg) återanvänds i alla
-// fyra, enligt P0.4:s krav på tryckbara knappar istället för sifferfält.
+// Samma rött→grönt-logik i alla fyra rader, vänster till höger: det sämsta
+// alternativet i rött längst till vänster, det bästa i grönt längst till
+// höger. Känsla/motivation läses i sin naturliga ordning (1=uselt...5=super),
+// men ansträngning/muskelömhet visas medvetet i omvänd ordning — "Maximal"/
+// "Mycket öm" (sämst) står längst till vänster — eftersom deras skala annars
+// går åt fel håll (lågt tal = lätt/skönt, dvs "bäst", inte "sämst"). Värdet
+// som sparas följer alltid ordet (via `values`), aldrig knappens position,
+// så RPE-skalan (rpe = effort × 2) inte vänds upp och ner av var på raden
+// den råkar visas.
 const WELLBEING_COLORS = [
   "bg-red-600",
   "bg-orange-500",
@@ -22,19 +26,14 @@ const WELLBEING_COLORS = [
   "bg-emerald-600",
 ];
 
-const INTENSITY_COLORS = [
-  "bg-sky-400",
-  "bg-teal-500",
-  "bg-amber-400",
-  "bg-orange-500",
-  "bg-red-600",
-];
-
 const QUESTIONS: {
   key: ScoreKey;
   label: string;
   words: [string, string, string, string, string];
   colors: string[];
+  /** Sparat värde per knapp-position. Standard är positionen själv (1–5);
+   * sätts uttryckligen när ordordningen visas omvänd mot värdeskalan. */
+  values?: [number, number, number, number, number];
 }[] = [
   {
     key: "feeling",
@@ -45,14 +44,16 @@ const QUESTIONS: {
   {
     key: "effort",
     label: "Ansträngning i dagens pass",
-    words: ["Väldigt lätt", "Lätt", "Måttlig", "Hård", "Maximal"],
-    colors: INTENSITY_COLORS,
+    words: ["Maximal", "Hård", "Måttlig", "Lätt", "Väldigt lätt"],
+    colors: WELLBEING_COLORS,
+    values: [5, 4, 3, 2, 1],
   },
   {
     key: "soreness",
     label: "Muskelömhet",
-    words: ["Ingen alls", "Lite", "Märkbar", "Öm", "Mycket öm"],
-    colors: INTENSITY_COLORS,
+    words: ["Mycket öm", "Öm", "Märkbar", "Lite", "Ingen alls"],
+    colors: WELLBEING_COLORS,
+    values: [5, 4, 3, 2, 1],
   },
   {
     key: "motivation",
@@ -155,7 +156,7 @@ export function DailyCheckIn({
           <span className="text-xs text-zinc-500 dark:text-zinc-400">{q.label}</span>
           <div className="grid grid-cols-5 gap-1">
             {q.words.map((word, i) => {
-              const value = i + 1;
+              const value = q.values ? q.values[i] : i + 1;
               const selected = scores[q.key] === value;
               return (
                 <button

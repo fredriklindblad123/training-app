@@ -49,6 +49,7 @@ export function KpiRing({
   fill,
   status,
   statusLabel,
+  targetText,
   detailRows,
   hint,
 }: {
@@ -61,6 +62,10 @@ export function KpiRing({
   /** Åsidosätter standardordet för statusen, t.ex. "Måttlig" för en
    * neutral markör som inte är bra/dålig utan bara beskrivande. */
   statusLabel?: string;
+  /** Samma siffra som ringens färg räknas mot, t.ex. "Riktvärde 12,4 km" —
+   * visas direkt i förstaintrycket, inte bara i detaljtabellen, så att
+   * grön/gul/röd aldrig är den enda förklaringen till var man ligger till. */
+  targetText?: string;
   detailRows: KpiDetailRow[];
   hint?: string;
 }) {
@@ -70,6 +75,7 @@ export function KpiRing({
   return (
     <details className="group flex flex-col items-center gap-1.5 rounded-lg p-2 text-center hover:bg-zinc-50 dark:hover:bg-zinc-900">
       <summary className="flex cursor-pointer list-none flex-col items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{label}</span>
         <div className="relative flex shrink-0" style={{ width: RING_SIZE, height: RING_SIZE }}>
           <svg
             width={RING_SIZE}
@@ -107,9 +113,13 @@ export function KpiRing({
             )}
           </div>
         </div>
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{label}</span>
         {label_ && (
           <span className={`text-xs font-medium ${RING_STATUS_TEXT[status]}`}>{label_}</span>
+        )}
+        {targetText && (
+          <span className="text-[11px] font-medium text-cyan-700 dark:text-cyan-400">
+            {targetText}
+          </span>
         )}
       </summary>
 

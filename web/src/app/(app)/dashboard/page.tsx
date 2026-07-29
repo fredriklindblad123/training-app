@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { DailyCheckIn } from "@/components/DailyCheckIn";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing, type KpiDetailRow } from "@/components/KpiRing";
+import { CategoryBarChart, type CategoryDatum } from "@/components/CategoryBarChart";
 import { ringFillAndStatus, type RingDirection, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeCheckInStats } from "@/lib/checkin";
@@ -15,7 +16,7 @@ import {
 import { median, mean } from "@/lib/stats-utils";
 import { buildWeekSeries, toDateKey } from "@/lib/week-series";
 import { formatKm, formatDuration } from "@/lib/format";
-import { CATEGORY_LABELS, categoryColorVar } from "@/lib/categories";
+import { CATEGORY_LABELS, categoryColorVar, type ActivityCategory } from "@/lib/categories";
 
 /* Dashboard: startsidan efter inloggning (se app/page.tsx, login/actions.ts,
  * auth/confirm/route.ts). Poängen är att lyfta fram det viktigaste i en
@@ -114,6 +115,8 @@ function volumeRing({
     unit,
     fill,
     status: (target == null ? "unknown" : status) as RingStatus,
+    targetText:
+      target != null ? `Riktvärde ${formatNumber(target)}${unit ? ` ${unit}` : ""}` : undefined,
     detailRows,
     hint,
   };
@@ -145,7 +148,11 @@ function scoreRing({
     unit: "/5",
     fill,
     status: (value == null ? "unknown" : status) as RingStatus,
-    detailRows: [{ label: periodLabel, value: value != null ? `${value.toFixed(1)} av 5` : "–" }],
+    targetText: direction === "neutral" ? undefined : `Mål ${target}/5`,
+    detailRows: [
+      { label: periodLabel, value: value != null ? `${value.toFixed(1)} av 5` : "–" },
+      { label: "Mål", value: direction === "neutral" ? "–" : `${target} av 5` },
+    ],
     hint,
   };
 }
@@ -153,10 +160,11 @@ function scoreRing({
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; catMetric?: string }>;
 }) {
-  const { period: periodParam } = await searchParams;
+  const { period: periodParam, catMetric: catMetricParam } = await searchParams;
   const period: Period = isPeriod(periodParam) ? periodParam : "today";
+  const catMetric: "distance" | "time" = catMetricParam === "time" ? "time" : "distance";
 
   const supabase = await createClient();
   const {
@@ -286,6 +294,35 @@ export default async function DashboardPage({
   const refSessions: TrainingSession[] = groupActivitiesIntoSessions(
     (refActivityRows ?? []) as unknown as SessionActivity[],
   );
+
+  // --- Per kategori (ex-/stats): samma pass-baserade enhet som resten av
+  // dashboarden, till skillnad från den gamla statistiksidans råa
+  // aktivitetsgruppering — en löpning delad i uppvärmning/huvudpass/nerjogg
+  // ska räknas som ett pass i en kategori, inte tre. ----------------------
+  const categoryData: CategoryDatum[] = (() => {
+    const byCategory = new Map<ActivityCategory, CategoryDatum>();
+    for (const s of sessions) {
+      const cat = byCategory.get(s.category) ?? {
+        category: s.category,
+        km: 0,
+        seconds: 0,
+        count: 0,
+        sessions: [],
+      };
+      cat.km += s.distanceMeters / 1000;
+      cat.seconds += s.durationSeconds;
+      cat.count += 1;
+      cat.sessions.push({
+        id: s.id,
+        date: s.date,
+        name: s.dominantActivity.name,
+        km: s.distanceMeters / 1000,
+        seconds: s.durationSeconds,
+      });
+      byCategory.set(s.category, cat);
+    }
+    return [...byCategory.values()];
+  })();
 
   const totalDistanceKm = sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
   const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
@@ -456,14 +493,53 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {/* --- Träning: periodens volym, form och intensitet, som ringar ---- */}
-      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+      {/* --- Dagens incheckning: första vyn för dagen tills den är gjord —
+          därefter försvinner den helt. Utfallet lever bara som KPI-ringar i
+          "Incheckning"-sektionen nedan. -------------------------------- */}
+      {!checkIn.initialDone && (
+        <DailyCheckIn
+          entryDate={todayKey}
+          initialDone={checkIn.initialDone}
+          initialScores={checkIn.initialScores}
+          initialStats={checkIn.initialStats}
+        />
+      )}
+
+      {/* --- Träning: periodens volym, form, intensitet och fördelning, allt
+          i samma stycke. Per kategori ligger överst, som liggande staplar —
+          det tar mindre plats än ett tårtdiagram och läses lika snabbt. --- */}
+      <div className="flex flex-col gap-4 rounded border border-zinc-200 p-4 dark:border-zinc-800">
         <div>
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Träning</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 capitalize">
             {PERIOD_WINDOW_LABEL[period]}
           </p>
         </div>
+
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+              Per kategori
+            </span>
+            <div className="flex gap-1.5 text-xs">
+              {(["distance", "time"] as const).map((m) => (
+                <Link
+                  key={m}
+                  href={`/dashboard?period=${period}&catMetric=${m}`}
+                  className={`rounded px-2 py-0.5 ${
+                    catMetric === m
+                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  }`}
+                >
+                  {m === "distance" ? "Distans" : "Tid"}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <CategoryBarChart data={categoryData} metric={catMetric} />
+        </div>
+
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {trainingRings.map((r) => (
             <KpiRing key={r.label} {...r} />
@@ -473,16 +549,6 @@ export default async function DashboardPage({
 
       {/* --- Status mot baslinje (P1.2), fönstret följer perioden --------- */}
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
-
-      {/* --- Dagens incheckning: formuläret bara om den inte är gjord ----- */}
-      {!checkIn.initialDone && (
-        <DailyCheckIn
-          entryDate={todayKey}
-          initialDone={checkIn.initialDone}
-          initialScores={checkIn.initialScores}
-          initialStats={checkIn.initialStats}
-        />
-      )}
 
       {checkInRingsVisible && (
         <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">

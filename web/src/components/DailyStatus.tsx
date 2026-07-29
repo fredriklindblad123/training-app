@@ -39,6 +39,7 @@ function MarkerRing({ marker }: { marker: MarkerStatus }) {
       unit={marker.spec.unit || undefined}
       fill={fill}
       status={effectiveStatus}
+      targetText={marker.baseline != null ? `Baslinje ${formatBaseline(marker)}` : undefined}
       detailRows={[
         {
           label: "Senaste veckan",
