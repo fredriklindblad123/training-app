@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDayStatuses } from "@/lib/day-status";
-import { HorizonToggle, type BandBlock } from "@/components/CalendarHorizon";
+import { CalendarNav, type BandBlock } from "@/components/CalendarHorizon";
 import {
   SV_MONTHS,
   STATUS_COLOR,
@@ -74,45 +74,37 @@ export default async function YearPage({
     );
   }
 
+  const now = new Date();
+  const isCurrentYear = year === now.getFullYear();
+  const dayHref = isCurrentYear
+    ? `/calendar/${year}/${now.getMonth() + 1}/${now.getDate()}`
+    : `/calendar/${year}/1/1`;
+  const weekHref = `/calendar/vecka/${isCurrentYear ? now.toISOString().slice(0, 10) : `${year}-01-01`}`;
+  const monthHref = `/calendar/${year}/${isCurrentYear ? now.getMonth() + 1 : 1}`;
+
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link
-            href={`/calendar/${year - 1}`}
-            className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-          >
-            ←
-          </Link>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
-            {year}
-          </h1>
-          <Link
-            href={`/calendar/${year + 1}`}
-            className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-          >
-            →
-          </Link>
-        </div>
-        <HorizonToggle
-          current="year"
-          weekHref={`/calendar/vecka/${new Date().toISOString().slice(0, 10)}`}
-          monthHref={`/calendar/${year}/${
-            year === new Date().getFullYear() ? new Date().getMonth() + 1 : 1
-          }`}
-          yearHref={`/calendar/${year}`}
-        />
-        <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
-          {/* "Ledig" har ingen egen färg i kalendern — se lib/day-status.ts. */}
-          {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>)
-            .filter((key) => key !== "rest")
-            .map((key) => (
-              <span key={key} className="flex items-center gap-1">
-                <span className={`h-3 w-3 rounded-sm ${STATUS_COLOR[key]}`} />
-                {STATUS_LABEL[key]}
-              </span>
-            ))}
-        </div>
+      <CalendarNav
+        current="year"
+        title={year}
+        prevHref={`/calendar/${year - 1}`}
+        nextHref={`/calendar/${year + 1}`}
+        jumpDate={`${year}-01-01`}
+        dayHref={dayHref}
+        weekHref={weekHref}
+        monthHref={monthHref}
+        yearHref={`/calendar/${year}`}
+      />
+      <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
+        {/* "Ledig" har ingen egen färg i kalendern — se lib/day-status.ts. */}
+        {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>)
+          .filter((key) => key !== "rest")
+          .map((key) => (
+            <span key={key} className="flex items-center gap-1">
+              <span className={`h-3 w-3 rounded-sm ${STATUS_COLOR[key]}`} />
+              {STATUS_LABEL[key]}
+            </span>
+          ))}
       </div>
 
       {nextCompetition && (

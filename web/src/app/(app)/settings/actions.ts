@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { triggerGarminSync } from "@/lib/garmin-sync";
 
 function apiBase(): string {
   // VERCEL_URL pekar på den deploy-specifika adressen, som Vercel skyddar
@@ -54,14 +55,7 @@ export async function syncGarminNow() {
   } = await supabase.auth.getUser();
   if (!user) return;
 
-  await fetch(`${apiBase()}/api/garmin/sync`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
-    },
-    body: JSON.stringify({ user_id: user.id }),
-  });
+  await triggerGarminSync(user.id);
 
   revalidatePath("/settings");
   revalidatePath("/calendar", "layout");

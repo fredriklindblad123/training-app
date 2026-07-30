@@ -15,7 +15,7 @@ import {
 } from "@/lib/calendar-utils";
 import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
-import { HorizonToggle } from "@/components/CalendarHorizon";
+import { CalendarNav } from "@/components/CalendarHorizon";
 
 type DayInfo = {
   status?: DayStatus;
@@ -109,31 +109,17 @@ export default async function MonthPage({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link
-            href={`/calendar/${prevMonth.year}/${prevMonth.month}`}
-            className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-          >
-            ←
-          </Link>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
-            {SV_MONTHS[month - 1]} {year}
-          </h1>
-          <Link
-            href={`/calendar/${nextMonth.year}/${nextMonth.month}`}
-            className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-          >
-            →
-          </Link>
-        </div>
-        <HorizonToggle
-          current="month"
-          weekHref={`/calendar/vecka/${monthStart}`}
-          monthHref={`/calendar/${year}/${month}`}
-          yearHref={`/calendar/${year}`}
-        />
-      </div>
+      <CalendarNav
+        current="month"
+        title={`${SV_MONTHS[month - 1]} ${year}`}
+        prevHref={`/calendar/${prevMonth.year}/${prevMonth.month}`}
+        nextHref={`/calendar/${nextMonth.year}/${nextMonth.month}`}
+        jumpDate={monthStart}
+        dayHref={`/calendar/${year}/${month}/1`}
+        weekHref={`/calendar/vecka/${monthStart}`}
+        monthHref={`/calendar/${year}/${month}`}
+        yearHref={`/calendar/${year}`}
+      />
 
       <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-zinc-200 bg-zinc-200 text-xs dark:border-zinc-800 dark:bg-zinc-800">
         {SV_WEEKDAYS_SHORT.map((wd) => (

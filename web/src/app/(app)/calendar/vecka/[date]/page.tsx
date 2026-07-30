@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { HorizonToggle } from "@/components/CalendarHorizon";
+import { CalendarNav } from "@/components/CalendarHorizon";
 import {
   CATEGORY_LABELS,
   isActivityCategory,
@@ -166,34 +166,24 @@ export default async function WeekPage({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/calendar/vecka/${toKey(addDays(monday, -7))}`}
-            className="rounded border border-zinc-300 px-2 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-          >
-            ←
-          </Link>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
-            {weekLabel(from)}
-          </h1>
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">
-            {from} – {to}
-          </span>
-          <Link
-            href={`/calendar/vecka/${toKey(addDays(monday, 7))}`}
-            className="rounded border border-zinc-300 px-2 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-          >
-            →
-          </Link>
-        </div>
-        <HorizonToggle
-          current="week"
-          weekHref={`/calendar/vecka/${todayKey}`}
-          monthHref={monthHref}
-          yearHref={yearHref}
-        />
-      </div>
+      <CalendarNav
+        current="week"
+        title={
+          <>
+            {weekLabel(from)}{" "}
+            <span className="text-sm font-normal text-zinc-500 dark:text-zinc-400">
+              {from} – {to}
+            </span>
+          </>
+        }
+        prevHref={`/calendar/vecka/${toKey(addDays(monday, -7))}`}
+        nextHref={`/calendar/vecka/${toKey(addDays(monday, 7))}`}
+        jumpDate={from}
+        dayHref={`/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}/${monday.getDate()}`}
+        weekHref={`/calendar/vecka/${todayKey}`}
+        monthHref={monthHref}
+        yearHref={yearHref}
+      />
 
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[

@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ManualSessions, type ManualActivity } from "@/components/ManualSessions";
 import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
 import { DaySection } from "@/components/DaySection";
+import { CalendarNav } from "@/components/CalendarHorizon";
 import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
 import {
   SV_MONTHS,
@@ -31,11 +31,30 @@ import {
 } from "@/lib/format";
 import {
   CATEGORY_LABELS,
-  type ActivityCategory,
   CATEGORY_VALUES,
   isActivityCategory,
 } from "@/lib/categories";
 import { analyzeDiaryNote } from "@/lib/diary-text";
+import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
+
+function typeLabel(type: string): string {
+  if (isActivityCategory(type)) return CATEGORY_LABELS[type];
+  return WORKOUT_LABELS[type as WorkoutType] ?? type;
+}
+
+/** Liten färgad prick i passets typfärg — samma "se typen utan att läsa
+ * etiketten"-princip som veckovyns Marker, bara utan den ihåliga/fyllda
+ * plan-mot-utfall-distinktionen (den finns redan i respektive sektion). */
+function TypeDot({ type }: { type: string | null }) {
+  const color = type ? workoutTypeColorVar(type) : null;
+  return (
+    <span
+      className="inline-block h-2 w-2 shrink-0 rounded-full"
+      style={{ backgroundColor: color ?? "#a1a1aa" }}
+      aria-hidden="true"
+    />
+  );
+}
 
 export default async function DayPage({
   params,
@@ -134,12 +153,6 @@ export default async function DayPage({
   const dayKm = daySessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
   const daySeconds = daySessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
 
-  const plannedSummary = hasPlan
-    ? (plannedWorkouts ?? [])
-        .map((p) => p.title || CATEGORY_LABELS[p.workout_type as ActivityCategory] || p.workout_type)
-        .join(" · ")
-    : "Inget planerat";
-
   const doneSummary =
     daySessions.length === 0
       ? "Inget pass"
@@ -149,6 +162,8 @@ export default async function DayPage({
     ? diaryEntry.notes.replace(/\s+/g, " ").slice(0, 70) +
       (diaryEntry.notes.length > 70 ? "…" : "")
     : "Ingen anteckning";
+
+  const hasDiaryData = !!(diaryEntry?.notes || diaryEntry?.session_log || diaryEntry?.coach_notes);
 
   // Anteckningarna kom en gång ur en färgkodad PDF (grönt/rosa = Alice egna
   // ord, positivt/negativt). Den uppdelningen finns redan i schemat (notes
@@ -228,36 +243,20 @@ export default async function DayPage({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Link
-            href={`/calendar/${prevDate.getFullYear()}/${prevDate.getMonth() + 1}/${prevDate.getDate()}`}
-            className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-          >
-            ←
-          </Link>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
-            {day} {SV_MONTHS[month - 1]} {year}
-          </h1>
-          <Link
-            href={`/calendar/${nextDate.getFullYear()}/${nextDate.getMonth() + 1}/${nextDate.getDate()}`}
-            className="text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-          >
-            →
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {daySessions.length > 0 && (
-            <span className="text-sm text-zinc-600 dark:text-zinc-400">{doneSummary}</span>
-          )}
-          <Link
-            href={`/calendar/${year}/${month}`}
-            className="text-sm text-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50"
-          >
-            Till månadsvyn
-          </Link>
-        </div>
-      </div>
+      <CalendarNav
+        current="day"
+        title={`${day} ${SV_MONTHS[month - 1]} ${year}`}
+        prevHref={`/calendar/${prevDate.getFullYear()}/${prevDate.getMonth() + 1}/${prevDate.getDate()}`}
+        nextHref={`/calendar/${nextDate.getFullYear()}/${nextDate.getMonth() + 1}/${nextDate.getDate()}`}
+        jumpDate={dateStr}
+        dayHref={`/calendar/${year}/${month}/${day}`}
+        weekHref={`/calendar/vecka/${dateStr}`}
+        monthHref={`/calendar/${year}/${month}`}
+        yearHref={`/calendar/${year}`}
+      />
+      {daySessions.length > 0 && (
+        <p className="-mt-3 text-sm text-zinc-600 dark:text-zinc-400">{doneSummary}</p>
+      )}
 
       <form
         action={saveDiaryEntry}
@@ -294,9 +293,19 @@ export default async function DayPage({
 
       <DaySection
         title="Planerat pass"
+        hasData={hasPlan}
         summary={
-          <span className="flex items-center gap-2">
-            {plannedSummary}
+          <span className="flex flex-wrap items-center gap-2">
+            {hasPlan ? (
+              (plannedWorkouts ?? []).map((p, i) => (
+                <span key={p.id ?? i} className="inline-flex items-center gap-1.5">
+                  <TypeDot type={p.workout_type} />
+                  {p.title || typeLabel(p.workout_type)}
+                </span>
+              ))
+            ) : (
+              "Inget planerat"
+            )}
             <PlanStatusBadge status={planStatus} />
           </span>
         }
@@ -311,7 +320,27 @@ export default async function DayPage({
         />
       </DaySection>
 
-      <DaySection title="Genomförda pass" summary={doneSummary}>
+      <DaySection
+        title="Genomförda pass"
+        hasData={hasOutcome}
+        summary={
+          daySessions.length === 0 ? (
+            doneSummary
+          ) : (
+            <span className="flex flex-wrap items-center gap-2">
+              {daySessions.map((s) => (
+                <span key={s.id} className="inline-flex items-center gap-1.5">
+                  <TypeDot type={s.category} />
+                  {s.category ? CATEGORY_LABELS[s.category] : "Pass"}
+                </span>
+              ))}
+              <span className="text-zinc-400 dark:text-zinc-600">
+                · {formatKm(dayKm * 1000)} · {formatDuration(daySeconds)}
+              </span>
+            </span>
+          )
+        }
+      >
         {garminActivities.length === 0 && (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Inget synkat pass den här dagen.
@@ -448,7 +477,7 @@ export default async function DayPage({
         />
       </DaySection>
 
-      <DaySection title="Träningsdagbok" summary={diarySummary}>
+      <DaySection title="Träningsdagbok" summary={diarySummary} hasData={hasDiaryData}>
         {diaryEntry?.session_log && (
           <div className="rounded border border-zinc-200 p-4 text-sm dark:border-zinc-800">
             <div className="text-xs text-zinc-500 dark:text-zinc-400">Träningslogg</div>
@@ -501,7 +530,7 @@ export default async function DayPage({
       </DaySection>
 
       {dailyMetrics && (
-        <DaySection title="Sömn &amp; återhämtning" summary={sleepSummary}>
+        <DaySection title="Sömn &amp; återhämtning" summary={sleepSummary} hasData={true}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-zinc-200 p-4 text-sm sm:grid-cols-4 dark:border-zinc-800">
             <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
             <Stat

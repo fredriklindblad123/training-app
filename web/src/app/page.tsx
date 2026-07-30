@@ -1,5 +1,9 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { enterApp } from "./actions";
+
+const buttonClass =
+  "rounded bg-zinc-950 px-4 py-2 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -16,12 +20,17 @@ export default async function Home() {
         Kalender, träningsdagbok och långsiktig planering för
         medeldistanslöpare. Under uppbyggnad.
       </p>
-      <Link
-        href={user ? "/dashboard" : "/login"}
-        className="rounded bg-zinc-950 px-4 py-2 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-      >
-        {user ? "Till appen" : "Logga in"}
-      </Link>
+      {user ? (
+        <form action={enterApp}>
+          <button type="submit" className={buttonClass}>
+            Till appen
+          </button>
+        </form>
+      ) : (
+        <Link href="/login" className={buttonClass}>
+          Logga in
+        </Link>
+      )}
     </div>
   );
 }
