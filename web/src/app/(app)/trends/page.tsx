@@ -361,6 +361,7 @@ export default async function TrendsPage({
     compareB?: string;
     volumeCategories?: string | string[];
     volumeFiltered?: string;
+    volumeMetric?: string;
   }>;
 }) {
   const {
@@ -370,14 +371,19 @@ export default async function TrendsPage({
     compareB: compareBParam,
     volumeCategories: volumeCategoriesParam,
     volumeFiltered: volumeFilteredParam,
+    volumeMetric: volumeMetricParam,
   } = await searchParams;
+  const volumeMetric: "distance" | "time" = volumeMetricParam === "time" ? "time" : "distance";
 
   // Distans-/tid-diagrammen (nedan) ska kunna avgränsas till valda
   // passkategorier — annars räknas t ex cykel och styrka in i "tränade km"
   // som om det vore löpning. Ett dolt fält (`volumeFiltered`) skiljer "inget
-  // filter valt än" (formuläret aldrig skickat → visa allt) från "användaren
-  // bockade ur allt" (formuläret skickat, men tomt) — annars kan HTML-
-  // formulär inte skilja de fallen åt när alla kryssrutor är avbockade.
+  // filter valt än" (formuläret aldrig skickat → visa default-urvalet) från
+  // "användaren bockade ur allt" (formuläret skickat, men tomt) — annars kan
+  // HTML-formulär inte skilja de fallen åt när alla kryssrutor är avbockade.
+  // Default-urvalet exkluderar alternativ träning/styrka: "tränade km/tid"
+  // ska i första hand betyda löpning, inte blandas ut av cykelpass eller ett
+  // gympass utan volymmått.
   const selectedVolumeCategories: Set<ActivityCategory> = volumeFilteredParam
     ? new Set(
         (Array.isArray(volumeCategoriesParam)
@@ -387,11 +393,38 @@ export default async function TrendsPage({
             : []
         ).filter(isActivityCategory),
       )
-    : new Set(CATEGORY_VALUES);
+    : new Set(
+        CATEGORY_VALUES.filter((c) => c !== "cross_training" && c !== "strength"),
+      );
   const weeksNum = Number(weeksParam);
   const weeks: WeekOption = (WEEK_OPTIONS as readonly number[]).includes(weeksNum)
     ? (weeksNum as WeekOption)
     : 12;
+
+  /** Bygger en /trends-länk som behåller vecko-/blockvalet, kategorifiltret
+   * och metricvalet — bara det som skickas in i `overrides` ändras. Utan den
+   * skulle t.ex. Distans/Tid-växlaren nollställa kategorifiltret varje gång
+   * man klickade. */
+  function volumeHref(overrides: Record<string, string>): string {
+    const params = new URLSearchParams();
+    if (weeksParam) params.set("weeks", weeksParam);
+    if (blockParam) params.set("block", blockParam);
+    params.set("volumeMetric", volumeMetric);
+    // Kategorifiltret följer bara med om användaren faktiskt satt ett — utan
+    // volumeFiltered=1 används ändå default-urvalet på nästa sidladdning,
+    // oavsett vilka volumeCategories-parametrar som råkar stå i URL:en.
+    if (volumeFilteredParam) {
+      params.set("volumeFiltered", volumeFilteredParam);
+      const cats = Array.isArray(volumeCategoriesParam)
+        ? volumeCategoriesParam
+        : volumeCategoriesParam
+          ? [volumeCategoriesParam]
+          : [];
+      for (const c of cats) params.append("volumeCategories", c);
+    }
+    for (const [key, value] of Object.entries(overrides)) params.set(key, value);
+    return `/trends?${params.toString()}`;
+  }
 
   const supabase = await createClient();
   const todayKey = toDateKey(new Date());
@@ -423,12 +456,6 @@ export default async function TrendsPage({
     ? toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))
     : null;
 
-  // Fördelning per kategori (nedan) har egna, fasta perioder (7 dagar/månad/
-  // år) — oberoende av veckoväljaren/blockvyn ovan, så att de alltid finns
-  // kvar oavsett vilket fönster man råkar stå i. Den längsta av de tre (år)
-  // avgör hur långt tillbaka den frågan behöver gå.
-  const distributionFrom = buildWeekSeries(52)[0];
-
   // Tröskelkolumnerna (P0.3b) kan saknas i databasen när migrationen ännu inte
   // är körd. Den frågan får därför gå separat och felet sväljas: sidan ska
   // fungera utan dem, bara med en tydligare brasklapp om zongränserna.
@@ -437,7 +464,6 @@ export default async function TrendsPage({
     { data: dailyMetrics },
     { data: diaryEntries },
     profileResult,
-    { data: distributionActivityRows },
   ] = await Promise.all([
     (() => {
       let q = supabase
@@ -468,11 +494,6 @@ export default async function TrendsPage({
       .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr")
       .limit(1)
       .maybeSingle(),
-    supabase
-      .from("activities")
-      .select(SESSION_ACTIVITY_COLUMNS)
-      .gte("start_time", distributionFrom)
-      .order("start_time"),
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
@@ -495,39 +516,25 @@ export default async function TrendsPage({
     (activityRows ?? []) as unknown as SessionActivity[],
   );
 
-  // --- Fördelning per kategori: fasta perioder (7 dagar/månad/år), oavsett
-  // veckoväljaren ovan — se distributionFrom. Beräknad på samma pass-enhet
+  // --- Fördelning per kategori: samma fönster som resten av sidan (veckor
+  // eller block) — inte egna fasta perioder. Beräknad på samma pass-enhet
   // (P0.5) som resten av sidan, till skillnad från gamla /stats-sidan som
   // grupperade på råa Garmin-aktiviteter. ------------------------------------
-  const distributionSessions: TrainingSession[] = groupActivitiesIntoSessions(
-    (distributionActivityRows ?? []) as unknown as SessionActivity[],
-  );
-
-  function categoryTotals(
-    fromInclusive: string,
-  ): { category: ActivityCategory; km: number; seconds: number; count: number }[] {
-    const byCategory = new Map<ActivityCategory, { km: number; seconds: number; count: number }>();
-    for (const s of distributionSessions) {
-      if (s.date < fromInclusive) continue;
-      const cur = byCategory.get(s.category) ?? { km: 0, seconds: 0, count: 0 };
-      cur.km += s.distanceMeters / 1000;
-      cur.seconds += s.durationSeconds;
-      cur.count += 1;
-      byCategory.set(s.category, cur);
-    }
-    return CATEGORY_VALUES.map((category) => ({ category, ...(byCategory.get(category) ?? { km: 0, seconds: 0, count: 0 }) })).filter(
-      (d) => d.km > 0,
-    );
-  }
-
-  const distributionFrom7d = toDateKey(new Date(new Date(`${todayKey}T00:00:00`).getTime() - 6 * 86_400_000));
-  const distributionFromMonth = toDateKey(new Date(new Date(`${todayKey}T00:00:00`).getFullYear(), new Date(`${todayKey}T00:00:00`).getMonth(), 1));
-
-  const distributionPeriods = [
-    { key: "7d", label: "Senaste 7 dagarna", rows: categoryTotals(distributionFrom7d) },
-    { key: "month", label: "Den här månaden", rows: categoryTotals(distributionFromMonth) },
-    { key: "year", label: "Senaste året", rows: categoryTotals(distributionFrom) },
-  ];
+  const categoryDistributionRows: { category: ActivityCategory; km: number; seconds: number; count: number }[] =
+    (() => {
+      const byCategory = new Map<ActivityCategory, { km: number; seconds: number; count: number }>();
+      for (const s of sessions) {
+        const cur = byCategory.get(s.category) ?? { km: 0, seconds: 0, count: 0 };
+        cur.km += s.distanceMeters / 1000;
+        cur.seconds += s.durationSeconds;
+        cur.count += 1;
+        byCategory.set(s.category, cur);
+      }
+      return CATEGORY_VALUES.map((category) => ({
+        category,
+        ...(byCategory.get(category) ?? { km: 0, seconds: 0, count: 0 }),
+      })).filter((d) => d.km > 0);
+    })();
 
   const sessionsByWeek = new Map<string, TrainingSession[]>();
   for (const session of sessions) {
@@ -1078,7 +1085,10 @@ export default async function TrendsPage({
             Staplarna är veckans summerade träningsbelastning, stackad på passkategori.
             Linjerna nedanför visar avvikelse mot din egen baslinje i SD-enheter — 0 är ditt
             normala, ±1 kanten på ditt normalintervall. Håll pekaren över en vecka för
-            siffrorna och dina egna dagboksord.
+            siffrorna och dina egna dagboksord. Baslinjen är rullande och följer med datan,
+            så Formkurva-linjen här visar kortsiktig avvikelse, inte den långsiktiga
+            utvecklingen — vid många veckor, se Formkurva-diagrammet längre ner i stället,
+            som visar råvärden och en glidande trend oavsett hur långt fönster du valt.
           </p>
         </div>
 
@@ -1158,36 +1168,48 @@ export default async function TrendsPage({
             Fördelning per kategori
           </h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Andel av distansen per kategori, oavsett vilket fönster du står i ovan — alltid
-            senaste 7 dagarna, den här månaden och det senaste året.
+            Andel av distansen per kategori,{" "}
+            {activeBlock ? `i ${activeBlock.name}` : `de senaste ${weeks} veckorna`} — samma
+            fönster som väljaren högst upp.
           </p>
         </div>
-        <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
-          {distributionPeriods.map((p) => (
-            <div key={p.key} className="flex flex-1 flex-col gap-2">
-              <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{p.label}</h3>
-              <CategoryDistributionBar rows={p.rows} />
-            </div>
-          ))}
-        </div>
+        <CategoryDistributionBar rows={categoryDistributionRows} />
       </section>
 
       {/* ================= Distans och tid per vecka ========================= */}
       <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Distans och tid per vecka
-          </h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Välj vilka passkategorier som ska räknas med — annars blandas t ex cykel och
-            styrka in i &quot;tränade km&quot;.
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+              {volumeMetric === "distance" ? "Distans per vecka" : "Träningstid per vecka"}
+            </h2>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Välj vilka passkategorier som ska räknas med — annars blandas t ex cykel och
+              styrka in i &quot;tränade km&quot;.
+            </p>
+          </div>
+          <div className="flex gap-2 text-sm">
+            {(["distance", "time"] as const).map((m) => (
+              <Link
+                key={m}
+                href={volumeHref({ volumeMetric: m })}
+                className={`rounded px-3 py-1 ${
+                  volumeMetric === m
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                }`}
+              >
+                {m === "distance" ? "Distans" : "Tid"}
+              </Link>
+            ))}
+          </div>
         </div>
 
         <form method="get" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           {weeksParam && <input type="hidden" name="weeks" value={weeksParam} />}
           {blockParam && <input type="hidden" name="block" value={blockParam} />}
           <input type="hidden" name="volumeFiltered" value="1" />
+          <input type="hidden" name="volumeMetric" value={volumeMetric} />
           {CATEGORY_VALUES.map((c) => (
             <label key={c} className="inline-flex items-center gap-1.5">
               <input
@@ -1207,24 +1229,11 @@ export default async function TrendsPage({
           </button>
         </form>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
-          <div className="flex flex-1 flex-col gap-2">
-            <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Distans per vecka
-            </h3>
-            <BarChart data={distanceBarData} formatKind="km" emptyLabel="Inga pass i perioden." />
-          </div>
-          <div className="flex flex-1 flex-col gap-2">
-            <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-              Träningstid per vecka
-            </h3>
-            <BarChart
-              data={durationBarData}
-              formatKind="hours"
-              emptyLabel="Inga pass i perioden."
-            />
-          </div>
-        </div>
+        {volumeMetric === "distance" ? (
+          <BarChart data={distanceBarData} formatKind="km" emptyLabel="Inga pass i perioden." />
+        ) : (
+          <BarChart data={durationBarData} formatKind="hours" emptyLabel="Inga pass i perioden." />
+        )}
       </section>
 
       {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
