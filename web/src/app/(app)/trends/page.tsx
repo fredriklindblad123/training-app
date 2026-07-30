@@ -48,6 +48,7 @@ import { addDays as planAddDays, BLOCK_LABELS, type BlockType } from "@/lib/plan
 import {
   CATEGORY_LABELS,
   CATEGORY_VALUES,
+  categoryColorVar,
   isActivityCategory,
   type ActivityCategory,
 } from "@/lib/categories";
@@ -208,6 +209,57 @@ function categoryBreakdownLabel(pct: Partial<Record<ActivityCategory, number>>):
     .sort((a, b) => b[1] - a[1])
     .map(([cat, v]) => `${CATEGORY_LABELS[cat]} ${formatPct(v)}`)
     .join(", ");
+}
+
+/** En liggande stapel per period, fördelad på kategori efter distans-andel —
+ * samma idé som ComboChartens veckovisa staplar (stackad belastning per
+ * kategori), bara konsoliderad till en enda stapel för en hel period i
+ * stället för en stapel per vecka. Bara färgade divs, ingen SVG — därför
+ * ingen risk för samma <title>-hydreringsbugg som drabbat de riktiga
+ * diagrammen (se ComboChart/CategoryPieChart-historiken). */
+function CategoryDistributionBar({
+  rows,
+}: {
+  rows: { category: ActivityCategory; km: number; seconds: number; count: number }[];
+}) {
+  const total = rows.reduce((sum, d) => sum + d.km, 0);
+  if (rows.length === 0 || total <= 0) {
+    return <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga pass i perioden.</p>;
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex h-3 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+        {rows.map((d) => {
+          const share = d.km / total;
+          return (
+            <div
+              key={d.category}
+              className="h-full"
+              style={{ width: `${share * 100}%`, backgroundColor: categoryColorVar(d.category) }}
+              title={`${CATEGORY_LABELS[d.category]}: ${d.km.toFixed(1)} km (${Math.round(share * 100)}%)`}
+            />
+          );
+        })}
+      </div>
+      <ul className="flex flex-col gap-0.5">
+        {rows.map((d) => {
+          const share = d.km / total;
+          return (
+            <li key={d.category} className="flex items-center gap-2 text-xs">
+              <span
+                className="h-2 w-2 shrink-0 rounded-sm"
+                style={{ backgroundColor: categoryColorVar(d.category) }}
+              />
+              <span className="text-zinc-600 dark:text-zinc-400">{CATEGORY_LABELS[d.category]}</span>
+              <span className="ml-auto tabular-nums text-zinc-900 dark:text-zinc-100">
+                {d.km.toFixed(1)} km · {formatHoursMinutes(d.seconds)} · {Math.round(share * 100)}%
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 /** Radlista för blockjämförelsetabellen (P1.5) — volym, intensitetsfördelning,
@@ -371,6 +423,12 @@ export default async function TrendsPage({
     ? toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))
     : null;
 
+  // Fördelning per kategori (nedan) har egna, fasta perioder (7 dagar/månad/
+  // år) — oberoende av veckoväljaren/blockvyn ovan, så att de alltid finns
+  // kvar oavsett vilket fönster man råkar stå i. Den längsta av de tre (år)
+  // avgör hur långt tillbaka den frågan behöver gå.
+  const distributionFrom = buildWeekSeries(52)[0];
+
   // Tröskelkolumnerna (P0.3b) kan saknas i databasen när migrationen ännu inte
   // är körd. Den frågan får därför gå separat och felet sväljas: sidan ska
   // fungera utan dem, bara med en tydligare brasklapp om zongränserna.
@@ -379,6 +437,7 @@ export default async function TrendsPage({
     { data: dailyMetrics },
     { data: diaryEntries },
     profileResult,
+    { data: distributionActivityRows },
   ] = await Promise.all([
     (() => {
       let q = supabase
@@ -409,6 +468,11 @@ export default async function TrendsPage({
       .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr")
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", distributionFrom)
+      .order("start_time"),
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
@@ -430,6 +494,40 @@ export default async function TrendsPage({
   const sessions: TrainingSession[] = groupActivitiesIntoSessions(
     (activityRows ?? []) as unknown as SessionActivity[],
   );
+
+  // --- Fördelning per kategori: fasta perioder (7 dagar/månad/år), oavsett
+  // veckoväljaren ovan — se distributionFrom. Beräknad på samma pass-enhet
+  // (P0.5) som resten av sidan, till skillnad från gamla /stats-sidan som
+  // grupperade på råa Garmin-aktiviteter. ------------------------------------
+  const distributionSessions: TrainingSession[] = groupActivitiesIntoSessions(
+    (distributionActivityRows ?? []) as unknown as SessionActivity[],
+  );
+
+  function categoryTotals(
+    fromInclusive: string,
+  ): { category: ActivityCategory; km: number; seconds: number; count: number }[] {
+    const byCategory = new Map<ActivityCategory, { km: number; seconds: number; count: number }>();
+    for (const s of distributionSessions) {
+      if (s.date < fromInclusive) continue;
+      const cur = byCategory.get(s.category) ?? { km: 0, seconds: 0, count: 0 };
+      cur.km += s.distanceMeters / 1000;
+      cur.seconds += s.durationSeconds;
+      cur.count += 1;
+      byCategory.set(s.category, cur);
+    }
+    return CATEGORY_VALUES.map((category) => ({ category, ...(byCategory.get(category) ?? { km: 0, seconds: 0, count: 0 }) })).filter(
+      (d) => d.km > 0,
+    );
+  }
+
+  const distributionFrom7d = toDateKey(new Date(new Date(`${todayKey}T00:00:00`).getTime() - 6 * 86_400_000));
+  const distributionFromMonth = toDateKey(new Date(new Date(`${todayKey}T00:00:00`).getFullYear(), new Date(`${todayKey}T00:00:00`).getMonth(), 1));
+
+  const distributionPeriods = [
+    { key: "7d", label: "Senaste 7 dagarna", rows: categoryTotals(distributionFrom7d) },
+    { key: "month", label: "Den här månaden", rows: categoryTotals(distributionFromMonth) },
+    { key: "year", label: "Senaste året", rows: categoryTotals(distributionFrom) },
+  ];
 
   const sessionsByWeek = new Map<string, TrainingSession[]>();
   for (const session of sessions) {
@@ -1051,6 +1149,27 @@ export default async function TrendsPage({
             )}
           </p>
         </details>
+      </section>
+
+      {/* ================= Fördelning per kategori ============================ */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Fördelning per kategori
+          </h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Andel av distansen per kategori, oavsett vilket fönster du står i ovan — alltid
+            senaste 7 dagarna, den här månaden och det senaste året.
+          </p>
+        </div>
+        <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
+          {distributionPeriods.map((p) => (
+            <div key={p.key} className="flex flex-1 flex-col gap-2">
+              <h3 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{p.label}</h3>
+              <CategoryDistributionBar rows={p.rows} />
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* ================= Distans och tid per vecka ========================= */}
