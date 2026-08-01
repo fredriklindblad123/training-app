@@ -152,6 +152,7 @@ export default async function DayPage({
   // veta om den innehåller något.
   const dayKm = daySessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
   const daySeconds = daySessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
+  const dayLoad = daySessions.reduce((sum, s) => sum + (s.trainingLoad ?? 0), 0);
 
   const doneSummary =
     daySessions.length === 0
@@ -248,15 +249,28 @@ export default async function DayPage({
         title={`${day} ${SV_MONTHS[month - 1]} ${year}`}
         prevHref={`/calendar/${prevDate.getFullYear()}/${prevDate.getMonth() + 1}/${prevDate.getDate()}`}
         nextHref={`/calendar/${nextDate.getFullYear()}/${nextDate.getMonth() + 1}/${nextDate.getDate()}`}
-        jumpDate={dateStr}
+        jumpDate={todayStr}
         dayHref={`/calendar/${year}/${month}/${day}`}
         weekHref={`/calendar/vecka/${dateStr}`}
         monthHref={`/calendar/${year}/${month}`}
         yearHref={`/calendar/${year}`}
       />
-      {daySessions.length > 0 && (
-        <p className="-mt-3 text-sm text-zinc-600 dark:text-zinc-400">{doneSummary}</p>
-      )}
+
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "Pass", value: String(daySessions.length) },
+          { label: "Distans", value: dayKm > 0 ? `${dayKm.toFixed(1)} km` : "—" },
+          { label: "Tid", value: daySeconds > 0 ? formatDuration(daySeconds) : "—" },
+          { label: "Belastning", value: dayLoad > 0 ? String(Math.round(dayLoad)) : "—" },
+        ].map((tile) => (
+          <div key={tile.label} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
+            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
+            <dd className="mt-0.5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+              {tile.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
 
       <form
         action={saveDiaryEntry}

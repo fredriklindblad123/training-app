@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { CATEGORY_LABELS, categoryColorVar, type ActivityCategory } from "@/lib/categories";
-import { median } from "@/lib/stats-utils";
+import { median, robustRange } from "@/lib/stats-utils";
 
 /* ------------------------------------------------------------------------ *
  * EfficiencyChart — formkurva / Efficiency Factor (P1.4 i
@@ -144,14 +144,28 @@ export function EfficiencyChart({
   const xFor = (date: string) =>
     PAD_LEFT + ((dayMs(date) - fromMs) / (toMs - fromMs)) * PLOT_W;
 
+  // Zooma till den meningsfulla klustringen, inte till varje extremvärde: ett
+  // par pass med orimligt lågt m/slag (GPS-fel, ett avbrutet pass, en klocka
+  // som inte hann låsa pulsbältet) skulle annars dra ut hela skalan och göra
+  // en hel säsongs verkliga formförbättring osynlig — precis "rakt streck"-
+  // problemet vid många veckor. robustRange hittar den samlade klustringen
+  // (MAD, okänslig för enstaka utstickare); punkter utanför den ritas
+  // fortfarande, bara klipta mot kanten (se render nedan och disclosureNote).
   const values = sorted.map((p) => p.ef * METERS_PER_BEAT);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
+  const bounds = robustRange(values);
+  const coreValues = bounds ? values.filter((v) => v >= bounds.low && v <= bounds.high) : values;
+  const isZoomed = bounds != null && coreValues.length >= 3 && coreValues.length < values.length;
+  const scaleValues = isZoomed ? coreValues : values;
+  const clippedCount = isZoomed ? values.length - coreValues.length : 0;
+
+  const rawMin = Math.min(...scaleValues);
+  const rawMax = Math.max(...scaleValues);
   const pad = (rawMax - rawMin || 0.1) * 0.12;
   const yMin = Math.max(0, rawMin - pad);
   const yMax = rawMax + pad;
+  const clamp = (v: number) => Math.min(yMax, Math.max(yMin, v));
   const yFor = (metersPerBeat: number) =>
-    PAD_TOP + PLOT_H - ((metersPerBeat - yMin) / (yMax - yMin)) * PLOT_H;
+    PAD_TOP + PLOT_H - ((clamp(metersPerBeat) - yMin) / (yMax - yMin)) * PLOT_H;
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) / 4) * i);
 
@@ -272,21 +286,24 @@ export function EfficiencyChart({
 
         {sorted.map((p) => {
           const isHovered = p.id === hovered;
+          const raw = p.ef * METERS_PER_BEAT;
+          const isClipped = raw < yMin || raw > yMax;
           return (
             <circle
               key={p.id}
               cx={xFor(p.date)}
-              cy={yFor(p.ef * METERS_PER_BEAT)}
+              cy={yFor(raw)}
               r={isHovered ? 6 : 4}
               style={{ fill: categoryColorVar(p.category) }}
               className="stroke-white dark:stroke-zinc-950"
               strokeWidth={2}
               paintOrder="stroke"
+              opacity={isClipped ? 0.45 : 1}
               tabIndex={0}
               onFocus={() => setHovered(p.id)}
               onBlur={() => setHovered(null)}
             >
-              <title>{`${formatShortDate(p.date)} ${p.label}: ${(p.ef * METERS_PER_BEAT).toFixed(2)} m/slag`}</title>
+              <title>{`${formatShortDate(p.date)} ${p.label}: ${raw.toFixed(2)} m/slag${isClipped ? " (utanför skalan, klippt mot kanten)" : ""}`}</title>
             </circle>
           );
         })}
@@ -304,6 +321,15 @@ export function EfficiencyChart({
           </text>
         ))}
       </svg>
+
+      {clippedCount > 0 && (
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Skalan är zoomad till den samlade variationen. {clippedCount} pass sticker ut
+          kraftigt (troligen mätfel eller en avvikande förutsättning) och visas nedtonade mot
+          kanten i stället för att dra ut hela axeln — hovra över dem eller se tabellen för de
+          riktiga värdena.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
         {CATEGORIES.filter((c) => sorted.some((p) => p.category === c)).map((c) => (

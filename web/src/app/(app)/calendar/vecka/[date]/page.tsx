@@ -178,7 +178,7 @@ export default async function WeekPage({
         }
         prevHref={`/calendar/vecka/${toKey(addDays(monday, -7))}`}
         nextHref={`/calendar/vecka/${toKey(addDays(monday, 7))}`}
-        jumpDate={from}
+        jumpDate={todayKey}
         dayHref={`/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}/${monday.getDate()}`}
         weekHref={`/calendar/vecka/${todayKey}`}
         monthHref={monthHref}

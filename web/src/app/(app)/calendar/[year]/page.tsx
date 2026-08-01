@@ -14,6 +14,12 @@ import {
 } from "@/lib/calendar-utils";
 import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
 import { BLOCK_COLOR_VARS, blocksInRange } from "@/lib/planning";
+import {
+  SESSION_ACTIVITY_COLUMNS,
+  groupActivitiesIntoSessions,
+  type SessionActivity,
+} from "@/lib/sessions";
+import { formatDuration } from "@/lib/format";
 
 export default async function YearPage({
   params,
@@ -28,8 +34,13 @@ export default async function YearPage({
 
   const supabase = await createClient();
 
-  const [statuses, { data: nextCompetition }, { data: plannedWorkouts }, { data: seasonBlocks }] =
-    await Promise.all([
+  const [
+    statuses,
+    { data: nextCompetition },
+    { data: plannedWorkouts },
+    { data: seasonBlocks },
+    { data: activities },
+  ] = await Promise.all([
     getDayStatuses(supabase, `${year}-01-01`, `${year + 1}-01-01`),
     supabase
       .from("competitions")
@@ -48,10 +59,25 @@ export default async function YearPage({
       .select("id, name, block_type, start_date, end_date, focus")
       .lte("start_date", `${year}-12-31`)
       .gte("end_date", `${year}-01-01`),
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", `${year}-01-01`)
+      .lt("start_time", `${year + 1}-01-01`),
   ]);
 
   const goalDateKey = nextCompetition?.competition_date ?? null;
   const blocks = (seasonBlocks ?? []) as BandBlock[];
+
+  // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
+  // inte härleda radtypen — se samma omväg i lib/sessions.ts-användarna på
+  // /dashboard, /trends och månadsvyn.
+  const yearSessions = groupActivitiesIntoSessions(
+    (activities ?? []) as unknown as SessionActivity[],
+  );
+  const yearKm = yearSessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
+  const yearSeconds = yearSessions.reduce((sum, s) => sum + s.durationSeconds, 0);
+  const yearLoad = yearSessions.reduce((sum, s) => sum + s.trainingLoad, 0);
 
   const plannedMap = new Map<string, ActivityCategory>();
   for (const pw of plannedWorkouts ?? []) {
@@ -89,12 +115,29 @@ export default async function YearPage({
         title={year}
         prevHref={`/calendar/${year - 1}`}
         nextHref={`/calendar/${year + 1}`}
-        jumpDate={`${year}-01-01`}
+        jumpDate={dateKey(now.getFullYear(), now.getMonth() + 1, now.getDate())}
         dayHref={dayHref}
         weekHref={weekHref}
         monthHref={monthHref}
         yearHref={`/calendar/${year}`}
       />
+
+      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "Pass", value: String(yearSessions.length) },
+          { label: "Distans", value: yearKm > 0 ? `${yearKm.toFixed(0)} km` : "—" },
+          { label: "Tid", value: yearSeconds > 0 ? formatDuration(yearSeconds) : "—" },
+          { label: "Belastning", value: yearLoad > 0 ? String(Math.round(yearLoad)) : "—" },
+        ].map((tile) => (
+          <div key={tile.label} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
+            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
+            <dd className="mt-0.5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+              {tile.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
       <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
         {/* "Ledig" har ingen egen färg i kalendern — se lib/day-status.ts. */}
         {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>)

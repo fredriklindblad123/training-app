@@ -59,6 +59,24 @@ export function median(values: number[]): number | null {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+/** Robust intervall kring datans median, byggt på MAD (medianabsolut-
+ * avvikelse) i stället för SD — poängen är att kunna zooma en graf till den
+ * meningsfulla klustringen utan att ett fåtal orimliga mätvärden (GPS-fel,
+ * ett avbrutet pass) drar ut hela skalan så att den verkliga variationen ser
+ * ut som ett rakt streck. `k` är tröskeln i skalade MAD-enheter — 3,5 är den
+ * vedertagna gränsen för "modified z-score"-utstickare (Iglewicz & Hoaglin).
+ * `null` när datan är för gles eller helt konstant (inget att skala mot). */
+export function robustRange(values: number[], k = 3.5): { low: number; high: number } | null {
+  if (values.length < 4) return null;
+  const med = median(values);
+  if (med == null) return null;
+  const madRaw = median(values.map((v) => Math.abs(v - med)));
+  if (madRaw == null || madRaw === 0) return null;
+  // 1,4826 skalar MAD så den motsvarar SD för normalfördelad data.
+  const scaledMad = madRaw * 1.4826;
+  return { low: med - k * scaledMad, high: med + k * scaledMad };
+}
+
 /** Stickprovsstandardavvikelse (n−1). Kräver minst 2 värden. */
 export function standardDeviation(values: number[]): number | null {
   if (values.length < 2) return null;
