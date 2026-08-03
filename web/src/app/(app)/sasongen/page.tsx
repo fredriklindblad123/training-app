@@ -291,11 +291,17 @@ export default async function PlaneringPage({
     bana?: string;
     raceA?: string;
     raceB?: string;
+    /** L5: loopens utgångar landar här. /blocket skickar startdatum för
+     * nästa block, /veckan skickar veckan som ska planeras — så man möter ett
+     * förifyllt formulär i stället för sidans topp och en tom ruta. */
+    nyttBlockFran?: string;
+    vecka?: string;
   }>;
 }) {
   const supabase = await createClient();
   const today = toDateKey(new Date());
   const {
+    nyttBlockFran: nyttBlockFranParam,
     tavlingsAr: tavlingsArParam,
     tavlingsBana: tavlingsBanaParam,
     gren: grenParam,
@@ -1133,7 +1139,13 @@ export default async function PlaneringPage({
               </select>
             </Field>
             <Field label="Från">
-              <input type="date" name="start_date" required className={input} />
+              <input
+                type="date"
+                name="start_date"
+                required
+                defaultValue={nyttBlockFranParam ?? undefined}
+                className={input}
+              />
             </Field>
             <Field label="Till">
               <input type="date" name="end_date" required className={input} />

@@ -1323,6 +1323,30 @@ export default async function TrendsPage({
         </section>
       )}
 
+      {/* L5 (docs/tranarloopen.md): loopens utgång. Sidan slutar med nästa
+          steg, inte med sista diagrammet — det är det som gör sidorna till en
+          loop i stället för fyra hus. Datumet förifylls så det nya blocket
+          börjar dagen efter det nuvarande slutar, i stället för att man
+          landar på ett tomt formulär och får räkna själv. */}
+      {activeBlock && (
+        <div className="flex flex-wrap items-center gap-4 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+          <div className="flex-1">
+            <p className="font-medium text-zinc-900 dark:text-zinc-100">Nästa block</p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              {activeBlock.name} slutar {activeBlock.end_date}. Utvärderingen ovan är
+              underlaget för hur nästa ska se ut.
+            </p>
+          </div>
+          <Link
+            href={`/sasongen?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`}
+            className="rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+          >
+            Skapa nästa block →
+          </Link>
+        </div>
+      )}
+
+
     </div>
   );
 }
