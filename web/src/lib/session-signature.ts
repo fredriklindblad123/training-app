@@ -263,3 +263,89 @@ export function toOccurrence(
 
   return { activityId, date, category, signature, meanRepSeconds, meanRepHr, laps };
 }
+
+/* ---------------------------------------------------------------------------
+ * K1 (docs/tranarperspektiv.md): samma nyckelformat, ur planerade repgrupper
+ * i stället för ur activity_splits.
+ *
+ * Det här är den kritiska kopplingen som gör K2 (plan mot utfall) möjlig:
+ * ett ordinerat "2×1000 m + 4×600 m" måste ge exakt samma `key` som ett
+ * genomfört pass med samma varvstruktur, annars går de aldrig att matcha mot
+ * varandra. Funktionerna nedan bor medvetet i SAMMA FIL som
+ * buildSessionSignature — inte i lib/planning.ts där resten av
+ * planeringsmodellen bor — just för att de två formaten ska vara omöjliga
+ * att låta glida isär i tysthet. Ändras `key`/`label`-formatet ovan måste
+ * det ändras här också, i samma commit.
+ *
+ * Skillnader mot buildSessionSignature som är avsiktliga:
+ *  - Ingen roundRepDistance. Den avrundningen finns för att GPS-mätta varv
+ *    aldrig landar exakt (394 m, 403 m, ...). En planerad repgrupp har ingen
+ *    GPS-brus — tränaren skriver "1000", inte "987".
+ *  - Grupper kommer inte som en lista varv utan som färdiga (reps,
+ *    distans)-par, redan en per rad i planned_rep_groups/template_rep_groups.
+ *    Om två grupper råkar ligga i följd med samma distans (två separata rader
+ *    med 1000 m) slås de ändå ihop, av samma skäl som buildSessionSignature
+ *    slår ihop varv: "2×1000" följt av ett nytt "3×1000" är samma sak som en
+ *    grupp på "5×1000", och ska ge samma nyckel oavsett hur tränaren råkade
+ *    dela upp inmatningen.
+ */
+
+/** En planerad repgrupp, med fältnamn som i planned_rep_groups/
+ * template_rep_groups (fast camelCase — se lib/planning.ts för
+ * databasradens egna snake_case-typ, RepGroupInput). */
+export type PlannedRepGroup = {
+  reps: number;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  sortOrder: number;
+};
+
+/** Slår ihop planerade repgrupper i sort_order-ordning, exakt som
+ * buildSessionSignature slår ihop varv: grupper i följd med samma distans
+ * blir en grupp. Bara distansbaserade grupper ingår — se filkommentaren för
+ * varför tidsbaserade grupper inte kan uttryckas i det här formatet. */
+function mergeDistanceRepGroups(
+  groups: PlannedRepGroup[],
+): { distanceMeters: number; reps: number }[] {
+  const sorted = [...groups].sort((a, b) => a.sortOrder - b.sortOrder);
+  const merged: { distanceMeters: number; reps: number }[] = [];
+  for (const g of sorted) {
+    if (g.distanceMeters == null) continue;
+    const last = merged[merged.length - 1];
+    if (last && last.distanceMeters === g.distanceMeters) {
+      last.reps += g.reps;
+    } else {
+      merged.push({ distanceMeters: g.distanceMeters, reps: g.reps });
+    }
+  }
+  return merged;
+}
+
+/**
+ * "2x1000+4x600" ur planerade repgrupper — samma nyckelformat som
+ * buildSessionSignature ger ur activity_splits, så plan och utfall kan
+ * jämföras direkt (K2, se groupBySignature/dominantDistanceMeters ovan).
+ *
+ * Tidsbaserade grupper ("5x3min", dvs. durationSeconds utan distanceMeters)
+ * kan inte matchas mot en utfallssignatur — activity_splits ger bara
+ * distansbaserade varv, aldrig tidsbaserade. De grupperna hoppas därför över
+ * här (de finns kvar i databasen och visas i UI:t, de bidrar bara inte till
+ * matchningsnyckeln). Returnerar null om passet inte har någon
+ * distansbaserad grupp alls, eller om listan är tom.
+ */
+export function plannedSignatureKey(groups: PlannedRepGroup[]): string | null {
+  const merged = mergeDistanceRepGroups(groups);
+  if (merged.length === 0) return null;
+  return merged.map((g) => `${g.reps}x${g.distanceMeters}`).join("+");
+}
+
+/** "2×1000 m + 4×600 m" — läsbar etikett, samma format som
+ * SessionSignature.label. Samma begränsning som plannedSignatureKey:
+ * tidsbaserade grupper visas inte här (de har ingen motsvarighet i
+ * SessionSignature.label, som alltid kommer ur distansbaserade varv) — de
+ * syns i stället i repgrupps-listan i UI:t. */
+export function plannedSignatureLabel(groups: PlannedRepGroup[]): string | null {
+  const merged = mergeDistanceRepGroups(groups);
+  if (merged.length === 0) return null;
+  return merged.map((g) => `${g.reps}×${g.distanceMeters} m`).join(" + ");
+}

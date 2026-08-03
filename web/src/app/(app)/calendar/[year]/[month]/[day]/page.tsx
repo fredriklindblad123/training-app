@@ -22,6 +22,10 @@ import {
   resetActivityCategory,
   deletePlannedWorkout,
   updatePlannedWorkout,
+  saveTestLt2,
+  addPlannedRepGroup,
+  updatePlannedRepGroup,
+  deletePlannedRepGroup,
 } from "./actions";
 import {
   formatDuration,
@@ -36,6 +40,8 @@ import {
 } from "@/lib/categories";
 import { analyzeDiaryNote } from "@/lib/diary-text";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
+import { estimateLt2, LT2_SOURCE_LABELS, type Lt2Estimate } from "@/lib/threshold-test";
+import type { SignatureLap } from "@/lib/session-signature";
 
 function typeLabel(type: string): string {
   if (isActivityCategory(type)) return CATEGORY_LABELS[type];
@@ -86,6 +92,7 @@ export default async function DayPage({
     { data: plannedWorkouts },
     { data: activeBlocks },
     { data: dailyMetrics },
+    { data: profile },
   ] = await Promise.all([
       supabase
         .from("activities")
@@ -104,9 +111,13 @@ export default async function DayPage({
       // riktiga pass samma dag och båda ska kunna jämföras mot sitt utfall.
       // Blocknamnet hängs på via relationen till season_blocks, så varje pass
       // vet vilket block det hör till utan en extra fråga.
+      // planned_rep_groups(*) hämtas nästlat (K1) — en saknad tabell (om
+      // migrationen inte är körd) gör bara att fältet blir undefined på
+      // varje rad, aldrig ett kastat fel. PlannedSessions faller tillbaka på
+      // `?? []` överallt den läser det.
       supabase
         .from("planned_workouts")
-        .select("*, season_blocks(name)")
+        .select("*, season_blocks(name), planned_rep_groups(*)")
         .eq("scheduled_date", dateStr)
         .order("slot", { ascending: true }),
       // Det/de block vars datumintervall täcker den här dagen — styr både
@@ -121,6 +132,12 @@ export default async function DayPage({
         .from("daily_metrics")
         .select("*")
         .eq("metric_date", dateStr)
+        .maybeSingle(),
+      // Bara för K8-kortet nedan: befintligt LT2 (för att visa "ersätter",
+      // se lib/threshold-test.ts) och dess källa/datum.
+      supabase
+        .from("profiles")
+        .select("lt2_hr, lt2_source, lt2_measured_on")
         .maybeSingle(),
     ]);
 
@@ -147,6 +164,30 @@ export default async function DayPage({
   const garminActivities = (activities ?? []).filter((a) => a.source !== "manual");
   const manualActivities = (activities ?? []).filter((a) => a.source === "manual");
   const hasOutcome = garminActivities.length > 0 || manualActivities.length > 0;
+
+  // K8 (docs/tranarperspektiv.md): ordinerat tröskeltest + ett genomfört
+  // pass samma dag → föreslå LT2. Ett riktigt tröskeltest är nästan alltid
+  // dagens enda eller klart längsta Garmin-aktivitet (uppvärmning/nerjogg är
+  // kortare fragment) — samma "hårdaste meningsfulla del"-tanke som
+  // buildSession i lib/sessions.ts använder för att avgöra passets kategori,
+  // fast här räcker varaktighet: vi vill ha den faktiska testinsatsen, inte
+  // uppvärmningen. Splitsen läses direkt av den aktiviteten så att
+  // varv-index inte blandas ihop mellan flera Garmin-aktiviteter samma dag.
+  const plannedTest = (plannedWorkouts ?? []).find((p) => p.workout_type === "test") ?? null;
+  const testActivity =
+    plannedTest && garminActivities.length > 0
+      ? garminActivities.reduce((best, a) =>
+          (a.duration_seconds ?? 0) > (best.duration_seconds ?? 0) ? a : best,
+        )
+      : null;
+  const lt2Estimate =
+    plannedTest && hasOutcome
+      ? estimateLt2({
+          laps: (testActivity?.activity_splits ?? []) as SignatureLap[],
+          totalDurationSeconds: testActivity?.duration_seconds ?? null,
+          avgHr: testActivity?.avg_hr ?? null,
+        })
+      : null;
 
   // Sammanfattningsrader: målet är att man ska slippa öppna en sektion för att
   // veta om den innehåller något.
@@ -272,6 +313,17 @@ export default async function DayPage({
         ))}
       </dl>
 
+      {plannedTest && hasOutcome && lt2Estimate && (
+        <ThresholdTestCard
+          dateStr={dateStr}
+          estimate={lt2Estimate}
+          currentLt2={profile?.lt2_hr ?? null}
+          currentSource={profile?.lt2_source ?? null}
+          currentMeasuredOn={profile?.lt2_measured_on ?? null}
+          saveAction={saveTestLt2}
+        />
+      )}
+
       <form
         action={saveDiaryEntry}
         className="flex flex-wrap items-center gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
@@ -331,6 +383,9 @@ export default async function DayPage({
           createAction={addPlannedWorkout}
           updateAction={updatePlannedWorkout}
           deleteAction={deletePlannedWorkout}
+          addRepGroupAction={addPlannedRepGroup}
+          updateRepGroupAction={updatePlannedRepGroup}
+          deleteRepGroupAction={deletePlannedRepGroup}
         />
       </DaySection>
 
@@ -605,6 +660,95 @@ function PlanStatusBadge({
     <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${className}`}>
       {label}
     </span>
+  );
+}
+
+/**
+ * K8 (docs/tranarperspektiv.md): förslag på LT2 ur ett genomfört
+ * tröskeltest. Visas bara den dag testet gjordes — dagvyn ser ut precis som
+ * idag i övrigt. Skriver aldrig till profiles på egen hand; spara-knappen är
+ * en vanlig `<form action={saveAction}>` (P0.4-mönstret i den här filen),
+ * ingen klient-JS.
+ */
+function ThresholdTestCard({
+  dateStr,
+  estimate,
+  currentLt2,
+  currentSource,
+  currentMeasuredOn,
+  saveAction,
+}: {
+  dateStr: string;
+  estimate: Lt2Estimate;
+  currentLt2: number | null;
+  currentSource: string | null;
+  currentMeasuredOn: string | null;
+  saveAction: (formData: FormData) => void;
+}) {
+  const currentLabel =
+    currentLt2 != null
+      ? [
+          `${currentLt2} slag/min`,
+          currentSource ? LT2_SOURCE_LABELS[currentSource] ?? currentSource : null,
+          currentMeasuredOn,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : null;
+
+  return (
+    <section className="flex flex-col gap-3 rounded border border-emerald-300/70 bg-emerald-50/40 p-4 dark:border-emerald-800/70 dark:bg-emerald-950/20">
+      <h2 className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+        Tröskeltest genomfört — förslag på LT2
+      </h2>
+
+      {estimate.lt2 != null ? (
+        <>
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+            <div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">Uppskattat LT2</div>
+              <div className="text-3xl font-semibold text-zinc-900 dark:text-zinc-50">
+                {estimate.lt2}{" "}
+                <span className="text-base font-normal text-zinc-500 dark:text-zinc-400">
+                  slag/min
+                </span>
+              </div>
+            </div>
+            {currentLabel && (
+              <div>
+                <div className="text-xs text-zinc-500 dark:text-zinc-400">Sparat sedan tidigare</div>
+                <div className="text-sm text-zinc-600 dark:text-zinc-400">{currentLabel}</div>
+              </div>
+            )}
+          </div>
+
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+            {estimate.reason ??
+              `Bygger på tidsviktad snittpuls för de sista ${estimate.minutesUsed} minuterna av passet.`}{" "}
+            Klockans pulszoner räknas inte om av det här — värdet blir ett facit att jämföra
+            fördelningen på /trends mot, inte en ny beräkning av staplarna.
+          </p>
+
+          <form action={saveAction} className="flex flex-wrap items-center gap-3">
+            <input type="hidden" name="lt2_hr" value={estimate.lt2} />
+            <input type="hidden" name="measured_on" value={dateStr} />
+            <button
+              type="submit"
+              className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+            >
+              {currentLt2 != null
+                ? `Ersätt sparat LT2 (${currentLt2}) med ${estimate.lt2}`
+                : "Spara som LT2"}
+            </button>
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              Sparas som fälttest — en uppskattning, inte ett laktattest.
+            </span>
+          </form>
+        </>
+      ) : (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">{estimate.reason}</p>
+      )}
+    </section>
   );
 }
 

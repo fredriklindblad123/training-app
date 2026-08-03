@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { connectGarmin, syncGarminNow, saveThresholds } from "./actions";
+import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Ansluten",
@@ -20,8 +21,21 @@ export default async function SettingsPage({
     .maybeSingle();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr")
+    .select(
+      "lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr, lt2_source, lt2_measured_on",
+    )
     .maybeSingle();
+
+  // K8: ett fälttest är en uppskattning, ett laktattest en mätning — visa
+  // alltid vilket ett sparat LT2 bygger på, aldrig som en anonym siffra.
+  const lt2SourceLabel = profile?.lt2_source
+    ? [
+        LT2_SOURCE_LABELS[profile.lt2_source] ?? profile.lt2_source,
+        profile.lt2_measured_on,
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : null;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -178,6 +192,9 @@ export default async function SettingsPage({
               defaultValue={profile?.lt2_hr ?? ""}
               className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
             />
+            {lt2SourceLabel && (
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">{lt2SourceLabel}</span>
+            )}
           </label>
           <div className="col-span-2 sm:col-span-3">
             <button

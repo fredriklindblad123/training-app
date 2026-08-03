@@ -1,6 +1,14 @@
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
-import { SLOT_LABELS, WORKOUT_LABELS, WORKOUT_TYPES, type WorkoutType } from "@/lib/planning";
+import {
+  QUALITY_WORKOUT_TYPES,
+  SLOT_LABELS,
+  WORKOUT_LABELS,
+  WORKOUT_TYPES,
+  type WorkoutType,
+} from "@/lib/planning";
 import { formatDuration, formatKm } from "@/lib/format";
+import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
+import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
 
 /* Planerade pass för en dag.
  *
@@ -19,6 +27,10 @@ export type PlannedRow = {
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
   season_blocks?: { name: string } | null;
+  /** K1: repgrupperna på passet. `?? []` överallt den här läses — en saknad
+   * tabell (migrationen inte körd) ska inte krascha dagvyn, bara visa passet
+   * utan repgrupper, precis som innan K1. */
+  planned_rep_groups?: RepGroupRow[] | null;
 };
 
 const inputClass =
@@ -36,6 +48,9 @@ export function PlannedSessions({
   createAction,
   updateAction,
   deleteAction,
+  addRepGroupAction,
+  updateRepGroupAction,
+  deleteRepGroupAction,
 }: {
   dateStr: string;
   planned: PlannedRow[];
@@ -44,6 +59,10 @@ export function PlannedSessions({
   createAction: (formData: FormData) => void;
   updateAction: (formData: FormData) => void;
   deleteAction: (formData: FormData) => void;
+  /** K1: repgrupper på ett enskilt planerat pass. */
+  addRepGroupAction: (formData: FormData) => void;
+  updateRepGroupAction: (formData: FormData) => void;
+  deleteRepGroupAction: (formData: FormData) => void;
 }) {
   const sorted = [...planned].sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
 
@@ -55,17 +74,46 @@ export function PlannedSessions({
         </p>
       )}
 
-      {sorted.map((p) => (
+      {sorted.map((p) => {
+        const repGroups = p.planned_rep_groups ?? [];
+        // Samma nyckelformat som utfallets buildSessionSignature (se
+        // lib/session-signature.ts) — så "5×1000 m" syns i sammanfattningen
+        // utan att man öppnar passet, precis som ett genomfört pass visar
+        // sin signatur på /trends.
+        const sigLabel = plannedSignatureLabel(
+          repGroups.map(
+            (g): PlannedRepGroup => ({
+              reps: g.reps,
+              distanceMeters: g.distance_meters,
+              durationSeconds: g.duration_seconds,
+              sortOrder: g.sort_order,
+            }),
+          ),
+        );
+        // Fallgrop 1 (K1): repgrupps-redigeraren ska inte skrika efter
+        // uppmärksamhet på ett lugnt distanspass. Visas som standard bara
+        // för kvalitetstyper, men aldrig hårt blockerad — finns det redan
+        // grupper (t.ex. efter ett typbyte) visas de oavsett.
+        const showRepGroups =
+          QUALITY_WORKOUT_TYPES.includes(p.workout_type as WorkoutType) || repGroups.length > 0;
+
+        return (
         <details key={p.id} className="rounded border border-zinc-200 dark:border-zinc-800">
           <summary className="flex cursor-pointer flex-wrap items-baseline gap-3 p-3 text-sm">
             <span
               className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
               style={{
-                backgroundColor:
-                  p.workout_type !== "rest" && isActivityCategory(p.workout_type)
-                    ? categoryColorVar(p.workout_type)
-                    : "transparent",
-                border: p.workout_type === "rest" ? "1.5px dashed currentColor" : undefined,
+                // 'rest' och 'test' har ingen kategorifärg — vila är ingen
+                // träning, ett test är ett testtillfälle, inte en kategori
+                // (se workoutTypeColorVar i lib/planning.ts). Båda får samma
+                // streckade ring i stället för en osynlig, genomskinlig prick.
+                backgroundColor: isActivityCategory(p.workout_type)
+                  ? categoryColorVar(p.workout_type)
+                  : "transparent",
+                border:
+                  p.workout_type === "rest" || p.workout_type === "test"
+                    ? "1.5px dashed currentColor"
+                    : undefined,
               }}
               aria-hidden="true"
             />
@@ -78,6 +126,9 @@ export function PlannedSessions({
               {label(p.workout_type)}
             </span>
             {p.title && <span className="text-zinc-700 dark:text-zinc-300">{p.title}</span>}
+            {sigLabel && (
+              <span className="text-zinc-700 dark:text-zinc-300">{sigLabel}</span>
+            )}
             <span className="text-zinc-500 dark:text-zinc-400">
               {[
                 p.target_distance_meters ? formatKm(p.target_distance_meters) : null,
@@ -167,6 +218,22 @@ export function PlannedSessions({
             </button>
           </form>
 
+          {showRepGroups && (
+            <div className="border-t border-zinc-100 p-3 dark:border-zinc-800">
+              <div className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Repgrupper
+              </div>
+              <RepGroupEditor
+                groups={repGroups}
+                parentIdField="planned_workout_id"
+                parentId={p.id}
+                addAction={addRepGroupAction}
+                updateAction={updateRepGroupAction}
+                deleteAction={deleteRepGroupAction}
+              />
+            </div>
+          )}
+
           <form action={deleteAction} className="px-3 pb-3">
             <input type="hidden" name="workout_id" value={p.id} />
             <button
@@ -177,7 +244,8 @@ export function PlannedSessions({
             </button>
           </form>
         </details>
-      ))}
+        );
+      })}
 
       {activeBlock ? (
         <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800">

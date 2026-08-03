@@ -3,6 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { isActivityCategory } from "@/lib/categories";
+import { THRESHOLD_TEST_PROTOCOL } from "@/lib/planning";
+
+/** Ett tröskeltest ska alltid bära protokollet i sin beskrivning (K8) — utan
+ * det är "Tröskeltest" bara ett namn utan instruktion. Skriver bara över en
+ * tom beskrivning, aldrig text tränaren själv skrivit in. */
+function descriptionFor(workoutType: string, typed: string): string | null {
+  const trimmed = typed.trim();
+  if (trimmed) return trimmed;
+  return workoutType === "test" ? THRESHOLD_TEST_PROTOCOL : null;
+}
 
 export async function saveDiaryEntry(formData: FormData) {
   const supabase = await createClient();
@@ -281,13 +291,44 @@ export async function addPlannedWorkout(formData: FormData) {
     slot: Number(formData.get("slot")) || 1,
     workout_type: workoutType,
     title: ((formData.get("title") as string) || "").trim() || null,
-    description: ((formData.get("description") as string) || "").trim() || null,
+    description: descriptionFor(workoutType, (formData.get("description") as string) || ""),
     target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
     target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
     block_id: blockId,
   });
 
   revalidatePath("/calendar", "layout");
+}
+
+// K8 (docs/tranarperspektiv.md): spara ett LT2-förslag från ett genomfört
+// tröskeltest. Föreslås av lib/threshold-test.ts och skrivs bara hit när
+// atleten/tränaren själv trycker spara — appen gissar aldrig ett värde in i
+// profiles på egen hand. Källan märks 'test_field' (fälttest, inte
+// laktattest — se lt2_source på profiles) så /settings och /trends kan visa
+// hur säkert värdet är.
+export async function saveTestLt2(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const lt2Raw = formData.get("lt2_hr") as string;
+  const measuredOn = formData.get("measured_on") as string;
+  if (!lt2Raw || !measuredOn) return;
+
+  await supabase
+    .from("profiles")
+    .update({
+      lt2_hr: Math.round(Number(lt2Raw)),
+      lt2_source: "test_field",
+      lt2_measured_on: measuredOn,
+    })
+    .eq("id", user.id);
+
+  revalidatePath("/calendar", "layout");
+  revalidatePath("/settings");
+  revalidatePath("/trends");
 }
 
 export async function updatePlannedWorkout(formData: FormData) {
@@ -310,12 +351,116 @@ export async function updatePlannedWorkout(formData: FormData) {
       workout_type: workoutType,
       slot: Number(formData.get("slot")) || 1,
       title: ((formData.get("title") as string) || "").trim() || null,
-      description: ((formData.get("description") as string) || "").trim() || null,
+      description: descriptionFor(workoutType, (formData.get("description") as string) || ""),
       target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
       target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
     })
     .eq("id", workoutId)
     .eq("user_id", user.id);
+
+  revalidatePath("/calendar", "layout");
+}
+
+// --- Repgrupper på ett planerat pass (K1) -----------------------------------
+// Ett pass har flera repgrupper i följd ("2×1000 m + 4×600 m" är två), se
+// supabase/migrations/20260801100000_planned_rep_groups.sql för varför det
+// är en egen tabell och inte fler kolumner här. Nyckelformatet de bygger
+// (plannedSignatureKey/-Label i lib/session-signature.ts) måste matcha
+// buildSessionSignature exakt — se kommentaren i den filen.
+//
+// Tabellen har ingen egen user_id — ägarskap avgörs av RLS-policyn (via
+// planned_workouts.user_id), inte av ett explicit .eq("user_id", ...) här.
+// Det är samma mönster som competition_events i planering/actions.ts.
+
+/** Bygger insert/update-payloaden för en repgrupp ur formulärfälten. Vila och
+ * pace matas in som min+sek (samma mönster som addLactateReading ovan) i
+ * stället för råa sekunder — en tränare tänker "3:15", inte "195". */
+function repGroupFieldsFromForm(formData: FormData) {
+  const distanceRaw = formData.get("distance_meters") as string;
+  const durationMinRaw = formData.get("duration_minutes") as string;
+  const paceMinRaw = formData.get("pace_min") as string;
+  const paceSekRaw = formData.get("pace_sek") as string;
+  const recoveryMinRaw = formData.get("recovery_minutes") as string;
+  const recoveryKindRaw = ((formData.get("recovery_kind") as string) || "").trim();
+  const noteRaw = ((formData.get("note") as string) || "").trim();
+
+  const paceMin = paceMinRaw ? Number(paceMinRaw) : 0;
+  const paceSek = paceSekRaw ? Number(paceSekRaw) : 0;
+
+  return {
+    reps: Number(formData.get("reps")) || 1,
+    distance_meters: distanceRaw ? Math.round(Number(distanceRaw)) : null,
+    duration_seconds: durationMinRaw ? Math.round(Number(durationMinRaw) * 60) : null,
+    target_pace_seconds_per_km: paceMinRaw || paceSekRaw ? paceMin * 60 + paceSek : null,
+    recovery_seconds: recoveryMinRaw ? Math.round(Number(recoveryMinRaw) * 60) : null,
+    recovery_kind: recoveryKindRaw || null,
+    note: noteRaw || null,
+  };
+}
+
+export async function addPlannedRepGroup(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const workoutId = formData.get("planned_workout_id") as string;
+  if (!workoutId) return;
+
+  const fields = repGroupFieldsFromForm(formData);
+  // rep_has_a_measure-constrainten kräver minst en av de två — ett tyst
+  // no-op här är bättre än ett 500-fel för ett tomt formulär.
+  if (fields.distance_meters == null && fields.duration_seconds == null) return;
+
+  // Ny grupp läggs sist i ordningen, så en tillagd grupp aldrig kastar om
+  // vad "2×1000 + 4×600" betyder för de grupper som redan finns.
+  const { data: existing } = await supabase
+    .from("planned_rep_groups")
+    .select("sort_order")
+    .eq("planned_workout_id", workoutId)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  const nextSort = ((existing ?? [])[0]?.sort_order ?? -1) + 1;
+
+  await supabase.from("planned_rep_groups").insert({
+    planned_workout_id: workoutId,
+    sort_order: nextSort,
+    ...fields,
+  });
+
+  revalidatePath("/calendar", "layout");
+}
+
+export async function updatePlannedRepGroup(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const id = formData.get("id") as string;
+  if (!id) return;
+
+  const fields = repGroupFieldsFromForm(formData);
+  if (fields.distance_meters == null && fields.duration_seconds == null) return;
+
+  await supabase.from("planned_rep_groups").update(fields).eq("id", id);
+
+  revalidatePath("/calendar", "layout");
+}
+
+export async function deletePlannedRepGroup(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const id = formData.get("id") as string;
+  if (!id) return;
+
+  await supabase.from("planned_rep_groups").delete().eq("id", id);
 
   revalidatePath("/calendar", "layout");
 }

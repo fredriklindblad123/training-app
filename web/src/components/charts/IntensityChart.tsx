@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ALMGREN_THRESHOLD_BAND,
@@ -183,7 +184,13 @@ export function IntensityChart({
             <strong className="font-medium">Siffrorna är därför osäkra</strong> — de mäter
             klockans modell av dig, inte din fysiologi. Almgren styr mot ett personligt band
             på {ALMGREN_THRESHOLD_BAND.low}–{ALMGREN_THRESHOLD_BAND.high} slag/min, inte mot
-            &rdquo;zon 4&rdquo;. Fyll i tröskelpuls så blir den här sektionen meningsfull.
+            &rdquo;zon 4&rdquo;. Fyll i tröskelpuls så blir den här sektionen meningsfull. Ett
+            kalibrerat LT2 gör siffrorna jämförbara mot din egen fysiologi i stället för
+            klockans gissning — lägg in ett{" "}
+            <Link href="/planering" className="underline hover:text-zinc-950 dark:hover:text-zinc-50">
+              tröskeltest under Planering
+            </Link>{" "}
+            för att komma igång.
           </p>
         )}
       </div>

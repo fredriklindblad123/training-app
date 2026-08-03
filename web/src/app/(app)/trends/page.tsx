@@ -45,6 +45,8 @@ import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 import { addZoneSeconds, bandsFromZones, zoneTotal, BAND_LABELS, type BandKey } from "@/lib/intensity";
 import { addDays as planAddDays, BLOCK_LABELS, type BlockType } from "@/lib/planning";
+import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
+import { ComplianceCard } from "@/components/ComplianceCard";
 import {
   CATEGORY_LABELS,
   CATEGORY_VALUES,
@@ -52,7 +54,21 @@ import {
   isActivityCategory,
   type ActivityCategory,
 } from "@/lib/categories";
-import { buildWeekSeries, buildWeekSeriesForRange, toDateKey, weekRangeLabel } from "@/lib/week-series";
+import {
+  buildWeekSeries,
+  buildWeekSeriesForRange,
+  shortDateLabel,
+  toDateKey,
+  weekRangeLabel,
+} from "@/lib/week-series";
+import { STATUS_LABEL } from "@/lib/calendar-utils";
+import { BASELINE_WINDOW_DAYS } from "@/lib/daily-status";
+import {
+  computeInterruptionPrecursor,
+  groupInterruptionPeriods,
+  type InterruptionPeriod,
+  type InterruptionPrecursor,
+} from "@/lib/interruption-timeline";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
@@ -464,6 +480,7 @@ export default async function TrendsPage({
     { data: dailyMetrics },
     { data: diaryEntries },
     profileResult,
+    { data: plannedRows },
   ] = await Promise.all([
     (() => {
       let q = supabase
@@ -494,6 +511,18 @@ export default async function TrendsPage({
       .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr")
       .limit(1)
       .maybeSingle(),
+    // K2: bara hämtad i blockvy — efterlevnad hör bara hemma där (se
+    // ComplianceCard och tranarperspektiv.md K2 punkt 5), så ett rullande
+    // fönster utan block slipper en fråga den inte använder.
+    activeBlock
+      ? supabase
+          .from("planned_workouts")
+          .select(
+            "id, scheduled_date, slot, workout_type, title, target_distance_meters, target_duration_seconds",
+          )
+          .gte("scheduled_date", startDate)
+          .lt("scheduled_date", endDateExclusive as string)
+      : Promise.resolve({ data: [] as PlannedWorkout[] | null }),
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
@@ -506,6 +535,92 @@ export default async function TrendsPage({
         lt2Hr: profileRow.lt2_hr ?? null,
       }
     : EMPTY_THRESHOLD_PROFILE;
+
+  // --- K6: avbrottstidslinjen (docs/tranarperspektiv.md) ---------------------
+  // Helt fristående från vecko-/blockväljaren högst upp — perioderna som
+  // visas är alltid "senaste året" oavsett vilket fönster resten av sidan
+  // råkar stå på. Lookback-bufferten (utöver de 365 dagarna) täcker det
+  // längsta en enskild period kan behöva bakåt: BASELINE_WINDOW_DAYS för
+  // sömn-/HRV-baslinjen (lib/daily-status.ts) plus ytterligare en vecka för
+  // jämförelseveckan precis före den.
+  const TIMELINE_WINDOW_DAYS = 365;
+  const timelineLookbackFrom = toDateKey(
+    planAddDays(new Date(`${todayKey}T00:00:00`), -(TIMELINE_WINDOW_DAYS + BASELINE_WINDOW_DAYS + 14)),
+  );
+  const timelineEarliestPeriodStart = toDateKey(
+    planAddDays(new Date(`${todayKey}T00:00:00`), -TIMELINE_WINDOW_DAYS),
+  );
+
+  const [
+    { data: timelineDiaryRows },
+    { data: timelineActivityRows },
+    { data: timelineMetricRows },
+  ] = await Promise.all([
+    supabase
+      .from("diary_entries")
+      .select("entry_date, day_type, notes")
+      .gte("entry_date", timelineLookbackFrom)
+      .order("entry_date"),
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", timelineLookbackFrom)
+      .order("start_time"),
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+      .gte("metric_date", timelineLookbackFrom)
+      .order("metric_date"),
+  ]);
+
+  const timelineSessions = groupActivitiesIntoSessions(
+    (timelineActivityRows ?? []) as unknown as SessionActivity[],
+  ).map((s) => ({ date: s.date, trainingLoad: s.trainingLoad, category: s.category }));
+
+  const timelineDailyMetrics = (timelineMetricRows ?? []).map((m) => ({
+    date: m.metric_date as string,
+    hrv: m.hrv_overnight_avg,
+    restingHr: m.resting_hr,
+    sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
+    sleepScore: m.sleep_score,
+  }));
+
+  const timelineDiaryNotes = (timelineDiaryRows ?? [])
+    .filter((e) => e.notes)
+    .map((e) => ({ date: e.entry_date as string, note: e.notes as string }));
+
+  const allInterruptionPeriods: InterruptionPeriod[] = groupInterruptionPeriods(
+    (timelineDiaryRows ?? [])
+      .filter((e) => e.day_type === "sick" || e.day_type === "injured")
+      .map((e) => ({ date: e.entry_date as string, dayType: e.day_type as "sick" | "injured" })),
+  );
+  // "Senaste året" filtrerar på periodens START — en period som pågick in i
+  // fönstret men började dessförinnan hör hemma i föregående års tidslinje.
+  const interruptionPeriods = allInterruptionPeriods.filter(
+    (p) => p.startDate >= timelineEarliestPeriodStart,
+  );
+  const interruptionPrecursors: InterruptionPrecursor[] = interruptionPeriods
+    .map((period) =>
+      computeInterruptionPrecursor(period, {
+        sessions: timelineSessions,
+        dailyMetrics: timelineDailyMetrics,
+        diaryNotes: timelineDiaryNotes,
+      }),
+    )
+    // Senaste avbrottet överst — en tidslinje man läser uppifrån och ned.
+    .sort((a, b) => (a.period.startDate < b.period.startDate ? 1 : -1));
+
+  /** "12–15 mar" resp. "12 mar – 3 apr" om perioden spänner över en
+   * månadsgräns. Återanvänder `shortDateLabel` (lib/week-series.ts) i
+   * stället för en egen datumformatering. */
+  function formatPeriodRange(period: InterruptionPeriod): string {
+    const fromLabel = shortDateLabel(period.startDate);
+    if (period.startDate === period.endDate) return fromLabel;
+    const toLabel = shortDateLabel(period.endDate);
+    const fromMonth = fromLabel.split(" ")[1];
+    const toMonth = toLabel.split(" ")[1];
+    return fromMonth === toMonth ? `${fromLabel.split(" ")[0]}–${toLabel}` : `${fromLabel} – ${toLabel}`;
+  }
 
   // --- Pass, inte aktiviteter (P0.5/1.3) -------------------------------------
   // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
@@ -840,6 +955,19 @@ export default async function TrendsPage({
       ? coefficientOfVariation(weeklyLoadTotals)
       : null;
 
+  // --- K2: efterlevnad inom blocket --------------------------------------
+  // Samma fråga som CV ovan svarar på indirekt ("var träningen jämn"), fast
+  // rakt på sak: "blev det gjort". Bara i blockvy, se kommentaren vid
+  // planned_workouts-frågan ovan. `sessions`/`diaryEntries` täcker redan
+  // exakt blockets fönster (startDate–endDateExclusive), så ingen ny fråga
+  // mot databasen behövs utöver planned_workouts.
+  const blockCompliance = activeBlock
+    ? summarizeCompliance(matchPlanToSessions((plannedRows ?? []) as PlannedWorkout[], sessions))
+    : null;
+  const blockDayTypeByDate = new Map<string, string | null>(
+    (diaryEntries ?? []).map((e) => [e.entry_date as string, e.day_type as string | null]),
+  );
+
   // --- D. Korrelationer, på pass i stället för aktiviteter -------------------
   const loadByDay = new Map<string, number>();
   for (const session of sessions) {
@@ -1073,6 +1201,17 @@ export default async function TrendsPage({
             </dd>
           </div>
         </dl>
+      )}
+
+      {/* K2: efterlevnad för blocket, samma kort som veckovyn använder.
+          Konsekvens (ovan) svarar på om träningen var jämn, det här på om
+          den blev av — besläktade frågor, därför placerade bredvid varandra. */}
+      {activeBlock && blockCompliance && (
+        <ComplianceCard
+          title={activeBlock.name}
+          compliance={blockCompliance}
+          dayTypeByDate={blockDayTypeByDate}
+        />
       )}
 
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
@@ -1348,6 +1487,85 @@ export default async function TrendsPage({
             />
           </div>
         )}
+      </section>
+
+      {/* ================= K6: avbrottstidslinjen ============================ */}
+      {/* Hopfälld från start (djupanalys, inte förstaintryck) — se K6 i
+          docs/tranarperspektiv.md. Beskriver vad som föregick varje sjuk-/
+          skadeperiod, aldrig vad som orsakade den (fallgrop 2): med i
+          storleksordningen tre perioder per år räcker underlaget aldrig till
+          ett samband, bara till vad som brukade synas samtidigt. */}
+      <section className="flex flex-col gap-4">
+        <details className="rounded border border-zinc-200 dark:border-zinc-800">
+          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-4 text-zinc-900 dark:text-zinc-100">
+            <span className="text-lg font-medium">Avbrott</span>
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+              {interruptionPeriods.length}{" "}
+              {interruptionPeriods.length === 1 ? "period" : "perioder"} senaste året
+            </span>
+          </summary>
+          <div className="flex flex-col gap-4 border-t border-zinc-200 p-4 dark:border-zinc-800">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Sjuk- och skadeperioder ur dagboken, med vad som hände samtidigt: belastning och
+              kvalitetspass veckan före, sömn och HRV mot din egen baslinje, och dina egna ord
+              dagarna innan. Det är ett underlag för att lägga märke till mönster, inte ett
+              påstående om orsak — för få perioder per år för att kunna särskilja slump från
+              samband.
+            </p>
+
+            {interruptionPrecursors.length === 0 ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Inga registrerade sjuk- eller skadeperioder det senaste året.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {interruptionPrecursors.map((p) => (
+                  <li
+                    key={`${p.period.dayType}-${p.period.startDate}`}
+                    className="rounded border border-zinc-100 p-3 dark:border-zinc-800"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                        {formatPeriodRange(p.period)}
+                      </span>
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {STATUS_LABEL[p.period.dayType]}, {p.period.days}{" "}
+                        {p.period.days === 1 ? "dag" : "dagar"}
+                      </span>
+                    </div>
+                    <ul className="mt-2 flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
+                      <li>
+                        Veckan före: {Math.round(p.loadWeekBefore)} belastning
+                        {p.loadBaselinePerWeek != null
+                          ? ` (snitt ${Math.round(p.loadBaselinePerWeek)})`
+                          : " (för kort historik för ett snitt)"}
+                        , {p.qualitySessionsWeekBefore} kvalitetspass
+                      </li>
+                      <li>
+                        Sömn{" "}
+                        {p.sleepHoursWeekBefore != null
+                          ? formatHoursMinutes(p.sleepHoursWeekBefore * 3600)
+                          : "okänd"}{" "}
+                        i snitt
+                        {p.sleepBaselineHours != null &&
+                          ` (baslinje ${formatHoursMinutes(p.sleepBaselineHours * 3600)})`}
+                        , HRV{" "}
+                        {p.hrvDeviationSd != null
+                          ? `${p.hrvDeviationSd > 0 ? "+" : ""}${p.hrvDeviationSd.toFixed(1)} SD`
+                          : "otillräcklig historik för en baslinje"}
+                      </li>
+                      {p.notesBefore.map((note) => (
+                        <li key={note.date}>
+                          Dagboken {shortDateLabel(note.date)}: &quot;{note.note}&quot;
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </details>
       </section>
 
       {/* ================= P1.5: blockjämförelse ============================ */}

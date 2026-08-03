@@ -13,6 +13,8 @@ import {
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
+import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
+import { ComplianceCard } from "@/components/ComplianceCard";
 import { formatDuration, formatKm } from "@/lib/format";
 import { SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
@@ -128,22 +130,32 @@ export default async function WeekPage({
     sessionsByDay.set(s.date, [...(sessionsByDay.get(s.date) ?? []), s]);
   }
 
-  type PlannedRow = {
-    id: string;
-    scheduled_date: string;
-    slot: number | null;
-    workout_type: string;
-    title: string | null;
-    target_distance_meters: number | null;
-    target_duration_seconds: number | null;
-  };
-  const plannedByDay = new Map<string, PlannedRow[]>();
-  for (const p of (plannedRows ?? []) as PlannedRow[]) {
+  // Kolumnerna som hämtas ovan matchar PlannedWorkout (lib/plan-matching.ts)
+  // fält för fält, så samma rader återanvänds direkt i matchningen nedan i
+  // stället för att mappas om.
+  const plannedWorkouts = (plannedRows ?? []) as PlannedWorkout[];
+  const plannedByDay = new Map<string, PlannedWorkout[]>();
+  for (const p of plannedWorkouts) {
     plannedByDay.set(p.scheduled_date, [...(plannedByDay.get(p.scheduled_date) ?? []), p]);
   }
 
   const diaryByDay = new Map(
     (diaryRows ?? []).map((d) => [d.entry_date as string, d as { day_type: string | null; notes: string | null; session_log: string | null }]),
+  );
+
+  // K2: plan mot utfall. Matchningen och efterlevnaden räknas en gång för
+  // hela veckan här — se lib/plan-matching.ts för matchningsreglerna och
+  // varför inget skrivs till databasen. Rutnätets "Annan typ än
+  // planerat"-markering och efterlevnadskortet nedanför delar samma resultat.
+  const planMatches = matchPlanToSessions(plannedWorkouts, sessions);
+  const matchesByDay = new Map<string, typeof planMatches>();
+  for (const m of planMatches) {
+    const day = m.planned?.scheduled_date ?? m.session!.date;
+    matchesByDay.set(day, [...(matchesByDay.get(day) ?? []), m]);
+  }
+  const compliance = summarizeCompliance(planMatches);
+  const dayTypeByDate = new Map<string, string | null>(
+    [...diaryByDay].map(([day, entry]) => [day, entry.day_type]),
   );
   const competitionsByDay = new Map<string, { name: string; priority: string }[]>();
   for (const c of competitionRows ?? []) {
@@ -206,6 +218,12 @@ export default async function WeekPage({
         </p>
       )}
 
+      <ComplianceCard
+        title={`Vecka ${weekLabel(from).slice(2)}`}
+        compliance={compliance}
+        dayTypeByDate={dayTypeByDate}
+      />
+
       <div className="grid grid-cols-1 gap-2 lg:grid-cols-7">
         {Array.from({ length: 7 }, (_, i) => {
           const d = addDays(monday, i);
@@ -225,15 +243,20 @@ export default async function WeekPage({
           const showStatus =
             diaryStatus != null && (diaryStatus !== "training" || done.length === 0);
           const isEmpty = planned.length === 0 && done.length === 0 && !diaryStatus;
-          // Jämför bara första planerade mot första genomförda: ordningen är
-          // den koppling som finns, och en fullständig parning hör hemma i
-          // dagvyn snarare än i en cell på 150 pixlar.
+          // Bara den första parningen för dagen driver markören — en cell på
+          // 150 pixlar har inte plats för en fullständig parning när flera
+          // pass ligger samma dag, och dagvyn (inte rutnätet) är platsen för
+          // det. matchPlanToSessions gör själva parningen (lib/plan-matching.ts);
+          // "rest" undantas här medvetet trots att biblioteket klassar en
+          // tränad planerad vilodag som "avvikande typ" — rutnätet ska inte
+          // nagga en extra löprunda på en vilodag, det hör hemma i
+          // efterlevnadskortet (som inte räknar en sådan dag som "genomförd
+          // vila" heller) snarare än som en visuell varning i varje ruta.
+          const firstMatch = (matchesByDay.get(key) ?? []).find((m) => m.planned != null);
           const mismatch =
-            planned.length > 0 &&
-            done.length > 0 &&
-            planned[0].workout_type !== "rest" &&
-            done[0].category != null &&
-            planned[0].workout_type !== done[0].category;
+            firstMatch != null &&
+            firstMatch.outcome === "avvikande typ" &&
+            firstMatch.planned!.workout_type !== "rest";
           const isToday = key === todayKey;
 
           return (

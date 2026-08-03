@@ -6,6 +6,8 @@ import { KpiRing, type KpiDetailRow } from "@/components/KpiRing";
 import { ringFillAndStatus, type RingDirection, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeCheckInStats } from "@/lib/checkin";
+import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
+import { buildReadinessAlert } from "@/lib/readiness-alert";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -16,6 +18,14 @@ import { median, mean } from "@/lib/stats-utils";
 import { buildWeekSeries, toDateKey } from "@/lib/week-series";
 import { formatKm, formatDuration } from "@/lib/format";
 import { CATEGORY_LABELS, categoryColorVar } from "@/lib/categories";
+import {
+  computeContinuityStreaks,
+  QUALITY_TARGET,
+  type ContinuitySession,
+  type ContinuityStreaks,
+  type InterruptionDay,
+} from "@/lib/continuity";
+import { STATUS_LABEL } from "@/lib/calendar-utils";
 
 /* Dashboard: startsidan efter inloggning (se app/page.tsx, login/actions.ts,
  * auth/confirm/route.ts). Poängen är att lyfta fram det viktigaste i en
@@ -156,6 +166,69 @@ function scoreRing({
   };
 }
 
+/** Fallgrop 3 i K6 (tranarperspektiv.md): under den här mängden avslutade
+ * veckor är "personbästa" bara brus från en kort historik — bättre att visa
+ * enbart nuvarande svit utan riktvärde än att låtsas ett riktvärde finns. */
+const MIN_COMPLETED_WEEKS_FOR_TARGET = 12;
+
+/** Bygger ring-props för ett kontinuitetsmått (K6). Riktvärdet är alltid det
+ * egna personbästa — det finns inget externt "rätt" antal veckor utan avbrott
+ * att sikta mot.
+ *
+ * Ringen använder medvetet `direction: "neutral"` i stället för
+ * "higher_is_better": med higher_is_better skulle en kort svit efter en
+ * sjukdomsperiod färgas röd ("Avviker") jämfört med personbästa, och det är
+ * exakt den dömande läsningen fallgrop 1 i K6 varnar för — sjukdom händer,
+ * och ringen ska aldrig se ut som ett misslyckande för det. "neutral" ger
+ * samma icke-dömande stil som Ansträngning-ringen nedan: ingen grön/gul/röd
+ * bedömning, bara hur nuvarande svit förhåller sig till den längsta hittills.
+ * Vad som faktiskt bröt senaste sviten står i detaljraderna, beskrivande
+ * (sjukdom/skada + datum), inte som en varning. */
+function continuityRing({
+  label,
+  currentWeeks,
+  bestWeeks,
+  totalCompletedWeeks,
+  lastInterruption,
+  hint,
+}: {
+  label: string;
+  currentWeeks: number;
+  bestWeeks: number;
+  totalCompletedWeeks: number;
+  lastInterruption: { date: string; dayType: "sick" | "injured" } | null;
+  hint: string;
+}) {
+  const hasEnoughHistory = totalCompletedWeeks >= MIN_COMPLETED_WEEKS_FOR_TARGET;
+  const target = hasEnoughHistory ? bestWeeks : null;
+  const { fill, status } = ringFillAndStatus(currentWeeks, target, "neutral");
+
+  return {
+    label,
+    valueText: String(currentWeeks),
+    unit: currentWeeks === 1 ? "vecka" : "veckor",
+    fill,
+    status: (target == null ? "unknown" : status) as RingStatus,
+    targetText: target != null ? `Bästa ${target} v` : undefined,
+    detailRows: [
+      { label: "Nuvarande svit", value: `${currentWeeks} v` },
+      {
+        label: "Personbästa",
+        value: hasEnoughHistory
+          ? `${bestWeeks} v`
+          : `otillräcklig historik (${totalCompletedWeeks} av ${MIN_COMPLETED_WEEKS_FOR_TARGET} v)`,
+      },
+      {
+        label: "Bröt senaste sviten",
+        value: lastInterruption
+          ? `${STATUS_LABEL[lastInterruption.dayType]}, ${lastInterruption.date}`
+          : "Ingen svit bruten ännu",
+      },
+    ],
+    hint,
+  };
+}
+
 export default async function DashboardPage({
   searchParams,
 }: {
@@ -172,6 +245,15 @@ export default async function DashboardPage({
 
   const now = new Date();
   const todayKey = toDateKey(now);
+  // K3: morgondagens datum, för beredskapskortet ovanför Träning-ringarna.
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowKey = toDateKey(tomorrow);
+  // Gårdagens datum — inte hämtat ur en tabell, bara underlaget till
+  // "andra dagen i rad" nedan (samma statusMetrics-rader, en dag tidigare).
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = toDateKey(yesterday);
 
   // --- Periodens fönster: "fram till nu, aldrig framtid", samma princip
   // som /trends. Bara start- och slutdatum behövs — KPI-ringarna visar
@@ -204,12 +286,20 @@ export default async function DashboardPage({
     new Date(new Date(`${rangeFrom}T00:00:00`).getTime() - BASELINE_WINDOW_DAYS * 86_400_000),
   );
 
+  // Se kommentaren vid kontinuitetsfrågan nedan. Tre år är gott om historik
+  // för en 17-årings sviter och håller radantalet långt under PostgREST:s
+  // tak — dagens data börjar 2025-07.
+  const continuityFrom = toDateKey(new Date(now.getTime() - 3 * 365 * 86_400_000));
+
   const [
     { data: activityRows },
     { data: refActivityRows },
+    { data: allActivityRows },
+    { data: allInterruptionEntries },
     { data: todayEntry },
     { data: periodDiary },
     { data: statusMetrics },
+    { data: tomorrowQualityWorkouts },
   ] = await Promise.all([
     supabase
       .from("activities")
@@ -222,6 +312,24 @@ export default async function DashboardPage({
       .gte("start_time", refFrom)
       .lt("start_time", refToExclusive)
       .order("start_time"),
+    // Kontinuitetssviterna (K6) mäts över historiken, inte den valda perioden
+    // — "personbästa" ska vara personbästa, inte "bästa inom de senaste 7
+    // dagarna". Fönstret är ändå bundet, av två skäl: PostgREST returnerar
+    // som mest 1 000 rader per fråga, och det finns redan ~666 aktiviteter,
+    // så en ofiltrerad hämtning skulle inom ett år börja trunkeras *tyst* och
+    // ge felräknade svitlängder utan att något syns. Dessutom ligger den här
+    // frågan på appens landningssida och får inte växa obegränsat.
+    // CONTINUITY_WINDOW_DAYS täcker all befintlig historik med marginal.
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", continuityFrom)
+      .order("start_time"),
+    supabase
+      .from("diary_entries")
+      .select("entry_date, day_type")
+      .gte("entry_date", continuityFrom)
+      .in("day_type", ["sick", "injured"]),
     supabase
       .from("diary_entries")
       .select("feeling, motivation, soreness_level, rpe")
@@ -248,6 +356,18 @@ export default async function DashboardPage({
           return toDateKey(d);
         })(),
       ),
+    // K3: bara morgondagens kvalitetspass, inte ett helt intervall — dashboarden
+    // är landningssidan och ska inte hämta mer än kortet faktiskt behöver.
+    // Filtret på workout_type görs redan i frågan, inte i JS efteråt, av samma
+    // skäl. planned_rep_groups(*) hämtas nästlat för passignaturen (K1); en
+    // saknad tabell (migrationen inte körd) ger bara ett tomt fält, inget
+    // kastat fel — samma försiktiga mönster som dagvyns motsvarande fråga.
+    supabase
+      .from("planned_workouts")
+      .select("workout_type, title, planned_rep_groups(reps, distance_meters, duration_seconds, sort_order)")
+      .eq("scheduled_date", tomorrowKey)
+      .in("workout_type", QUALITY_WORKOUT_TYPES)
+      .order("slot", { ascending: true }),
   ]);
 
   // --- Dagens incheckning (P0.4): inmatningsformuläret gäller alltid idag,
@@ -270,20 +390,34 @@ export default async function DashboardPage({
   // "baslinje" vara olika saker (i årsvyn skulle "nu" annars bli längre än
   // de 60 dagar baslinjen räknas på).
   const statusCurrentWindowDays = Math.min(periodDays, Math.floor(BASELINE_WINDOW_DAYS / 2));
-  const dailyStatus = computeDailyStatus(
-    (statusMetrics ?? []).map((m) => ({
-      date: m.metric_date as string,
-      hrv: m.hrv_overnight_avg,
-      restingHr: m.resting_hr,
-      sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
-      sleepScore: m.sleep_score,
-    })),
-    todayKey,
-    statusCurrentWindowDays,
-  );
+  const statusRows = (statusMetrics ?? []).map((m) => ({
+    date: m.metric_date as string,
+    hrv: m.hrv_overnight_avg,
+    restingHr: m.resting_hr,
+    sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
+    sleepScore: m.sleep_score,
+  }));
+  const dailyStatus = computeDailyStatus(statusRows, todayKey, statusCurrentWindowDays);
   const statusPeriodLabel =
     `Senaste ${statusCurrentWindowDays} ${statusCurrentWindowDays === 1 ? "dagen" : "dagarna"} ` +
     `mot din ${BASELINE_WINDOW_DAYS}-dagars baslinje`;
+
+  // --- K3: beredskap kopplad till morgondagens pass -----------------------
+  // "Andra dagen i rad" räknas ur samma markördata som dailyStatus, bara en
+  // dag tidigare — ingen extra fråga, se readiness-alert.ts. Ingen egen
+  // gate för baslinjen behövs: computeDailyStatus kan bara ge shouldEaseOff
+  // när baslinjen redan är mogen (MIN_BASELINE_DAYS), både idag och igår.
+  const wasEasingOffYesterday = computeDailyStatus(
+    statusRows,
+    yesterdayKey,
+    statusCurrentWindowDays,
+  ).shouldEaseOff;
+  const readinessAlert = buildReadinessAlert(
+    dailyStatus,
+    tomorrowQualityWorkouts ?? [],
+    wasEasingOffYesterday,
+  );
+  const tomorrowHref = `/calendar/${tomorrow.getFullYear()}/${tomorrow.getMonth() + 1}/${tomorrow.getDate()}`;
 
   // --- Pass som analysenhet (P0.5), precis som /trends -------------------
   const sessions: TrainingSession[] = groupActivitiesIntoSessions(
@@ -296,6 +430,26 @@ export default async function DashboardPage({
   const totalDistanceKm = sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
   const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
   const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
+
+  // --- Kontinuitet och kvalitetssviter (K6) -------------------------------
+  // Egen, ofiltrerad grund (allActivityRows/allInterruptionEntries ovan) —
+  // sviterna är personbästa över hela historiken, inte den valda perioden.
+  const allSessions: TrainingSession[] = groupActivitiesIntoSessions(
+    (allActivityRows ?? []) as unknown as SessionActivity[],
+  );
+  const continuityInterruptions: InterruptionDay[] = (allInterruptionEntries ?? []).map((e) => ({
+    date: e.entry_date as string,
+    dayType: e.day_type as "sick" | "injured",
+  }));
+  const continuitySessions: ContinuitySession[] = allSessions.map((s) => ({
+    date: s.date,
+    category: s.category,
+  }));
+  const continuity: ContinuityStreaks = computeContinuityStreaks(
+    continuityInterruptions,
+    continuitySessions,
+    todayKey,
+  );
 
   // Riktvärden: minst 5 pass i referensfönstret krävs för att lita på en
   // dagsrate — annars är den bara ett par pass förklädd till statistik.
@@ -382,6 +536,31 @@ export default async function DashboardPage({
         "Andel pulstid på eller över tröskel. Norska modellen siktar på 23–25 % — betydligt " +
         "högre kan betyda att lugna pass smyger upp i intensitet. Räknat på Garmins autozoner, " +
         "som kan vara fel kalibrerade (se /trends).",
+    }),
+    // K6: kontinuitet som huvudsiffra, sist bland ringarna (se
+    // docs/tranarperspektiv.md). Räknade över hela historiken, inte den
+    // valda perioden — "senaste 7 dagarna" säger inget om en svit i veckor.
+    continuityRing({
+      label: "Kontinuitet",
+      currentWeeks: continuity.currentWeeksWithoutInterruption,
+      bestWeeks: continuity.bestWeeksWithoutInterruption,
+      totalCompletedWeeks: continuity.totalCompletedWeeks,
+      lastInterruption: continuity.lastInterruption,
+      hint:
+        "Sammanhängande avslutade veckor utan en sjuk- eller skaddag. Innevarande vecka räknas " +
+        "inte förrän den är slut. En bruten svit är sjukdom eller skada, inte ett misslyckande " +
+        "— se /trends för vad som brukar föregå ett avbrott.",
+    }),
+    continuityRing({
+      label: "Kvalitetsveckor",
+      currentWeeks: continuity.currentQualityWeeks,
+      bestWeeks: continuity.bestQualityWeeks,
+      totalCompletedWeeks: continuity.totalCompletedWeeks,
+      lastInterruption: continuity.lastInterruption,
+      hint:
+        `Sammanhängande avslutade veckor med minst ${QUALITY_TARGET} genomförda kvalitetspass ` +
+        "(tröskel, intervall, tävling eller tröskeltest). Almgren och Lindh pekar båda på att " +
+        "kunna upprepa kvalitet är det som avgör, mer än ett enstaka hårt pass.",
     }),
   ];
 
@@ -472,6 +651,32 @@ export default async function DashboardPage({
           initialScores={checkIn.initialScores}
           initialStats={checkIn.initialStats}
         />
+      )}
+
+      {/* --- K3: beredskap kopplad till morgondagens pass. Visas bara när
+          avvikelsen (P1.2) och ett kvalitetspass imorgon båda är sanna —
+          se readiness-alert.ts. Ingen knapp som ändrar passet: beslutet är
+          atletens och tränarens, appens jobb är att lägga uppgifterna
+          bredvid varandra. --------------------------------------------- */}
+      {readinessAlert && (
+        <div className="flex flex-col gap-2 rounded border border-amber-400/60 bg-amber-50/60 p-4 dark:border-amber-500/40 dark:bg-amber-950/20">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-base font-medium text-amber-900 dark:text-amber-200">
+              {readinessAlert.heading}
+            </h2>
+            <Link
+              href={tomorrowHref}
+              className="text-xs text-amber-800 underline hover:text-amber-950 dark:text-amber-300 dark:hover:text-amber-100"
+            >
+              Till morgondagens dagvy →
+            </Link>
+          </div>
+          <p className="text-sm text-amber-900 dark:text-amber-200">{readinessAlert.markerSentence}</p>
+          <p className="text-sm text-amber-900 dark:text-amber-200">
+            I studier på elitlöpare är det den punkt där tränaren sänker belastningen i
+            nästa pass. Värt att väga in — tillsammans med hur du faktiskt känner dig.
+          </p>
+        </div>
       )}
 
       {/* --- Träning: periodens volym, form och intensitet, som ringar. -- */}

@@ -8,6 +8,7 @@ import {
   suggestBlocks,
   toDateKey,
   type BlockType,
+  type RepGroupInput,
   type SeasonKind,
   type TemplateItem,
 } from "@/lib/planning";
@@ -56,10 +57,16 @@ async function syncTemplateIntoBlock(
   templateId: string,
   block: BlockRange,
 ) {
+  // template_rep_groups hämtas nästlat (K1) så att repgrupperna följer med
+  // ut i kalendern — se generateFromTemplate/RepGroupInput i lib/planning.ts.
+  // En saknad tabell (migrationen inte körd än) ger bara items[i].template_rep_groups
+  // === undefined här, aldrig ett kastat fel — därefter faller ?? [] tillbaka
+  // till "inga repgrupper", precis som ett kvalitetspass utan grupper.
   const { data: items } = await supabase
     .from("week_template_items")
     .select(
-      "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds",
+      "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, " +
+        "template_rep_groups(sort_order, reps, distance_meters, duration_seconds, target_pace_seconds_per_km, target_hr_low, target_hr_high, recovery_seconds, recovery_kind, note)",
     )
     .eq("template_id", templateId);
   if (!items || items.length === 0) return;
@@ -73,18 +80,79 @@ async function syncTemplateIntoBlock(
 
   const existingKeys = new Set((existing ?? []).map((w) => `${w.scheduled_date}|${w.slot ?? 1}`));
 
+  const templateItems: TemplateItem[] = (
+    items as unknown as (TemplateItem & { template_rep_groups: RepGroupInput[] | null })[]
+  ).map((it) => ({
+    weekday: it.weekday,
+    slot: it.slot,
+    workout_type: it.workout_type,
+    title: it.title,
+    description: it.description,
+    target_distance_meters: it.target_distance_meters,
+    target_duration_seconds: it.target_duration_seconds,
+    rep_groups: it.template_rep_groups ?? [],
+  }));
+
   const rows = generateFromTemplate({
     userId,
     templateId,
     blockId: block.id,
-    items: items as TemplateItem[],
+    items: templateItems,
     from: block.start_date,
     to: block.end_date,
     existingKeys,
   });
 
+  // Repgrupperna kan inte följa med i samma insert som passet — de pekar på
+  // planned_workouts.id, som inte finns förrän raden är skapad. Passen
+  // skapas därför först (utan rep_groups-fältet, det finns ingen sådan
+  // kolumn), och repgrupperna skapas i ett andra steg mot de id:n som kommer
+  // tillbaka. Idempotensen ärvs från existingKeys ovan: ett pass som redan
+  // finns för datum+slot hoppas över helt av generateFromTemplate, så den
+  // här funktionen skapar aldrig repgrupper för ett pass som redan har dem.
   for (let i = 0; i < rows.length; i += 200) {
-    await supabase.from("planned_workouts").insert(rows.slice(i, i + 200));
+    const chunk = rows.slice(i, i + 200);
+    // rep_groups är inte en kolumn på planned_workouts (egen tabell, se
+    // migrationen) — bygg insert-payloaden explicit i stället för att bara
+    // plocka bort fältet, så det inte går att av misstag skicka med det.
+    const workoutRows = chunk.map((w) => ({
+      user_id: w.user_id,
+      scheduled_date: w.scheduled_date,
+      slot: w.slot,
+      workout_type: w.workout_type,
+      title: w.title,
+      description: w.description,
+      target_distance_meters: w.target_distance_meters,
+      target_duration_seconds: w.target_duration_seconds,
+      block_id: w.block_id,
+      template_id: w.template_id,
+      status: w.status,
+    }));
+    const { data: inserted } = await supabase
+      .from("planned_workouts")
+      .insert(workoutRows)
+      .select("id, scheduled_date, slot");
+    if (!inserted) continue;
+
+    // Paras ihop på datum+slot, inte på arrayindex. Postgres bevarar visserligen
+    // ordningen för en rak INSERT ... VALUES ... RETURNING, men PostgREST
+    // bygger sin batch-insert som INSERT ... SELECT ur en json-recordset, och
+    // en SELECT utan ORDER BY har ingen garanterad radordning. Skulle den
+    // ordningen någon gång avvika hamnar repgrupperna på fel pass — tyst, och
+    // först synligt som att tisdagens lugna distans plötsligt har ett
+    // 5×1000-upplägg. Datum+slot är unikt inom utrullningen (generateFromTemplate
+    // hoppar över datum+slot som redan har ett pass), så det är en säker nyckel.
+    const idByDateSlot = new Map(
+      inserted.map((row) => [`${row.scheduled_date}|${row.slot}`, row.id as string]),
+    );
+    const repGroupRows = chunk.flatMap((w) => {
+      const id = idByDateSlot.get(`${w.scheduled_date}|${w.slot}`);
+      if (!id) return [];
+      return (w.rep_groups ?? []).map((g) => ({ planned_workout_id: id, ...g }));
+    });
+    for (let j = 0; j < repGroupRows.length; j += 500) {
+      await supabase.from("planned_rep_groups").insert(repGroupRows.slice(j, j + 500));
+    }
   }
 }
 
@@ -372,6 +440,8 @@ export async function deleteTemplateItem(formData: FormData) {
     .eq("id", id)
     .maybeSingle();
 
+  // template_rep_groups för den här mallraden städas av on delete cascade
+  // (se migrationen) — ingen egen delete behövs här.
   await supabase.from("week_template_items").delete().eq("id", id);
 
   // Tar bort exakt de kalenderrader det här passet skapade (aldrig genomförda
@@ -392,6 +462,8 @@ export async function deleteTemplateItem(formData: FormData) {
       for (const b of blocks ?? []) {
         const dates = datesForWeekday(b.start_date, b.end_date, item.weekday);
         if (dates.length === 0) continue;
+        // planned_rep_groups för de här raderna städas också av on delete
+        // cascade — de pekar på planned_workouts.id, inte på mallraden.
         await supabase
           .from("planned_workouts")
           .delete()
@@ -404,5 +476,91 @@ export async function deleteTemplateItem(formData: FormData) {
     }
   }
 
+  refresh();
+}
+
+// --- Repgrupper i veckomallar (K1) ------------------------------------------
+// Samma modell som planned_rep_groups i calendar/[year]/[month]/[day]/actions.ts,
+// men riktad mot en mallrad i stället för ett datumsatt pass. En ändring här
+// slår bara igenom på FRAMTIDA utrullningar (nya datum som ännu inte har ett
+// planned_workouts-pass för den slotten) — precis som addTemplateItem redan
+// beter sig för titel/beskrivning, se existingKeys i syncTemplateIntoBlock.
+// Redan utrullade pass rörs aldrig i efterhand.
+
+/** Bygger insert/update-payloaden för en repgrupp ur formulärfälten. Delad
+ * form mellan planerade pass och mallrader (samma kolumnnamn i båda
+ * tabellerna), men bor här och inte i lib/planning.ts eftersom den bara
+ * tolkar FormData — ett server-actions-detalj, inte planeringsmodellen. */
+function repGroupFieldsFromForm(formData: FormData): Omit<RepGroupInput, "sort_order"> {
+  const distanceRaw = str(formData, "distance_meters");
+  const durationMinRaw = str(formData, "duration_minutes");
+  const paceMinRaw = str(formData, "pace_min");
+  const paceSekRaw = str(formData, "pace_sek");
+  const recoveryMinRaw = str(formData, "recovery_minutes");
+
+  const paceMin = paceMinRaw ? Number(paceMinRaw) : 0;
+  const paceSek = paceSekRaw ? Number(paceSekRaw) : 0;
+
+  return {
+    reps: num(formData, "reps") ?? 1,
+    distance_meters: distanceRaw ? Math.round(Number(distanceRaw)) : null,
+    duration_seconds: durationMinRaw ? Math.round(Number(durationMinRaw) * 60) : null,
+    target_pace_seconds_per_km: paceMinRaw || paceSekRaw ? paceMin * 60 + paceSek : null,
+    target_hr_low: null,
+    target_hr_high: null,
+    recovery_seconds: recoveryMinRaw ? Math.round(Number(recoveryMinRaw) * 60) : null,
+    recovery_kind: str(formData, "recovery_kind"),
+    note: str(formData, "note"),
+  };
+}
+
+export async function addTemplateRepGroup(formData: FormData) {
+  const { supabase, userId } = await currentUserId();
+  if (!userId) return;
+
+  const templateItemId = str(formData, "template_item_id");
+  if (!templateItemId) return;
+
+  const fields = repGroupFieldsFromForm(formData);
+  // rep_has_a_measure-constrainten (databasen) kräver minst en av de två —
+  // ett tyst no-op här är bättre än ett 500-fel för ett tomt formulär.
+  if (fields.distance_meters == null && fields.duration_seconds == null) return;
+
+  // Ny grupp läggs sist: sort_order = högsta befintliga + 1, så ordningen
+  // tränaren skrev in grupperna i alltid bevaras.
+  const { data: existing } = await supabase
+    .from("template_rep_groups")
+    .select("sort_order")
+    .eq("template_item_id", templateItemId)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  const nextSort = ((existing ?? [])[0]?.sort_order ?? -1) + 1;
+
+  await supabase.from("template_rep_groups").insert({
+    template_item_id: templateItemId,
+    sort_order: nextSort,
+    ...fields,
+  });
+
+  refresh();
+}
+
+export async function updateTemplateRepGroup(formData: FormData) {
+  const { userId, supabase } = await currentUserId();
+  const id = str(formData, "id");
+  if (!userId || !id) return;
+
+  const fields = repGroupFieldsFromForm(formData);
+  if (fields.distance_meters == null && fields.duration_seconds == null) return;
+
+  await supabase.from("template_rep_groups").update(fields).eq("id", id);
+  refresh();
+}
+
+export async function deleteTemplateRepGroup(formData: FormData) {
+  const { userId, supabase } = await currentUserId();
+  const id = str(formData, "id");
+  if (!userId || !id) return;
+  await supabase.from("template_rep_groups").delete().eq("id", id);
   refresh();
 }

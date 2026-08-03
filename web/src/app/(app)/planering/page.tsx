@@ -10,6 +10,7 @@ import {
   BLOCK_TYPES,
   COMMON_EVENTS,
   PRIORITY_LABELS,
+  QUALITY_WORKOUT_TYPES,
   SEASON_LABELS,
   SLOT_LABELS,
   WEEKDAY_LABELS,
@@ -17,9 +18,13 @@ import {
   WORKOUT_TYPES,
   toDateKey,
   weeksBetween,
+  type WorkoutType,
 } from "@/lib/planning";
+import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
+import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
 import {
   addTemplateItem,
+  addTemplateRepGroup,
   createBlock,
   createCompetition,
   createTemplate,
@@ -27,9 +32,11 @@ import {
   deleteCompetition,
   deleteTemplate,
   deleteTemplateItem,
+  deleteTemplateRepGroup,
   saveEventResult,
   suggestPeriodisation,
   updateBlock,
+  updateTemplateRepGroup,
 } from "./actions";
 
 const input =
@@ -64,9 +71,12 @@ export default async function PlaneringPage() {
       .from("competitions")
       .select("*, competition_events(*)")
       .order("competition_date"),
+    // template_rep_groups(*) hämtas nästlat två led ner (K1) — en saknad
+    // tabell (migrationen inte körd) ger bara undefined per mallrad, aldrig
+    // ett kastat fel. Alla ställen nedan som läser det gör det via `?? []`.
     supabase
       .from("week_templates")
-      .select("*, week_template_items(*)")
+      .select("*, week_template_items(*, template_rep_groups(*))")
       .order("created_at"),
     supabase
       .from("planned_workouts")
@@ -301,8 +311,18 @@ export default async function PlaneringPage() {
                             workout_type: string;
                             title: string | null;
                             description: string | null;
+                            template_rep_groups?: RepGroupRow[] | null;
                           }[];
                           const isLinked = linkedNames.includes(t.name as string);
+                          // K1: repgrupps-redigeraren visas bara för
+                          // kvalitetstyper som standard (fallgrop 1), men
+                          // aldrig hårt blockerad — redan inlagda grupper
+                          // (t.ex. efter ett typbyte) visas oavsett.
+                          const repEditableItems = items.filter(
+                            (it) =>
+                              QUALITY_WORKOUT_TYPES.includes(it.workout_type as WorkoutType) ||
+                              (it.template_rep_groups ?? []).length > 0,
+                          );
                           return (
                             <details
                               key={t.id}
@@ -348,6 +368,28 @@ export default async function PlaneringPage() {
                                               {it.title}
                                             </div>
                                           )}
+                                          {(() => {
+                                            // Samma nyckelformat som utfallets
+                                            // buildSessionSignature — se
+                                            // lib/session-signature.ts.
+                                            const sigLabel = plannedSignatureLabel(
+                                              (it.template_rep_groups ?? []).map(
+                                                (g): PlannedRepGroup => ({
+                                                  reps: g.reps,
+                                                  distanceMeters: g.distance_meters,
+                                                  durationSeconds: g.duration_seconds,
+                                                  sortOrder: g.sort_order,
+                                                }),
+                                              ),
+                                            );
+                                            return (
+                                              sigLabel && (
+                                                <div className="text-zinc-600 dark:text-zinc-400">
+                                                  {sigLabel}
+                                                </div>
+                                              )
+                                            );
+                                          })()}
                                           {it.slot > 1 && (
                                             <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
                                               {SLOT_LABELS[it.slot]}
@@ -368,6 +410,38 @@ export default async function PlaneringPage() {
                                   );
                                 })}
                               </div>
+
+                              {repEditableItems.length > 0 && (
+                                <div className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                                  <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                                    Repgrupper — samma struktur som ett enskilt planerat pass
+                                    (K1), så mallen bär med sig &ldquo;5×1000 m&rdquo; i stället
+                                    för bara en rubrik.
+                                  </div>
+                                  {/* Ligger utanför veckorutnätet ovan med flit: rutnätets
+                                   * kolumner är för smala för repgrupps-radens många fält, och
+                                   * en tränare redigerar ett pass i taget här ändå. */}
+                                  {repEditableItems.map((it) => (
+                                    <div key={it.id}>
+                                      <div className="mb-1 text-xs text-zinc-500 dark:text-zinc-400">
+                                        {WEEKDAY_LABELS[it.weekday - 1]} ·{" "}
+                                        {WORKOUT_LABELS[
+                                          it.workout_type as keyof typeof WORKOUT_LABELS
+                                        ] ?? it.workout_type}
+                                        {it.title ? ` · ${it.title}` : ""}
+                                      </div>
+                                      <RepGroupEditor
+                                        groups={it.template_rep_groups ?? []}
+                                        parentIdField="template_item_id"
+                                        parentId={it.id}
+                                        addAction={addTemplateRepGroup}
+                                        updateAction={updateTemplateRepGroup}
+                                        deleteAction={deleteTemplateRepGroup}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
 
                               <form
                                 action={addTemplateItem}

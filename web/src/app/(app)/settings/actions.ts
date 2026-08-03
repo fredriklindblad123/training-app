@@ -77,11 +77,33 @@ export async function saveThresholds(formData: FormData) {
   } = await supabase.auth.getUser();
   if (!user) return;
 
+  const lt2Hr = parseIntOrNull(formData.get("lt2_hr"));
+
+  // Har LT2-fältet faktiskt ändrats sedan sist? Formuläret har bara ett
+  // fält för alla trösklar, så ett sparat värde som kom från
+  // tröskeltestkortet (test_field, med testdagens datum) skulle annars
+  // tappa sin källa och sitt datum varje gång den här sidan sparas av någon
+  // annan anledning — t.ex. att bara uppdatera tröskelbandet.
+  const { data: current } = await supabase
+    .from("profiles")
+    .select("lt2_hr")
+    .eq("id", user.id)
+    .maybeSingle();
+  const lt2Changed = lt2Hr !== (current?.lt2_hr ?? null);
+
+  // K8 (docs/tranarperspektiv.md): ett LT2 som skrivs in här har ingen känd
+  // testdag och inget känt testsätt. 'manuell' gör det synligt att det inte
+  // är ett kalibrerat fälttest eller laktattest, bara ett tal någon skrivit
+  // in. Ett tomt fält nollar källa och datum tillsammans med värdet, så de
+  // tre aldrig hamnar i otakt (ett sparat lt2_source utan ett lt2_hr).
   await supabase
     .from("profiles")
     .update({
       lt1_hr: parseIntOrNull(formData.get("lt1_hr")),
-      lt2_hr: parseIntOrNull(formData.get("lt2_hr")),
+      lt2_hr: lt2Hr,
+      ...(lt2Changed
+        ? { lt2_source: lt2Hr != null ? "manuell" : null, lt2_measured_on: null }
+        : {}),
       threshold_hr_low: parseIntOrNull(formData.get("threshold_hr_low")),
       threshold_hr_high: parseIntOrNull(formData.get("threshold_hr_high")),
       max_hr: parseIntOrNull(formData.get("max_hr")),
@@ -89,4 +111,5 @@ export async function saveThresholds(formData: FormData) {
     .eq("id", user.id);
 
   revalidatePath("/settings");
+  revalidatePath("/trends");
 }

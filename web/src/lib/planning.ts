@@ -122,6 +122,7 @@ export const WORKOUT_TYPES = [
   "race",
   "strength",
   "cross_training",
+  "test",
   "rest",
 ] as const;
 
@@ -135,13 +136,39 @@ export const WORKOUT_LABELS: Record<WorkoutType, string> = {
   race: "Tävling",
   strength: "Styrka",
   cross_training: "Alternativ träning",
+  test: "Tröskeltest",
   rest: "Vila",
 };
 
-/** Vilodagar har ingen motsvarighet bland genomförda pass — allt annat
- * matchar en `ActivityCategory` rakt av. */
+/** Fältprotokollet för ett tröskeltest, ur docs/insikter-roadmap.md (P1.3,
+ * "Kalibreringen är blockeraren"). Skrivs som färdig text i beskrivningen när
+ * ett testpass läggs in, så tränare/atlet slipper formulera om det varje
+ * gång — och så att lib/threshold-test.ts och UI-texten pratar om exakt
+ * samma protokoll. */
+export const THRESHOLD_TEST_PROTOCOL =
+  "30 minuter maxinsats i jämn fart, helst på bana eller platt underlag. " +
+  "Snittpulsen för de sista 20 minuterna motsvarar ungefär din anaeroba tröskel (LT2).";
+
+/** Passtyper där repgrupper (K1, docs/tranarperspektiv.md) faktiskt beskriver
+ * något. Ett lugnt distanspass eller ett långpass har ingen reps-struktur —
+ * "lägg till repgrupp" ska inte skrika efter uppmärksamhet där (fallgrop 1 i
+ * K1). Listan styr bara vilka typer som visar tillägg-kontrollen som
+ * standard i UI:t; den blockerar aldrig hårt — redan inlagda grupper (t.ex.
+ * efter ett typbyte) visas oavsett workout_type. */
+export const QUALITY_WORKOUT_TYPES: readonly WorkoutType[] = [
+  "threshold",
+  "interval",
+  "race",
+  "test",
+];
+
+/** Vilodagar och tröskeltest har ingen motsvarighet bland genomförda pass —
+ * `rest` är ingen träning alls, och `test` är ett testtillfälle, inte en
+ * träningskategori. Allt annat matchar en `ActivityCategory` rakt av. */
 export function workoutTypeColorVar(type: string): string | null {
-  return type === "rest" || !(WORKOUT_TYPES as readonly string[]).includes(type)
+  return type === "rest" ||
+    type === "test" ||
+    !(WORKOUT_TYPES as readonly string[]).includes(type)
     ? null
     : `var(--cat-${type})`;
 }
@@ -193,6 +220,28 @@ export function weeksBetween(from: string, to: string): number {
 
 // --- Utrullning av veckomall ----------------------------------------------
 
+/**
+ * En repgrupp med fältnamn som i databasraden (planned_rep_groups /
+ * template_rep_groups — de två tabellerna har identisk form, se
+ * supabase/migrations/20260801100000_planned_rep_groups.sql). snake_case
+ * medvetet, till skillnad från PlannedRepGroup i lib/session-signature.ts:
+ * den här typen speglar en databasrad rakt av (insert-payload), medan
+ * session-signature.ts type är den minimala formen
+ * plannedSignatureKey/-Label faktiskt behöver.
+ */
+export type RepGroupInput = {
+  sort_order: number;
+  reps: number;
+  distance_meters: number | null;
+  duration_seconds: number | null;
+  target_pace_seconds_per_km: number | null;
+  target_hr_low: number | null;
+  target_hr_high: number | null;
+  recovery_seconds: number | null;
+  recovery_kind: string | null;
+  note: string | null;
+};
+
 export type TemplateItem = {
   weekday: number;
   slot: number;
@@ -201,6 +250,10 @@ export type TemplateItem = {
   description: string | null;
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
+  /** Repgrupperna på mallraden (template_rep_groups). Saknas fältet helt
+   * (äldre anrop, eller en frågad som inte hämtat dem) tolkas som "inga" —
+   * se generateFromTemplate. */
+  rep_groups?: RepGroupInput[];
 };
 
 export type GeneratedWorkout = {
@@ -215,6 +268,11 @@ export type GeneratedWorkout = {
   block_id: string | null;
   template_id: string;
   status: "planned";
+  /** Repgrupperna som ska kopieras in på det nya planerade passet. Kan inte
+   * skickas med i samma insert som passet självt — planned_rep_groups pekar
+   * på passets id, som inte finns förrän insert-raden kommit tillbaka. Se
+   * syncTemplateIntoBlock i planering/actions.ts för hur det löses. */
+  rep_groups: RepGroupInput[];
 };
 
 /**
@@ -269,6 +327,11 @@ export function generateFromTemplate({
         block_id: blockId,
         template_id: templateId,
         status: "planned",
+        // Fallgrop 3 i K1: missas den här kopian blir mallarna tomma skal
+        // och tränaren skriver om kvalitetspassen varje vecka. Nytt
+        // array-objekt per genererat pass — flera pass i samma vecka delar
+        // annars samma mallrad och skulle annars dela referens.
+        rep_groups: [...(item.rep_groups ?? [])],
       });
     }
   }
