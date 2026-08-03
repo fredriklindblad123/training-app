@@ -45,6 +45,18 @@
      lib/planning.ts: det är kontext, inte en passkategori, och ska inte
      kunna förväxlas med en. */
   --availability-band: #a1a1aa;
+
+  /* L4 (docs/tranarloopen.md): de två nya korttyperna. --surface-action är
+     den enda accenten ActionCard använder, för alla åtgärder oavsett
+     prioritet — ordningen i listan bär brådskan, inte färgen (fallgropen i
+     L4: rött på "skriv om gårdagens pass" vore absurt). Den är därför
+     medvetet en dämpad, neutral blågrå ton utanför både --status-* och
+     --cat-*, så den aldrig kan läsas som "varning" eller "den här sortens
+     pass". --surface-insight är en knappt märkbar bakgrundston som skiljer
+     InsightCard från de neutrala datakorten utan att konkurrera med
+     tone-markören (som återanvänder --status-*, se InsightCard.tsx). */
+  --surface-action: #64748b;
+  --surface-insight: rgba(99, 102, 241, 0.06);
 }
 
 @theme inline {
@@ -83,6 +95,11 @@
     --status-unknown: #3f3f46;
 
     --availability-band: #71717a;
+
+    /* Samma resonemang som i :root — ljusare på mörk botten, samma mönster
+       som --zone-* ovan. */
+    --surface-action: #94a3b8;
+    --surface-insight: rgba(129, 140, 248, 0.1);
   }
 }
 

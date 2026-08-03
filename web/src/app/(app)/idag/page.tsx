@@ -3,11 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { DailyCheckIn } from "@/components/DailyCheckIn";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
+import { ActionCard } from "@/components/ActionCard";
 import { ringFillAndStatus, type RingDirection, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeCheckInStats } from "@/lib/checkin";
-import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
+import { QUALITY_WORKOUT_TYPES, addDays as planAddDays, mondayOf } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
+import { nextActions, type NextActionInput } from "@/lib/next-actions";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -156,13 +158,24 @@ export default async function IdagPage() {
   // tak — dagens data börjar 2025-07.
   const continuityFrom = toDateKey(new Date(now.getTime() - 3 * 365 * 86_400_000));
 
+  // L2 (docs/tranarloopen.md): regel 4 jämför förra veckan mot innevarande —
+  // datumen räknas en gång här och återanvänds både i frågan och i
+  // nextActions-indatan nedan.
+  const currentWeekMonday = mondayOf(todayKey);
+  const currentWeekSunday = planAddDays(currentWeekMonday, 6);
+  const lastWeekMonday = planAddDays(currentWeekMonday, -7);
+  const lastWeekSunday = planAddDays(currentWeekMonday, -1);
+
   const [
     { data: activityRows },
     { data: allActivityRows },
     { data: allInterruptionEntries },
-    { data: todayEntry },
+    { data: recentDiaryEntries },
     { data: statusMetrics },
     { data: tomorrowQualityWorkouts },
+    { data: currentWeekPlannedWorkouts },
+    { data: activeBlock },
+    { data: profileRow },
   ] = await Promise.all([
     // Bara dagens aktiviteter — sidan äger dagen, inget periodfönster.
     supabase
@@ -188,12 +201,14 @@ export default async function IdagPage() {
       .select("entry_date, day_type")
       .gte("entry_date", continuityFrom)
       .in("day_type", ["sick", "injured"]),
+    // Dagens incheckning och gårdagens dagboksanteckning (L2, regel 3) i
+    // samma fråga — båda är enstaka rader på `user_id, entry_date`, och två
+    // separata frågor för samma tabell hade bara varit en rundtripp till.
     supabase
       .from("diary_entries")
-      .select("feeling, motivation, soreness_level, rpe")
+      .select("entry_date, feeling, motivation, soreness_level, rpe, notes")
       .eq("user_id", user.id)
-      .eq("entry_date", todayKey)
-      .maybeSingle(),
+      .in("entry_date", [todayKey, yesterdayKey]),
     // P1.2-baslinjen (fysiologi) är alltid de senaste 60 dagarna.
     supabase
       .from("daily_metrics")
@@ -218,7 +233,28 @@ export default async function IdagPage() {
       .eq("scheduled_date", tomorrowKey)
       .in("workout_type", QUALITY_WORKOUT_TYPES)
       .order("slot", { ascending: true }),
+    // L2, regel 4: "oplanerad" avgörs av att raden här är tom — existensen
+    // räcker, därför bara `id` och en `limit(1)`.
+    supabase
+      .from("planned_workouts")
+      .select("id")
+      .gte("scheduled_date", toDateKey(currentWeekMonday))
+      .lte("scheduled_date", toDateKey(currentWeekSunday))
+      .limit(1),
+    // L2, regel 5: blocket som täcker idag, om något — samma "aktivt block"
+    // som /blocket landar på när inget block-id anges i frågan.
+    supabase
+      .from("season_blocks")
+      .select("end_date")
+      .lte("start_date", todayKey)
+      .gte("end_date", todayKey)
+      .maybeSingle(),
+    // L2, regel 6.
+    supabase.from("profiles").select("lt2_hr").maybeSingle(),
   ]);
+
+  const todayEntry = (recentDiaryEntries ?? []).find((e) => e.entry_date === todayKey);
+  const yesterdayEntry = (recentDiaryEntries ?? []).find((e) => e.entry_date === yesterdayKey);
 
   // --- Dagens incheckning (P0.4): visas bara om den inte redan är gjord. --
   const checkInStats = await computeCheckInStats(supabase, user.id, todayKey);
@@ -265,6 +301,7 @@ export default async function IdagPage() {
     wasEasingOffYesterday,
   );
   const tomorrowHref = `/calendar/${tomorrow.getFullYear()}/${tomorrow.getMonth() + 1}/${tomorrow.getDate()}`;
+  const yesterdayHref = `/calendar/${yesterday.getFullYear()}/${yesterday.getMonth() + 1}/${yesterday.getDate()}`;
 
   // --- Pass som analysenhet (P0.5), precis som /trends -------------------
   const sessions: TrainingSession[] = groupActivitiesIntoSessions(
@@ -290,6 +327,38 @@ export default async function IdagPage() {
     continuitySessions,
     todayKey,
   );
+
+  // --- L2: nästa steg (docs/tranarloopen.md) ------------------------------
+  // Allt underlag är redan hämtat ovan — den här sektionen bara samlar det
+  // åt nextActions(), som är ren logik utan egna databasanrop.
+  // allSessions är redan grupperat ur samma sorterade rader (groupActivitiesIntoSessions
+  // sorterar internt på start_time), så första posten är den tidigaste — och
+  // typad, till skillnad från att gräva i allActivityRows direkt.
+  const earliestActivityDate = allSessions[0]?.date ?? null;
+  const hasEnoughTrainingHistoryForTest =
+    earliestActivityDate != null &&
+    (Date.parse(todayKey) - Date.parse(earliestActivityDate)) / 86_400_000 >= 30;
+
+  const nextActionInput: NextActionInput = {
+    todayKey,
+    hasCheckedInToday: checkIn.initialDone,
+    shouldEaseOff: dailyStatus.shouldEaseOff,
+    hasQualityWorkoutTomorrow: (tomorrowQualityWorkouts ?? []).length > 0,
+    tomorrowHref,
+    hadSessionYesterday: allSessions.some((s) => s.date === yesterdayKey),
+    yesterdayHasDiaryNote: !!yesterdayEntry?.notes?.trim(),
+    yesterdayHref,
+    lastWeekHadSession: allSessions.some(
+      (s) => s.date >= toDateKey(lastWeekMonday) && s.date <= toDateKey(lastWeekSunday),
+    ),
+    currentWeekHasPlannedWorkout: (currentWeekPlannedWorkouts ?? []).length > 0,
+    activeBlockEndDate: activeBlock?.end_date ?? null,
+    hasLt2Hr: profileRow?.lt2_hr != null,
+    hasEnoughTrainingHistoryForTest,
+  };
+  // Bara de tre viktigaste visas (fallgrop 1: appen får aldrig gnälla med en
+  // lång lista) — en tom lista är ett gott tillstånd, se rendern nedan.
+  const topActions = nextActions(nextActionInput).slice(0, 3);
 
   const continuityRings = [
     // K6: kontinuitet, det enda långa horisontmåttet på den här sidan (se
@@ -354,6 +423,25 @@ export default async function IdagPage() {
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Idag</h1>
+
+      {/* --- L2: nästa steg, överst på sidan och före incheckningen — se
+          docs/tranarloopen.md. Max tre kort, alltid samma dämpade accent
+          (ActionCard/--surface-action) oavsett vilken regel som träffade;
+          ordningen bär prioriteten. En tom lista är ett gott tillstånd och
+          visas som en kort neutral rad i stället för att sektionen
+          försvinner — annars hoppar layouten och ytan känns opålitlig. ---- */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Nästa steg</h2>
+        {topActions.length === 0 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">Inget som väntar just nu.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {topActions.map((a) => (
+              <ActionCard key={a.id} title={a.title} why={a.why} href={a.href} />
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* --- Dagens incheckning: första vyn för dagen tills den är gjord —
           därefter försvinner den helt. Utfallet lever bara som KPI-ringar i
