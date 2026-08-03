@@ -6,6 +6,7 @@ import {
   type TimelineCompetition,
 } from "@/components/SeasonTimeline";
 import {
+  addDays as planAddDays,
   AVAILABILITY_KINDS,
   AVAILABILITY_LABELS,
   BLOCK_INTENT,
@@ -24,6 +25,8 @@ import {
   toDateKey,
   weeksBetween,
   type AvailabilityKind,
+  type Priority,
+  type SeasonKind,
   type WorkoutType,
 } from "@/lib/planning";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
@@ -46,6 +49,31 @@ import {
   updateBlock,
   updateTemplateRepGroup,
 } from "./actions";
+import {
+  SESSION_ACTIVITY_COLUMNS,
+  groupActivitiesIntoSessions,
+  type SessionActivity,
+} from "@/lib/sessions";
+import { BAND_LABELS } from "@/lib/intensity";
+import { formatHoursMinutes } from "@/lib/format";
+import { shortDateLabel } from "@/lib/week-series";
+import { STATUS_LABEL } from "@/lib/calendar-utils";
+import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
+import {
+  computeInterruptionPrecursor,
+  groupInterruptionPeriods,
+  type InterruptionPeriod,
+  type InterruptionPrecursor,
+} from "@/lib/interruption-timeline";
+import {
+  computeRaceBuildup,
+  BUILDUP_WINDOW_DAYS,
+  type RaceBuildup,
+} from "@/lib/race-buildup";
+import {
+  RaceProgressionChart,
+  type RaceProgressionPoint,
+} from "@/components/charts/RaceProgressionChart";
 
 const input =
   "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -63,14 +91,218 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function formatPct(v: number): string {
+  return `${Math.round(v * 100)}%`;
+}
+
+// --- K5: tävlingsanalys och upptrappning -----------------------------------
+// Flyttad hit från /blocket (docs/tranarloopen.md 3.1) — tävlingsanalys och
+// upptrappning är en säsongsfråga, inte en blockfråga.
+
+type CompetitionEventRow = {
+  id: string;
+  event: string;
+  target_result: string | null;
+  actual_result: string | null;
+  placement: number | null;
+  /** Tolkad löptid i sekunder (K9-importen, se migration
+   * 20260803100000_competition_result_seconds.sql). Null för hopp/kast och
+   * för grenar utan resultat — `actual_result` är fortfarande källan för
+   * visning, det här är bara det sorterbara talet. */
+  result_seconds: number | null;
+};
+
+type CompetitionRow = {
+  id: string;
+  name: string;
+  competition_date: string;
+  priority: Priority;
+  venue: SeasonKind | null;
+  competition_events: CompetitionEventRow[];
+};
+
+/** Sammandrag för ett enskilt lopp i jämförelseläget (K5). */
+type RaceAggregate = {
+  competition: CompetitionRow;
+  buildup: RaceBuildup;
+};
+
+/** "1500m, 800m" — grenarna för en tävling, tomt streck om inga är inlagda. */
+function raceEventsLabel(events: CompetitionEventRow[]): string {
+  return events.length > 0 ? events.map((e) => e.event).join(", ") : "–";
+}
+
+/** Resultaten precis som atleten skrev dem — ingen tolkning eller sortering
+ * av fritexten (se fallgropen i docs/tranarperspektiv.md K5). */
+function raceResultsLabel(events: CompetitionEventRow[]): string {
+  return events.length > 0
+    ? events.map((e) => e.actual_result ?? "inget resultat").join(", ")
+    : "–";
+}
+
+function racePlacementsLabel(events: CompetitionEventRow[]): string {
+  return events.length > 0
+    ? events.map((e) => (e.placement != null ? String(e.placement) : "–")).join(", ")
+    : "–";
+}
+
+/** Laddar upptrappningsprofilen (lib/race-buildup.ts) för ett enskilt lopp.
+ * Hämtar bara det loppets eget fönster — anropas parvis, aldrig för alla
+ * tävlingar på en gång (se kommentaren vid `compareRaceA`/`compareRaceB`
+ * nedan). */
+async function loadRaceAggregate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  competition: CompetitionRow,
+): Promise<RaceAggregate> {
+  const raceDate = competition.competition_date;
+  const windowStart = toDateKey(
+    planAddDays(new Date(`${raceDate}T00:00:00`), -BUILDUP_WINDOW_DAYS),
+  );
+  // Baslinjefönstret (P1.2) sträcker sig längre bak än upptrappningens 21
+  // dagar — computeDailyStatus behöver hela det för att räkna hrvTrend.
+  const baselineStart = toDateKey(
+    planAddDays(new Date(`${raceDate}T00:00:00`), -BASELINE_WINDOW_DAYS),
+  );
+
+  const [{ data: activityRows }, { data: metricRows }] = await Promise.all([
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", windowStart)
+      .lt("start_time", raceDate)
+      .order("start_time"),
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, hrv_overnight_avg, resting_hr, sleep_seconds, sleep_score")
+      .gte("metric_date", baselineStart)
+      .lte("metric_date", raceDate),
+  ]);
+
+  const dailyStatusRows: DailyStatusInput[] = (metricRows ?? []).map((m) => ({
+    date: m.metric_date as string,
+    hrv: m.hrv_overnight_avg,
+    restingHr: m.resting_hr,
+    sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
+    sleepScore: m.sleep_score,
+  }));
+
+  const buildup = computeRaceBuildup(
+    raceDate,
+    (activityRows ?? []) as unknown as SessionActivity[],
+    dailyStatusRows,
+  );
+
+  return { competition, buildup };
+}
+
+/** Radlista för tävlingsjämförelsen (K5) — speglar blockjämförelsens rader i
+ * form och stil, se docs/tranarperspektiv.md K5 punkt 2. */
+function raceComparisonRows(
+  a: RaceAggregate,
+  b: RaceAggregate,
+): { label: string; a: string; b: string }[] {
+  const weeklyLoadLabel = (w: RaceBuildup["weeklyLoad"]) =>
+    w.map((v) => Math.round(v)).join(" → ");
+  const hrvTrendLabel = (v: number | null) =>
+    v != null ? `${v > 0 ? "+" : ""}${v.toFixed(1)} SD` : "otillräcklig historik för en baslinje";
+  const lastHardLabel = (v: number | null) =>
+    v != null ? `${v} ${v === 1 ? "dag" : "dagar"} före loppet` : "inget kvalitetspass i fönstret";
+
+  return [
+    { label: "Datum", a: a.competition.competition_date, b: b.competition.competition_date },
+    {
+      label: "Gren",
+      a: raceEventsLabel(a.competition.competition_events),
+      b: raceEventsLabel(b.competition.competition_events),
+    },
+    {
+      label: "Resultat",
+      a: raceResultsLabel(a.competition.competition_events),
+      b: raceResultsLabel(b.competition.competition_events),
+    },
+    {
+      label: "Placering",
+      a: racePlacementsLabel(a.competition.competition_events),
+      b: racePlacementsLabel(b.competition.competition_events),
+    },
+    {
+      label: "Veckobelastning (3 v.)",
+      a: weeklyLoadLabel(a.buildup.weeklyLoad),
+      b: weeklyLoadLabel(b.buildup.weeklyLoad),
+    },
+    {
+      label: "Distans",
+      a: `${a.buildup.totalKm.toFixed(0)} km`,
+      b: `${b.buildup.totalKm.toFixed(0)} km`,
+    },
+    {
+      label: "Kvalitetspass",
+      a: String(a.buildup.qualitySessions),
+      b: String(b.buildup.qualitySessions),
+    },
+    {
+      label: "Vilodagar",
+      a: `${a.buildup.restDays} av ${BUILDUP_WINDOW_DAYS}`,
+      b: `${b.buildup.restDays} av ${BUILDUP_WINDOW_DAYS}`,
+    },
+    {
+      label: "Senaste hårda passet",
+      a: lastHardLabel(a.buildup.lastHardSessionDaysBefore),
+      b: lastHardLabel(b.buildup.lastHardSessionDaysBefore),
+    },
+    {
+      label: "Snittsömn",
+      a: a.buildup.avgSleepHours != null ? formatHoursMinutes(a.buildup.avgSleepHours * 3600) : "ingen data",
+      b: b.buildup.avgSleepHours != null ? formatHoursMinutes(b.buildup.avgSleepHours * 3600) : "ingen data",
+    },
+    {
+      label: "HRV-trend",
+      a: hrvTrendLabel(a.buildup.hrvTrend),
+      b: hrvTrendLabel(b.buildup.hrvTrend),
+    },
+    {
+      label: `${BAND_LABELS.easy} / ${BAND_LABELS.threshold}`,
+      a: `${formatPct(a.buildup.bandPct.easy)} / ${formatPct(a.buildup.bandPct.threshold)}`,
+      b: `${formatPct(b.buildup.bandPct.easy)} / ${formatPct(b.buildup.bandPct.threshold)}`,
+    },
+  ];
+}
+
+/** "12–15 mar" resp. "12 mar – 3 apr" om perioden spänner över en
+ * månadsgräns. Återanvänder `shortDateLabel` (lib/week-series.ts) i stället
+ * för en egen datumformatering. Flyttad hit från /blocket med K6
+ * (docs/tranarloopen.md 3.1). */
+function formatPeriodRange(period: InterruptionPeriod): string {
+  const fromLabel = shortDateLabel(period.startDate);
+  if (period.startDate === period.endDate) return fromLabel;
+  const toLabel = shortDateLabel(period.endDate);
+  const fromMonth = fromLabel.split(" ")[1];
+  const toMonth = toLabel.split(" ")[1];
+  return fromMonth === toMonth ? `${fromLabel.split(" ")[0]}–${toLabel}` : `${fromLabel} – ${toLabel}`;
+}
+
 export default async function PlaneringPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tavlingsAr?: string; tavlingsBana?: string }>;
+  searchParams: Promise<{
+    tavlingsAr?: string;
+    tavlingsBana?: string;
+    gren?: string;
+    bana?: string;
+    raceA?: string;
+    raceB?: string;
+  }>;
 }) {
   const supabase = await createClient();
   const today = toDateKey(new Date());
-  const { tavlingsAr: tavlingsArParam, tavlingsBana: tavlingsBanaParam } = await searchParams;
+  const {
+    tavlingsAr: tavlingsArParam,
+    tavlingsBana: tavlingsBanaParam,
+    gren: grenParam,
+    bana: banaParam,
+    raceA: raceAParam,
+    raceB: raceBParam,
+  } = await searchParams;
 
   const [
     { data: blocks },
@@ -155,12 +387,41 @@ export default async function PlaneringPage({
    * — bara den del som skickas in i `overrides` byts ut. Samma mönster som
    * volumeHref i trends/page.tsx (läst för formen, inte kopierad rakt av):
    * utan den skulle t.ex. bana-växlaren nollställa årsvalet varje gång man
-   * klickade. */
+   * klickade. Bär också med sig K5-sektionens gren/bana/raceA/raceB om de är
+   * satta — annars skulle ett klick här nollställa tävlingsanalysen längre
+   * ner på sidan (docs/tranarloopen.md 3.1: "se till att parametrarna inte
+   * krockar eller nollställer varandra"). */
   function competitionHref(overrides: { tavlingsAr?: string; tavlingsBana?: string }): string {
     const params = new URLSearchParams();
     params.set("tavlingsAr", overrides.tavlingsAr ?? tavlingsAr);
     params.set("tavlingsBana", overrides.tavlingsBana ?? tavlingsBana);
+    if (grenParam) params.set("gren", grenParam);
+    if (banaParam) params.set("bana", banaParam);
+    if (raceAParam) params.set("raceA", raceAParam);
+    if (raceBParam) params.set("raceB", raceBParam);
     return `/sasongen?${params.toString()}#tavlingar`;
+  }
+
+  /** Samma mönster som `competitionHref` ovan, för K5-sektionens gren-/bana-
+   * växlare: behåller alla parametrar på sidan (inklusive den andra av
+   * gren/bana, och tavlingsAr/tavlingsBana ovan) och byter bara det som
+   * skickas in i `overrides`. Utan den skulle t.ex. bana-knapparna
+   * nollställa grenvalet och tvärtom. `raceA`/`raceB` följer med
+   * oförändrade — väljer man en gren de inte tillhör tystnar jämförelsen
+   * själv längre ner (se `racesInSelectedEvent`), det behöver inte städas
+   * bort ur URL:en här. Flyttad hit från /blocket (docs/tranarloopen.md
+   * 3.1) — bara `#tavlingar`-ankaret bytt till `#tavlingsanalys` eftersom
+   * /sasongen redan hade en egen sektion med id `tavlingar`. */
+  function raceHref(overrides: Record<string, string>): string {
+    const params = new URLSearchParams();
+    params.set("tavlingsAr", tavlingsAr);
+    params.set("tavlingsBana", tavlingsBana);
+    if (grenParam) params.set("gren", grenParam);
+    if (banaParam) params.set("bana", banaParam);
+    if (raceAParam) params.set("raceA", raceAParam);
+    if (raceBParam) params.set("raceB", raceBParam);
+    for (const [key, value] of Object.entries(overrides)) params.set(key, value);
+    return `/sasongen?${params.toString()}#tavlingsanalys`;
   }
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
@@ -197,6 +458,227 @@ export default async function PlaneringPage({
     set.add(row.template_id as string);
     templateIdsByBlock.set(blockId, set);
   }
+
+  // --- K6: avbrottstidslinjen (docs/tranarperspektiv.md), flyttad hit från
+  // /blocket (docs/tranarloopen.md 3.1) ---------------------------------------
+  // Helt fristående från årsfiltret ovan — perioderna som visas är alltid
+  // "senaste året" oavsett vilket tävlingsår som råkar vara valt i
+  // tävlingslistan. Lookback-bufferten (utöver de 365 dagarna) täcker det
+  // längsta en enskild period kan behöva bakåt: BASELINE_WINDOW_DAYS för
+  // sömn-/HRV-baslinjen (lib/daily-status.ts) plus ytterligare en vecka för
+  // jämförelseveckan precis före den.
+  const TIMELINE_WINDOW_DAYS = 365;
+  const timelineLookbackFrom = toDateKey(
+    planAddDays(new Date(`${today}T00:00:00`), -(TIMELINE_WINDOW_DAYS + BASELINE_WINDOW_DAYS + 14)),
+  );
+  const timelineEarliestPeriodStart = toDateKey(
+    planAddDays(new Date(`${today}T00:00:00`), -TIMELINE_WINDOW_DAYS),
+  );
+
+  const [
+    { data: timelineDiaryRows },
+    { data: timelineActivityRows },
+    { data: timelineMetricRows },
+    { data: competitionRows },
+  ] = await Promise.all([
+    supabase
+      .from("diary_entries")
+      .select("entry_date, day_type, notes")
+      .gte("entry_date", timelineLookbackFrom)
+      .order("entry_date"),
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", timelineLookbackFrom)
+      .order("start_time"),
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+      .gte("metric_date", timelineLookbackFrom)
+      .order("metric_date"),
+    // K5: tävlingslistan hämtas alltid (billigt, en handfull rader) — det är
+    // bara upptrappningsprofilerna för de två valda loppen som hämtas
+    // separat nedan, se compareRaceA/compareRaceB. En egen, obegränsad fråga
+    // — till skillnad från competitionsQuery ovan (som bara hämtar det valda
+    // tävlingsåret) behöver grenutvecklingen hela historiken.
+    supabase
+      .from("competitions")
+      .select(
+        "id, name, competition_date, priority, venue, competition_events(id, event, target_result, actual_result, placement, result_seconds)",
+      )
+      .order("competition_date"),
+  ]);
+
+  const timelineSessions = groupActivitiesIntoSessions(
+    (timelineActivityRows ?? []) as unknown as SessionActivity[],
+  ).map((s) => ({ date: s.date, trainingLoad: s.trainingLoad, category: s.category }));
+
+  const timelineDailyMetrics = (timelineMetricRows ?? []).map((m) => ({
+    date: m.metric_date as string,
+    hrv: m.hrv_overnight_avg,
+    restingHr: m.resting_hr,
+    sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
+    sleepScore: m.sleep_score,
+  }));
+
+  const timelineDiaryNotes = (timelineDiaryRows ?? [])
+    .filter((e) => e.notes)
+    .map((e) => ({ date: e.entry_date as string, note: e.notes as string }));
+
+  const allInterruptionPeriods: InterruptionPeriod[] = groupInterruptionPeriods(
+    (timelineDiaryRows ?? [])
+      .filter((e) => e.day_type === "sick" || e.day_type === "injured")
+      .map((e) => ({ date: e.entry_date as string, dayType: e.day_type as "sick" | "injured" })),
+  );
+  // "Senaste året" filtrerar på periodens START — en period som pågick in i
+  // fönstret men började dessförinnan hör hemma i föregående års tidslinje.
+  const interruptionPeriods = allInterruptionPeriods.filter(
+    (p) => p.startDate >= timelineEarliestPeriodStart,
+  );
+  const interruptionPrecursors: InterruptionPrecursor[] = interruptionPeriods
+    .map((period) =>
+      computeInterruptionPrecursor(period, {
+        sessions: timelineSessions,
+        dailyMetrics: timelineDailyMetrics,
+        diaryNotes: timelineDiaryNotes,
+      }),
+    )
+    // Senaste avbrottet överst — en tidslinje man läser uppifrån och ned.
+    .sort((a, b) => (a.period.startDate < b.period.startDate ? 1 : -1));
+
+  // --- K5: tävlingsanalys och upptrappning, flyttad hit från /blocket
+  // (docs/tranarloopen.md 3.1) -------------------------------------------
+  // En tränare jämför samma distans över tid ("hur har 1500m utvecklats?"),
+  // inte två godtyckliga lopp mot varandra — sektionen utgår därför från en
+  // gren (competition_events.event), inte från ett fritt par lopp. Se
+  // docs/tranarperspektiv.md K5. Bygger ingen egen resultattabell —
+  // competition_events har redan actual_result/placement. Kallas
+  // `allCompetitions` (inte `competitions`) för att skiljas från den
+  // årsfiltrerade listan ovan — grenutvecklingen behöver hela historiken.
+  const allCompetitions: CompetitionRow[] = (competitionRows ?? []) as CompetitionRow[];
+
+  type EventResultRow = {
+    eventRowId: string;
+    competitionId: string;
+    competitionName: string;
+    competitionDate: string;
+    venue: SeasonKind | null;
+    event: string;
+    resultLabel: string;
+    resultSeconds: number;
+  };
+
+  // Bara löpgrenar har result_seconds (hopp/kast mäts i meter och lämnades
+  // null vid import, se migration 20260803100000) — de filtreras bort här,
+  // innan grenväljaren eller grafen ser dem, så de aldrig kan väljas eller
+  // krascha något nedströms.
+  const eventResults: EventResultRow[] = allCompetitions.flatMap((c) =>
+    c.competition_events
+      .filter((e) => e.result_seconds != null)
+      .map((e) => ({
+        eventRowId: e.id,
+        competitionId: c.id,
+        competitionName: c.name,
+        competitionDate: c.competition_date,
+        venue: c.venue,
+        event: e.event,
+        resultLabel: e.actual_result ?? "inget resultat",
+        resultSeconds: e.result_seconds as number,
+      })),
+  );
+
+  const eventCounts = new Map<string, number>();
+  for (const r of eventResults) {
+    eventCounts.set(r.event, (eventCounts.get(r.event) ?? 0) + 1);
+  }
+  // Minst två resultat, annars finns ingen utveckling att visa — sorterad
+  // flest först så väljaren öppnar på grenen med mest att visa.
+  const eventOptions = [...eventCounts.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([event, count]) => ({ event, count }))
+    .sort((a, b) => b.count - a.count || a.event.localeCompare(b.event, "sv"));
+
+  const selectedEvent =
+    grenParam && eventOptions.some((o) => o.event === grenParam)
+      ? grenParam
+      : (eventOptions[0]?.event ?? null);
+
+  const banaFilter: "alla" | "inne" | "ute" =
+    banaParam === "inne" || banaParam === "ute" ? banaParam : "alla";
+  const banaVenue: SeasonKind | null =
+    banaFilter === "inne" ? "indoor" : banaFilter === "ute" ? "outdoor" : null;
+
+  // Alla resultat i den valda grenen, oavsett bana — basen för
+  // upptrappningsjämförelsens väljare (punkt 5 nedan) och för personbästat
+  // innan bana-filtret smalnar av vad som faktiskt visas.
+  const eventRaceRows = selectedEvent
+    ? eventResults
+        .filter((r) => r.event === selectedEvent)
+        .sort((a, b) => (a.competitionDate < b.competitionDate ? -1 : a.competitionDate > b.competitionDate ? 1 : 0))
+    : [];
+  // Bana-filtret smalnar av vad grafen/tabellen visar. "Personbästa" räknas
+  // ur samma filtrerade urval — annars kan hjälplinjen peka på ett lopp som
+  // inte ens syns i vyn, vilket hade sett trasigt ut med filtret på "inne".
+  const filteredRaceRows = banaVenue ? eventRaceRows.filter((r) => r.venue === banaVenue) : eventRaceRows;
+  // Delas mellan grafen (ritar sin egen PB-markör internt) och tabellen
+  // under den, så de aldrig kan peka ut olika lopp som personbästa.
+  const pbSecondsInFilter =
+    filteredRaceRows.length > 0
+      ? Math.min(...filteredRaceRows.map((r) => r.resultSeconds))
+      : null;
+  // Etiketten måste följa filtret. Inne och ute är skilda rekord i friidrott,
+  // så det snabbaste inomhusloppet är inte "personbästa" när ett utomhuslopp
+  // gått fortare — Alices 800m-bästa (2:21,99) sattes utomhus i juni, och att
+  // kalla inomhustiden personbästa hade varit direkt fel.
+  const bestResultLabel =
+    banaFilter === "inne" ? "Bästa inomhus" : banaFilter === "ute" ? "Bästa utomhus" : "Personbästa";
+
+  const progressionPoints: RaceProgressionPoint[] = filteredRaceRows.map((r) => ({
+    id: r.eventRowId,
+    date: r.competitionDate,
+    competitionName: r.competitionName,
+    resultLabel: r.resultLabel,
+    resultSeconds: r.resultSeconds,
+    venue: r.venue,
+  }));
+
+  // Upptrappningsjämförelsens <select>-fält ska bara innehålla lopp i den
+  // valda grenen (punkt 5) — det är så "jämför samma distans" blir konkret.
+  const racesInSelectedEvent = selectedEvent
+    ? allCompetitions.filter((c) =>
+        c.competition_events.some((e) => e.event === selectedEvent && e.actual_result),
+      )
+    : [];
+  // Ligger raceA/raceB inte i den valda grenen (t.ex. efter att grenen
+  // byttes) nollställs de tyst här — ingen trasig jämförelse renderas, se
+  // docs/tranarperspektiv.md K5 och kommentaren vid `raceHref` ovan.
+  const compareRaceA = raceAParam
+    ? (racesInSelectedEvent.find((c) => c.id === raceAParam) ?? null)
+    : null;
+  const compareRaceB = raceBParam
+    ? (racesInSelectedEvent.find((c) => c.id === raceBParam) ?? null)
+    : null;
+  // Fristående frågor per valt lopp — aldrig en fråga per tävling i listan,
+  // det hade blivit dyrt så fort säsongen har ett tiotal lopp.
+  const [raceAggregateA, raceAggregateB] =
+    compareRaceA && compareRaceB && compareRaceA.id !== compareRaceB.id
+      ? await Promise.all([
+          loadRaceAggregate(supabase, compareRaceA),
+          loadRaceAggregate(supabase, compareRaceB),
+        ])
+      : [null, null];
+
+  // K5 sista upptrappningsupplysning: träningsdatan (Garmin-synken) börjar
+  // 2025-07-25, men de importerade tävlingsresultaten slutar 2024-07-21. För
+  // alla nuvarande lopp saknas därför träningsdata i de 21 dagarna före —
+  // upptrappningstabellen blir tom av det skälet, inte för att inget
+  // hände. Ett dataläge, inte ett fel; sant tills nyare lopp läggs in.
+  const TRAINING_DATA_START = "2025-07-25";
+  const buildupDataGapApplies =
+    raceAggregateA != null &&
+    raceAggregateB != null &&
+    raceAggregateA.competition.competition_date < TRAINING_DATA_START &&
+    raceAggregateB.competition.competition_date < TRAINING_DATA_START;
 
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
@@ -962,6 +1444,370 @@ export default async function PlaneringPage({
             </button>
           </form>
         </details>
+      </section>
+      {/* ================= K6: avbrottstidslinjen ============================ */}
+      {/* Hopfälld från start (djupanalys, inte förstaintryck) — se K6 i
+          docs/tranarperspektiv.md. Beskriver vad som föregick varje sjuk-/
+          skadeperiod, aldrig vad som orsakade den (fallgrop 2): med i
+          storleksordningen tre perioder per år räcker underlaget aldrig till
+          ett samband, bara till vad som brukade synas samtidigt. */}
+      <section className="flex flex-col gap-4">
+        <details className="rounded border border-zinc-200 dark:border-zinc-800">
+          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-4 text-zinc-900 dark:text-zinc-100">
+            <span className="text-lg font-medium">Avbrott</span>
+            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+              {interruptionPeriods.length}{" "}
+              {interruptionPeriods.length === 1 ? "period" : "perioder"} senaste året
+            </span>
+          </summary>
+          <div className="flex flex-col gap-4 border-t border-zinc-200 p-4 dark:border-zinc-800">
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              Sjuk- och skadeperioder ur dagboken, med vad som hände samtidigt: belastning och
+              kvalitetspass veckan före, sömn och HRV mot din egen baslinje, och dina egna ord
+              dagarna innan. Det är ett underlag för att lägga märke till mönster, inte ett
+              påstående om orsak — för få perioder per år för att kunna särskilja slump från
+              samband.
+            </p>
+
+            {interruptionPrecursors.length === 0 ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Inga registrerade sjuk- eller skadeperioder det senaste året.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {interruptionPrecursors.map((p) => (
+                  <li
+                    key={`${p.period.dayType}-${p.period.startDate}`}
+                    className="rounded border border-zinc-100 p-3 dark:border-zinc-800"
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                        {formatPeriodRange(p.period)}
+                      </span>
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {STATUS_LABEL[p.period.dayType]}, {p.period.days}{" "}
+                        {p.period.days === 1 ? "dag" : "dagar"}
+                      </span>
+                    </div>
+                    <ul className="mt-2 flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
+                      <li>
+                        Veckan före: {Math.round(p.loadWeekBefore)} belastning
+                        {p.loadBaselinePerWeek != null
+                          ? ` (snitt ${Math.round(p.loadBaselinePerWeek)})`
+                          : " (för kort historik för ett snitt)"}
+                        , {p.qualitySessionsWeekBefore} kvalitetspass
+                      </li>
+                      <li>
+                        Sömn{" "}
+                        {p.sleepHoursWeekBefore != null
+                          ? formatHoursMinutes(p.sleepHoursWeekBefore * 3600)
+                          : "okänd"}{" "}
+                        i snitt
+                        {p.sleepBaselineHours != null &&
+                          ` (baslinje ${formatHoursMinutes(p.sleepBaselineHours * 3600)})`}
+                        , HRV{" "}
+                        {p.hrvDeviationSd != null
+                          ? `${p.hrvDeviationSd > 0 ? "+" : ""}${p.hrvDeviationSd.toFixed(1)} SD`
+                          : "otillräcklig historik för en baslinje"}
+                      </li>
+                      {p.notesBefore.map((note) => (
+                        <li key={note.date}>
+                          Dagboken {shortDateLabel(note.date)}: &quot;{note.note}&quot;
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </details>
+      </section>
+
+      {/* ================= K5: Tävlingar och upptrappning ==================== */}
+      {/* Ligger bredvid blockjämförelsen ovan — samma sorts retrospektiv, bara
+          med tävlingar som enhet. Utgår från en gren, inte från ett fritt par
+          lopp — se docs/tranarperspektiv.md K5. */}
+      <section id="tavlingar" className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Med i storleksordningen tio lopp per säsong är det här beskrivande, inte
+            statistiskt. Ingen trendlinje och ingen prognos — bara vad som faktiskt
+            hände, gren för gren.
+          </p>
+        </div>
+
+        {allCompetitions.length === 0 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Inga tävlingar inlagda ännu. Lägg till dem på{" "}
+            <Link href="/sasongen" className="underline">
+              planeringssidan
+            </Link>
+            .
+          </p>
+        ) : (
+          <div className="w-full max-w-full overflow-x-auto">
+            <table className="w-full min-w-max text-left text-sm">
+              <thead>
+                <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Datum
+                  </th>
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Tävling
+                  </th>
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Bana
+                  </th>
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Prioritet
+                  </th>
+                  <th scope="col" className="py-1 font-normal">
+                    Resultat
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                {allCompetitions.map((c) => (
+                  <tr key={c.id}>
+                    <td className="py-1.5 pr-4 tabular-nums">{c.competition_date}</td>
+                    <td className="py-1.5 pr-4">{c.name}</td>
+                    <td className="py-1.5 pr-4">{c.venue ? SEASON_LABELS[c.venue] : "–"}</td>
+                    <td className="py-1.5 pr-4">{PRIORITY_LABELS[c.priority]}</td>
+                    <td className="py-1.5">{raceResultsLabel(c.competition_events)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {eventOptions.length === 0 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Ingen gren har minst två tidtagna resultat ännu (hopp och kast mäts i meter
+            och räknas inte hit). Fyll i fler resultat på{" "}
+            <Link href="/sasongen" className="underline">
+              planeringssidan
+            </Link>
+            .
+          </p>
+        ) : (
+          <>
+            {/* Grenväljare — flest resultat först, default öppnar på den grenen. */}
+            <div className="flex flex-wrap gap-2 text-sm">
+              {eventOptions.map((o) => (
+                <Link
+                  key={o.event}
+                  href={raceHref({ gren: o.event })}
+                  className={`rounded px-3 py-1 ${
+                    o.event === selectedEvent
+                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  }`}
+                >
+                  {o.event} ({o.count})
+                </Link>
+              ))}
+            </div>
+
+            {/* Inne/ute-filter — samma knappradsstil som vecko-/blockväljaren
+                högst upp. Formen (fylld/ihålig) i grafen bär skillnaden när
+                filtret står på "alla"; knapparna här smalnar av vad som visas. */}
+            <div className="flex flex-wrap gap-2 text-sm">
+              {(
+                [
+                  { key: "alla", label: "Alla" },
+                  { key: "inne", label: "Inomhus" },
+                  { key: "ute", label: "Utomhus" },
+                ] as const
+              ).map((b) => (
+                <Link
+                  key={b.key}
+                  href={raceHref({ bana: b.key })}
+                  className={`rounded px-3 py-1 ${
+                    banaFilter === b.key
+                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  }`}
+                >
+                  {b.label}
+                </Link>
+              ))}
+            </div>
+
+            <RaceProgressionChart
+              points={progressionPoints}
+              bestLabel={bestResultLabel}
+              emptyLabel="Inga lopp i den här grenen med det valda banfiltret."
+            />
+
+            {/* Tabellen under grafen — samma urval som grafen (gren + bana),
+                kronologisk, personbästa markerad. */}
+            {filteredRaceRows.length > 0 && (
+              <div className="w-full max-w-full overflow-x-auto">
+                <table className="w-full min-w-max text-left text-sm">
+                  <thead>
+                    <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                      <th scope="col" className="py-1 pr-4 font-normal">
+                        Datum
+                      </th>
+                      <th scope="col" className="py-1 pr-4 font-normal">
+                        Tävling
+                      </th>
+                      <th scope="col" className="py-1 pr-4 font-normal">
+                        Bana
+                      </th>
+                      <th scope="col" className="py-1 font-normal">
+                        Resultat
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                    {filteredRaceRows.map((r) => {
+                      const isPb = r.resultSeconds === pbSecondsInFilter;
+                      return (
+                        <tr
+                          key={r.eventRowId}
+                          className={isPb ? "bg-zinc-50 dark:bg-zinc-900" : undefined}
+                        >
+                          <td className="py-1.5 pr-4 tabular-nums">{r.competitionDate}</td>
+                          <td className="py-1.5 pr-4">{r.competitionName}</td>
+                          <td className="py-1.5 pr-4">
+                            {r.venue ? SEASON_LABELS[r.venue] : "–"}
+                          </td>
+                          <td className="py-1.5 tabular-nums">
+                            {r.resultLabel}
+                            {isPb && (
+                              <span className="ml-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                                {bestResultLabel}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Upptrappningsjämförelsen — samma tabellstruktur som
+                blockjämförelsen (P1.5), men bara lopp i den valda grenen. */}
+            {racesInSelectedEvent.length < 2 ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Upptrappningsjämförelsen kräver minst två lopp i den här grenen med
+                registrerat resultat.
+              </p>
+            ) : (
+              <>
+                <form
+                  action="/blocket"
+                  method="get"
+                  className="flex flex-wrap items-end gap-3 text-sm"
+                >
+                  {tavlingsArParam && <input type="hidden" name="tavlingsAr" value={tavlingsArParam} />}
+                  {tavlingsBanaParam && <input type="hidden" name="tavlingsBana" value={tavlingsBanaParam} />}
+                  {selectedEvent && <input type="hidden" name="gren" value={selectedEvent} />}
+                  {banaParam && <input type="hidden" name="bana" value={banaParam} />}
+                  <label className="flex flex-col gap-1">
+                    <span className="text-zinc-600 dark:text-zinc-400">Lopp A</span>
+                    <select
+                      name="raceA"
+                      defaultValue={raceAParam ?? ""}
+                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                    >
+                      <option value="" disabled>
+                        Välj lopp
+                      </option>
+                      {racesInSelectedEvent.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.competition_date})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-zinc-600 dark:text-zinc-400">Lopp B</span>
+                    <select
+                      name="raceB"
+                      defaultValue={raceBParam ?? ""}
+                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                    >
+                      <option value="" disabled>
+                        Välj lopp
+                      </option>
+                      {racesInSelectedEvent.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.competition_date})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="submit" className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200">
+                    Jämför
+                  </button>
+                </form>
+
+                {raceAParam && raceBParam && !(raceAggregateA && raceAggregateB) && (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    Kunde inte jämföra — välj två olika lopp i den här grenen med resultat.
+                  </p>
+                )}
+
+                {raceAggregateA &&
+                  raceAggregateB &&
+                  (buildupDataGapApplies ? (
+                    <p className="rounded border border-zinc-200 p-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                      Träningsdatan börjar 2025-07-25, men de importerade tävlingsresultaten
+                      slutar 2024-07-21. De {BUILDUP_WINDOW_DAYS} dagarna före de här två
+                      loppen ligger därför före träningsdatans start, och upptrappningen går
+                      inte att visa — inget mättes, det är inte det samma som att inget
+                      hände. Så fort ett lopp med träningsdata i fönstret jämförs dyker
+                      tabellen upp här.
+                    </p>
+                  ) : (
+                    <details className="rounded border border-zinc-200 dark:border-zinc-800" open>
+                      <summary className="cursor-pointer p-4 text-sm text-zinc-600 dark:text-zinc-400">
+                        Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
+                      </summary>
+                      <div className="w-full max-w-full overflow-x-auto border-t border-zinc-200 p-4 dark:border-zinc-800">
+                        <table className="w-full min-w-max text-left text-sm">
+                          <thead>
+                            <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                              <th scope="col" className="py-1 pr-4 font-normal">
+                                Mått
+                              </th>
+                              <th scope="col" className="py-1 pr-4 font-normal">
+                                {raceAggregateA.competition.name}
+                              </th>
+                              <th scope="col" className="py-1 font-normal">
+                                {raceAggregateB.competition.name}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                            {raceComparisonRows(raceAggregateA, raceAggregateB).map((row) => (
+                              <tr key={row.label}>
+                                <th
+                                  scope="row"
+                                  className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400"
+                                >
+                                  {row.label}
+                                </th>
+                                <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
+                                <td className="py-1.5 tabular-nums">{row.b}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  ))}
+              </>
+            )}
+          </>
+        )}
       </section>
     </div>
   );
