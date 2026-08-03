@@ -17,7 +17,7 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect("/idag");
 }
 
 export async function signup(formData: FormData) {

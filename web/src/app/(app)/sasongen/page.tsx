@@ -160,7 +160,7 @@ export default async function PlaneringPage({
     const params = new URLSearchParams();
     params.set("tavlingsAr", overrides.tavlingsAr ?? tavlingsAr);
     params.set("tavlingsBana", overrides.tavlingsBana ?? tavlingsBana);
-    return `/planering?${params.toString()}#tavlingar`;
+    return `/sasongen?${params.toString()}#tavlingar`;
   }
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även

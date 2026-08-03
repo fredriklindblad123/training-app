@@ -32,7 +32,7 @@ function num(form: FormData, key: string): number | null {
 }
 
 function refresh() {
-  revalidatePath("/planering");
+  revalidatePath("/sasongen");
   revalidatePath("/calendar", "layout");
 }
 
@@ -365,7 +365,7 @@ export async function createCompetition(formData: FormData) {
   const banaHidesIt = currentBana != null && currentBana !== "alla" && currentBana !== banaForCreated;
 
   if (yearHidesIt || banaHidesIt) {
-    redirect(`/planering?tavlingsAr=${createdYear}&tavlingsBana=${banaForCreated}#tavlingar`);
+    redirect(`/sasongen?tavlingsAr=${createdYear}&tavlingsBana=${banaForCreated}#tavlingar`);
   }
 }
 

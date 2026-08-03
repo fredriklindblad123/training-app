@@ -152,7 +152,7 @@ export default async function YearPage({
 
       {nextCompetition && (
         <Link
-          href={`/planering`}
+          href={`/sasongen`}
           className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
         >
           🎯 <strong>{nextCompetition.name}</strong> — {nextCompetition.competition_date}

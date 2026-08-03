@@ -51,7 +51,7 @@ export async function saveDiaryEntry(formData: FormData) {
   }
 
   revalidatePath("/calendar", "layout");
-  revalidatePath("/dashboard", "layout");
+  revalidatePath("/idag", "layout");
 }
 
 export async function updateActivityCategory(formData: FormData) {
@@ -72,7 +72,7 @@ export async function updateActivityCategory(formData: FormData) {
     .eq("user_id", user.id);
 
   revalidatePath("/calendar", "layout");
-  revalidatePath("/dashboard", "layout");
+  revalidatePath("/idag", "layout");
 }
 
 export async function deletePlannedWorkout(formData: FormData) {
@@ -113,7 +113,7 @@ export async function resetActivityCategory(formData: FormData) {
     .eq("user_id", user.id);
 
   revalidatePath("/calendar", "layout");
-  revalidatePath("/dashboard", "layout");
+  revalidatePath("/idag", "layout");
 }
 
 const LACTATE_CONTEXTS = ["test", "workout", "race"];
@@ -243,8 +243,8 @@ export async function saveManualActivity(formData: FormData) {
   }
 
   revalidatePath("/calendar", "layout");
-  revalidatePath("/dashboard", "layout");
-  revalidatePath("/trends");
+  revalidatePath("/idag", "layout");
+  revalidatePath("/blocket");
 }
 
 export async function deleteManualActivity(formData: FormData) {
@@ -260,8 +260,8 @@ export async function deleteManualActivity(formData: FormData) {
   await supabase.from("activities").delete().eq("id", id).eq("source", "manual");
 
   revalidatePath("/calendar", "layout");
-  revalidatePath("/dashboard", "layout");
-  revalidatePath("/trends");
+  revalidatePath("/idag", "layout");
+  revalidatePath("/blocket");
 }
 
 // --- Planerade pass --------------------------------------------------------
@@ -328,7 +328,7 @@ export async function saveTestLt2(formData: FormData) {
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/settings");
-  revalidatePath("/trends");
+  revalidatePath("/blocket");
 }
 
 export async function updatePlannedWorkout(formData: FormData) {

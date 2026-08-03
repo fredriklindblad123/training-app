@@ -59,7 +59,7 @@ export async function syncGarminNow() {
 
   revalidatePath("/settings");
   revalidatePath("/calendar", "layout");
-  revalidatePath("/dashboard", "layout");
+  revalidatePath("/idag", "layout");
 }
 
 // P0.3b: personligt kalibrerat tröskelband (Almgren: 167–178 slag/min för
@@ -111,5 +111,5 @@ export async function saveThresholds(formData: FormData) {
     .eq("id", user.id);
 
   revalidatePath("/settings");
-  revalidatePath("/trends");
+  revalidatePath("/blocket");
 }

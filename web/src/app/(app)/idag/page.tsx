@@ -627,7 +627,7 @@ export default async function DashboardPage({
           {PERIOD_OPTIONS.map((p) => (
             <Link
               key={p.key}
-              href={`/dashboard?period=${p.key}`}
+              href={`/idag?period=${p.key}`}
               aria-current={period === p.key ? "page" : undefined}
               className={`rounded px-3 py-1 ${
                 period === p.key
@@ -760,7 +760,7 @@ export default async function DashboardPage({
       )}
 
       <Link
-        href={`/trends?weeks=${period === "year" ? 52 : 12}`}
+        href={`/blocket?weeks=${period === "year" ? 52 : 12}`}
         className="w-fit text-sm underline text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
       >
         Till Trender för mer djupgående analys →

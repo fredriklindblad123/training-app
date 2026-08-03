@@ -672,7 +672,7 @@ export default async function TrendsPage({
       for (const c of cats) params.append("volumeCategories", c);
     }
     for (const [key, value] of Object.entries(overrides)) params.set(key, value);
-    return `/trends?${params.toString()}`;
+    return `/blocket?${params.toString()}`;
   }
 
   /** Samma mönster som `volumeHref` ovan, för K5-sektionens gren-/bana-
@@ -691,7 +691,7 @@ export default async function TrendsPage({
     if (raceAParam) params.set("raceA", raceAParam);
     if (raceBParam) params.set("raceB", raceBParam);
     for (const [key, value] of Object.entries(overrides)) params.set(key, value);
-    return `/trends?${params.toString()}#tavlingar`;
+    return `/blocket?${params.toString()}#tavlingar`;
   }
 
   const supabase = await createClient();
@@ -1546,7 +1546,7 @@ export default async function TrendsPage({
             {WEEK_OPTIONS.map((w) => (
               <Link
                 key={w}
-                href={`/trends?weeks=${w}`}
+                href={`/blocket?weeks=${w}`}
                 className={`rounded px-3 py-1 ${
                   !activeBlock && weeks === w
                     ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
@@ -1562,7 +1562,7 @@ export default async function TrendsPage({
               {blocks.map((b) => (
                 <Link
                   key={b.id}
-                  href={`/trends?block=${b.id}`}
+                  href={`/blocket?block=${b.id}`}
                   title={`${BLOCK_LABELS[b.block_type]}, ${b.start_date} – ${b.end_date}`}
                   className={`rounded px-3 py-1 ${
                     activeBlock?.id === b.id
@@ -1974,7 +1974,7 @@ export default async function TrendsPage({
             </p>
           </div>
 
-          <form action="/trends" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+          <form action="/blocket" method="get" className="flex flex-wrap items-end gap-3 text-sm">
             <label className="flex flex-col gap-1">
               <span className="text-zinc-600 dark:text-zinc-400">Block A</span>
               <select
@@ -2070,7 +2070,7 @@ export default async function TrendsPage({
         {competitions.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Inga tävlingar inlagda ännu. Lägg till dem på{" "}
-            <Link href="/planering" className="underline">
+            <Link href="/sasongen" className="underline">
               planeringssidan
             </Link>
             .
@@ -2116,7 +2116,7 @@ export default async function TrendsPage({
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Ingen gren har minst två tidtagna resultat ännu (hopp och kast mäts i meter
             och räknas inte hit). Fyll i fler resultat på{" "}
-            <Link href="/planering" className="underline">
+            <Link href="/sasongen" className="underline">
               planeringssidan
             </Link>
             .
@@ -2231,7 +2231,7 @@ export default async function TrendsPage({
             ) : (
               <>
                 <form
-                  action="/trends"
+                  action="/blocket"
                   method="get"
                   className="flex flex-wrap items-end gap-3 text-sm"
                 >
