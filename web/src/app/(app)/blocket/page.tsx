@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { buildInsights, insightsForPhase } from "@/lib/insights";
+import { InsightCard } from "@/components/InsightCard";
 import { ScatterChart } from "@/components/charts/ScatterChart";
 import {
   ComboChart,
@@ -734,6 +736,19 @@ export default async function TrendsPage({
 
   const sessionsWithZoneData = sessions.filter((s) => s.hrZoneTotalSeconds > 0).length;
 
+  // L3 (docs/tranarloopen.md): insikterna överst gör att man slipper skumma
+  // sidans sex sektioner för att veta vad som är värt att titta närmare på.
+  // Andelen räknas som tid i zon 4+5 av veckans totala pulstid — samma
+  // definition som Tröskel+-måttet använder.
+  const thresholdShareWeekly = intensityWeeks.map((w) => {
+    const total = w.zoneSeconds.reduce((a, b) => a + b, 0);
+    return total > 0 ? (w.zoneSeconds[3] + w.zoneSeconds[4]) / total : null;
+  });
+  const blockInsights = insightsForPhase(
+    buildInsights({ efWeekly, thresholdShareWeekly }),
+    "block",
+  );
+
   // --- P1.5: konsekvens inom blocket ------------------------------------
   // Variationskoefficienten för veckobelastning — Almgrens "quite consistent
   // within that period" (2.3 i insikter-roadmapen). Bara meningsfull när
@@ -1003,6 +1018,17 @@ export default async function TrendsPage({
           compliance={blockCompliance}
           dayTypeByDate={blockDayTypeByDate}
         />
+      )}
+
+      {/* L3: påståenden före diagram. Sidan har sex sektioner — den här
+          ytan säger vad som är värt att titta på, i stället för att man ska
+          skumma alla för att upptäcka det själv. */}
+      {blockInsights.length > 0 && (
+        <section className="flex flex-col gap-2">
+          {blockInsights.map((i) => (
+            <InsightCard key={i.id} headline={i.headline} detail={i.detail} href={i.href} tone={i.tone} />
+          ))}
+        </section>
       )}
 
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}

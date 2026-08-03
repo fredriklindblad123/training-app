@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { buildInsights, insightsForPhase } from "@/lib/insights";
+import { InsightCard } from "@/components/InsightCard";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -18,7 +20,7 @@ import {
   type AgendaDiaryDay,
   type AgendaMetricDay,
 } from "@/components/WeekAgenda";
-import type { AvailabilityPeriod } from "@/lib/planning";
+import { QUALITY_WORKOUT_TYPES, type AvailabilityPeriod } from "@/lib/planning";
 import { formatDuration, formatHoursMinutes } from "@/lib/format";
 import { isoWeekStart, weekLabel } from "@/lib/stats-utils";
 import { BarChart, type BarDatum } from "@/components/charts/BarChart";
@@ -362,6 +364,24 @@ export default async function VeckanPage({
     value: durationByWeek.get(wk) ?? 0,
   }));
 
+  // L3: veckans insikter. Volymserien är kontextfönstret (slutar med den
+  // betraktade veckan), och kvalitetspassen per vecka räknas ur samma
+  // matchning som efterlevnadskortet — inte ur en egen fråga.
+  const qualityByWeek = new Map<string, number>();
+  for (const m of planMatches) {
+    if (m.session && QUALITY_WORKOUT_TYPES.includes(m.session.category)) {
+      const wk = isoWeekStart(m.session.date);
+      qualityByWeek.set(wk, (qualityByWeek.get(wk) ?? 0) + 1);
+    }
+  }
+  const weekInsights = insightsForPhase(
+    buildInsights({
+      distanceKmWeekly: contextWeekSeries.map((wk) => distanceByWeek.get(wk) ?? 0),
+      qualitySessionsWeekly: contextWeekSeries.map((wk) => qualityByWeek.get(wk) ?? 0),
+    }),
+    "vecka",
+  );
+
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -409,6 +429,14 @@ export default async function VeckanPage({
           </Link>
         </div>
       </div>
+
+      {weekInsights.length > 0 && (
+        <section className="flex flex-col gap-2">
+          {weekInsights.map((i) => (
+            <InsightCard key={i.id} headline={i.headline} detail={i.detail} href={i.href} tone={i.tone} />
+          ))}
+        </section>
+      )}
 
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
