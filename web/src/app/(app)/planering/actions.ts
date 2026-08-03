@@ -7,6 +7,7 @@ import {
   generateFromTemplate,
   suggestBlocks,
   toDateKey,
+  type AvailabilityKind,
   type BlockType,
   type RepGroupInput,
   type SeasonKind,
@@ -562,5 +563,44 @@ export async function deleteTemplateRepGroup(formData: FormData) {
   const id = str(formData, "id");
   if (!userId || !id) return;
   await supabase.from("template_rep_groups").delete().eq("id", id);
+  refresh();
+}
+
+// --- Tillgänglighet: skola, läger, resor (K7) -------------------------------
+// Medvetet det enklaste möjliga CRUD-paret i den här filen: inga kopplade
+// barnrader att synka (jämför createCompetition/competition_events), ingen
+// utrullning att trigga (jämför createBlock/syncBlockWithTemplates). Ett
+// datumintervall och en etikett — se motiveringen i migrationen.
+
+export async function createAvailabilityPeriod(formData: FormData) {
+  const { supabase, userId } = await currentUserId();
+  if (!userId) return;
+
+  const start = str(formData, "start_date");
+  const end = str(formData, "end_date");
+  const kind = str(formData, "kind") as AvailabilityKind | null;
+  if (!start || !end || !kind) return;
+  // Check-constrainten finns i databasen, men ett tyst avvisat formulär är
+  // bättre än ett 500-fel när någon vänt på datumen (samma princip som
+  // createBlock/updateBlock ovan).
+  if (end < start) return;
+
+  await supabase.from("availability_periods").insert({
+    user_id: userId,
+    start_date: start,
+    end_date: end,
+    kind,
+    label: str(formData, "label"),
+    note: str(formData, "note"),
+  });
+
+  refresh();
+}
+
+export async function deleteAvailabilityPeriod(formData: FormData) {
+  const { supabase, userId } = await currentUserId();
+  const id = str(formData, "id");
+  if (!userId || !id) return;
+  await supabase.from("availability_periods").delete().eq("id", id);
   refresh();
 }

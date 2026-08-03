@@ -44,7 +44,21 @@ import { analyzeDiaryNote } from "@/lib/diary-text";
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 import { addZoneSeconds, bandsFromZones, zoneTotal, BAND_LABELS, type BandKey } from "@/lib/intensity";
-import { addDays as planAddDays, BLOCK_LABELS, type BlockType } from "@/lib/planning";
+import {
+  addDays as planAddDays,
+  AVAILABILITY_KINDS,
+  AVAILABILITY_LABELS,
+  BLOCK_LABELS,
+  PRIORITY_LABELS,
+  type AvailabilityKind,
+  type BlockType,
+  type Priority,
+} from "@/lib/planning";
+import {
+  computeRaceBuildup,
+  BUILDUP_WINDOW_DAYS,
+  type RaceBuildup,
+} from "@/lib/race-buildup";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { ComplianceCard } from "@/components/ComplianceCard";
 import {
@@ -62,7 +76,7 @@ import {
   weekRangeLabel,
 } from "@/lib/week-series";
 import { STATUS_LABEL } from "@/lib/calendar-utils";
-import { BASELINE_WINDOW_DAYS } from "@/lib/daily-status";
+import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
 import {
   computeInterruptionPrecursor,
   groupInterruptionPeriods,
@@ -105,7 +119,21 @@ type BlockAggregate = {
   sickDays: number;
   injuredDays: number;
   raceLabels: string[];
+  /** K7: tillgänglighetsperioder som överlappar blocket, sammanfattade per
+   * sort ("2 skola/prov, 1 läger"). Ren kontext — påverkar inga beräkningar. */
+  availabilitySummary: string;
 };
+
+/** "2 skola/prov, 1 läger" — perioderna räknade per sort, i AVAILABILITY_KINDS
+ * fasta ordning så att två block bredvid varandra listar dem likadant. */
+function summarizeAvailability(periods: { kind: AvailabilityKind }[]): string {
+  if (periods.length === 0) return "inga";
+  const counts = new Map<AvailabilityKind, number>();
+  for (const p of periods) counts.set(p.kind, (counts.get(p.kind) ?? 0) + 1);
+  return AVAILABILITY_KINDS.filter((k) => counts.has(k))
+    .map((k) => `${counts.get(k)} ${AVAILABILITY_LABELS[k].toLowerCase()}`)
+    .join(", ");
+}
 
 async function loadBlockAggregate(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -113,25 +141,38 @@ async function loadBlockAggregate(
 ): Promise<BlockAggregate> {
   const endExclusive = toDateKey(planAddDays(new Date(`${block.end_date}T00:00:00`), 1));
 
-  const [{ data: activityRows }, { data: dailyMetrics }, { data: diaryEntries }] =
-    await Promise.all([
-      supabase
-        .from("activities")
-        .select(SESSION_ACTIVITY_COLUMNS)
-        .gte("start_time", block.start_date)
-        .lt("start_time", endExclusive)
-        .order("start_time"),
-      supabase
-        .from("daily_metrics")
-        .select("metric_date, sleep_seconds, resting_hr, hrv_overnight_avg")
-        .gte("metric_date", block.start_date)
-        .lt("metric_date", endExclusive),
-      supabase
-        .from("diary_entries")
-        .select("entry_date, day_type")
-        .gte("entry_date", block.start_date)
-        .lt("entry_date", endExclusive),
-    ]);
+  const [
+    { data: activityRows },
+    { data: dailyMetrics },
+    { data: diaryEntries },
+    { data: availabilityRows },
+  ] = await Promise.all([
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", block.start_date)
+      .lt("start_time", endExclusive)
+      .order("start_time"),
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, sleep_seconds, resting_hr, hrv_overnight_avg")
+      .gte("metric_date", block.start_date)
+      .lt("metric_date", endExclusive),
+    supabase
+      .from("diary_entries")
+      .select("entry_date, day_type")
+      .gte("entry_date", block.start_date)
+      .lt("entry_date", endExclusive),
+    // K7: överlappande tillgänglighetsperioder. Det är hela poängen med
+    // förslaget — att kunna se att grundperioden 25/26 innehöll två
+    // tentaveckor och 26/27 ingen, i stället för att bara konstatera att
+    // volymen skilde sig.
+    supabase
+      .from("availability_periods")
+      .select("start_date, end_date, kind, label")
+      .lte("start_date", block.end_date)
+      .gte("end_date", block.start_date),
+  ]);
 
   const sessions = groupActivitiesIntoSessions(
     (activityRows ?? []) as unknown as SessionActivity[],
@@ -205,7 +246,176 @@ async function loadBlockAggregate(
     sickDays: (diaryEntries ?? []).filter((e) => e.day_type === "sick").length,
     injuredDays: (diaryEntries ?? []).filter((e) => e.day_type === "injured").length,
     raceLabels,
+    availabilitySummary: summarizeAvailability(
+      (availabilityRows ?? []) as { kind: AvailabilityKind }[],
+    ),
   };
+}
+
+// --- K5: tävlingsanalys och upptrappning -----------------------------------
+
+type CompetitionEventRow = {
+  id: string;
+  event: string;
+  target_result: string | null;
+  actual_result: string | null;
+  placement: number | null;
+};
+
+type CompetitionRow = {
+  id: string;
+  name: string;
+  competition_date: string;
+  priority: Priority;
+  competition_events: CompetitionEventRow[];
+};
+
+/** Sammandrag för ett enskilt lopp i jämförelseläget — speglar `BlockAggregate`
+ * ovan, bara med tävlingsdatum i stället för blockgränser (K5). */
+type RaceAggregate = {
+  competition: CompetitionRow;
+  buildup: RaceBuildup;
+};
+
+/** "1500m, 800m" — grenarna för en tävling, tomt streck om inga är inlagda. */
+function raceEventsLabel(events: CompetitionEventRow[]): string {
+  return events.length > 0 ? events.map((e) => e.event).join(", ") : "–";
+}
+
+/** Resultaten precis som atleten skrev dem — ingen tolkning eller sortering
+ * av fritexten (se fallgropen i docs/tranarperspektiv.md K5). */
+function raceResultsLabel(events: CompetitionEventRow[]): string {
+  return events.length > 0
+    ? events.map((e) => e.actual_result ?? "inget resultat").join(", ")
+    : "–";
+}
+
+function racePlacementsLabel(events: CompetitionEventRow[]): string {
+  return events.length > 0
+    ? events.map((e) => (e.placement != null ? String(e.placement) : "–")).join(", ")
+    : "–";
+}
+
+/** Laddar upptrappningsprofilen (lib/race-buildup.ts) för ett enskilt lopp.
+ * Hämtar bara det loppets eget fönster — anropas parvis, aldrig för alla
+ * tävlingar på en gång (se kommentaren vid `compareRaceA`/`compareRaceB`
+ * nedan). */
+async function loadRaceAggregate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  competition: CompetitionRow,
+): Promise<RaceAggregate> {
+  const raceDate = competition.competition_date;
+  const windowStart = toDateKey(
+    planAddDays(new Date(`${raceDate}T00:00:00`), -BUILDUP_WINDOW_DAYS),
+  );
+  // Baslinjefönstret (P1.2) sträcker sig längre bak än upptrappningens 21
+  // dagar — computeDailyStatus behöver hela det för att räkna hrvTrend.
+  const baselineStart = toDateKey(
+    planAddDays(new Date(`${raceDate}T00:00:00`), -BASELINE_WINDOW_DAYS),
+  );
+
+  const [{ data: activityRows }, { data: metricRows }] = await Promise.all([
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .gte("start_time", windowStart)
+      .lt("start_time", raceDate)
+      .order("start_time"),
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, hrv_overnight_avg, resting_hr, sleep_seconds, sleep_score")
+      .gte("metric_date", baselineStart)
+      .lte("metric_date", raceDate),
+  ]);
+
+  const dailyStatusRows: DailyStatusInput[] = (metricRows ?? []).map((m) => ({
+    date: m.metric_date as string,
+    hrv: m.hrv_overnight_avg,
+    restingHr: m.resting_hr,
+    sleepHours: m.sleep_seconds != null ? m.sleep_seconds / 3600 : null,
+    sleepScore: m.sleep_score,
+  }));
+
+  const buildup = computeRaceBuildup(
+    raceDate,
+    (activityRows ?? []) as unknown as SessionActivity[],
+    dailyStatusRows,
+  );
+
+  return { competition, buildup };
+}
+
+/** Radlista för tävlingsjämförelsen (K5) — speglar `blockComparisonRows` i
+ * form och stil, se docs/tranarperspektiv.md K5 punkt 2. */
+function raceComparisonRows(
+  a: RaceAggregate,
+  b: RaceAggregate,
+): { label: string; a: string; b: string }[] {
+  const weeklyLoadLabel = (w: RaceBuildup["weeklyLoad"]) =>
+    w.map((v) => Math.round(v)).join(" → ");
+  const hrvTrendLabel = (v: number | null) =>
+    v != null ? `${v > 0 ? "+" : ""}${v.toFixed(1)} SD` : "otillräcklig historik för en baslinje";
+  const lastHardLabel = (v: number | null) =>
+    v != null ? `${v} ${v === 1 ? "dag" : "dagar"} före loppet` : "inget kvalitetspass i fönstret";
+
+  return [
+    { label: "Datum", a: a.competition.competition_date, b: b.competition.competition_date },
+    {
+      label: "Gren",
+      a: raceEventsLabel(a.competition.competition_events),
+      b: raceEventsLabel(b.competition.competition_events),
+    },
+    {
+      label: "Resultat",
+      a: raceResultsLabel(a.competition.competition_events),
+      b: raceResultsLabel(b.competition.competition_events),
+    },
+    {
+      label: "Placering",
+      a: racePlacementsLabel(a.competition.competition_events),
+      b: racePlacementsLabel(b.competition.competition_events),
+    },
+    {
+      label: "Veckobelastning (3 v.)",
+      a: weeklyLoadLabel(a.buildup.weeklyLoad),
+      b: weeklyLoadLabel(b.buildup.weeklyLoad),
+    },
+    {
+      label: "Distans",
+      a: `${a.buildup.totalKm.toFixed(0)} km`,
+      b: `${b.buildup.totalKm.toFixed(0)} km`,
+    },
+    {
+      label: "Kvalitetspass",
+      a: String(a.buildup.qualitySessions),
+      b: String(b.buildup.qualitySessions),
+    },
+    {
+      label: "Vilodagar",
+      a: `${a.buildup.restDays} av ${BUILDUP_WINDOW_DAYS}`,
+      b: `${b.buildup.restDays} av ${BUILDUP_WINDOW_DAYS}`,
+    },
+    {
+      label: "Senaste hårda passet",
+      a: lastHardLabel(a.buildup.lastHardSessionDaysBefore),
+      b: lastHardLabel(b.buildup.lastHardSessionDaysBefore),
+    },
+    {
+      label: "Snittsömn",
+      a: a.buildup.avgSleepHours != null ? formatHoursMinutes(a.buildup.avgSleepHours * 3600) : "ingen data",
+      b: b.buildup.avgSleepHours != null ? formatHoursMinutes(b.buildup.avgSleepHours * 3600) : "ingen data",
+    },
+    {
+      label: "HRV-trend",
+      a: hrvTrendLabel(a.buildup.hrvTrend),
+      b: hrvTrendLabel(b.buildup.hrvTrend),
+    },
+    {
+      label: `${BAND_LABELS.easy} / ${BAND_LABELS.threshold}`,
+      a: `${formatPct(a.buildup.bandPct.easy)} / ${formatPct(a.buildup.bandPct.threshold)}`,
+      b: `${formatPct(b.buildup.bandPct.easy)} / ${formatPct(b.buildup.bandPct.threshold)}`,
+    },
+  ];
 }
 
 const primaryButtonClass =
@@ -330,6 +540,9 @@ function blockComparisonRows(
       a: a.raceLabels.length > 0 ? a.raceLabels.join(", ") : "inga",
       b: b.raceLabels.length > 0 ? b.raceLabels.join(", ") : "inga",
     },
+    // K7: sist i tabellen, som kontext till allt ovanför — en grundperiod med
+    // två tentaveckor är inte jämförbar rakt av med en utan.
+    { label: "Tillgänglighet", a: a.availabilitySummary, b: b.availabilitySummary },
   ];
 }
 
@@ -375,6 +588,8 @@ export default async function TrendsPage({
     block?: string;
     compareA?: string;
     compareB?: string;
+    raceA?: string;
+    raceB?: string;
     volumeCategories?: string | string[];
     volumeFiltered?: string;
     volumeMetric?: string;
@@ -385,6 +600,8 @@ export default async function TrendsPage({
     block: blockParam,
     compareA: compareAParam,
     compareB: compareBParam,
+    raceA: raceAParam,
+    raceB: raceBParam,
     volumeCategories: volumeCategoriesParam,
     volumeFiltered: volumeFilteredParam,
     volumeMetric: volumeMetricParam,
@@ -481,6 +698,7 @@ export default async function TrendsPage({
     { data: diaryEntries },
     profileResult,
     { data: plannedRows },
+    { data: competitionRows },
   ] = await Promise.all([
     (() => {
       let q = supabase
@@ -523,6 +741,13 @@ export default async function TrendsPage({
           .gte("scheduled_date", startDate)
           .lt("scheduled_date", endDateExclusive as string)
       : Promise.resolve({ data: [] as PlannedWorkout[] | null }),
+    // K5: tävlingslistan hämtas alltid (billigt, en handfull rader) — det är
+    // bara upptrappningsprofilerna för de två valda loppen som hämtas separat
+    // nedan, se compareRaceA/compareRaceB.
+    supabase
+      .from("competitions")
+      .select("id, name, competition_date, priority, competition_events(id, event, target_result, actual_result, placement)")
+      .order("competition_date"),
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
@@ -1125,6 +1350,33 @@ export default async function TrendsPage({
         ])
       : [null, null];
 
+  // --- K5: tävlingsanalys och upptrappning -------------------------------
+  // Samma sorts retrospektiv som blockjämförelsen ovan, bara med tävlingar
+  // som jämförelseenhet i stället för säsongsblock (se docs/tranarperspektiv
+  // .md K5). Bygger ingen egen resultattabell — competition_events har redan
+  // actual_result/placement.
+  const competitions: CompetitionRow[] = (competitionRows ?? []) as CompetitionRow[];
+  // Jämförelsen kräver ett faktiskt resultat att ställa mot varandra — ett
+  // lopp utan resultat har ingen "det här blev det" att jämföra.
+  const racesWithResults = competitions.filter((c) =>
+    c.competition_events.some((e) => e.actual_result),
+  );
+  const compareRaceA = raceAParam
+    ? (racesWithResults.find((c) => c.id === raceAParam) ?? null)
+    : null;
+  const compareRaceB = raceBParam
+    ? (racesWithResults.find((c) => c.id === raceBParam) ?? null)
+    : null;
+  // Fristående frågor per valt lopp — aldrig en fråga per tävling i listan,
+  // det hade blivit dyrt så fort säsongen har ett tiotal lopp.
+  const [raceAggregateA, raceAggregateB] =
+    compareRaceA && compareRaceB && compareRaceA.id !== compareRaceB.id
+      ? await Promise.all([
+          loadRaceAggregate(supabase, compareRaceA),
+          loadRaceAggregate(supabase, compareRaceB),
+        ])
+      : [null, null];
+
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1659,6 +1911,159 @@ export default async function TrendsPage({
           )}
         </section>
       )}
+
+      {/* ================= K5: Tävlingar och upptrappning ==================== */}
+      {/* Ligger bredvid blockjämförelsen ovan — samma sorts retrospektiv, bara
+          med tävlingar som enhet. Se docs/tranarperspektiv.md K5. */}
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Med i storleksordningen tio lopp per säsong är det här beskrivande, inte
+            statistiskt. Tabellen visar hur upptrappningen såg ut inför respektive lopp —
+            aldrig ett påstående om att det ena sättet gav det bättre resultatet.
+          </p>
+        </div>
+
+        {competitions.length === 0 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Inga tävlingar inlagda ännu. Lägg till dem på{" "}
+            <Link href="/planering" className="underline">
+              planeringssidan
+            </Link>
+            .
+          </p>
+        ) : (
+          <div className="w-full max-w-full overflow-x-auto">
+            <table className="w-full min-w-max text-left text-sm">
+              <thead>
+                <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Datum
+                  </th>
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Tävling
+                  </th>
+                  <th scope="col" className="py-1 pr-4 font-normal">
+                    Prioritet
+                  </th>
+                  <th scope="col" className="py-1 font-normal">
+                    Resultat
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                {competitions.map((c) => (
+                  <tr key={c.id}>
+                    <td className="py-1.5 pr-4 tabular-nums">{c.competition_date}</td>
+                    <td className="py-1.5 pr-4">{c.name}</td>
+                    <td className="py-1.5 pr-4">{PRIORITY_LABELS[c.priority]}</td>
+                    <td className="py-1.5">{raceResultsLabel(c.competition_events)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {racesWithResults.length < 2 ? (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            Jämförelsen kräver minst två tävlingar med registrerat resultat. Fyll i
+            resultat på{" "}
+            <Link href="/planering" className="underline">
+              planeringssidan
+            </Link>
+            .
+          </p>
+        ) : (
+          <>
+            <form action="/trends" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+              <label className="flex flex-col gap-1">
+                <span className="text-zinc-600 dark:text-zinc-400">Lopp A</span>
+                <select
+                  name="raceA"
+                  defaultValue={raceAParam ?? ""}
+                  className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  <option value="" disabled>
+                    Välj lopp
+                  </option>
+                  {racesWithResults.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.competition_date})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-zinc-600 dark:text-zinc-400">Lopp B</span>
+                <select
+                  name="raceB"
+                  defaultValue={raceBParam ?? ""}
+                  className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                >
+                  <option value="" disabled>
+                    Välj lopp
+                  </option>
+                  {racesWithResults.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.competition_date})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className={primaryButtonClass}>
+                Jämför
+              </button>
+            </form>
+
+            {raceAParam && raceBParam && !(raceAggregateA && raceAggregateB) && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Kunde inte jämföra — välj två olika lopp med resultat.
+              </p>
+            )}
+
+            {raceAggregateA && raceAggregateB && (
+              <details className="rounded border border-zinc-200 dark:border-zinc-800" open>
+                <summary className="cursor-pointer p-4 text-sm text-zinc-600 dark:text-zinc-400">
+                  Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
+                </summary>
+                <div className="w-full max-w-full overflow-x-auto border-t border-zinc-200 p-4 dark:border-zinc-800">
+                  <table className="w-full min-w-max text-left text-sm">
+                    <thead>
+                      <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                        <th scope="col" className="py-1 pr-4 font-normal">
+                          Mått
+                        </th>
+                        <th scope="col" className="py-1 pr-4 font-normal">
+                          {raceAggregateA.competition.name}
+                        </th>
+                        <th scope="col" className="py-1 font-normal">
+                          {raceAggregateB.competition.name}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                      {raceComparisonRows(raceAggregateA, raceAggregateB).map((row) => (
+                        <tr key={row.label}>
+                          <th
+                            scope="row"
+                            className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400"
+                          >
+                            {row.label}
+                          </th>
+                          <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
+                          <td className="py-1.5 tabular-nums">{row.b}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+          </>
+        )}
+      </section>
     </div>
   );
 }

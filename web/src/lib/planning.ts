@@ -70,6 +70,47 @@ export function blocksInRange<T extends { start_date: string; end_date: string }
   return blocks.filter((b) => b.start_date <= to && b.end_date >= from);
 }
 
+// --- Tillgänglighet: skola, läger, resor (K7) -------------------------------
+
+export const AVAILABILITY_KINDS = ["skola", "lager", "resa", "ledighet", "annat"] as const;
+export type AvailabilityKind = (typeof AVAILABILITY_KINDS)[number];
+
+export const AVAILABILITY_LABELS: Record<AvailabilityKind, string> = {
+  skola: "Skola/prov",
+  lager: "Läger",
+  resa: "Resa",
+  ledighet: "Ledighet",
+  annat: "Annat",
+};
+
+/** En enda dämpad gråton för alla fem sorter, medvetet skild från både
+ * passpaletten (--cat-*) och blockfärgerna (BLOCK_COLOR_VARS ovan). En
+ * tillgänglighetsperiod är en annan sorts information än en passkategori
+ * eller ett periodiseringsblock — den säger inget om *vad* som tränades,
+ * bara att omständigheterna var annorlunda. Att låna en av de andra
+ * palettens hues hade gjort identiteten tvetydig (t.ex. skulle "läger" i
+ * --cat-race-grön kunna misstas för en tävlingsperiod). Etiketten bär
+ * identiteten; färgen bär bara "det här är kontext, inte ett pass". */
+export const AVAILABILITY_COLOR_VAR = "var(--availability-band)";
+
+export type AvailabilityPeriod = {
+  start_date: string;
+  end_date: string;
+  kind: AvailabilityKind;
+  label: string | null;
+};
+
+/** Alla tillgänglighetsperioder som helt eller delvis överlappar ett
+ * intervall — samma form som blocksInRange ovan, återanvänd för både
+ * kalenderbandet (vecka/månad) och blockjämförelsen på /trends. */
+export function availabilityInRange<T extends { start_date: string; end_date: string }>(
+  periods: T[],
+  from: string,
+  to: string,
+): T[] {
+  return periods.filter((p) => p.start_date <= to && p.end_date >= from);
+}
+
 export type SeasonKind = "indoor" | "outdoor";
 
 export const SEASON_LABELS: Record<SeasonKind, string> = {

@@ -38,6 +38,13 @@
   --status-concern: #dc2626;
   --status-neutral: #6366f1;
   --status-unknown: #d4d4d8;
+
+  /* Tillgänglighetsperioder (K7: skola, läger, resa, ledighet, annat) — en
+     enda dämpad neutral gråton för alla fem sorter, medvetet utanför
+     --cat-* och blockfärgerna. Se motiveringen vid AVAILABILITY_COLOR_VAR i
+     lib/planning.ts: det är kontext, inte en passkategori, och ska inte
+     kunna förväxlas med en. */
+  --availability-band: #a1a1aa;
 }
 
 @theme inline {
@@ -74,6 +81,8 @@
     --status-concern: #f87171;
     --status-neutral: #818cf8;
     --status-unknown: #3f3f46;
+
+    --availability-band: #71717a;
   }
 }
 

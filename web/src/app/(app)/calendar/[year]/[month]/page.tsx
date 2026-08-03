@@ -16,6 +16,8 @@ import {
 import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
 import { CalendarNav } from "@/components/CalendarHorizon";
+import { AvailabilityBand } from "@/components/AvailabilityBand";
+import type { AvailabilityPeriod } from "@/lib/planning";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -56,7 +58,12 @@ export default async function MonthPage({
 
   const supabase = await createClient();
 
-  const [{ data: activities }, { data: diaryEntries }, { data: plannedWorkouts }] = await Promise.all([
+  const [
+    { data: activities },
+    { data: diaryEntries },
+    { data: plannedWorkouts },
+    { data: availabilityRows },
+  ] = await Promise.all([
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
@@ -75,6 +82,16 @@ export default async function MonthPage({
       .order("slot")
       .gte("scheduled_date", monthStart)
       .lt("scheduled_date", monthEndExclusive),
+    // K7: perioder som överlappar månaden. Visas som ett band ovanför
+    // rutnätet i stället för som etiketter i varje täckt dagcell —
+    // månadscellerna bär redan planerat pass, utfall och statusbadge, och en
+    // fjärde markering per dag hade gjort rutnätet oläsbart för den
+    // information man faktiskt kommer dit för.
+    supabase
+      .from("availability_periods")
+      .select("start_date, end_date, kind, label")
+      .lt("start_date", monthEndExclusive)
+      .gte("end_date", monthStart),
   ]);
 
   // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
@@ -153,6 +170,11 @@ export default async function MonthPage({
           </div>
         ))}
       </dl>
+
+      <AvailabilityBand
+        periods={(availabilityRows ?? []) as AvailabilityPeriod[]}
+        className="-mb-2"
+      />
 
       <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-zinc-200 bg-zinc-200 text-xs dark:border-zinc-800 dark:bg-zinc-800">
         {SV_WEEKDAYS_SHORT.map((wd) => (

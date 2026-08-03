@@ -5,6 +5,8 @@ import {
   type TimelineCompetition,
 } from "@/components/SeasonTimeline";
 import {
+  AVAILABILITY_KINDS,
+  AVAILABILITY_LABELS,
   BLOCK_INTENT,
   BLOCK_LABELS,
   BLOCK_TYPES,
@@ -18,6 +20,7 @@ import {
   WORKOUT_TYPES,
   toDateKey,
   weeksBetween,
+  type AvailabilityKind,
   type WorkoutType,
 } from "@/lib/planning";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
@@ -25,9 +28,11 @@ import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
 import {
   addTemplateItem,
   addTemplateRepGroup,
+  createAvailabilityPeriod,
   createBlock,
   createCompetition,
   createTemplate,
+  deleteAvailabilityPeriod,
   deleteBlock,
   deleteCompetition,
   deleteTemplate,
@@ -65,6 +70,7 @@ export default async function PlaneringPage() {
     { data: templates },
     { data: plannedCounts },
     { data: blockTemplateLinks },
+    { data: availabilityPeriods },
   ] = await Promise.all([
     supabase.from("season_blocks").select("*").order("start_date"),
     supabase
@@ -90,6 +96,11 @@ export default async function PlaneringPage() {
       .select("block_id, template_id")
       .not("block_id", "is", null)
       .not("template_id", "is", null),
+    // K7: migrationen är inte körd (se AGENTS/uppdraget) — en saknad tabell
+    // ger bara { data: null, error }, aldrig ett kastat fel, och `?? []`
+    // nedan faller tillbaka till "inga perioder" precis som övriga frågor
+    // på den här sidan gör för sina egna eventuellt okörda tabeller.
+    supabase.from("availability_periods").select("*").order("start_date"),
   ]);
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
@@ -106,6 +117,14 @@ export default async function PlaneringPage() {
       placement: number | null;
     }[];
   })[];
+
+  const availabilityList = (availabilityPeriods ?? []) as {
+    id: string;
+    start_date: string;
+    end_date: string;
+    kind: AvailabilityKind;
+    label: string | null;
+  }[];
 
   const nextA = competitionList.find((c) => c.priority === "A" && c.competition_date >= today);
   const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
@@ -725,6 +744,81 @@ export default async function PlaneringPage() {
             </Field>
             <Field label="Måltid (första grenen)">
               <input name="target_result" placeholder="4:35.00" className={input} />
+            </Field>
+            <button type="submit" className={primaryBtn}>
+              Lägg till
+            </button>
+          </form>
+        </details>
+      </section>
+
+      {/* ---------------- Tillgänglighet (K7) ---------------- */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tillgänglighet</h2>
+        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+          Tentaveckor, lov, läger och resor styr träningen minst lika mycket som
+          periodiseringen, men syns ingen annanstans i appen. Det här är bara kontext som gör
+          en avvikande vecka förklarlig i efterhand — ingen logik, inga justerade riktvärden,
+          ingen påverkan på beräkningarna någon annanstans i appen.
+        </p>
+
+        {availabilityList.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {availabilityList.map((p) => (
+              <div
+                key={p.id}
+                className="flex flex-wrap items-baseline justify-between gap-2 rounded border border-zinc-200 p-4 dark:border-zinc-800"
+              >
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className="rounded px-1.5 py-0.5 text-xs font-medium"
+                    style={{ border: "1px solid var(--availability-band)", color: "var(--availability-band)" }}
+                  >
+                    {AVAILABILITY_LABELS[p.kind]}
+                  </span>
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                    {p.label ?? AVAILABILITY_LABELS[p.kind]}
+                  </span>
+                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                    {p.start_date} – {p.end_date}
+                  </span>
+                </div>
+                <form action={deleteAvailabilityPeriod}>
+                  <input type="hidden" name="id" value={p.id} />
+                  <button
+                    type="submit"
+                    className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                  >
+                    Ta bort
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
+            Lägg till period
+          </summary>
+          <form action={createAvailabilityPeriod} className="mt-3 flex flex-wrap items-end gap-3">
+            <Field label="Från">
+              <input type="date" name="start_date" required className={input} />
+            </Field>
+            <Field label="Till">
+              <input type="date" name="end_date" required className={input} />
+            </Field>
+            <Field label="Typ">
+              <select name="kind" className={input} defaultValue="skola">
+                {AVAILABILITY_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {AVAILABILITY_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Etikett">
+              <input name="label" placeholder="Tentavecka" className={input} />
             </Field>
             <button type="submit" className={primaryBtn}>
               Lägg till

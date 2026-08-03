@@ -13,10 +13,21 @@ import {
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
-import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
+import {
+  matchPlanToSessions,
+  summarizeCompliance,
+  type PlanMatch,
+  type PlannedWorkout,
+} from "@/lib/plan-matching";
+import type { AgendaRepGroup } from "@/lib/week-agenda";
+import { formatPlanLine, formatOutcomeLine, formatFootParts } from "@/lib/week-agenda";
+import type { SignatureLap } from "@/lib/session-signature";
+import type { ReactNode } from "react";
 import { ComplianceCard } from "@/components/ComplianceCard";
+import { AvailabilityBand } from "@/components/AvailabilityBand";
+import type { AvailabilityPeriod } from "@/lib/planning";
 import { formatDuration, formatKm } from "@/lib/format";
-import { SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
+import { SV_MONTHS, SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
 import { mentionsStrength } from "@/lib/diary-text";
 
@@ -50,6 +61,57 @@ function typeLabel(type: string): string {
   return WORKOUT_LABELS[type as WorkoutType] ?? type;
 }
 
+/** K4: läget veckovyn visas i. `?vy=genomgang` väljer läsläget, allt annat
+ * (inklusive frånvarande parameter) faller tillbaka på rutnätet — det är
+ * fortfarande det man ser oftast, och en okänd/felstavad parameter ska inte
+ * krascha sidan. */
+type WeekViewMode = "grid" | "genomgang";
+
+function parseViewMode(vy: string | undefined): WeekViewMode {
+  return vy === "genomgang" ? "genomgang" : "grid";
+}
+
+/** Samma väljarstil som HorizonToggle (components/CalendarHorizon.tsx) — men
+ * det här är inget femte alternativ i den tidshorisont-väljaren. En vyväxling
+ * (rutnät ↔ läsande genomgång) är inte en tidshorisont, den hör hemma som ett
+ * eget kontroll under CalendarNav, inte inbakad i Dag/Vecka/Månad/År. */
+function WeekViewToggle({ current, baseHref }: { current: WeekViewMode; baseHref: string }) {
+  const items: { key: WeekViewMode; label: string; href: string }[] = [
+    { key: "grid", label: "Rutnät", href: baseHref },
+    { key: "genomgang", label: "Genomgång", href: `${baseHref}?vy=genomgang` },
+  ];
+  return (
+    <div className="flex gap-1 text-sm" role="group" aria-label="Veckovyns läge">
+      {items.map((item) => (
+        <Link
+          key={item.key}
+          href={item.href}
+          aria-current={current === item.key ? "page" : undefined}
+          className={`rounded px-3 py-1 ${
+            current === item.key
+              ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+              : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          }`}
+        >
+          {item.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/** Varvtiderna ur activity_splits hör till det fragment som avgjorde passets
+ * kategori (dominantActivity, lib/sessions.ts) — samma "kärna" som resten av
+ * appen använder. Fältet finns inte i SessionActivity-typen (bara den här
+ * vyn hämtar det nästlat), därför den lokala castningen i stället för att
+ * bredda typen för alla anropare av lib/sessions.ts. */
+function lapsFor(session: TrainingSession): SignatureLap[] {
+  return (
+    (session.dominantActivity as unknown as { activity_splits?: SignatureLap[] })
+      .activity_splits ?? []
+  );
+}
+
 /**
  * Ihålig ring = planerat (en avsikt), fylld prick = genomfört (något som
  * hänt). Skillnaden bär hela informationen i veckovyn, så den ska gå att
@@ -77,11 +139,15 @@ function Marker({ type, planned }: { type: string | null; planned: boolean }) {
 
 export default async function WeekPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ date: string }>;
+  searchParams: Promise<{ vy?: string }>;
 }) {
   const { date } = await params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) notFound();
+  const { vy } = await searchParams;
+  const mode = parseViewMode(vy);
 
   const monday = mondayOf(date);
   const sunday = addDays(monday, 6);
@@ -96,22 +162,35 @@ export default async function WeekPage({
     { data: plannedRows },
     { data: diaryRows },
     { data: competitionRows },
+    { data: availabilityRows },
+    { data: dailyMetricRows },
   ] = await Promise.all([
+    // activity_splits(*) nästlat: K4-genomgångsläget behöver varvtiderna för
+    // "Utfall"-raden (se lapsFor ovan). Samma mönster som dagvyns
+    // `select("*, activity_splits(*)")`.
     supabase
       .from("activities")
-      .select(SESSION_ACTIVITY_COLUMNS)
+      .select(`${SESSION_ACTIVITY_COLUMNS}, activity_splits(*)`)
       .gte("start_time", from)
       .lt("start_time", nextExclusive)
       .order("start_time"),
+    // planned_rep_groups(*) nästlat: K1-repgrupperna som "Plan"-raden i K4
+    // visar pace/vila ur. Saknad tabell (migrationen inte körd) ger bara
+    // undefined på fältet, aldrig ett kastat fel — se formatPlanLine, som
+    // läser den med `?? []` precis som PlannedSessions gör.
     supabase
       .from("planned_workouts")
-      .select("id, scheduled_date, slot, workout_type, title, target_distance_meters, target_duration_seconds")
+      .select(
+        "id, scheduled_date, slot, workout_type, title, target_distance_meters, target_duration_seconds, planned_rep_groups(*)",
+      )
       .gte("scheduled_date", from)
       .lte("scheduled_date", to)
       .order("slot"),
+    // feeling/rpe: K4-fotraden (incheckningen). Samma kolumner som
+    // checkin.ts/dashboard redan läser, bara för veckans dagar.
     supabase
       .from("diary_entries")
-      .select("entry_date, day_type, notes, session_log")
+      .select("entry_date, day_type, notes, session_log, feeling, rpe")
       .gte("entry_date", from)
       .lte("entry_date", to),
     supabase
@@ -119,6 +198,20 @@ export default async function WeekPage({
       .select("id, name, competition_date, priority")
       .gte("competition_date", from)
       .lte("competition_date", to),
+    // K7: tillgänglighetsperioder som överlappar veckan. Överlapp, inte
+    // "börjar inom veckan" — en tvåveckors läger­period ska synas även den
+    // vecka den bara sträcker sig in i.
+    supabase
+      .from("availability_periods")
+      .select("start_date, end_date, kind, label")
+      .lte("start_date", to)
+      .gte("end_date", from),
+    // K4-fotraden: sömn/HRV per dag.
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, sleep_seconds, hrv_overnight_avg")
+      .gte("metric_date", from)
+      .lte("metric_date", to),
   ]);
 
   const sessions = groupActivitiesIntoSessions(
@@ -140,7 +233,23 @@ export default async function WeekPage({
   }
 
   const diaryByDay = new Map(
-    (diaryRows ?? []).map((d) => [d.entry_date as string, d as { day_type: string | null; notes: string | null; session_log: string | null }]),
+    (diaryRows ?? []).map((d) => [
+      d.entry_date as string,
+      d as {
+        day_type: string | null;
+        notes: string | null;
+        session_log: string | null;
+        feeling: number | null;
+        rpe: number | null;
+      },
+    ]),
+  );
+
+  const dailyMetricsByDay = new Map(
+    (dailyMetricRows ?? []).map((m) => [
+      m.metric_date as string,
+      m as { sleep_seconds: number | null; hrv_overnight_avg: number | null },
+    ]),
   );
 
   // K2: plan mot utfall. Matchningen och efterlevnaden räknas en gång för
@@ -197,6 +306,10 @@ export default async function WeekPage({
         yearHref={yearHref}
       />
 
+      {/* K4: läge, inte tidshorisont — hör därför inte hemma i CalendarNavs
+       * Dag/Vecka/Månad/År, utan sitter som ett eget kontroll direkt under. */}
+      <WeekViewToggle current={mode} baseHref={`/calendar/vecka/${date}`} />
+
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { label: "Pass", value: String(sessions.length) },
@@ -224,6 +337,13 @@ export default async function WeekPage({
         dayTypeByDate={dayTypeByDate}
       />
 
+      <AvailabilityBand
+        periods={(availabilityRows ?? []) as AvailabilityPeriod[]}
+        className="-mb-2"
+      />
+
+      {mode === "grid" && (
+      <>
       <div className="grid grid-cols-1 gap-2 lg:grid-cols-7">
         {Array.from({ length: 7 }, (_, i) => {
           const d = addDays(monday, i);
@@ -406,6 +526,19 @@ export default async function WeekPage({
           Gul text = utfallet blev en annan passtyp än planerat
         </span>
       </div>
+      </>
+      )}
+
+      {mode === "genomgang" && (
+        <WeekAgenda
+          monday={monday}
+          todayKey={todayKey}
+          diaryByDay={diaryByDay}
+          dailyMetricsByDay={dailyMetricsByDay}
+          competitionsByDay={competitionsByDay}
+          matchesByDay={matchesByDay}
+        />
+      )}
 
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         Utfallet visas per pass, inte per Garmin-aktivitet: uppvärmning, huvudpass och
@@ -413,5 +546,215 @@ export default async function WeekPage({
         än ett par timmar mellan dem.
       </p>
     </div>
+  );
+}
+
+type DiaryDayEntry = {
+  day_type: string | null;
+  notes: string | null;
+  session_log: string | null;
+  feeling: number | null;
+  rpe: number | null;
+};
+
+type DailyMetricDay = { sleep_seconds: number | null; hrv_overnight_avg: number | null };
+
+/**
+ * K4-genomgångsläget: en rad per pass, kronologiskt, i stället för
+ * rutnätets sju celler. Läsande bara — att skriva nästa vecka hör hemma i
+ * /planering, se fallgropen i docs/tranarperspektiv.md. Varje dag länkar till
+ * dagvyn för den som vill ändra något.
+ */
+function WeekAgenda({
+  monday,
+  todayKey,
+  diaryByDay,
+  dailyMetricsByDay,
+  competitionsByDay,
+  matchesByDay,
+}: {
+  monday: Date;
+  todayKey: string;
+  diaryByDay: Map<string, DiaryDayEntry>;
+  dailyMetricsByDay: Map<string, DailyMetricDay>;
+  competitionsByDay: Map<string, { name: string; priority: string }[]>;
+  matchesByDay: Map<string, PlanMatch[]>;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      {Array.from({ length: 7 }, (_, i) => {
+        const d = addDays(monday, i);
+        const key = toKey(d);
+        const diary = diaryByDay.get(key);
+        const metric = dailyMetricsByDay.get(key);
+        const comps = competitionsByDay.get(key) ?? [];
+        // matchesByDay driver hela dagraden — den täcker redan både
+        // planerat och genomfört (matchPlanToSessions parar dem, K2), så
+        // "har dagen något pass" är bara "har dagen någon match".
+        const matches = matchesByDay.get(key) ?? [];
+        const dayHref = `/calendar/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+        const isToday = key === todayKey;
+        const dateLabel = `${SV_WEEKDAYS_SHORT[i]} ${d.getDate()} ${SV_MONTHS[d.getMonth()]
+          .slice(0, 3)
+          .toLowerCase()}`;
+
+        const diaryStatus = (
+          diary?.day_type === "rest" ? null : (diary?.day_type ?? null)
+        ) as DayStatus | null;
+        const showStatus =
+          diaryStatus != null && (diaryStatus !== "training" || matches.some((m) => m.session != null));
+
+        const footParts = formatFootParts({
+          feeling: diary?.feeling ?? null,
+          rpe: diary?.rpe ?? null,
+          sleepSeconds: metric?.sleep_seconds ?? null,
+          hrv: metric?.hrv_overnight_avg ?? null,
+        });
+        const note = diary?.notes || diary?.session_log || null;
+
+        // Komprimerad rad: inget planerat, inget genomfört, ingen
+        // dagbokstext och ingen incheckning/mätning. En vilodag utan
+        // anteckning ska inte ta lika mycket plats som ett tröskelpass
+        // (K4, fallgropen i docs/tranarperspektiv.md).
+        const hasContent = matches.length > 0 || !!note || footParts.length > 0;
+
+        if (!hasContent) {
+          return (
+            <Link
+              key={key}
+              href={dayHref}
+              className="flex items-baseline gap-2 text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-400"
+            >
+              <span className="font-medium">{dateLabel}</span>
+              <span>inget loggat</span>
+            </Link>
+          );
+        }
+
+        return (
+          <div
+            key={key}
+            className={`flex flex-col gap-1.5 rounded border p-3 ${
+              isToday ? "border-zinc-900 dark:border-zinc-100" : "border-zinc-200 dark:border-zinc-800"
+            }`}
+          >
+            <div className="flex flex-wrap items-baseline gap-2">
+              <Link
+                href={dayHref}
+                className="text-sm font-semibold text-zinc-900 hover:underline dark:text-zinc-100"
+              >
+                {dateLabel}
+              </Link>
+              {showStatus && diaryStatus && (
+                <span className={`rounded px-1.5 py-0.5 text-[10px] text-white ${STATUS_COLOR[diaryStatus]}`}>
+                  {diaryStatus === "training" ? "Ej loggat" : STATUS_LABEL[diaryStatus]}
+                </span>
+              )}
+              {comps.map((c, ci) => (
+                <span
+                  key={ci}
+                  className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                >
+                  {c.priority} · {c.name}
+                </span>
+              ))}
+            </div>
+
+            <div className="flex flex-col gap-1">
+              {matches.map((m, mi) => (
+                <div key={mi} className="flex flex-col gap-0.5">
+                  {m.planned && <PlanRow planned={m.planned} outcome={m.outcome} />}
+                  {m.session && <OutcomeRow session={m.session} outcome={m.outcome} />}
+                </div>
+              ))}
+            </div>
+
+            {note && (
+              <AgendaRow label="Alice">
+                <span className="italic text-zinc-600 dark:text-zinc-400">&ldquo;{note}&rdquo;</span>
+              </AgendaRow>
+            )}
+
+            {footParts.length > 0 && (
+              <p className="pl-16 text-xs text-zinc-500 dark:text-zinc-400">— {footParts.join(" · ")}</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Etikettkolumn ("Plan"/"Utfall"/"Alice") + innehåll, samma bredd på alla
+ * tre så raderna hamnar i linje under varandra. */
+function AgendaRow({
+  label,
+  tone,
+  children,
+}: {
+  label: string;
+  tone?: "strong";
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`flex items-baseline gap-2 text-sm ${
+        tone === "strong" ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-500 dark:text-zinc-400"
+      }`}
+    >
+      <span className="w-14 shrink-0 text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-600">
+        {label}
+      </span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+/** Planraden. `planned_rep_groups` läses via en lokal cast — PlanMatch bär
+ * bastypen PlannedWorkout (lib/plan-matching.ts), men objektet är samma
+ * referens som kom ur `.select(..., planned_rep_groups(*))` ovan, så fältet
+ * finns kvar på runtime-objektet trots att typen inte deklarerar det. */
+function PlanRow({ planned, outcome }: { planned: PlannedWorkout; outcome: PlanMatch["outcome"] }) {
+  const repGroups =
+    (planned as unknown as { planned_rep_groups?: AgendaRepGroup[] | null }).planned_rep_groups ?? [];
+  const line = formatPlanLine(planned, repGroups);
+  // Typbadgen upprepar bara passtypen — meningsfull när titeln är en
+  // repsignatur eller en fritextrubrik ("5×1000 m [tröskel]"), men ett tomt
+  // eko när titeln redan ÄR typetiketten (en vilodag utan rubrik: "Vila").
+  const showTypeBadge = line.title !== typeLabel(planned.workout_type);
+  return (
+    <AgendaRow label="Plan">
+      {line.title}
+      {line.target && <span className="text-zinc-400 dark:text-zinc-500"> · {line.target}</span>}
+      {showTypeBadge && (
+        <>
+          {" "}
+          <span className="text-xs" style={{ color: workoutTypeColorVar(planned.workout_type) ?? undefined }}>
+            [{typeLabel(planned.workout_type)}]
+          </span>
+        </>
+      )}
+      {outcome === "ej genomfört" && (
+        <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">— ej genomfört</span>
+      )}
+    </AgendaRow>
+  );
+}
+
+/** Utfallsraden. Varvtiderna kommer ur `dominantActivity.activity_splits`
+ * (lapsFor ovan) — saknas splits helt faller formatOutcomeLine tillbaka på
+ * distans/tid, se lib/week-agenda.ts. */
+function OutcomeRow({ session, outcome }: { session: TrainingSession; outcome: PlanMatch["outcome"] }) {
+  return (
+    <AgendaRow label="Utfall" tone="strong">
+      <span className="font-medium">{session.category ? typeLabel(session.category) : "Pass"}</span>{" "}
+      {formatOutcomeLine(session, lapsFor(session))}
+      {outcome === "avvikande typ" && (
+        <span className="ml-1 text-xs text-amber-700 dark:text-amber-400">— annan typ än planerat</span>
+      )}
+      {outcome === "oplanerat" && (
+        <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">— oplanerat</span>
+      )}
+    </AgendaRow>
   );
 }
