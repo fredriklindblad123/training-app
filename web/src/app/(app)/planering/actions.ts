@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   datesForWeekday,
@@ -311,6 +312,7 @@ export async function createCompetition(formData: FormData) {
   const name = str(formData, "name");
   const date = str(formData, "competition_date");
   if (!name || !date) return;
+  const venue = str(formData, "venue");
 
   const { data: competition } = await supabase
     .from("competitions")
@@ -319,7 +321,7 @@ export async function createCompetition(formData: FormData) {
       name,
       competition_date: date,
       location: str(formData, "location"),
-      venue: str(formData, "venue"),
+      venue,
       priority: str(formData, "priority") ?? "C",
       notes: str(formData, "notes"),
     })
@@ -347,6 +349,24 @@ export async function createCompetition(formData: FormData) {
   }
 
   refresh();
+
+  // Listan på /planering är filtrerad på år/bana (se planering/page.tsx) —
+  // hamnar den nya tävlingen utanför det filtret man just stod i skulle den
+  // se ut att ha försvunnit. Formuläret skickar med det aktiva filtret i två
+  // dolda fält; bara om det filtret faktiskt döljer den nya raden navigerar
+  // vi om, till precis det år/bana som visar den. I alla andra fall räcker
+  // revalidatePath ovan — ingen navigering behövs.
+  const currentYear = str(formData, "current_tavlingsAr");
+  const currentBana = str(formData, "current_tavlingsBana");
+  const createdYear = date.slice(0, 4);
+  const banaForCreated = venue === "indoor" ? "inne" : venue === "outdoor" ? "ute" : "alla";
+
+  const yearHidesIt = currentYear != null && currentYear !== "alla" && currentYear !== createdYear;
+  const banaHidesIt = currentBana != null && currentBana !== "alla" && currentBana !== banaForCreated;
+
+  if (yearHidesIt || banaHidesIt) {
+    redirect(`/planering?tavlingsAr=${createdYear}&tavlingsBana=${banaForCreated}#tavlingar`);
+  }
 }
 
 export async function deleteCompetition(formData: FormData) {

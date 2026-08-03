@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   SeasonTimeline,
@@ -11,6 +12,8 @@ import {
   BLOCK_LABELS,
   BLOCK_TYPES,
   COMMON_EVENTS,
+  competitionYearCounts,
+  defaultCompetitionYear,
   PRIORITY_LABELS,
   QUALITY_WORKOUT_TYPES,
   SEASON_LABELS,
@@ -60,23 +63,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default async function PlaneringPage() {
+export default async function PlaneringPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tavlingsAr?: string; tavlingsBana?: string }>;
+}) {
   const supabase = await createClient();
   const today = toDateKey(new Date());
+  const { tavlingsAr: tavlingsArParam, tavlingsBana: tavlingsBanaParam } = await searchParams;
 
   const [
     { data: blocks },
-    { data: competitions },
     { data: templates },
     { data: plannedCounts },
     { data: blockTemplateLinks },
     { data: availabilityPeriods },
+    { data: competitionDateRows },
+    { data: nextACompetition },
   ] = await Promise.all([
     supabase.from("season_blocks").select("*").order("start_date"),
-    supabase
-      .from("competitions")
-      .select("*, competition_events(*)")
-      .order("competition_date"),
     // template_rep_groups(*) hämtas nästlat två led ner (K1) — en saknad
     // tabell (migrationen inte körd) ger bara undefined per mallrad, aldrig
     // ett kastat fel. Alla ställen nedan som läser det gör det via `?? []`.
@@ -101,7 +106,62 @@ export default async function PlaneringPage() {
     // nedan faller tillbaka till "inga perioder" precis som övriga frågor
     // på den här sidan gör för sina egna eventuellt okörda tabeller.
     supabase.from("availability_periods").select("*").order("start_date"),
+    // Smal fråga för årsväljaren: bara datumet, inte hela raden med
+    // competition_events(*) nästlat — historiken (flera säsongers
+    // tävlingar) ska kunna byggas till en väljare utan att dra in allt.
+    supabase.from("competitions").select("competition_date").order("competition_date"),
+    // "Nästa A-tävling" i läget-just-nu-korten ska visa sanningen oavsett
+    // vilket år/bana som råkar vara valt i tävlingslistan längre ner —
+    // därför en egen liten fråga i stället för att söka i competitionList
+    // (som är filtrerad). Träffar aldrig fler än en rad.
+    supabase
+      .from("competitions")
+      .select("name, competition_date")
+      .eq("priority", "A")
+      .gte("competition_date", today)
+      .order("competition_date")
+      .limit(1)
+      .maybeSingle(),
   ]);
+
+  const { years: competitionYears, countsByYear: competitionCountsByYear } =
+    competitionYearCounts((competitionDateRows ?? []).map((r) => r.competition_date as string));
+  const currentYear = today.slice(0, 4);
+  const defaultYear = defaultCompetitionYear(currentYear, competitionYears, competitionCountsByYear);
+  // "Alla år" är ett explicit val (query-param), annars gäller förvalet ovan.
+  const tavlingsAr = tavlingsArParam ?? defaultYear;
+  const tavlingsBana: "alla" | "inne" | "ute" =
+    tavlingsBanaParam === "inne" || tavlingsBanaParam === "ute" ? tavlingsBanaParam : "alla";
+  const venueFilter = tavlingsBana === "inne" ? "indoor" : tavlingsBana === "ute" ? "outdoor" : null;
+
+  // Huvudfrågan (med competition_events nästlat) hämtar bara det valda
+  // årets tävlingar — sidan växer med ett år per år i takt med säsongerna,
+  // och /planering har redan flera tunga frågor ovan.
+  let competitionsQuery = supabase
+    .from("competitions")
+    .select("*, competition_events(*)")
+    .order("competition_date");
+  if (tavlingsAr !== "alla") {
+    competitionsQuery = competitionsQuery
+      .gte("competition_date", `${tavlingsAr}-01-01`)
+      .lt("competition_date", `${Number(tavlingsAr) + 1}-01-01`);
+  }
+  if (venueFilter) {
+    competitionsQuery = competitionsQuery.eq("venue", venueFilter);
+  }
+  const { data: competitions } = await competitionsQuery;
+
+  /** Bygger en /planering-länk som behåller både årsfiltret och bana-filtret
+   * — bara den del som skickas in i `overrides` byts ut. Samma mönster som
+   * volumeHref i trends/page.tsx (läst för formen, inte kopierad rakt av):
+   * utan den skulle t.ex. bana-växlaren nollställa årsvalet varje gång man
+   * klickade. */
+  function competitionHref(overrides: { tavlingsAr?: string; tavlingsBana?: string }): string {
+    const params = new URLSearchParams();
+    params.set("tavlingsAr", overrides.tavlingsAr ?? tavlingsAr);
+    params.set("tavlingsBana", overrides.tavlingsBana ?? tavlingsBana);
+    return `/planering?${params.toString()}#tavlingar`;
+  }
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
   // fokustexten, därav den utökade typen här.
@@ -126,7 +186,7 @@ export default async function PlaneringPage() {
     label: string | null;
   }[];
 
-  const nextA = competitionList.find((c) => c.priority === "A" && c.competition_date >= today);
+  const nextA = nextACompetition;
   const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
 
   const templateNameById = new Map((templates ?? []).map((t) => [t.id as string, t.name as string]));
@@ -184,6 +244,13 @@ export default async function PlaneringPage() {
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Säsongsöversikt</h2>
+        {/* Tar samma årsfilter som tävlingslistan (competitionList är redan
+         * begränsad till tavlingsAr/tavlingsBana ovan) — med hela historiken
+         * (2019–2024 importerad) ritad i ett band blir markörerna för många
+         * för att gå att läsa, precis som listan. Blocken (blockList) filtreras
+         * inte: banden är redan få och kortlivade (en säsong i taget), så de
+         * blir aldrig oöverskådliga på samma sätt. Väljer man "Alla år" är
+         * det ett medvetet val att se allt, inklusive en tätare tidslinje. */}
         <SeasonTimeline blocks={blockList} competitions={competitionList} />
       </section>
 
@@ -610,12 +677,77 @@ export default async function PlaneringPage() {
       </section>
 
       {/* ---------------- Tävlingar ---------------- */}
-      <section className="flex flex-col gap-3">
+      <section id="tavlingar" className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
         <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
           Prioriteten styr hur planeringen toppar. A är säsongens huvudmål och får en
           nedtrappning före sig; C är träningstävling och planeras rakt igenom.
         </p>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {/* Årsväljare. Byggd ur datan (competitionYears), inte en hårdkodad
+           * lista — annars slutar den fungera så fort ett nytt år börjar
+           * tävlas i. "Alla år" ligger sist så historiken alltid går att nå,
+           * men aldrig är förvalet. */}
+          <div className="flex flex-wrap gap-1 text-sm" role="group" aria-label="Tävlingsår">
+            {competitionYears.map((year) => (
+              <Link
+                key={year}
+                href={competitionHref({ tavlingsAr: year })}
+                aria-current={tavlingsAr === year ? "page" : undefined}
+                className={`rounded px-3 py-1 ${
+                  tavlingsAr === year
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                }`}
+              >
+                {year} ({competitionCountsByYear.get(year)})
+              </Link>
+            ))}
+            <Link
+              href={competitionHref({ tavlingsAr: "alla" })}
+              aria-current={tavlingsAr === "alla" ? "page" : undefined}
+              className={`rounded px-3 py-1 ${
+                tavlingsAr === "alla"
+                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              }`}
+            >
+              Alla år ({competitionDateRows?.length ?? 0})
+            </Link>
+          </div>
+
+          <div className="flex gap-1 text-sm" role="group" aria-label="Inne eller ute">
+            {(
+              [
+                { key: "alla", label: "Alla banor" },
+                { key: "inne", label: SEASON_LABELS.indoor },
+                { key: "ute", label: SEASON_LABELS.outdoor },
+              ] as const
+            ).map((opt) => (
+              <Link
+                key={opt.key}
+                href={competitionHref({ tavlingsBana: opt.key })}
+                aria-current={tavlingsBana === opt.key ? "page" : undefined}
+                className={`rounded px-3 py-1 ${
+                  tavlingsBana === opt.key
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                }`}
+              >
+                {opt.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {competitionList.length === 0 && (
+          <p className="text-sm text-zinc-400 dark:text-zinc-600">
+            Inga tävlingar {tavlingsAr === "alla" ? "" : `${tavlingsAr} `}
+            {tavlingsBana !== "alla" ? `(${tavlingsBana === "inne" ? "inomhus" : "utomhus"}) ` : ""}
+            än.
+          </p>
+        )}
 
         {competitionList.length > 0 && (
           <div className="flex flex-col gap-2">
@@ -704,6 +836,11 @@ export default async function PlaneringPage() {
             Lägg till tävling
           </summary>
           <form action={createCompetition} className="mt-3 flex flex-wrap items-end gap-3">
+            {/* Så att createCompetition kan avgöra om det aktiva filtret
+             * skulle dölja den nyskapade tävlingen och navigera om till rätt
+             * år/bana i så fall — se motiveringen i actions.ts. */}
+            <input type="hidden" name="current_tavlingsAr" value={tavlingsAr} />
+            <input type="hidden" name="current_tavlingsBana" value={tavlingsBana} />
             <Field label="Namn">
               <input name="name" required placeholder="Inomhus-SM" className={input} />
             </Field>

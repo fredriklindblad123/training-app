@@ -259,6 +259,42 @@ export function weeksBetween(from: string, to: string): number {
   return Math.floor((b - a) / (7 * 24 * 3600 * 1000)) + 1;
 }
 
+// --- Tävlingsårsväljare -----------------------------------------------------
+// Historiken (t.ex. flera säsongers importerade tävlingar) gör
+// tävlingslistan på /planering oöverskådlig utan ett årsfilter. Val och
+// default byggs här, ur datan, i stället för planering/page.tsx — samma
+// princip som blockForDate/blocksInRange ovan: en ren funktion är lätt att
+// resonera om och att återanvända om fler vyer behöver samma årsfilter.
+
+/** Grupperar en lista tävlingsdatum (YYYY-MM-DD) per år. `years` är sorterad
+ * nyast-först, så årsväljaren kan renderas rakt av utan egen sortering. */
+export function competitionYearCounts(dates: string[]): {
+  years: string[];
+  countsByYear: Map<string, number>;
+} {
+  const countsByYear = new Map<string, number>();
+  for (const date of dates) {
+    const year = date.slice(0, 4);
+    countsByYear.set(year, (countsByYear.get(year) ?? 0) + 1);
+  }
+  const years = [...countsByYear.keys()].sort((a, b) => b.localeCompare(a));
+  return { years, countsByYear };
+}
+
+/** Vilket år årsväljaren ska förvälja. Innevarande år är nästan alltid det
+ * man vill se — men har det inga tävlingar ännu (vanligt tidigt på säsongen,
+ * eller för en atlet vars historik bara sträcker sig bakåt i tiden) är en
+ * tom sida ett sämre förval än det senaste året som faktiskt har några. */
+export function defaultCompetitionYear(
+  currentYear: string,
+  years: string[],
+  countsByYear: Map<string, number>,
+): string {
+  if (countsByYear.has(currentYear)) return currentYear;
+  // `years` är redan nyast-först (se competitionYearCounts).
+  return years[0] ?? currentYear;
+}
+
 // --- Utrullning av veckomall ----------------------------------------------
 
 /**

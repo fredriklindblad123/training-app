@@ -50,15 +50,21 @@ import {
   AVAILABILITY_LABELS,
   BLOCK_LABELS,
   PRIORITY_LABELS,
+  SEASON_LABELS,
   type AvailabilityKind,
   type BlockType,
   type Priority,
+  type SeasonKind,
 } from "@/lib/planning";
 import {
   computeRaceBuildup,
   BUILDUP_WINDOW_DAYS,
   type RaceBuildup,
 } from "@/lib/race-buildup";
+import {
+  RaceProgressionChart,
+  type RaceProgressionPoint,
+} from "@/components/charts/RaceProgressionChart";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { ComplianceCard } from "@/components/ComplianceCard";
 import {
@@ -260,6 +266,11 @@ type CompetitionEventRow = {
   target_result: string | null;
   actual_result: string | null;
   placement: number | null;
+  /** Tolkad löptid i sekunder (K9-importen, se migration
+   * 20260803100000_competition_result_seconds.sql). Null för hopp/kast och
+   * för grenar utan resultat — `actual_result` är fortfarande källan för
+   * visning, det här är bara det sorterbara talet. */
+  result_seconds: number | null;
 };
 
 type CompetitionRow = {
@@ -267,6 +278,7 @@ type CompetitionRow = {
   name: string;
   competition_date: string;
   priority: Priority;
+  venue: SeasonKind | null;
   competition_events: CompetitionEventRow[];
 };
 
@@ -590,6 +602,8 @@ export default async function TrendsPage({
     compareB?: string;
     raceA?: string;
     raceB?: string;
+    gren?: string;
+    bana?: string;
     volumeCategories?: string | string[];
     volumeFiltered?: string;
     volumeMetric?: string;
@@ -602,6 +616,8 @@ export default async function TrendsPage({
     compareB: compareBParam,
     raceA: raceAParam,
     raceB: raceBParam,
+    gren: grenParam,
+    bana: banaParam,
     volumeCategories: volumeCategoriesParam,
     volumeFiltered: volumeFilteredParam,
     volumeMetric: volumeMetricParam,
@@ -657,6 +673,25 @@ export default async function TrendsPage({
     }
     for (const [key, value] of Object.entries(overrides)) params.set(key, value);
     return `/trends?${params.toString()}`;
+  }
+
+  /** Samma mönster som `volumeHref` ovan, för K5-sektionens gren-/bana-
+   * växlare: behåller alla parametrar på sidan (inklusive den andra av
+   * gren/bana) och byter bara det som skickas in i `overrides`. Utan den
+   * skulle t.ex. bana-knapparna nollställa grenvalet och tvärtom. `raceA`/
+   * `raceB` följer med oförändrade — väljer man en gren de inte tillhör
+   * tystnar jämförelsen själv längre ner (se `racesInSelectedEvent`), det
+   * behöver inte städas bort ur URL:en här. */
+  function raceHref(overrides: Record<string, string>): string {
+    const params = new URLSearchParams();
+    if (weeksParam) params.set("weeks", weeksParam);
+    if (blockParam) params.set("block", blockParam);
+    if (grenParam) params.set("gren", grenParam);
+    if (banaParam) params.set("bana", banaParam);
+    if (raceAParam) params.set("raceA", raceAParam);
+    if (raceBParam) params.set("raceB", raceBParam);
+    for (const [key, value] of Object.entries(overrides)) params.set(key, value);
+    return `/trends?${params.toString()}#tavlingar`;
   }
 
   const supabase = await createClient();
@@ -746,7 +781,9 @@ export default async function TrendsPage({
     // nedan, se compareRaceA/compareRaceB.
     supabase
       .from("competitions")
-      .select("id, name, competition_date, priority, competition_events(id, event, target_result, actual_result, placement)")
+      .select(
+        "id, name, competition_date, priority, venue, competition_events(id, event, target_result, actual_result, placement, result_seconds)",
+      )
       .order("competition_date"),
   ]);
 
@@ -1351,21 +1388,113 @@ export default async function TrendsPage({
       : [null, null];
 
   // --- K5: tävlingsanalys och upptrappning -------------------------------
-  // Samma sorts retrospektiv som blockjämförelsen ovan, bara med tävlingar
-  // som jämförelseenhet i stället för säsongsblock (se docs/tranarperspektiv
-  // .md K5). Bygger ingen egen resultattabell — competition_events har redan
-  // actual_result/placement.
+  // En tränare jämför samma distans över tid ("hur har 1500m utvecklats?"),
+  // inte två godtyckliga lopp mot varandra — sektionen utgår därför från en
+  // gren (competition_events.event), inte från ett fritt par lopp. Se
+  // docs/tranarperspektiv.md K5. Bygger ingen egen resultattabell —
+  // competition_events har redan actual_result/placement.
   const competitions: CompetitionRow[] = (competitionRows ?? []) as CompetitionRow[];
-  // Jämförelsen kräver ett faktiskt resultat att ställa mot varandra — ett
-  // lopp utan resultat har ingen "det här blev det" att jämföra.
-  const racesWithResults = competitions.filter((c) =>
-    c.competition_events.some((e) => e.actual_result),
+
+  type EventResultRow = {
+    eventRowId: string;
+    competitionId: string;
+    competitionName: string;
+    competitionDate: string;
+    venue: SeasonKind | null;
+    event: string;
+    resultLabel: string;
+    resultSeconds: number;
+  };
+
+  // Bara löpgrenar har result_seconds (hopp/kast mäts i meter och lämnades
+  // null vid import, se migration 20260803100000) — de filtreras bort här,
+  // innan grenväljaren eller grafen ser dem, så de aldrig kan väljas eller
+  // krascha något nedströms.
+  const eventResults: EventResultRow[] = competitions.flatMap((c) =>
+    c.competition_events
+      .filter((e) => e.result_seconds != null)
+      .map((e) => ({
+        eventRowId: e.id,
+        competitionId: c.id,
+        competitionName: c.name,
+        competitionDate: c.competition_date,
+        venue: c.venue,
+        event: e.event,
+        resultLabel: e.actual_result ?? "inget resultat",
+        resultSeconds: e.result_seconds as number,
+      })),
   );
+
+  const eventCounts = new Map<string, number>();
+  for (const r of eventResults) {
+    eventCounts.set(r.event, (eventCounts.get(r.event) ?? 0) + 1);
+  }
+  // Minst två resultat, annars finns ingen utveckling att visa — sorterad
+  // flest först så väljaren öppnar på grenen med mest att visa.
+  const eventOptions = [...eventCounts.entries()]
+    .filter(([, count]) => count >= 2)
+    .map(([event, count]) => ({ event, count }))
+    .sort((a, b) => b.count - a.count || a.event.localeCompare(b.event, "sv"));
+
+  const selectedEvent =
+    grenParam && eventOptions.some((o) => o.event === grenParam)
+      ? grenParam
+      : (eventOptions[0]?.event ?? null);
+
+  const banaFilter: "alla" | "inne" | "ute" =
+    banaParam === "inne" || banaParam === "ute" ? banaParam : "alla";
+  const banaVenue: SeasonKind | null =
+    banaFilter === "inne" ? "indoor" : banaFilter === "ute" ? "outdoor" : null;
+
+  // Alla resultat i den valda grenen, oavsett bana — basen för
+  // upptrappningsjämförelsens väljare (punkt 5 nedan) och för personbästat
+  // innan bana-filtret smalnar av vad som faktiskt visas.
+  const eventRaceRows = selectedEvent
+    ? eventResults
+        .filter((r) => r.event === selectedEvent)
+        .sort((a, b) => (a.competitionDate < b.competitionDate ? -1 : a.competitionDate > b.competitionDate ? 1 : 0))
+    : [];
+  // Bana-filtret smalnar av vad grafen/tabellen visar. "Personbästa" räknas
+  // ur samma filtrerade urval — annars kan hjälplinjen peka på ett lopp som
+  // inte ens syns i vyn, vilket hade sett trasigt ut med filtret på "inne".
+  const filteredRaceRows = banaVenue ? eventRaceRows.filter((r) => r.venue === banaVenue) : eventRaceRows;
+  // Delas mellan grafen (ritar sin egen PB-markör internt) och tabellen
+  // under den, så de aldrig kan peka ut olika lopp som personbästa.
+  const pbSecondsInFilter =
+    filteredRaceRows.length > 0
+      ? Math.min(...filteredRaceRows.map((r) => r.resultSeconds))
+      : null;
+  // Etiketten måste följa filtret. Inne och ute är skilda rekord i friidrott,
+  // så det snabbaste inomhusloppet är inte "personbästa" när ett utomhuslopp
+  // gått fortare — Alices 800m-bästa (2:21,99) sattes utomhus i juni, och att
+  // kalla inomhustiden personbästa hade varit direkt fel.
+  const bestResultLabel =
+    banaFilter === "inne" ? "Bästa inomhus" : banaFilter === "ute" ? "Bästa utomhus" : "Personbästa";
+
+  const progressionPoints: RaceProgressionPoint[] = filteredRaceRows.map((r) => ({
+    id: r.eventRowId,
+    date: r.competitionDate,
+    competitionName: r.competitionName,
+    resultLabel: r.resultLabel,
+    resultSeconds: r.resultSeconds,
+    venue: r.venue,
+  }));
+
+  // Upptrappningsjämförelsens <select>-fält ska bara innehålla lopp i den
+  // valda grenen (punkt 5) — det är så "jämför samma distans" blir konkret.
+  const racesInSelectedEvent = selectedEvent
+    ? competitions.filter((c) =>
+        c.competition_events.some((e) => e.event === selectedEvent && e.actual_result),
+      )
+    : [];
+  // Ligger raceA/raceB inte i den valda grenen (t.ex. efter att grenen
+  // byttes) nollställs de tyst här — ingen trasig jämförelse renderas, se
+  // docs/tranarperspektiv.md K5 och kommentaren vid `raceHref` ovan.
   const compareRaceA = raceAParam
-    ? (racesWithResults.find((c) => c.id === raceAParam) ?? null)
+    ? (racesInSelectedEvent.find((c) => c.id === raceAParam) ?? null)
     : null;
   const compareRaceB = raceBParam
-    ? (racesWithResults.find((c) => c.id === raceBParam) ?? null)
+    ? (racesInSelectedEvent.find((c) => c.id === raceBParam) ?? null)
     : null;
   // Fristående frågor per valt lopp — aldrig en fråga per tävling i listan,
   // det hade blivit dyrt så fort säsongen har ett tiotal lopp.
@@ -1376,6 +1505,18 @@ export default async function TrendsPage({
           loadRaceAggregate(supabase, compareRaceB),
         ])
       : [null, null];
+
+  // K5 sista upptrappningsupplysning: träningsdatan (Garmin-synken) börjar
+  // 2025-07-25, men de importerade tävlingsresultaten slutar 2024-07-21. För
+  // alla nuvarande lopp saknas därför träningsdata i de 21 dagarna före —
+  // upptrappningstabellen blir tom av det skälet, inte för att inget
+  // hände. Ett dataläge, inte ett fel; sant tills nyare lopp läggs in.
+  const TRAINING_DATA_START = "2025-07-25";
+  const buildupDataGapApplies =
+    raceAggregateA != null &&
+    raceAggregateB != null &&
+    raceAggregateA.competition.competition_date < TRAINING_DATA_START &&
+    raceAggregateB.competition.competition_date < TRAINING_DATA_START;
 
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
@@ -1914,14 +2055,15 @@ export default async function TrendsPage({
 
       {/* ================= K5: Tävlingar och upptrappning ==================== */}
       {/* Ligger bredvid blockjämförelsen ovan — samma sorts retrospektiv, bara
-          med tävlingar som enhet. Se docs/tranarperspektiv.md K5. */}
-      <section className="flex flex-col gap-4">
+          med tävlingar som enhet. Utgår från en gren, inte från ett fritt par
+          lopp — se docs/tranarperspektiv.md K5. */}
+      <section id="tavlingar" className="flex flex-col gap-4">
         <div>
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Med i storleksordningen tio lopp per säsong är det här beskrivande, inte
-            statistiskt. Tabellen visar hur upptrappningen såg ut inför respektive lopp —
-            aldrig ett påstående om att det ena sättet gav det bättre resultatet.
+            statistiskt. Ingen trendlinje och ingen prognos — bara vad som faktiskt
+            hände, gren för gren.
           </p>
         </div>
 
@@ -1945,6 +2087,9 @@ export default async function TrendsPage({
                     Tävling
                   </th>
                   <th scope="col" className="py-1 pr-4 font-normal">
+                    Bana
+                  </th>
+                  <th scope="col" className="py-1 pr-4 font-normal">
                     Prioritet
                   </th>
                   <th scope="col" className="py-1 font-normal">
@@ -1957,6 +2102,7 @@ export default async function TrendsPage({
                   <tr key={c.id}>
                     <td className="py-1.5 pr-4 tabular-nums">{c.competition_date}</td>
                     <td className="py-1.5 pr-4">{c.name}</td>
+                    <td className="py-1.5 pr-4">{c.venue ? SEASON_LABELS[c.venue] : "–"}</td>
                     <td className="py-1.5 pr-4">{PRIORITY_LABELS[c.priority]}</td>
                     <td className="py-1.5">{raceResultsLabel(c.competition_events)}</td>
                   </tr>
@@ -1966,10 +2112,10 @@ export default async function TrendsPage({
           </div>
         )}
 
-        {racesWithResults.length < 2 ? (
+        {eventOptions.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Jämförelsen kräver minst två tävlingar med registrerat resultat. Fyll i
-            resultat på{" "}
+            Ingen gren har minst två tidtagna resultat ännu (hopp och kast mäts i meter
+            och räknas inte hit). Fyll i fler resultat på{" "}
             <Link href="/planering" className="underline">
               planeringssidan
             </Link>
@@ -1977,89 +2123,217 @@ export default async function TrendsPage({
           </p>
         ) : (
           <>
-            <form action="/trends" method="get" className="flex flex-wrap items-end gap-3 text-sm">
-              <label className="flex flex-col gap-1">
-                <span className="text-zinc-600 dark:text-zinc-400">Lopp A</span>
-                <select
-                  name="raceA"
-                  defaultValue={raceAParam ?? ""}
-                  className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            {/* Grenväljare — flest resultat först, default öppnar på den grenen. */}
+            <div className="flex flex-wrap gap-2 text-sm">
+              {eventOptions.map((o) => (
+                <Link
+                  key={o.event}
+                  href={raceHref({ gren: o.event })}
+                  className={`rounded px-3 py-1 ${
+                    o.event === selectedEvent
+                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  }`}
                 >
-                  <option value="" disabled>
-                    Välj lopp
-                  </option>
-                  {racesWithResults.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.competition_date})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-zinc-600 dark:text-zinc-400">Lopp B</span>
-                <select
-                  name="raceB"
-                  defaultValue={raceBParam ?? ""}
-                  className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-                >
-                  <option value="" disabled>
-                    Välj lopp
-                  </option>
-                  {racesWithResults.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.competition_date})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button type="submit" className={primaryButtonClass}>
-                Jämför
-              </button>
-            </form>
+                  {o.event} ({o.count})
+                </Link>
+              ))}
+            </div>
 
-            {raceAParam && raceBParam && !(raceAggregateA && raceAggregateB) && (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Kunde inte jämföra — välj två olika lopp med resultat.
-              </p>
+            {/* Inne/ute-filter — samma knappradsstil som vecko-/blockväljaren
+                högst upp. Formen (fylld/ihålig) i grafen bär skillnaden när
+                filtret står på "alla"; knapparna här smalnar av vad som visas. */}
+            <div className="flex flex-wrap gap-2 text-sm">
+              {(
+                [
+                  { key: "alla", label: "Alla" },
+                  { key: "inne", label: "Inomhus" },
+                  { key: "ute", label: "Utomhus" },
+                ] as const
+              ).map((b) => (
+                <Link
+                  key={b.key}
+                  href={raceHref({ bana: b.key })}
+                  className={`rounded px-3 py-1 ${
+                    banaFilter === b.key
+                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  }`}
+                >
+                  {b.label}
+                </Link>
+              ))}
+            </div>
+
+            <RaceProgressionChart
+              points={progressionPoints}
+              bestLabel={bestResultLabel}
+              emptyLabel="Inga lopp i den här grenen med det valda banfiltret."
+            />
+
+            {/* Tabellen under grafen — samma urval som grafen (gren + bana),
+                kronologisk, personbästa markerad. */}
+            {filteredRaceRows.length > 0 && (
+              <div className="w-full max-w-full overflow-x-auto">
+                <table className="w-full min-w-max text-left text-sm">
+                  <thead>
+                    <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                      <th scope="col" className="py-1 pr-4 font-normal">
+                        Datum
+                      </th>
+                      <th scope="col" className="py-1 pr-4 font-normal">
+                        Tävling
+                      </th>
+                      <th scope="col" className="py-1 pr-4 font-normal">
+                        Bana
+                      </th>
+                      <th scope="col" className="py-1 font-normal">
+                        Resultat
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                    {filteredRaceRows.map((r) => {
+                      const isPb = r.resultSeconds === pbSecondsInFilter;
+                      return (
+                        <tr
+                          key={r.eventRowId}
+                          className={isPb ? "bg-zinc-50 dark:bg-zinc-900" : undefined}
+                        >
+                          <td className="py-1.5 pr-4 tabular-nums">{r.competitionDate}</td>
+                          <td className="py-1.5 pr-4">{r.competitionName}</td>
+                          <td className="py-1.5 pr-4">
+                            {r.venue ? SEASON_LABELS[r.venue] : "–"}
+                          </td>
+                          <td className="py-1.5 tabular-nums">
+                            {r.resultLabel}
+                            {isPb && (
+                              <span className="ml-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                                {bestResultLabel}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
 
-            {raceAggregateA && raceAggregateB && (
-              <details className="rounded border border-zinc-200 dark:border-zinc-800" open>
-                <summary className="cursor-pointer p-4 text-sm text-zinc-600 dark:text-zinc-400">
-                  Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
-                </summary>
-                <div className="w-full max-w-full overflow-x-auto border-t border-zinc-200 p-4 dark:border-zinc-800">
-                  <table className="w-full min-w-max text-left text-sm">
-                    <thead>
-                      <tr className="text-xs text-zinc-500 dark:text-zinc-400">
-                        <th scope="col" className="py-1 pr-4 font-normal">
-                          Mått
-                        </th>
-                        <th scope="col" className="py-1 pr-4 font-normal">
-                          {raceAggregateA.competition.name}
-                        </th>
-                        <th scope="col" className="py-1 font-normal">
-                          {raceAggregateB.competition.name}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
-                      {raceComparisonRows(raceAggregateA, raceAggregateB).map((row) => (
-                        <tr key={row.label}>
-                          <th
-                            scope="row"
-                            className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400"
-                          >
-                            {row.label}
-                          </th>
-                          <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
-                          <td className="py-1.5 tabular-nums">{row.b}</td>
-                        </tr>
+            {/* Upptrappningsjämförelsen — samma tabellstruktur som
+                blockjämförelsen (P1.5), men bara lopp i den valda grenen. */}
+            {racesInSelectedEvent.length < 2 ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Upptrappningsjämförelsen kräver minst två lopp i den här grenen med
+                registrerat resultat.
+              </p>
+            ) : (
+              <>
+                <form
+                  action="/trends"
+                  method="get"
+                  className="flex flex-wrap items-end gap-3 text-sm"
+                >
+                  {weeksParam && <input type="hidden" name="weeks" value={weeksParam} />}
+                  {blockParam && <input type="hidden" name="block" value={blockParam} />}
+                  {selectedEvent && <input type="hidden" name="gren" value={selectedEvent} />}
+                  {banaParam && <input type="hidden" name="bana" value={banaParam} />}
+                  <label className="flex flex-col gap-1">
+                    <span className="text-zinc-600 dark:text-zinc-400">Lopp A</span>
+                    <select
+                      name="raceA"
+                      defaultValue={raceAParam ?? ""}
+                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                    >
+                      <option value="" disabled>
+                        Välj lopp
+                      </option>
+                      {racesInSelectedEvent.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.competition_date})
+                        </option>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-zinc-600 dark:text-zinc-400">Lopp B</span>
+                    <select
+                      name="raceB"
+                      defaultValue={raceBParam ?? ""}
+                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                    >
+                      <option value="" disabled>
+                        Välj lopp
+                      </option>
+                      {racesInSelectedEvent.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.competition_date})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button type="submit" className={primaryButtonClass}>
+                    Jämför
+                  </button>
+                </form>
+
+                {raceAParam && raceBParam && !(raceAggregateA && raceAggregateB) && (
+                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                    Kunde inte jämföra — välj två olika lopp i den här grenen med resultat.
+                  </p>
+                )}
+
+                {raceAggregateA &&
+                  raceAggregateB &&
+                  (buildupDataGapApplies ? (
+                    <p className="rounded border border-zinc-200 p-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                      Träningsdatan börjar 2025-07-25, men de importerade tävlingsresultaten
+                      slutar 2024-07-21. De {BUILDUP_WINDOW_DAYS} dagarna före de här två
+                      loppen ligger därför före träningsdatans start, och upptrappningen går
+                      inte att visa — inget mättes, det är inte det samma som att inget
+                      hände. Så fort ett lopp med träningsdata i fönstret jämförs dyker
+                      tabellen upp här.
+                    </p>
+                  ) : (
+                    <details className="rounded border border-zinc-200 dark:border-zinc-800" open>
+                      <summary className="cursor-pointer p-4 text-sm text-zinc-600 dark:text-zinc-400">
+                        Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
+                      </summary>
+                      <div className="w-full max-w-full overflow-x-auto border-t border-zinc-200 p-4 dark:border-zinc-800">
+                        <table className="w-full min-w-max text-left text-sm">
+                          <thead>
+                            <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                              <th scope="col" className="py-1 pr-4 font-normal">
+                                Mått
+                              </th>
+                              <th scope="col" className="py-1 pr-4 font-normal">
+                                {raceAggregateA.competition.name}
+                              </th>
+                              <th scope="col" className="py-1 font-normal">
+                                {raceAggregateB.competition.name}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                            {raceComparisonRows(raceAggregateA, raceAggregateB).map((row) => (
+                              <tr key={row.label}>
+                                <th
+                                  scope="row"
+                                  className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400"
+                                >
+                                  {row.label}
+                                </th>
+                                <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
+                                <td className="py-1.5 tabular-nums">{row.b}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  ))}
+              </>
             )}
           </>
         )}
