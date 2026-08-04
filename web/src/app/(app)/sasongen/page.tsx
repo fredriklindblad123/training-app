@@ -231,9 +231,17 @@ function raceComparisonRows(
       b: weeklyLoadLabel(b.buildup.weeklyLoad),
     },
     {
-      label: "Distans",
+      label: "Löpdistans",
       a: `${a.buildup.totalKm.toFixed(0)} km`,
       b: `${b.buildup.totalKm.toFixed(0)} km`,
+    },
+    // Egen rad, inte hopslagen med löpdistansen: en upptrappning med tung
+    // cykelvolym är inte samma sak som en med vila, och det är precis den
+    // skillnaden man vill se när två lopp ställs mot varandra.
+    {
+      label: "Alternativ träning",
+      a: a.buildup.crossTrainingKm > 0 ? `${a.buildup.crossTrainingKm.toFixed(0)} km` : "—",
+      b: b.buildup.crossTrainingKm > 0 ? `${b.buildup.crossTrainingKm.toFixed(0)} km` : "—",
     },
     {
       label: "Kvalitetspass",

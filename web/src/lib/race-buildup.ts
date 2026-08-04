@@ -31,7 +31,17 @@ export type RaceBuildup = {
   /** Träningsbelastning per sjudagarshink, kronologiskt: tre veckor före →
    * senaste veckan innan loppet. */
   weeklyLoad: [number, number, number];
+  /** Löpta kilometer i fönstret. Alternativ träning och styrka räknas INTE
+   * med: deras distans är inte jämförbar med löpvolym, och att summera dem
+   * ihop gör upptrappningen obegriplig. Inför USM 2026-07-31 cyklade Alice
+   * 133 km utöver 118 km löpning — en rå summa hade visat 251 km och antytt
+   * en löpvecka som aldrig ägde rum. Samma avgränsning som /veckan gör i
+   * sitt kategorifilter, och av samma skäl. */
   totalKm: number;
+  /** Distans i alternativ träning (cykel m.m.). Hålls isär i stället för att
+   * döljas — en upptrappning med tung cykelvolym är inte samma sak som en
+   * med vila, och skillnaden är själva poängen. */
+  crossTrainingKm: number;
   qualitySessions: number;
   restDays: number;
   avgSleepHours: number | null;
@@ -97,7 +107,16 @@ export function computeRaceBuildup(
     weeklyLoad[bucket] += s.trainingLoad;
   }
 
-  const totalKm = sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
+  // Se kommentaren vid totalKm i RaceBuildup: cykel- och styrkedistans är
+  // inte löpvolym och får inte summeras ihop med den.
+  const isCrossTraining = (category: string) =>
+    category === "cross_training" || category === "strength";
+  const totalKm =
+    sessions.filter((s) => !isCrossTraining(s.category)).reduce((sum, s) => sum + s.distanceMeters, 0) /
+    1000;
+  const crossTrainingKm =
+    sessions.filter((s) => isCrossTraining(s.category)).reduce((sum, s) => sum + s.distanceMeters, 0) /
+    1000;
 
   const qualityDates = sessions
     .filter((s) => QUALITY_SESSION_CATEGORIES.has(s.category))
@@ -144,6 +163,7 @@ export function computeRaceBuildup(
   return {
     weeklyLoad,
     totalKm,
+    crossTrainingKm,
     qualitySessions: qualityDates.length,
     restDays,
     avgSleepHours: mean(sleepHours),
