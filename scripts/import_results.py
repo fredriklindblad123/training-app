@@ -24,10 +24,9 @@ Vad skriptet medvetet INTE gör:
     eller C-tävlingar, och att gissa ur namnet ("IUSM final" borde väl vara
     A?) vore att hitta på data. Allt importeras som 'C' och får justeras för
     hand där det spelar roll.
-  - Sätter inte `placement`. Finns inte i källan. Utan placering ser ett
-    vunnet taktiklopp ut som en försämring (IUSM 2024: försök 3:05,14, final
-    3:11,36 dagen efter) — det är ett känt hål, inte en tolkning skriptet ska
-    göra åt någon.
+  - Tolkar inte icke-numeriska placeringar. 'Q' (kvalificerad) och
+    '(lagtävling)' lämnas som null eftersom placement är integer i schemat;
+    ett inledande heltal tas till vara ('3 (lagtävling)' -> 3).
 """
 
 from __future__ import annotations
@@ -51,16 +50,33 @@ EXCEL_EPOCH = datetime(1899, 12, 30)
 # specialiseringen och mäts i meter — de importeras med sin fritext men får
 # inget result_seconds, se migrationen 20260803100000.
 RUNNING_EVENTS = {
-    "60m", "60mH", "200m", "300m", "600m", "800m", "3 x 800m", "4 x 800m",
-    "1000m", "1500m", "1500m H", "1100m", "2000m", "2400m", "3000m",
-    "4300m", "10000m", "Stafett 200mx4", "Stafett 60mx5",
+    "60m", "60mH", "80m", "200m", "300m", "400m", "600m", "800m",
+    "3 x 800m", "4 x 800m", "1000m", "1500m", "1500m H", "1100m",
+    "2000m", "2000m H", "2400m", "3000m", "4000m", "4300m", "10000m",
+    "Stafett 200mx4", "Stafett 60mx5",
 }
 
 # Kalkylbladet skriver långa distanser med tusenavgränsare ("3.000m"), vilket
 # annars blir en egen gren skild från "3000m" och delar upp serien i två.
-EVENT_ALIASES = {"2.400m": "2400m", "3.000m": "3000m", "4.300m": "4300m", "10.000m": "10000m"}
+EVENT_ALIASES = {
+    "2.400m": "2400m", "3.000m": "3000m", "4.000m": "4000m",
+    "4.300m": "4300m", "10.000m": "10000m",
+}
 
-NON_EVENT_COLUMNS = {"Tävling", "Inne/Ute", "Datum"}
+# Kolumner som beskriver tävlingen, inte en gren. Missas någon här hamnar den
+# som en påhittad "gren" i competition_events — det hände när Var och
+# Placering tillkom i källfilen 2026-08.
+NON_EVENT_COLUMNS = {"Tävling", "Var", "Inne/Ute", "Placering", "Datum"}
+
+
+def parse_placement(text: str):
+    """'3' -> 3, '3 (lagtävling)' -> 3, 'Q' -> None.
+
+    placement är integer i schemat, men källan innehåller även kvalifikation
+    ('Q') och lagtävlingsnoteringar. Ett inledande heltal tas till vara,
+    resten lämnas som null hellre än att tvinga in text i en sifferkolumn."""
+    m = re.match(r"\s*(\d+)", text or "")
+    return int(m.group(1)) if m else None
 
 
 # --------------------------------------------------------------------------
@@ -221,6 +237,13 @@ def main() -> int:
         if not name or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_str):
             continue
         venue = {"Inne": "indoor", "Ute": "outdoor"}.get((row.get("Inne/Ute") or "").strip())
+        location = (row.get("Var") or "").strip() or None
+        # Källan har EN placeringskolumn per tävling, medan schemat har
+        # placement per gren. Placeringen sätts därför på alla grenar i
+        # tävlingen. Det stämmer för de rader som har en gren (nästan alla) —
+        # och den enda raden med två grenar och en placering är en lagtävling,
+        # där placeringen gäller laget snarare än en enskild gren ändå.
+        placement = parse_placement(row.get("Placering") or "")
 
         events = []
         for column, raw in row.items():
@@ -231,7 +254,10 @@ def main() -> int:
             seconds = parse_seconds(value) if event in RUNNING_EVENTS else None
             if event in RUNNING_EVENTS and seconds is None:
                 unparsed.append(f"{date_str} {name} {event}={value}")
-            events.append({"event": event, "actual_result": value, "result_seconds": seconds})
+            events.append({
+                "event": event, "actual_result": value,
+                "result_seconds": seconds, "placement": placement,
+            })
 
         existing = db.get("competitions", {
             "select": "id",
@@ -243,10 +269,16 @@ def main() -> int:
         if existing:
             comp_id = existing[0]["id"]
             skipped_comps += 1
+            # Plats och bana kan ha fyllts i efter första importen — uppdatera
+            # dem även på rader som redan finns, annars är omkörningen bara
+            # additiv och rättar aldrig något.
+            if args.commit and (location or venue):
+                db.patch("competitions", {"id": f"eq.{comp_id}"},
+                         {k: v for k, v in (("location", location), ("venue", venue)) if v})
         elif args.commit:
             comp_id = db.insert("competitions", [{
                 "user_id": user_id, "name": name, "competition_date": date_str,
-                "venue": venue, "priority": "C",
+                "venue": venue, "location": location, "priority": "C",
             }])[0]["id"]
             created_comps += 1
         else:
