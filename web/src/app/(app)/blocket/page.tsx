@@ -83,6 +83,54 @@ type SeasonBlockRow = {
 const EF_MIN_SECONDS = 20 * 60;
 const EF_CATEGORIES = ["easy", "long_run"] as const;
 
+/** Tävlingsdagar: `competitions`/`competition_events` (idrottarens egna
+ * importerade resultat), INTE `activities.category === "race"`. Alice bär
+ * aldrig klockan under själva loppet på bana — bara uppvärmning och nerjogg
+ * spelas in, och ingetdera matchar tävlingsdetekteringen i databasen
+ * (`supabase/migrations/20260725120000_activity_category.sql`). Så för
+ * banlopp (majoriteten av hennes tävlingar) är `activities` blind för att en
+ * tävling ens ägde rum. Vid terränglöpning/väg bär hon klockan hela loppet,
+ * så där FINNS en riktig `category==="race"`-aktivitet — den täcks då redan
+ * in via `competitions` om resultatet är importerat, annars fångas den av
+ * unionen i `buildRaceDays` nedan.
+ *
+ * `competitions` är alltså den auktoritativa källan för "ägde en tävling
+ * rum den här dagen"; Garmin-taggade race-pass är bara ett komplement för
+ * dagar som (ännu) saknar ett importerat resultat. */
+type CompetitionEventLite = { event: string };
+type CompetitionLite = {
+  competition_date: string;
+  name: string;
+  competition_events: CompetitionEventLite[];
+};
+
+function competitionLabel(c: CompetitionLite): string {
+  const events = c.competition_events.map((e) => e.event).join(", ");
+  return events ? `${c.name} (${events})` : c.name;
+}
+
+/** date (YYYY-MM-DD) -> läsbar tävlingsetikett. Unionen av `competitions`
+ * (primär källa) och Garmin race-pass på dagar `competitions` inte täcker. */
+function buildRaceDays(
+  competitions: CompetitionLite[],
+  raceSessions: { date: string; dominantActivity: { name: string | null } }[],
+): Map<string, string> {
+  const byDate = new Map<string, CompetitionLite[]>();
+  for (const c of competitions) {
+    byDate.set(c.competition_date, [...(byDate.get(c.competition_date) ?? []), c]);
+  }
+  const raceDays = new Map<string, string>();
+  for (const [date, comps] of byDate) {
+    raceDays.set(date, comps.map(competitionLabel).join(" + "));
+  }
+  for (const s of raceSessions) {
+    if (!raceDays.has(s.date)) {
+      raceDays.set(s.date, s.dominantActivity.name?.trim() || "Tävling");
+    }
+  }
+  return raceDays;
+}
+
 /** Sammandrag för ett enskilt block, till P1.5-jämförelseläget. Räknat helt
  * fristående från sidans huvudfönster — jämförelsen ska kunna ställa två
  * block mot varandra oavsett vilket (om något) som är valt som huvudvy. */
@@ -129,6 +177,7 @@ async function loadBlockAggregate(
     { data: dailyMetrics },
     { data: diaryEntries },
     { data: availabilityRows },
+    { data: competitionRows },
   ] = await Promise.all([
     supabase
       .from("activities")
@@ -155,6 +204,13 @@ async function loadBlockAggregate(
       .select("start_date, end_date, kind, label")
       .lte("start_date", block.end_date)
       .gte("end_date", block.start_date),
+    // Tävlingsdagar från idrottarens egna importerade resultat, inte Garmin
+    // — se kommentaren vid buildRaceDays.
+    supabase
+      .from("competitions")
+      .select("name, competition_date, competition_events(event)")
+      .gte("competition_date", block.start_date)
+      .lt("competition_date", endExclusive),
   ]);
 
   const sessions = groupActivitiesIntoSessions(
@@ -165,7 +221,6 @@ async function loadBlockAggregate(
   const loadByWeek = new Map<string, number>();
   const loadByCategory = new Map<string, number>();
   const zones = emptyZoneSeconds();
-  const raceLabels: string[] = [];
   for (const s of sessions) {
     const wk = isoWeekStart(s.date);
     loadByWeek.set(wk, (loadByWeek.get(wk) ?? 0) + s.trainingLoad);
@@ -177,8 +232,13 @@ async function loadBlockAggregate(
       s.hrZone4Seconds,
       s.hrZone5Seconds,
     ]);
-    if (s.category === "race") raceLabels.push(s.dominantActivity.name?.trim() || "Tävling");
   }
+  const raceLabels = [
+    ...buildRaceDays(
+      (competitionRows ?? []) as CompetitionLite[],
+      sessions.filter((s) => s.category === "race"),
+    ).values(),
+  ];
 
   const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
   const weeklyLoadTotals = blockWeeks.map((wk) => loadByWeek.get(wk) ?? 0);
@@ -406,6 +466,7 @@ export default async function TrendsPage({
     { data: diaryEntries },
     profileResult,
     { data: plannedRows },
+    { data: competitionRows },
   ] = await Promise.all([
     (() => {
       let q = supabase
@@ -448,6 +509,16 @@ export default async function TrendsPage({
           .gte("scheduled_date", startDate)
           .lt("scheduled_date", endDateExclusive as string)
       : Promise.resolve({ data: [] as PlannedWorkout[] | null }),
+    // Tävlingsdagar från idrottarens egna importerade resultat, inte Garmin
+    // — se kommentaren vid buildRaceDays.
+    (() => {
+      let q = supabase
+        .from("competitions")
+        .select("name, competition_date, competition_events(event)")
+        .gte("competition_date", startDate);
+      if (endDateExclusive) q = q.lt("competition_date", endDateExclusive);
+      return q.order("competition_date");
+    })(),
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
@@ -696,7 +767,10 @@ export default async function TrendsPage({
   const series = candidateSeries.filter((s) => s.values.some((v) => v != null));
   const missingSeries = candidateSeries.filter((s) => s.values.every((v) => v == null));
 
-  const raceSessions = sessions.filter((s) => s.category === "race");
+  const raceDays = buildRaceDays(
+    (competitionRows ?? []) as CompetitionLite[],
+    sessions.filter((s) => s.category === "race"),
+  );
 
   const events: ComboEvent[] = [
     ...[...sickDaysByWeek].map(([wk, days]) => ({
@@ -709,17 +783,17 @@ export default async function TrendsPage({
       kind: "injured" as const,
       label: `Skadad ${days.length} ${days.length === 1 ? "dag" : "dagar"}`,
     })),
-    ...raceSessions.map((s) => ({
-      periodKey: isoWeekStart(s.date),
+    ...[...raceDays].map(([date, label]) => ({
+      periodKey: isoWeekStart(date),
       kind: "race" as const,
-      label: s.dominantActivity.name?.trim() || "Tävling",
+      label,
     })),
   ];
 
-  const efRaces: EfficiencyRace[] = raceSessions.map((s) => ({
-    date: s.date,
-    label: s.dominantActivity.name?.trim() || "Tävling",
-  }));
+  // Ingen EF-punkt krävs för att visa flaggan (EfficiencyChart ritar den som
+  // en ren datummarkör) — bra så, för banlopp saknar per definition egen
+  // Garmin-data att räkna EF på.
+  const efRaces: EfficiencyRace[] = [...raceDays].map(([date, label]) => ({ date, label }));
 
   // --- B. Intensitetsfördelning (P1.3) --------------------------------------
   const intensityWeeks: IntensityWeek[] = weekSeries.map((wk) => {
