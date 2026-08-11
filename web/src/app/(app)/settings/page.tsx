@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { connectGarmin, syncGarminNow, saveThresholds } from "./actions";
 import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
+import { formatDateTime } from "@/lib/format";
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Ansluten",
@@ -64,8 +65,7 @@ export default async function SettingsPage({
             </div>
             {connection.last_synced_at && (
               <div className="text-sm text-zinc-500 dark:text-zinc-400">
-                Senast synkad:{" "}
-                {new Date(connection.last_synced_at).toLocaleString("sv-SE")}
+                Senast synkad: {formatDateTime(connection.last_synced_at)}
               </div>
             )}
             {connection.last_error && (

@@ -1,3 +1,18 @@
+/** Klockslag för visning, alltid i svensk lokaltid — oavsett var Node-
+ * processen kör. Serverkomponenter (t.ex. `settings/page.tsx`) körs på
+ * Vercel i UTC, så ett `toLocaleString("sv-SE")` utan `timeZone` visar fel
+ * klocka (2 timmar efter sommartid, 1 timme efter vintertid) trots att
+ * datumet i databasen är rätt — `Intl` hanterar sommar-/vintertid åt oss så
+ * länge zonen anges explicit. */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "–";
+  return new Date(iso).toLocaleString("sv-SE", {
+    timeZone: "Europe/Stockholm",
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
 export function formatDuration(seconds: number | null | undefined): string {
   if (seconds == null) return "–";
   const total = Math.round(seconds);
