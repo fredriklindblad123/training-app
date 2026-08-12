@@ -19,8 +19,8 @@ import {
   type AgendaDiaryDay,
   type AgendaMetricDay,
 } from "@/components/WeekAgenda";
-import { KpiRing } from "@/components/KpiRing";
-import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
+import { RING_STATUS_TEXT } from "@/components/KpiRing";
+import { ringFillAndStatus } from "@/lib/kpi-ring";
 import { QUALITY_WORKOUT_TYPES, type AvailabilityPeriod } from "@/lib/planning";
 import { formatDuration, formatHoursMinutes } from "@/lib/format";
 import { isoWeekStart, weekLabel } from "@/lib/stats-utils";
@@ -94,45 +94,41 @@ function CategoryDistributionBar({
   );
 }
 
-/** Veckans fyra nyckeltal (Pass, Distans, Tid, Belastning) som KPI-ringar,
- * samma visuella form som /dashboard (components/KpiRing.tsx) i stället för
- * de tidigare textrutorna. Pass splittas i distans- och kvalitetspass
+/** Veckans fem nyckeltal (Distanspass, Kvalitetspass, Distans, Tid,
+ * Belastning) som kompakta tal + jämförelsetext — en rad, inte fem stora
+ * ringar (KpiRing/dashboard-stilen tog för mycket plats för fem tal på en
+ * enda sida). Pass splittas i distans- och kvalitetspass
  * (QUALITY_WORKOUT_TYPES, samma definition som K6:s kvalitetsveckor i
  * lib/continuity.ts) — en enda "Pass"-summa sa inget om vilken sorts vecka
  * det varit.
  *
- * Där veckan hade en plan (compliance.plannedCount > 0) jämförs ringen mot
- * det planerade — samma tal som fanns i det borttagna sammanfattningskortet
- * (ComplianceCard), bara som ring i stället för en textrad. Utan plan visas
- * bara talet, neutralt, ingen grön/gul/röd bedömning mot ingenting. */
-function statRing({
+ * Där veckan hade en plan jämförs talet mot det planerade — samma tal som
+ * fanns i det borttagna sammanfattningskortet (ComplianceCard), bara som en
+ * kort färgad jämförelsetext i stället för en egen textrad. Färgen återanvänder
+ * KpiRing:s statusfärger (RING_STATUS_TEXT) så samma grönt/gult/rött betyder
+ * samma sak här som på /dashboard. Utan plan visas bara talet. */
+function statTile({
   label,
   value,
   valueText,
   target,
   targetLabel,
-  hint,
 }: {
   label: string;
   value: number;
   valueText: string;
   target: number | null;
   targetLabel: string;
-  hint: string;
-}) {
-  const { fill, status } = ringFillAndStatus(value, target, "higher_is_better");
+}): { label: string; valueText: string; targetText: string | null; statusClass: string } {
+  if (target == null) {
+    return { label, valueText, targetText: null, statusClass: "" };
+  }
+  const { status } = ringFillAndStatus(value, target, "higher_is_better");
   return {
     label,
     valueText,
-    fill: target != null ? fill : 1,
-    status: (target == null ? "neutral" : status) as RingStatus,
-    statusLabel: target == null ? "" : undefined,
-    targetText: target != null ? `${targetLabel} ${target}` : undefined,
-    detailRows: [
-      { label: "Genomfört", value: valueText },
-      { label: targetLabel, value: target != null ? String(target) : "ingen plan" },
-    ],
-    hint,
+    targetText: `${targetLabel} ${target}`,
+    statusClass: RING_STATUS_TEXT[status],
   };
 }
 
@@ -431,46 +427,41 @@ export default async function VeckanPage({
     "vecka",
   );
 
-  const statRings = [
-    statRing({
+  const statTiles = [
+    statTile({
       label: "Distanspass",
       value: distanceSessionCount,
       valueText: String(distanceSessionCount),
       target: distancePlanned,
-      targetLabel: "Planerat",
-      hint: "Lugna pass och långpass den här veckan — allt som inte räknas som kvalitetspass.",
+      targetLabel: "av",
     }),
-    statRing({
+    statTile({
       label: "Kvalitetspass",
       value: qualityCount,
       valueText: String(qualityCount),
       target: compliance.plannedCount > 0 ? compliance.qualityPlanned : null,
-      targetLabel: "Planerat",
-      hint: "Tröskel, intervall och tävling — samma definition som K6:s kvalitetsveckor på /dashboard.",
+      targetLabel: "av",
     }),
-    statRing({
+    statTile({
       label: "Distans",
       value: totalKm,
       valueText: `${totalKm.toFixed(1)} km`,
       target: compliance.plannedKm,
-      targetLabel: "Planerat",
-      hint: "Total distans för veckans pass.",
+      targetLabel: "av",
     }),
-    statRing({
+    statTile({
       label: "Tid",
       value: totalSeconds,
       valueText: formatDuration(totalSeconds),
       target: null,
-      targetLabel: "Planerat",
-      hint: "Total träningstid för veckans pass. Ingen planerad tid att jämföra mot — bara distans/typ planeras.",
+      targetLabel: "av",
     }),
-    statRing({
+    statTile({
       label: "Belastning",
       value: totalLoad,
       valueText: String(Math.round(totalLoad)),
       target: null,
-      targetLabel: "Planerat",
-      hint: "Summerad träningsbelastning (Garmins mått) för veckans pass.",
+      targetLabel: "av",
     }),
   ];
 
@@ -530,33 +521,35 @@ export default async function VeckanPage({
         </section>
       )}
 
-      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
-          {statRings.map((r) => (
-            <KpiRing key={r.label} {...r} />
-          ))}
-        </div>
-      </div>
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {statTiles.map((t) => (
+          <div
+            key={t.label}
+            className="rounded border border-zinc-200 px-3 py-2 dark:border-zinc-800"
+          >
+            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{t.label}</dt>
+            <dd className="mt-0.5 flex items-baseline gap-1.5">
+              <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                {t.valueText}
+              </span>
+              {t.targetText && (
+                <span className={`text-xs ${t.statusClass}`}>{t.targetText}</span>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
 
       <AvailabilityBand periods={(availabilityRows ?? []) as AvailabilityPeriod[]} />
 
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Genomgång</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            En rad per pass med planen, utfallet och dina egna ord bredvid varandra.
-            Varvtiderna förklarar ofta det siffrorna annars gör till en trend.
-          </p>
-        </div>
-        <WeekAgenda
-          monday={monday}
-          todayKey={todayKey}
-          diaryByDay={diaryByDay}
-          dailyMetricsByDay={dailyMetricsByDay}
-          competitionsByDay={competitionsByDay}
-          matchesByDay={matchesByDay}
-        />
-      </section>
+      <WeekAgenda
+        monday={monday}
+        todayKey={todayKey}
+        diaryByDay={diaryByDay}
+        dailyMetricsByDay={dailyMetricsByDay}
+        competitionsByDay={competitionsByDay}
+        matchesByDay={matchesByDay}
+      />
 
       {/* ================= Fördelning per kategori ============================ */}
       {/* Flerveckorsdiagram, med flit — ger kontext åt veckan ovan i stället

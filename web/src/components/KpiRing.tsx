@@ -19,7 +19,9 @@ const RING_STROKE_VAR: Record<RingStatus, string> = {
   unknown: "var(--status-unknown)",
 };
 
-const RING_STATUS_TEXT: Record<RingStatus, string> = {
+/** Exporterad för kompakta statuslägen som inte ritar en hel ring (t.ex.
+ * /veckans stat-rad) men vill samma färgkodning på statustexten. */
+export const RING_STATUS_TEXT: Record<RingStatus, string> = {
   good: "text-emerald-700 dark:text-emerald-400",
   watch: "text-amber-700 dark:text-amber-400",
   concern: "text-red-700 dark:text-red-400",

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { DaySection } from "@/components/DaySection";
 import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
 import type { PlanMatch, PlannedWorkout } from "@/lib/plan-matching";
@@ -13,7 +14,7 @@ import {
 } from "@/lib/week-agenda";
 import { SV_MONTHS, SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
 
-/* Veckans genomgång: en rad per pass, kronologiskt, i stället för rutnätets
+/* Veckans genomgång: en rad per dag, kronologiskt, i stället för rutnätets
  * sju celler (K4 i docs/tranarperspektiv.md).
  *
  * Låg 2026-08-03 inne i veckokalendern som ett växlingsbart läge, men flyttade
@@ -21,6 +22,13 @@ import { SV_MONTHS, SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatu
  * Två hem för samma vy var förvirrande: kalendern är uppslagsverket där man
  * slår upp en specifik dag, /veckan är ritualen där man går igenom veckan och
  * planerar nästa.
+ *
+ * Hopfällt (2026-08-12): en dagrad visade tidigare plan, utfall, varvtider,
+ * Alices egna ord och känsla/ansträngning samtidigt — sju sådana rader blev
+ * en sida man var tvungen att scrolla igenom för att hitta något. Den
+ * hopfällda raden visar bara passtyp + en markör för om utfallet matchar
+ * planen (DaySection, samma <details>/<summary>-mönster som kalenderns
+ * dagvy) — resten fälls ut vid klick.
  *
  * Läsande bara. Att skriva nästa vecka hör hemma i veckomallen; varje dag
  * länkar till dagvyn för den som vill ändra något. */
@@ -63,6 +71,55 @@ function toKey(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/** Symbol + färg för om utfallet synkar med planen — hela poängen med den
+ * hopfällda raden. Fullständig etikett i title/aria-label, för den som
+ * lutar sig mot skärmläsare eller bara vill vara säker innan man fäller ut. */
+const OUTCOME_MARKER: Record<
+  PlanMatch["outcome"],
+  { symbol: string; className: string; label: string }
+> = {
+  genomfört: {
+    symbol: "✓",
+    className: "text-emerald-600 dark:text-emerald-400",
+    label: "Enligt plan",
+  },
+  "avvikande typ": {
+    symbol: "≠",
+    className: "text-amber-600 dark:text-amber-400",
+    label: "Annan typ än planerat",
+  },
+  "ej genomfört": {
+    symbol: "✗",
+    className: "text-zinc-400 dark:text-zinc-600",
+    label: "Ej genomfört",
+  },
+  oplanerat: {
+    symbol: "+",
+    className: "text-zinc-500 dark:text-zinc-400",
+    label: "Oplanerat pass",
+  },
+};
+
+/** Passtyp + synkmarkör — den hopfällda radens enda innehåll för ett pass.
+ * Typen är utfallets kategori när passet genomfördes, annars planens typ
+ * (t.ex. en missad dag har bara planen att visa typ ur). */
+function MatchSummary({ match }: { match: PlanMatch }) {
+  const type = match.session
+    ? typeLabel(match.session.category)
+    : match.planned
+      ? typeLabel(match.planned.workout_type)
+      : "Pass";
+  const marker = OUTCOME_MARKER[match.outcome];
+  return (
+    <span className="inline-flex items-center gap-1 text-zinc-700 dark:text-zinc-300">
+      {type}
+      <span className={marker.className} title={marker.label} aria-label={marker.label}>
+        {marker.symbol}
+      </span>
+    </span>
+  );
+}
+
 export function WeekAgenda({
   monday,
   todayKey,
@@ -79,7 +136,7 @@ export function WeekAgenda({
   matchesByDay: Map<string, PlanMatch[]>;
 }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       {Array.from({ length: 7 }, (_, i) => {
         const d = addDays(monday, i);
         const key = toKey(d);
@@ -136,39 +193,45 @@ export function WeekAgenda({
           );
         }
 
-        return (
-          <div
-            key={key}
-            className={`flex flex-col gap-1.5 rounded border p-3 ${
-              isToday
-                ? "border-zinc-900 dark:border-zinc-100"
-                : "border-zinc-200 dark:border-zinc-800"
-            }`}
-          >
-            <div className="flex flex-wrap items-baseline gap-2">
-              <Link
-                href={dayHref}
-                className="text-sm font-semibold text-zinc-900 hover:underline dark:text-zinc-100"
-              >
-                {dateLabel}
-              </Link>
-              {showStatus && diaryStatus && (
-                <span
-                  className={`rounded px-1.5 py-0.5 text-[10px] text-white ${STATUS_COLOR[diaryStatus]}`}
-                >
-                  {diaryStatus === "training" ? "Ej loggat" : STATUS_LABEL[diaryStatus]}
-                </span>
-              )}
-              {comps.map((c, ci) => (
-                <span
-                  key={ci}
-                  className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-950/40 dark:text-red-300"
-                >
-                  {c.priority} · {c.name}
-                </span>
-              ))}
-            </div>
+        // Kantfärgen (DaySection) blir en sjunde, ordlös signal utöver
+        // markörerna: en grön kant betyder att allt den dagen gick enligt
+        // plan, utan att man behöver läsa en enda symbol.
+        const allMatched = matches.length > 0 && matches.every((m) => m.outcome === "genomfört");
+        const hasData = matches.length > 0 ? allMatched : undefined;
 
+        return (
+          <DaySection
+            key={key}
+            title={dateLabel}
+            hasData={hasData}
+            summary={
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {isToday && (
+                  <span className="rounded border border-zinc-300 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+                    Idag
+                  </span>
+                )}
+                {showStatus && diaryStatus && (
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] text-white ${STATUS_COLOR[diaryStatus]}`}
+                  >
+                    {diaryStatus === "training" ? "Ej loggat" : STATUS_LABEL[diaryStatus]}
+                  </span>
+                )}
+                {comps.map((c, ci) => (
+                  <span
+                    key={ci}
+                    className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                  >
+                    {c.priority} · {c.name}
+                  </span>
+                ))}
+                {matches.map((m, mi) => (
+                  <MatchSummary key={mi} match={m} />
+                ))}
+              </span>
+            }
+          >
             <div className="flex flex-col gap-1">
               {matches.map((m, mi) => (
                 <div key={mi} className="flex flex-col gap-0.5">
@@ -191,7 +254,14 @@ export function WeekAgenda({
                 — {footParts.join(" · ")}
               </p>
             )}
-          </div>
+
+            <Link
+              href={dayHref}
+              className="w-fit text-xs text-zinc-500 underline hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+            >
+              Till dagvyn →
+            </Link>
+          </DaySection>
         );
       })}
     </div>
