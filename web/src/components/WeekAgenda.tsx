@@ -71,50 +71,37 @@ function toKey(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
-/** Symbol + färg för om utfallet synkar med planen — hela poängen med den
- * hopfällda raden. Fullständig etikett i title/aria-label, för den som
- * lutar sig mot skärmläsare eller bara vill vara säker innan man fäller ut. */
-const OUTCOME_MARKER: Record<
-  PlanMatch["outcome"],
-  { symbol: string; className: string; label: string }
-> = {
-  genomfört: {
-    symbol: "✓",
-    className: "text-emerald-600 dark:text-emerald-400",
-    label: "Enligt plan",
-  },
-  "avvikande typ": {
-    symbol: "≠",
-    className: "text-amber-600 dark:text-amber-400",
-    label: "Annan typ än planerat",
-  },
-  "ej genomfört": {
-    symbol: "✗",
-    className: "text-zinc-400 dark:text-zinc-600",
-    label: "Ej genomfört",
-  },
-  oplanerat: {
-    symbol: "+",
-    className: "text-zinc-500 dark:text-zinc-400",
-    label: "Oplanerat pass",
-  },
+/** Tre lägen, inte fyra — "avvikande typ" (genomfört, men en annan sorts
+ * pass än planerat) räknas som "Enligt plan" här: det VAR både planerat och
+ * genomfört den dagen, vilket är vad den hopfällda raden ska svara på i ett
+ * enda ord. Vilken typ som faktiskt planerades vs genomfördes står kvar,
+ * tydligt, i PlanRow/OutcomeRow när dagen fälls ut. Fylld bricka (samma
+ * mönster som sjuk-/skada-/tävlingsmärkena ovanför) i stället för en liten
+ * kulör symbol — den förra versionen var för otydlig för att läsa i ett
+ * ögonkast. */
+const OUTCOME_BADGE: Record<PlanMatch["outcome"], { label: string; className: string }> = {
+  genomfört: { label: "Enligt plan", className: "bg-emerald-600" },
+  "avvikande typ": { label: "Enligt plan", className: "bg-emerald-600" },
+  "ej genomfört": { label: "Ej genomfört", className: "bg-red-500" },
+  oplanerat: { label: "Oplanerat", className: "bg-zinc-500" },
 };
 
-/** Passtyp + synkmarkör — den hopfällda radens enda innehåll för ett pass.
- * Typen är utfallets kategori när passet genomfördes, annars planens typ
- * (t.ex. en missad dag har bara planen att visa typ ur). */
+/** Passtyp + tydlig bricka för planerat/genomfört-status — den hopfällda
+ * radens enda innehåll för ett pass. Typen är utfallets kategori när passet
+ * genomfördes, annars planens typ (en missad dag har bara planen att visa
+ * typ ur). */
 function MatchSummary({ match }: { match: PlanMatch }) {
   const type = match.session
     ? typeLabel(match.session.category)
     : match.planned
       ? typeLabel(match.planned.workout_type)
       : "Pass";
-  const marker = OUTCOME_MARKER[match.outcome];
+  const badge = OUTCOME_BADGE[match.outcome];
   return (
-    <span className="inline-flex items-center gap-1 text-zinc-700 dark:text-zinc-300">
-      {type}
-      <span className={marker.className} title={marker.label} aria-label={marker.label}>
-        {marker.symbol}
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-zinc-700 dark:text-zinc-300">{type}</span>
+      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${badge.className}`}>
+        {badge.label}
       </span>
     </span>
   );
