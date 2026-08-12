@@ -37,13 +37,19 @@ export type SessionActivity = {
   hr_zone_3_seconds: number | null;
   hr_zone_4_seconds: number | null;
   hr_zone_5_seconds: number | null;
+  /** Alices egen "Känsla"/"Upplevd ansträngning"-skattning i Garmin Connect-
+   * appen, se migration 20260812100000_garmin_feel_rpe.sql. Ersätter den
+   * borttagna dagliga incheckningen som källa till subjektiv känsla. */
+  garmin_feel: number | null;
+  garmin_rpe: number | null;
 };
 
 /** Kolumnlistan för `.select()` — håll i synk med `SessionActivity`. */
 export const SESSION_ACTIVITY_COLUMNS =
   "id, user_id, name, activity_type, start_time, duration_seconds, distance_meters, " +
   "avg_hr, max_hr, training_load, category, " +
-  "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds";
+  "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds, " +
+  "garmin_feel, garmin_rpe";
 
 /** Ett träningspass: aggregatet av de fragment som hör ihop. */
 export type TrainingSession = {

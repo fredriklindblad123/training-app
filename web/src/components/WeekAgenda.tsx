@@ -29,8 +29,6 @@ export type AgendaDiaryDay = {
   day_type: string | null;
   notes: string | null;
   session_log: string | null;
-  feeling: number | null;
-  rpe: number | null;
 };
 
 export type AgendaMetricDay = {
@@ -105,9 +103,16 @@ export function WeekAgenda({
           diaryStatus != null &&
           (diaryStatus !== "training" || matches.some((m) => m.session != null));
 
+        // Känsla/ansträngning kom tidigare från den dagliga incheckningen
+        // (diary_entries.feeling/rpe), borttagen 2026-08-12. Källan är nu
+        // Alices egen skattning i Garmin Connect-appen, läst av dagens
+        // dominerande pass (samma fragment som redan avgör kategori/varv på
+        // raderna ovan) — se lib/sessions.ts och migration
+        // 20260812100000_garmin_feel_rpe.sql.
+        const daySession = matches.find((m) => m.session != null)?.session ?? null;
         const footParts = formatFootParts({
-          feeling: diary?.feeling ?? null,
-          rpe: diary?.rpe ?? null,
+          feeling: daySession?.dominantActivity.garmin_feel ?? null,
+          rpe: daySession?.dominantActivity.garmin_rpe ?? null,
           sleepSeconds: metric?.sleep_seconds ?? null,
           hrv: metric?.hrv_overnight_avg ?? null,
         });

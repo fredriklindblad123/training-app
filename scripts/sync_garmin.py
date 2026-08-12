@@ -73,6 +73,22 @@ def is_allowed_activity(a: dict) -> bool:
     return any(s in type_key for s in _ALLOWED_SUBSTRINGS)
 
 
+def map_garmin_feel(direct_workout_feel: int | None) -> int | None:
+    """Garmins directWorkoutFeel (0/25/50/75/100 = Mycket svag..Mycket stark)
+    till samma 1-5-skala appen använder på andra hållknappsrader. Speglar
+    web/api/index.py — håll dem i synk."""
+    if direct_workout_feel is None:
+        return None
+    return max(1, min(5, round(direct_workout_feel / 25) + 1))
+
+
+def map_garmin_rpe(direct_workout_rpe: int | None) -> int | None:
+    """Garmins directWorkoutRpe (0-100 i steg om 10, Borg-liknande) till 0-10."""
+    if direct_workout_rpe is None:
+        return None
+    return max(0, min(10, round(direct_workout_rpe / 10)))
+
+
 def map_activity(a: dict, user_id: str) -> dict:
     avg_speed = a.get("averageSpeed")
     return {
@@ -128,6 +144,55 @@ def upsert_activities(supabase_url: str, service_key: str, rows: list[dict]) -> 
     return resp.json()
 
 
+# Ett Garmin-anrop per pass (samma resonemang som varvdata i
+# web/api/index.py) — taket skyddar mot att en stor --days-körning drar
+# hundratals extra anrop och triggar rate-limiting.
+EVALUATIONS_PER_RUN = 30
+
+
+def sync_evaluations(client: Garmin, supabase_url: str, service_key: str, rows: list[dict]) -> int:
+    """Hämta Alices egen "Känsla"/"Upplevd ansträngning"-skattning per pass
+    (Garmin Connect-appens "Utvärdering") för pass som saknar den än.
+    Ersätter den dagliga incheckningen — se migration
+    20260812100000_garmin_feel_rpe.sql för bakgrund."""
+    candidates = [r for r in rows if r.get("garmin_feel") is None and r.get("garmin_rpe") is None]
+    candidates.sort(key=lambda r: r.get("start_time") or "", reverse=True)
+    candidates = candidates[:EVALUATIONS_PER_RUN]
+
+    headers = {
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+    written = 0
+    for row in candidates:
+        try:
+            evaluation = client.get_activity_evaluation(row["external_id"])
+        except Exception:
+            continue
+        summary = (evaluation or {}).get("summaryDTO") or {}
+        feel = map_garmin_feel(summary.get("directWorkoutFeel"))
+        rpe = map_garmin_rpe(summary.get("directWorkoutRpe"))
+        if feel is None and rpe is None:
+            continue
+        # PATCH, inte POST-upsert: en POST med bara id/garmin_feel/garmin_rpe
+        # och on_conflict=id ser ut som en INSERT för Postgres innan
+        # konfliktlösningen slår till, och user_id (not null, saknas i
+        # payloaden) stoppar hela satsen — verifierat mot skarp data
+        # 2026-08-12. Raden finns redan, så en ren UPDATE räcker.
+        resp = requests.patch(
+            f"{supabase_url}/rest/v1/activities",
+            headers=headers,
+            params={"id": f"eq.{row['id']}"},
+            json={"garmin_feel": feel, "garmin_rpe": rpe},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        written += 1
+    return written
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -164,6 +229,9 @@ def main():
     rows = [map_activity(a, user_id) for a in activities]
     result = upsert_activities(supabase_url, service_key, rows)
     print(f"Synkade {len(result)} aktiviteter till Supabase.")
+
+    eval_count = sync_evaluations(client, supabase_url, service_key, result)
+    print(f"Hämtade Känsla/Ansträngning för {eval_count} pass.")
 
 
 if __name__ == "__main__":

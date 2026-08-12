@@ -133,6 +133,8 @@ create table activities (
   location_name text,
   start_lat double precision,
   start_lng double precision,
+  garmin_feel smallint check (garmin_feel between 1 and 5),   -- Alices egen "Känsla" i Garmin Connect-appen
+  garmin_rpe smallint check (garmin_rpe between 0 and 10),    -- Alices egen "Upplevd ansträngning", Garmin Connect-appen
   raw_data jsonb,                        -- fullständig rådata som backup
   category text check (category in (
     'easy','long_run','threshold','interval','repetition','race','strength','cross_training'
@@ -150,6 +152,17 @@ med fallback på distans/tid för långpass. En manuell ändring i UI:t sätter
 `category_source = 'manual'`, vilket gör att triggern lämnar värdet ifred vid
 nästa Garmin-synk. `category_source = 'auto'` återställer den automatiska
 kategoriseringen.
+
+`garmin_feel`/`garmin_rpe` (migration `20260812100000_garmin_feel_rpe.sql`)
+hämtas från Garmins inofficiella "self evaluation"-endpoint
+(`get_activity_evaluation`, `summaryDTO.directWorkoutFeel`/`.directWorkoutRpe`)
+och ersätter den borttagna dagliga incheckningen
+(`diary_entries.feeling`/`.rpe`, se nedan) som källa till subjektiv
+känsla/ansträngning — samma sorts skattning, men ifylld av Alice i Garmin
+Connect-appen direkt efter passet i stället för i vår app. Synkas löpande
+(`_sync_evaluations` i `web/api/index.py`, `sync_evaluations` i
+`scripts/sync_garmin.py`) och backfyllda historiskt med
+`scripts/backfill_garmin_feel_rpe.py`.
 
 ```sql
 
@@ -237,13 +250,21 @@ create table planned_workouts (
   created_at timestamptz not null default now()
 );
 
+-- rpe/mood/soreness (ursprungsschemat) och feeling/motivation/soreness_level
+-- (migration 20260726120000_diary_checkin_fields.sql, den dagliga
+-- incheckningen) läses och skrivs inte längre av appen sedan 2026-08-12 —
+-- incheckningen fylldes i för sällan för att ge meningsfull data. Ersatt av
+-- activities.garmin_feel/garmin_rpe (se ovan) plus känsla härledd ur
+-- session_log/notes (lib/diary-text.ts). Kolumnerna lämnas kvar i databasen,
+-- samma mönster som goals/plan_phases nedan.
+
 create table diary_entries (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
   entry_date date not null,
   activity_id uuid references activities(id) on delete set null,
   planned_workout_id uuid references planned_workouts(id) on delete set null,
-  rpe integer check (rpe between 1 and 10),  -- upplevd ansträngning
+  rpe integer check (rpe between 1 and 10),  -- upplevd ansträngning (vilande, se ovan)
   mood text,
   soreness text,
   sleep_hours numeric,

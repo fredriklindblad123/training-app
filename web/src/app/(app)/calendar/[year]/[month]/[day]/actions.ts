@@ -27,8 +27,9 @@ export async function saveDiaryEntry(formData: FormData) {
   // Dagtyp-rutan högst upp och dagboksformuläret längre ner skickar båda hit,
   // men bara med sina egna fält — bygg payloaden av det som faktiskt kom med
   // (formData.has, inte bara get) så att ett sparat dagtyp-val aldrig nollar
-  // ut anteckningar, och tvärtom. rpe/mood sätts inte alls längre härifrån
-  // (RPE fylls i via den dagliga incheckningen på /dashboard i stället).
+  // ut anteckningar, och tvärtom. rpe/mood sätts inte alls härifrån — den
+  // dagliga incheckningen som tidigare ägde rpe togs bort 2026-08-12
+  // (se activities.garmin_feel/garmin_rpe och lib/diary-text.ts istället).
   const payload: Record<string, unknown> = {
     user_id: user.id,
     entry_date: entryDate,

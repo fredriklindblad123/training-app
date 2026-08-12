@@ -124,13 +124,15 @@ export function formatOutcomeLine(session: TrainingSession, laps: SignatureLap[]
 }
 
 /**
- * Fotraden: incheckning (känsla/ansträngning) och sömn/HRV för dagen.
- * Saknade fält utelämnas tyst — en rad med fem tomma fält vore precis den
- * falska precisionen appens språkkrav (P1.2) varnar för.
+ * Fotraden: känsla/ansträngning och sömn/HRV för dagen. Saknade fält
+ * utelämnas tyst — en rad med fyra tomma fält vore precis den falska
+ * precisionen appens språkkrav (P1.2) varnar för.
  *
- * `rpe` lagras 1–10 (se checkin-actions.ts: `rpe = effort * 2`) men visas
- * 1–5 som "ansträngning", samma skala och samma ord som /dashboard använder
- * för samma mått — annars ser det ut som två olika mätningar.
+ * `feeling` och `rpe` kommer från Alices egen "Utvärdering" per pass i
+ * Garmin Connect-appen (activities.garmin_feel/garmin_rpe), inte längre den
+ * borttagna dagliga incheckningen. `feeling` är 1–5 (samma skala appen
+ * använder överallt), `rpe` är Garmins egen Borg-liknande 0–10-skala och
+ * visas som den är, utan omräkning.
  */
 export function formatFootParts(input: {
   feeling: number | null;
@@ -140,7 +142,7 @@ export function formatFootParts(input: {
 }): string[] {
   const parts: string[] = [];
   if (input.feeling != null) parts.push(`känsla ${input.feeling}/5`);
-  if (input.rpe != null) parts.push(`ansträngning ${Math.round(input.rpe / 2)}/5`);
+  if (input.rpe != null) parts.push(`ansträngning ${input.rpe}/10`);
   if (input.sleepSeconds != null) parts.push(`sömn ${formatHoursMinutes(input.sleepSeconds)}`);
   if (input.hrv != null) parts.push(`HRV ${Math.round(input.hrv)} ms`);
   return parts;

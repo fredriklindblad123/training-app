@@ -487,7 +487,7 @@ export default async function TrendsPage({
     (() => {
       let q = supabase
         .from("diary_entries")
-        .select("entry_date, rpe, feeling, day_type, notes")
+        .select("entry_date, day_type, notes")
         .gte("entry_date", startDate);
       if (endDateExclusive) q = q.lt("entry_date", endDateExclusive);
       return q.order("entry_date");
@@ -552,13 +552,26 @@ export default async function TrendsPage({
   const notesByWeek = new Map<string, string[]>();
   const sickDaysByWeek = new Map<string, string[]>();
   const injuredDaysByWeek = new Map<string, string[]>();
+  // RPE/känsla kom tidigare från den dagliga incheckningen
+  // (diary_entries.rpe/feeling), borttagen 2026-08-12 — fylldes i för sällan
+  // för att ge meningsfull data. Källan är nu Alices egen Känsla/Upplevd
+  // ansträngning-skattning i Garmin Connect-appen efter varje pass
+  // (activities.garmin_feel/garmin_rpe, se migration
+  // 20260812100000_garmin_feel_rpe.sql), läst av passets dominantActivity —
+  // samma fragment som redan avgör passets kategori och namn på andra håll.
   const rpeByDay = new Map<string, number>();
   const feelingByDay = new Map<string, number>();
-  // P2.2: känsla härledd ur dagbokstexten. Hålls medvetet åtskild från
-  // feelingByDay (atletens egen incheckning) — en maskinellt tolkad siffra
-  // får aldrig se ut som något hon själv svarat. Den finns för att det är
-  // enda sättet att få subjektiv historik *bakåt*: de självrapporterade
-  // fälten är tomma i hela den befintliga dagboken.
+  for (const session of sessions) {
+    const feel = session.dominantActivity.garmin_feel;
+    const rpe = session.dominantActivity.garmin_rpe;
+    if (feel != null) feelingByDay.set(session.date, feel);
+    if (rpe != null) rpeByDay.set(session.date, rpe);
+  }
+
+  // P2.2: känsla härledd ur dagbokstexten. Egen källa, oberoende av Garmin —
+  // en maskinellt tolkad siffra ur Alices egna ord, användbar även för
+  // perioder utan Garmin-data (t.ex. innan hon skaffade klockan). Hålls
+  // medvetet åtskild från feelingByDay i UI:t, så de två inte blandas ihop.
   const derivedFeelingByDay = new Map<string, number>();
 
   for (const entry of diaryEntries ?? []) {
@@ -576,8 +589,6 @@ export default async function TrendsPage({
     if (entry.day_type === "injured") {
       injuredDaysByWeek.set(wk, [...(injuredDaysByWeek.get(wk) ?? []), day]);
     }
-    if (entry.rpe != null) rpeByDay.set(day, entry.rpe);
-    if (entry.feeling != null) feelingByDay.set(day, entry.feeling);
   }
 
   const periods: ComboPeriod[] = weekSeries.map((wk) => ({
@@ -748,14 +759,14 @@ export default async function TrendsPage({
     },
     {
       id: "rpe",
-      label: "RPE",
+      label: "RPE (Garmin)",
       values: rpeWeekly,
       formatKind: "decimal1",
       higherIsBetter: false,
     },
     {
       id: "feeling",
-      label: "Känsla",
+      label: "Känsla (Garmin)",
       values: feelingWeekly,
       formatKind: "decimal1",
       higherIsBetter: true,
@@ -879,25 +890,26 @@ export default async function TrendsPage({
 
   const correlations = [
     {
-      title: "Sömnpoäng ↔ RPE",
-      description: "Hur väl sov du natten innan, jämfört med hur ansträngande passet kändes.",
+      title: "Sömnpoäng ↔ RPE (Garmin)",
+      description:
+        "Hur väl sov du natten innan, jämfört med hur ansträngande passet kändes (Alices egen skattning i Garmin Connect-appen).",
       pairs: pairsFrom(sleepScoreByDay, rpeByDay),
       needsRpe: true,
     },
     {
-      title: "HRV ↔ RPE",
+      title: "HRV ↔ RPE (Garmin)",
       description: "Din morgon-HRV jämfört med upplevd ansträngning samma dag.",
       pairs: pairsFrom(hrvValueByDay, rpeByDay),
       needsRpe: true,
     },
     {
-      title: "Vilopuls ↔ RPE",
+      title: "Vilopuls ↔ RPE (Garmin)",
       description: "Förhöjd vilopuls (ofta tecken på otillräcklig återhämtning) mot RPE.",
       pairs: pairsFrom(rhrValueByDay, rpeByDay),
       needsRpe: true,
     },
     {
-      title: "Sömntid ↔ RPE",
+      title: "Sömntid ↔ RPE (Garmin)",
       description: "Antal timmars sömn mot upplevd ansträngning.",
       pairs: pairsFrom(sleepHoursByDay, rpeByDay),
       needsRpe: true,
@@ -914,8 +926,9 @@ export default async function TrendsPage({
       pairs: pairsFrom(hrvValueByDay, loadByDay),
       needsRpe: false,
     },
-    // P2.2: de här tre är de enda som har underlag längre bakåt än den
-    // dagliga incheckningen, eftersom känslan läses ur dagbokstexten.
+    // P2.2: de här tre bygger på känsla härledd ur dagbokstexten i stället
+    // för Garmins Känsla-skattning — täcker perioder utan Garmin-data (t.ex.
+    // innan klockan) eftersom källan är Alices egna ord, inte klockan.
     {
       title: "HRV ↔ känsla (ur dagbokstext)",
       description:
@@ -944,7 +957,7 @@ export default async function TrendsPage({
           "Ingen sömn-, HRV- eller vilopulsdata i perioden. Synka Garmin på /settings.";
       } else if (c.needsRpe && rpeDays.size === 0) {
         reason =
-          "Ingen RPE är ifylld i perioden. RPE fylls i på kalendersidan — utan den finns inget att korrelera mot.";
+          "Ingen RPE är synkad i perioden. RPE hämtas från Garmin Connect-appens egen \"Utvärdering\" per pass — kräver att Alice fyllt i Upplevd ansträngning där.";
       } else if (c.needsRpe && overlapDays === 0) {
         reason =
           `Måtten täcker olika perioder: återhämtningsdata finns ${formatDateRange(metricRange.from, metricRange.to)}, ` +
@@ -980,12 +993,12 @@ export default async function TrendsPage({
       range: dateRange(efPoints.map((p) => p.date)),
     },
     {
-      label: "RPE",
+      label: "RPE (Garmin)",
       weeksWithData: countWeeksWithData(rpeWeekly),
       range: dateRange(rpeDays),
     },
     {
-      label: "Känsla",
+      label: "Känsla (Garmin)",
       weeksWithData: countWeeksWithData(feelingWeekly),
       range: dateRange(feelingByDay.keys()),
     },

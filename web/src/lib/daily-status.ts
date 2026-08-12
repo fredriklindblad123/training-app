@@ -110,10 +110,12 @@ export type DailyStatus = {
  *
  * `feeling` (känsla tolkad ur dagbokstexten, P2.2) fanns tidigare som en
  * femte markör här men togs bort 2026-07-28 — den var ofta tom (kräver en
- * dagbokstext att tolka) och dubblerade den mycket tydligare manuella
- * incheckningen (P0.4, se DailyCheckIn) som nu visas som egna KPI-ringar på
- * /dashboard. Den textbaserade tolkningen lever kvar för sitt eget syfte i
- * /trends korrelationskort ("HRV ↔ känsla ur dagbokstext"). */
+ * dagbokstext att tolka) och dubblerade den då mycket tydligare manuella
+ * incheckningen (P0.4). Incheckningen är i sin tur borttagen 2026-08-12 (för
+ * sällan ifylld för att ge meningsfull data) och ersatt av Garmins egen
+ * Känsla/Ansträngning-skattning per pass (activities.garmin_feel/garmin_rpe)
+ * plus den textbaserade tolkningen, som lever kvar för sitt eget syfte i
+ * /blocket korrelationskort ("HRV ↔ känsla ur dagbokstext"). */
 export type DailyStatusInput = {
   date: string;
   hrv?: number | null;

@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { DailyCheckIn } from "@/components/DailyCheckIn";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
 import { ActionCard } from "@/components/ActionCard";
-import { ringFillAndStatus, type RingDirection, type RingStatus } from "@/lib/kpi-ring";
+import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
-import { computeCheckInStats } from "@/lib/checkin";
 import { QUALITY_WORKOUT_TYPES, addDays as planAddDays, mondayOf } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
 import { nextActions, type NextActionInput } from "@/lib/next-actions";
@@ -31,45 +29,19 @@ import { STATUS_LABEL } from "@/lib/calendar-utils";
 /* Idag: startsidan efter inloggning (se app/page.tsx, login/actions.ts,
  * auth/confirm/route.ts). Sidorna delades om efter loopens kadenser
  * (docs/tranarloopen.md 1.1, 3.1) — /veckan äger veckan, /blocket blocket,
- * /sasongen säsongen. Den här sidan äger bara dagen: dagens incheckning,
- * beredskap inför morgondagen (K3), status mot baslinjen (P1.2) och dagens
- * pass. Kontinuiteten (K6) är enda undantaget med lång horisont — den står
- * kvar som ett ankare, inte som en periodvy. Nyckeltalen visas som samma
- * sorts KPI-ring: en siffra i mitten, en ring som visar hur nära riktvärdet
- * man ligger, färgad grönt/gult/rött. */
-
-/** Bygger ring-props för ett incheckningsmått (1–5-skalan). Riktvärdet är
- * inte en personlig baslinje utan skalans egen ände: 5 (bäst) för
- * higher_is_better, 2 (lite men inte noll) för lower_is_better — annars blir
- * en hög muskelömhet fylld och grön av samma anledning som en hög känsla,
- * vilket var precis den bugg som gjorde färgsättningen orimlig. */
-function scoreRing({
-  label,
-  value,
-  direction,
-  hint,
-}: {
-  label: string;
-  value: number | null;
-  direction: RingDirection;
-  hint: string;
-}) {
-  const target = direction === "lower_is_better" ? 2 : 5;
-  const { fill, status } = ringFillAndStatus(value, target, direction);
-  return {
-    label,
-    valueText: value != null ? (Number.isInteger(value) ? String(value) : value.toFixed(1)) : "–",
-    unit: "/5",
-    fill,
-    status: (value == null ? "unknown" : status) as RingStatus,
-    targetText: direction === "neutral" ? undefined : `Mål ${target}/5`,
-    detailRows: [
-      { label: "Idag", value: value != null ? `${value.toFixed(1)} av 5` : "–" },
-      { label: "Mål", value: direction === "neutral" ? "–" : `${target} av 5` },
-    ],
-    hint,
-  };
-}
+ * /sasongen säsongen. Den här sidan äger bara dagen: beredskap inför
+ * morgondagen (K3), status mot baslinjen (P1.2) och dagens pass.
+ * Kontinuiteten (K6) är enda undantaget med lång horisont — den står kvar
+ * som ett ankare, inte som en periodvy. Nyckeltalen visas som samma sorts
+ * KPI-ring: en siffra i mitten, en ring som visar hur nära riktvärdet man
+ * ligger, färgad grönt/gult/rött.
+ *
+ * Den dagliga incheckningen (subjektiv känsla/ansträngning) fanns tidigare
+ * här men togs bort 2026-08-12 — fylldes i för sällan för att ge meningsfull
+ * data. Samma sorts skattning (Känsla/Upplevd ansträngning) hämtas nu istället
+ * från Garmin Connect-appens egen "Utvärdering" per pass
+ * (activities.garmin_feel/garmin_rpe), och känsla ur Alices egna ord från
+ * dagbokstexten (lib/diary-text.ts) — se /blocket och veckoagendan. */
 
 /** Fallgrop 3 i K6 (tranarperspektiv.md): under den här mängden avslutade
  * veckor är "personbästa" bara brus från en kort historik — bättre att visa
@@ -201,12 +173,10 @@ export default async function IdagPage() {
       .select("entry_date, day_type")
       .gte("entry_date", continuityFrom)
       .in("day_type", ["sick", "injured"]),
-    // Dagens incheckning och gårdagens dagboksanteckning (L2, regel 3) i
-    // samma fråga — båda är enstaka rader på `user_id, entry_date`, och två
-    // separata frågor för samma tabell hade bara varit en rundtripp till.
+    // Gårdagens dagboksanteckning (L2, regel 3).
     supabase
       .from("diary_entries")
-      .select("entry_date, feeling, motivation, soreness_level, rpe, notes")
+      .select("entry_date, notes")
       .eq("user_id", user.id)
       .in("entry_date", [todayKey, yesterdayKey]),
     // P1.2-baslinjen (fysiologi) är alltid de senaste 60 dagarna.
@@ -253,21 +223,7 @@ export default async function IdagPage() {
     supabase.from("profiles").select("lt2_hr").maybeSingle(),
   ]);
 
-  const todayEntry = (recentDiaryEntries ?? []).find((e) => e.entry_date === todayKey);
   const yesterdayEntry = (recentDiaryEntries ?? []).find((e) => e.entry_date === yesterdayKey);
-
-  // --- Dagens incheckning (P0.4): visas bara om den inte redan är gjord. --
-  const checkInStats = await computeCheckInStats(supabase, user.id, todayKey);
-  const checkIn = {
-    initialDone: todayEntry?.feeling != null,
-    initialScores: {
-      feeling: todayEntry?.feeling ?? null,
-      effort: todayEntry?.rpe != null ? Math.round(todayEntry.rpe / 2) : null,
-      soreness: todayEntry?.soreness_level ?? null,
-      motivation: todayEntry?.motivation ?? null,
-    },
-    initialStats: checkInStats,
-  };
 
   // --- Status mot baslinje (P1.2) ----------------------------------------
   // Fönstret är fast på 7 dagar — det är fönstret modellen är designad för
@@ -341,7 +297,6 @@ export default async function IdagPage() {
 
   const nextActionInput: NextActionInput = {
     todayKey,
-    hasCheckedInToday: checkIn.initialDone,
     shouldEaseOff: dailyStatus.shouldEaseOff,
     hasQualityWorkoutTomorrow: (tomorrowQualityWorkouts ?? []).length > 0,
     tomorrowHref,
@@ -388,43 +343,13 @@ export default async function IdagPage() {
     }),
   ];
 
-  // --- Incheckning som ringar: dagens värden, inget snitt ------------------
-  const checkInRingsVisible = checkIn.initialDone;
-
-  const checkInRings = [
-    scoreRing({
-      label: "Känsla i kroppen",
-      value: checkIn.initialScores.feeling,
-      direction: "higher_is_better",
-      hint: "Din egen skattning, 1–5, från den dagliga incheckningen.",
-    }),
-    scoreRing({
-      label: "Motivation/ork",
-      value: checkIn.initialScores.motivation,
-      direction: "higher_is_better",
-      hint: "Din egen skattning, 1–5, från den dagliga incheckningen.",
-    }),
-    scoreRing({
-      label: "Muskelömhet",
-      value: checkIn.initialScores.soreness,
-      direction: "lower_is_better",
-      hint: "Din egen skattning, 1–5 — lägre är mindre öm.",
-    }),
-    scoreRing({
-      label: "Ansträngning",
-      value: checkIn.initialScores.effort,
-      direction: "neutral",
-      hint: "Upplevd ansträngning i passet, 1–5. Varken bra eller dåligt i sig — bara beskrivande.",
-    }),
-  ];
-
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Idag</h1>
 
-      {/* --- L2: nästa steg, överst på sidan och före incheckningen — se
+      {/* --- L2: nästa steg, överst på sidan — se
           docs/tranarloopen.md. Max tre kort, alltid samma dämpade accent
           (ActionCard/--surface-action) oavsett vilken regel som träffade;
           ordningen bär prioriteten. En tom lista är ett gott tillstånd och
@@ -442,18 +367,6 @@ export default async function IdagPage() {
           </div>
         )}
       </section>
-
-      {/* --- Dagens incheckning: första vyn för dagen tills den är gjord —
-          därefter försvinner den helt. Utfallet lever bara som KPI-ringar i
-          "Incheckning"-sektionen nedan. -------------------------------- */}
-      {!checkIn.initialDone && (
-        <DailyCheckIn
-          entryDate={todayKey}
-          initialDone={checkIn.initialDone}
-          initialScores={checkIn.initialScores}
-          initialStats={checkIn.initialStats}
-        />
-      )}
 
       {/* --- K3: beredskap kopplad till morgondagens pass. Visas bara när
           avvikelsen (P1.2) och ett kvalitetspass imorgon båda är sanna —
@@ -494,20 +407,6 @@ export default async function IdagPage() {
 
       {/* --- Status mot baslinje (P1.2), fast 7-dagarsfönster -------------- */}
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
-
-      {checkInRingsVisible && (
-        <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <div>
-            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Incheckning</h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">Idag</p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
-            {checkInRings.map((r) => (
-              <KpiRing key={r.label} {...r} />
-            ))}
-          </div>
-        </div>
-      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Dagens pass</h2>

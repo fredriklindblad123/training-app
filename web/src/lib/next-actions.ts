@@ -30,9 +30,6 @@ export type NextActionInput = {
   /** Dagens datum, YYYY-MM-DD. Ankaret för alla datumjämförelser nedan. */
   todayKey: string;
 
-  /** Regel 1. */
-  hasCheckedInToday: boolean;
-
   /** Regel 2 — samma två villkor som K3-kortet (`buildReadinessAlert`) redan
    * räknar ur; se den filens kommentar för varför de är konjunktiva. Kortet
    * bär förklaringen (vilka markörer, hur många dagar i rad) — den här raden
@@ -81,17 +78,6 @@ function isWeekReviewWindow(todayKey: string): boolean {
 
 export function nextActions(input: NextActionInput): NextAction[] {
   const actions: NextAction[] = [];
-
-  if (!input.hasCheckedInToday) {
-    actions.push({
-      id: "checkin",
-      phase: "dag",
-      title: "Checka in för idag",
-      why: "Ger dagens status och morgondagens beredskap rätt underlag.",
-      href: "/idag",
-      priority: 1,
-    });
-  }
 
   if (input.shouldEaseOff && input.hasQualityWorkoutTomorrow) {
     actions.push({

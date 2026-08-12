@@ -233,7 +233,7 @@ export default async function VeckanPage({
       .order("slot"),
     supabase
       .from("diary_entries")
-      .select("entry_date, day_type, notes, session_log, feeling, rpe")
+      .select("entry_date, day_type, notes, session_log")
       .gte("entry_date", from)
       .lte("entry_date", to),
     supabase

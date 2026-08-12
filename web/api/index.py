@@ -54,6 +54,11 @@ FIRST_SLEEP_SYNC_DAYS = 30
 # i stället med scripts/backfill_activity_splits.py.
 SPLITS_PER_SYNC = 10
 
+# Samma resonemang som SPLITS_PER_SYNC — self-evaluation (Känsla/Upplevd
+# ansträngning) kostar också ett Garmin-anrop per pass. Historik hämtas i
+# stället med scripts/backfill_garmin_feel_rpe.py.
+EVALUATIONS_PER_SYNC = 10
+
 # Andel av passets snabbaste varv som krävs för att räknas som aktivt varv.
 # Separationen i verklig data är knivskarp: ca 4,5 m/s för en 400:a mot
 # 0,8 m/s för joggvila.
@@ -102,6 +107,25 @@ def _sb_upsert(table: str, rows: list[dict], on_conflict: str) -> None:
     resp.raise_for_status()
 
 
+def _sb_patch(table: str, row_id: str, fields: dict) -> None:
+    """Ren UPDATE av en befintlig rad, till skillnad från _sb_upsert.
+
+    En POST-upsert med bara ett fåtal kolumner (t.ex. id + garmin_feel +
+    garmin_rpe) ser ut som en INSERT för Postgres innan ON CONFLICT hinner
+    slå till, så saknade NOT NULL-kolumner (user_id m.fl.) stoppar hela
+    satsen även när raden redan finns — verifierat mot skarp data
+    2026-08-12. PATCH har inget sådant problem.
+    """
+    resp = requests.patch(
+        f"{SUPABASE_URL}/rest/v1/{table}",
+        headers={**_sb_headers(), "Prefer": "return=minimal"},
+        params={"id": f"eq.{row_id}"},
+        json=fields,
+        timeout=30,
+    )
+    resp.raise_for_status()
+
+
 def _sb_select(table: str, select: str, params: dict) -> list[dict]:
     resp = requests.get(
         f"{SUPABASE_URL}/rest/v1/{table}",
@@ -126,6 +150,22 @@ def _to_iso_utc(garmin_gmt: Optional[str]) -> Optional[str]:
     if not garmin_gmt:
         return None
     return garmin_gmt.replace(" ", "T") + "Z"
+
+
+def _map_garmin_feel(direct_workout_feel: Optional[int]) -> Optional[int]:
+    """Garmins directWorkoutFeel (0/25/50/75/100 = Mycket svag..Mycket stark)
+    till samma 1-5-skala appen redan använder på andra hållknappsrader.
+    Verifierat mot skarp data 2026-08-12 (se migration 20260812100000)."""
+    if direct_workout_feel is None:
+        return None
+    return max(1, min(5, round(direct_workout_feel / 25) + 1))
+
+
+def _map_garmin_rpe(direct_workout_rpe: Optional[int]) -> Optional[int]:
+    """Garmins directWorkoutRpe (0-100 i steg om 10, Borg-liknande) till 0-10."""
+    if direct_workout_rpe is None:
+        return None
+    return max(0, min(10, round(direct_workout_rpe / 10)))
 
 
 def _pace_seconds_per_km(speed_m_per_s: Optional[float]) -> Optional[float]:
@@ -370,6 +410,59 @@ def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
     return written
 
 
+def _sync_evaluations(client: Garmin, user_id: str, activities: list[dict]) -> int:
+    """Hämta Alices egen "Känsla"/"Upplevd ansträngning"-skattning per pass
+    (Garmin Connect-appens "Utvärdering", inte klockans egna beräkningar).
+
+    Ersätter den dagliga incheckningen (diary_entries.feeling/rpe, se
+    migration 20260812100000_garmin_feel_rpe.sql) som källa till subjektiv
+    känsla/ansträngning — incheckningen fylldes i för sällan för att ge
+    meningsfull data, medan den här skattningen redan görs i Garmin-appen
+    efter varje pass.
+
+    Samma anropstak och mönster som _sync_splits: ett Garmin-anrop per pass,
+    nyast först, historik hämtas separat med
+    scripts/backfill_garmin_feel_rpe.py.
+    """
+    candidates = [a for a in activities if a.get("activityId") is not None]
+    if not candidates:
+        return 0
+
+    candidates.sort(key=lambda a: a.get("startTimeGMT") or "", reverse=True)
+    candidates = candidates[:EVALUATIONS_PER_SYNC]
+
+    external_ids = [str(a["activityId"]) for a in candidates]
+    rows = _sb_select(
+        "activities",
+        "id,external_id,garmin_feel,garmin_rpe",
+        {"user_id": f"eq.{user_id}", "external_id": f"in.({','.join(external_ids)})"},
+    )
+    by_external = {r["external_id"]: r for r in rows}
+
+    written = 0
+    for activity in candidates:
+        row = by_external.get(str(activity["activityId"]))
+        # Redan ifyllt (eller aktivitetsraden saknas av annan anledning) —
+        # hoppa över så upprepade synkar inte gör om jobbet mot Garmin.
+        if not row or row.get("garmin_feel") is not None or row.get("garmin_rpe") is not None:
+            continue
+        try:
+            evaluation = client.get_activity_evaluation(activity["activityId"])
+        except Exception:
+            continue
+
+        summary = (evaluation or {}).get("summaryDTO") or {}
+        feel = _map_garmin_feel(summary.get("directWorkoutFeel"))
+        rpe = _map_garmin_rpe(summary.get("directWorkoutRpe"))
+        if feel is None and rpe is None:
+            continue
+
+        _sb_patch("activities", row["id"], {"garmin_feel": feel, "garmin_rpe": rpe})
+        written += 1
+
+    return written
+
+
 def _sync_one_user(user_id: str) -> dict:
     token_rows = _sb_select("garmin_tokens", "token", {"user_id": f"eq.{user_id}"})
     if not token_rows:
@@ -417,6 +510,12 @@ def _sync_one_user(user_id: str) -> dict:
         # Varvdata är sekundärt och får aldrig fälla synken.
         split_count = 0
 
+    # Känsla/ansträngning, samma resonemang — sekundärt mot aktiviteterna.
+    try:
+        evaluation_count = _sync_evaluations(client, user_id, activities)
+    except Exception:
+        evaluation_count = 0
+
     sleep_days = FIRST_SLEEP_SYNC_DAYS if is_first_sync else SLEEP_SYNC_DAYS
     sleep_count = _sync_sleep(client, user_id, sleep_days)
 
@@ -429,6 +528,7 @@ def _sync_one_user(user_id: str) -> dict:
         "count": len(activities),
         "sleep_days": sleep_count,
         "split_activities": split_count,
+        "evaluated_activities": evaluation_count,
     }
 
 
