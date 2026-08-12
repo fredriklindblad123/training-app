@@ -80,27 +80,40 @@ function toKey(d: Date): string {
  * kulör symbol — den förra versionen var för otydlig för att läsa i ett
  * ögonkast. */
 const OUTCOME_BADGE: Record<PlanMatch["outcome"], { label: string; className: string }> = {
-  genomfört: { label: "Enligt plan", className: "bg-emerald-600" },
-  "avvikande typ": { label: "Enligt plan", className: "bg-emerald-600" },
-  "ej genomfört": { label: "Ej genomfört", className: "bg-red-500" },
-  oplanerat: { label: "Oplanerat", className: "bg-zinc-500" },
+  genomfört: { label: "Enligt plan", className: "bg-emerald-600 text-white" },
+  "avvikande typ": { label: "Enligt plan", className: "bg-emerald-600 text-white" },
+  "ej genomfört": { label: "Ej genomfört", className: "bg-red-500 text-white" },
+  oplanerat: { label: "Oplanerat", className: "bg-zinc-500 text-white" },
+};
+
+/** "ej genomfört" betyder bara något faktiskt uteblev för dagar som redan
+ * hänt — `outcomeFor` (lib/plan-matching.ts) bryr sig inte om datum, så ett
+ * planerat pass nästa vecka fick samma etikett som ett missat pass förra
+ * veckan tills den här särskiljningen fanns. Ingen dom kan fällas över
+ * något som inte hänt än, därför en neutral "Planerat"-bricka i stället. */
+const PLANNED_UPCOMING_BADGE = {
+  label: "Planerat",
+  className: "border border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400",
 };
 
 /** Passtyp + tydlig bricka för planerat/genomfört-status — den hopfällda
  * radens enda innehåll för ett pass. Typen är utfallets kategori när passet
  * genomfördes, annars planens typ (en missad dag har bara planen att visa
  * typ ur). */
-function MatchSummary({ match }: { match: PlanMatch }) {
+function MatchSummary({ match, isPastDay }: { match: PlanMatch; isPastDay: boolean }) {
   const type = match.session
     ? typeLabel(match.session.category)
     : match.planned
       ? typeLabel(match.planned.workout_type)
       : "Pass";
-  const badge = OUTCOME_BADGE[match.outcome];
+  const badge =
+    match.outcome === "ej genomfört" && !isPastDay
+      ? PLANNED_UPCOMING_BADGE
+      : OUTCOME_BADGE[match.outcome];
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className="text-zinc-700 dark:text-zinc-300">{type}</span>
-      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${badge.className}`}>
+      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
         {badge.label}
       </span>
     </span>
@@ -161,30 +174,24 @@ export function WeekAgenda({
           hrv: metric?.hrv_overnight_avg ?? null,
         });
         const note = diary?.notes || diary?.session_log || null;
-
-        // Komprimerad rad när dagen varken har pass, dagbokstext eller
-        // mätvärden. En vilodag ska inte ta lika mycket plats som ett
-        // tröskelpass (K4, fallgropen i docs/tranarperspektiv.md).
         const hasContent = matches.length > 0 || !!note || footParts.length > 0;
 
-        if (!hasContent) {
-          return (
-            <Link
-              key={key}
-              href={dayHref}
-              className="flex items-baseline gap-2 text-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-600 dark:hover:text-zinc-400"
-            >
-              <span className="font-medium">{dateLabel}</span>
-              <span>inget loggat</span>
-            </Link>
-          );
-        }
+        // "ej genomfört" (lib/plan-matching.ts) bryr sig inte om datum — ett
+        // planerat pass nästa vecka och ett missat pass förra veckan får
+        // samma outcome. Särskiljningen görs här i stället: bara dagar som
+        // redan hänt kan ha "missat" något.
+        const isPastDay = key < todayKey;
 
         // Kantfärgen (DaySection) blir en sjunde, ordlös signal utöver
-        // markörerna: en grön kant betyder att allt den dagen gick enligt
-        // plan, utan att man behöver läsa en enda symbol.
-        const allMatched = matches.length > 0 && matches.every((m) => m.outcome === "genomfört");
-        const hasData = matches.length > 0 ? allMatched : undefined;
+        // brickorna. Grön bara när allt som hänt gick enligt plan — ett
+        // planerat pass längre fram ska inte se ut som ett missat pass bara
+        // för att det ligger i samma vecka.
+        const hasMissedPast = matches.some((m) => m.outcome === "ej genomfört" && isPastDay);
+        const allGoodOrUnplanned = matches.every(
+          (m) => m.outcome === "genomfört" || m.outcome === "avvikande typ",
+        );
+        const hasData =
+          matches.length === 0 ? undefined : hasMissedPast ? false : allGoodOrUnplanned ? true : undefined;
 
         return (
           <DaySection
@@ -213,20 +220,32 @@ export function WeekAgenda({
                     {c.priority} · {c.name}
                   </span>
                 ))}
-                {matches.map((m, mi) => (
-                  <MatchSummary key={mi} match={m} />
-                ))}
+                {matches.length > 0 ? (
+                  matches.map((m, mi) => (
+                    <MatchSummary key={mi} match={m} isPastDay={isPastDay} />
+                  ))
+                ) : (
+                  <span className="text-zinc-400 dark:text-zinc-600">Inget loggat</span>
+                )}
               </span>
             }
           >
-            <div className="flex flex-col gap-1">
-              {matches.map((m, mi) => (
-                <div key={mi} className="flex flex-col gap-0.5">
-                  {m.planned && <PlanRow planned={m.planned} outcome={m.outcome} />}
-                  {m.session && <OutcomeRow session={m.session} outcome={m.outcome} />}
-                </div>
-              ))}
-            </div>
+            {matches.length > 0 ? (
+              <div className="flex flex-col gap-1">
+                {matches.map((m, mi) => (
+                  <div key={mi} className="flex flex-col gap-0.5">
+                    {m.planned && <PlanRow planned={m.planned} outcome={m.outcome} isPastDay={isPastDay} />}
+                    {m.session && <OutcomeRow session={m.session} outcome={m.outcome} />}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              !hasContent && (
+                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  Inget planerat eller genomfört den här dagen.
+                </p>
+              )
+            )}
 
             {note && (
               <AgendaRow label="Alice">
@@ -289,9 +308,11 @@ function AgendaRow({
 function PlanRow({
   planned,
   outcome,
+  isPastDay,
 }: {
   planned: PlannedWorkout;
   outcome: PlanMatch["outcome"];
+  isPastDay: boolean;
 }) {
   const repGroups =
     (planned as unknown as { planned_rep_groups?: AgendaRepGroup[] | null })
@@ -318,7 +339,10 @@ function PlanRow({
           </span>
         </>
       )}
-      {outcome === "ej genomfört" && (
+      {/* Ett planerat pass som ligger framåt i tiden är inte "ej genomfört"
+          än — bara dagar som redan hänt kan ha missat något, se
+          isPastDay-kommentaren vid huvudloopen. */}
+      {outcome === "ej genomfört" && isPastDay && (
         <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">— ej genomfört</span>
       )}
     </AgendaRow>
