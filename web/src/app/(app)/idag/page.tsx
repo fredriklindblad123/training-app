@@ -108,82 +108,139 @@ function continuityRing({
   };
 }
 
-/** Baslinjen för formkurve-ringen kräver minst så här många lugna/långa pass
- * innan de senaste tre jämförs mot något — annars är "baslinjen" bara
- * ett par slumpmässiga pass. */
-const MIN_EF_BASELINE_POINTS = 5;
-/** Antal senaste passen som räknas som "nuläget", samma smetning som
- * dämpar enskilda pass i motvind eller med tappat pulsband. */
-const EF_RECENT_COUNT = 3;
+/** Rullande fönster, samma längd som trendlinjen i EfficiencyChart — så
+ * ringen och grafen på /blocket alltid pratar om samma period. En statisk
+ * "hela historiken"-baslinje svarar på "var ligger jag mot mitt vanliga",
+ * inte på frågan den här ringen faktiskt ska svara på: förbättrar jag mig?
+ * Därför jämförs senaste fönstret alltid mot det *föregående* fönstret,
+ * inte mot ett fast startvärde — jämförelsen flyttar sig framåt med tiden. */
+const EF_TREND_WINDOW_DAYS = 28;
+const EF_TREND_MIN_POINTS = 3;
+/** Under den här förändringen räknas formen som oförändrad — EF svänger
+ * naturligt någon procent mellan enskilda pass utan att något ändrats. */
+const EF_NOISE_THRESHOLD_PCT = 0.02;
 
-/** Formkurvan (P1.4): median av de tre senaste jämförbara passen mot en
- * baslinje av de föregående. Samma pass-urval som /blocket
- * (lib/efficiency.ts) — bara lugna/långa pass räknas, så en hård
- * intervallvecka inte får formkurvan att se sämre ut än den är. */
-function efficiencyRing(efPoints: { ef: number }[]) {
-  const values = efPoints.map((p) => p.ef * METERS_PER_BEAT);
-  const recent = values.slice(-EF_RECENT_COUNT);
-  const prior = values.slice(0, -EF_RECENT_COUNT);
-  const current = median(recent);
-  const baseline = prior.length >= MIN_EF_BASELINE_POINTS ? median(prior) : null;
+/** Hur långt tillbaka VO2max-ringen jämför. Garmins skattning uppdateras
+ * sällan och oregelbundet, så ett kort fönster (som EF:s 28 dagar) skulle
+ * ofta sakna en jämförelsepunkt helt. */
+const VO2MAX_LOOKBACK_DAYS = 60;
+/** Under så här stor förändring räknas konditionen som oförändrad — Garmins
+ * skattning studsar ±1 mellan omräkningar utan att något faktiskt ändrats. */
+const VO2MAX_NOISE_THRESHOLD = 1;
 
-  const { fill, status } = ringFillAndStatus(current, baseline, "higher_is_better");
+function shiftDateKey(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return toDateKey(d);
+}
+
+/** Statusen en trend ska visas med — good/concern är riktningen, "neutral"
+ * (inte "watch") för brus: en oförändrad formkurva är inte något att hålla
+ * koll på, bara ett beskrivande "ingen tydlig riktning än". */
+function trendRingStatus(change: number | null, noiseThreshold: number): RingStatus {
+  if (change == null) return "unknown";
+  if (change >= noiseThreshold) return "good";
+  if (change <= -noiseThreshold) return "concern";
+  return "neutral";
+}
+
+function formatPctChange(pctChange: number): string {
+  return `${pctChange >= 0 ? "+" : ""}${(pctChange * 100).toFixed(1)}%`;
+}
+
+/** Formkurvan (P1.4): senaste 4 veckorna mot de 4 veckorna innan — samma
+ * pass-urval som /blocket (lib/efficiency.ts), bara lugna/långa pass, så en
+ * hård intervallvecka inte får kurvan att se sämre ut än den är. */
+function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: string) {
+  const recentFrom = shiftDateKey(todayKey, -EF_TREND_WINDOW_DAYS);
+  const priorFrom = shiftDateKey(todayKey, -EF_TREND_WINDOW_DAYS * 2);
+
+  const recent = efPoints.filter((p) => p.date >= recentFrom).map((p) => p.ef * METERS_PER_BEAT);
+  const prior = efPoints
+    .filter((p) => p.date >= priorFrom && p.date < recentFrom)
+    .map((p) => p.ef * METERS_PER_BEAT);
+
+  const current = recent.length >= EF_TREND_MIN_POINTS ? median(recent) : null;
+  const baseline = prior.length >= EF_TREND_MIN_POINTS ? median(prior) : null;
+  const pctChange =
+    current != null && baseline != null && baseline > 0 ? (current - baseline) / baseline : null;
+
+  const { fill } = ringFillAndStatus(current, baseline, "higher_is_better");
+  const status = trendRingStatus(pctChange, EF_NOISE_THRESHOLD_PCT);
+
   return {
     label: "Formkurva",
     valueText: current != null ? current.toFixed(2) : "–",
     unit: "m/slag",
     fill,
-    status: (baseline == null ? "unknown" : status) as RingStatus,
-    targetText: baseline != null ? `Baslinje ${baseline.toFixed(2)}` : undefined,
+    status,
+    statusLabel: status === "neutral" ? "Oförändrad" : undefined,
+    targetText: pctChange != null ? `${formatPctChange(pctChange)} senaste 4 v` : undefined,
     detailRows: [
       {
-        label: `Senaste ${EF_RECENT_COUNT} lugna/långa passen`,
-        value: current != null ? `${current.toFixed(2)} m/slag` : "–",
+        label: `Senaste ${EF_TREND_WINDOW_DAYS} dagarna`,
+        value:
+          current != null
+            ? `${current.toFixed(2)} m/slag (${recent.length} pass)`
+            : `bygger underlag (${recent.length} av ${EF_TREND_MIN_POINTS} pass)`,
       },
       {
-        label: "Baslinje",
+        label: `${EF_TREND_WINDOW_DAYS} dagarna innan dess`,
         value:
           baseline != null
-            ? `${baseline.toFixed(2)} m/slag`
-            : `bygger baslinje (${prior.length} av ${MIN_EF_BASELINE_POINTS} pass)`,
+            ? `${baseline.toFixed(2)} m/slag (${prior.length} pass)`
+            : `bygger underlag (${prior.length} av ${EF_TREND_MIN_POINTS} pass)`,
       },
+      { label: "Förändring", value: pctChange != null ? formatPctChange(pctChange) : "–" },
     ],
     hint:
-      "Meter per hjärtslag på lugna/långa pass (minst 20 min, se /blocket) — högre är effektivare " +
-      "löpning vid samma puls. Intervaller och tävlingar räknas inte in, de mäter annat.",
+      "Meter per hjärtslag på lugna/långa pass (minst 20 min), senaste 4 veckorna mot de 4 " +
+      `veckorna innan — visar om du bättrar dig, inte var du ligger mot ditt vanliga. Under ±` +
+      `${(EF_NOISE_THRESHOLD_PCT * 100).toFixed(0)}% räknas som brus. Hela kurvan finns på /blocket.`,
   };
 }
 
-/** Kondition (VO2max): Garmins egen skattning, satt sällan — bara när
- * klockan räknar om den, inte på varje pass. Jämförs mot senaste *andra*
- * värdet (inte ett medelvärde) eftersom det är en diskret uppdatering, inte
- * en brusig mätning som behöver dämpas. */
-function vo2maxRing(readings: { value: number }[]) {
+/** Kondition (VO2max): Garmins egen skattning, nu mot vad den var för ~60
+ * dagar sedan — visar riktningen (blir jag bättre?), inte bara nuläget.
+ * Jämförs mot faktiska värdet vid den tidpunkten, inte mot "senaste andra
+ * värdet", som kan ligga hur långt eller kort tillbaka som helst beroende på
+ * hur ofta klockan råkat räkna om det. */
+function vo2maxRing(readings: { date: string; value: number }[], todayKey: string) {
   const current = readings.length > 0 ? readings[readings.length - 1].value : null;
-  let previous: number | null = null;
-  for (let i = readings.length - 2; i >= 0; i--) {
-    if (readings[i].value !== current) {
-      previous = readings[i].value;
+  const lookbackFrom = shiftDateKey(todayKey, -VO2MAX_LOOKBACK_DAYS);
+
+  let baseline: number | null = null;
+  for (let i = readings.length - 1; i >= 0; i--) {
+    if (readings[i].date <= lookbackFrom) {
+      baseline = readings[i].value;
       break;
     }
   }
+  const delta = current != null && baseline != null ? current - baseline : null;
 
-  const { fill, status } = ringFillAndStatus(current, previous, "higher_is_better");
+  const { fill } = ringFillAndStatus(current, baseline, "higher_is_better");
+  const status = trendRingStatus(delta, VO2MAX_NOISE_THRESHOLD);
+
   return {
     label: "Kondition",
     valueText: current != null ? String(Math.round(current)) : "–",
     unit: "VO2max",
     fill,
-    status: (previous == null ? "unknown" : status) as RingStatus,
-    targetText: previous != null ? `Förra värdet ${Math.round(previous)}` : undefined,
+    status,
+    statusLabel: status === "neutral" ? "Oförändrad" : undefined,
+    targetText:
+      delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(0)} senaste ${VO2MAX_LOOKBACK_DAYS} d` : undefined,
     detailRows: [
-      { label: "Senaste värdet", value: current != null ? `${Math.round(current)} ml/kg/min` : "–" },
+      { label: "Nu", value: current != null ? `${Math.round(current)} ml/kg/min` : "–" },
       {
-        label: "Föregående värde",
-        value: previous != null ? `${Math.round(previous)} ml/kg/min` : "ingen tidigare mätning ännu",
+        label: `För ~${VO2MAX_LOOKBACK_DAYS} dagar sedan`,
+        value: baseline != null ? `${Math.round(baseline)} ml/kg/min` : "ingen mätning så långt tillbaka än",
       },
+      { label: "Förändring", value: delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}` : "–" },
     ],
-    hint: "Garmins egen konditionsskattning. Uppdateras sällan och oregelbundet, inte per pass.",
+    hint:
+      "Garmins egen konditionsskattning, nu jämfört med för ungefär två månader sedan — visar " +
+      "riktningen, inte bara nuläget. Uppdateras sällan och oregelbundet, inte per pass.",
   };
 }
 
@@ -433,7 +490,7 @@ export default async function IdagPage() {
     }),
   ];
 
-  const formRings = [efficiencyRing(efPoints), vo2maxRing(vo2maxReadings)];
+  const formRings = [efficiencyRing(efPoints, todayKey), vo2maxRing(vo2maxReadings, todayKey)];
 
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
 
