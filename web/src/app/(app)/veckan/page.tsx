@@ -13,13 +13,14 @@ import {
   type PlanMatch,
   type PlannedWorkout,
 } from "@/lib/plan-matching";
-import { ComplianceCard } from "@/components/ComplianceCard";
 import { AvailabilityBand } from "@/components/AvailabilityBand";
 import {
   WeekAgenda,
   type AgendaDiaryDay,
   type AgendaMetricDay,
 } from "@/components/WeekAgenda";
+import { KpiRing } from "@/components/KpiRing";
+import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { QUALITY_WORKOUT_TYPES, type AvailabilityPeriod } from "@/lib/planning";
 import { formatDuration, formatHoursMinutes } from "@/lib/format";
 import { isoWeekStart, weekLabel } from "@/lib/stats-utils";
@@ -91,6 +92,48 @@ function CategoryDistributionBar({
       </ul>
     </div>
   );
+}
+
+/** Veckans fyra nyckeltal (Pass, Distans, Tid, Belastning) som KPI-ringar,
+ * samma visuella form som /dashboard (components/KpiRing.tsx) i stället för
+ * de tidigare textrutorna. Pass splittas i distans- och kvalitetspass
+ * (QUALITY_WORKOUT_TYPES, samma definition som K6:s kvalitetsveckor i
+ * lib/continuity.ts) — en enda "Pass"-summa sa inget om vilken sorts vecka
+ * det varit.
+ *
+ * Där veckan hade en plan (compliance.plannedCount > 0) jämförs ringen mot
+ * det planerade — samma tal som fanns i det borttagna sammanfattningskortet
+ * (ComplianceCard), bara som ring i stället för en textrad. Utan plan visas
+ * bara talet, neutralt, ingen grön/gul/röd bedömning mot ingenting. */
+function statRing({
+  label,
+  value,
+  valueText,
+  target,
+  targetLabel,
+  hint,
+}: {
+  label: string;
+  value: number;
+  valueText: string;
+  target: number | null;
+  targetLabel: string;
+  hint: string;
+}) {
+  const { fill, status } = ringFillAndStatus(value, target, "higher_is_better");
+  return {
+    label,
+    valueText,
+    fill: target != null ? fill : 1,
+    status: (target == null ? "neutral" : status) as RingStatus,
+    statusLabel: target == null ? "" : undefined,
+    targetText: target != null ? `${targetLabel} ${target}` : undefined,
+    detailRows: [
+      { label: "Genomfört", value: valueText },
+      { label: targetLabel, value: target != null ? String(target) : "ingen plan" },
+    ],
+    hint,
+  };
 }
 
 /* Veckan — loopens hjärtslag (docs/tranarloopen.md).
@@ -288,9 +331,6 @@ export default async function VeckanPage({
   const diaryByDay = new Map<string, AgendaDiaryDay>(
     (diaryRows ?? []).map((d) => [d.entry_date as string, d as AgendaDiaryDay]),
   );
-  const dayTypeByDate = new Map<string, string | null>(
-    [...diaryByDay].map(([day, entry]) => [day, entry.day_type]),
-  );
   const dailyMetricsByDay = new Map<string, AgendaMetricDay>(
     (dailyMetricRows ?? []).map((m) => [m.metric_date as string, m as AgendaMetricDay]),
   );
@@ -308,6 +348,15 @@ export default async function VeckanPage({
   const totalKm = sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
   const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
   const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
+
+  // Pass splittat i distans/kvalitet — samma QUALITY_WORKOUT_TYPES-definition
+  // som qualityByWeek nedan och K6:s kvalitetsveckor (lib/continuity.ts).
+  const qualityCount = sessions.filter((s) =>
+    (QUALITY_WORKOUT_TYPES as readonly string[]).includes(s.category),
+  ).length;
+  const distanceSessionCount = sessions.length - qualityCount;
+  const distancePlanned =
+    compliance.plannedCount > 0 ? compliance.plannedCount - compliance.qualityPlanned : null;
 
   const isCurrentWeek = from === toKey(mondayOf(todayKey));
   const nextWeekIsPlanned = (nextWeekPlanned ?? []).length > 0;
@@ -382,6 +431,49 @@ export default async function VeckanPage({
     "vecka",
   );
 
+  const statRings = [
+    statRing({
+      label: "Distanspass",
+      value: distanceSessionCount,
+      valueText: String(distanceSessionCount),
+      target: distancePlanned,
+      targetLabel: "Planerat",
+      hint: "Lugna pass och långpass den här veckan — allt som inte räknas som kvalitetspass.",
+    }),
+    statRing({
+      label: "Kvalitetspass",
+      value: qualityCount,
+      valueText: String(qualityCount),
+      target: compliance.plannedCount > 0 ? compliance.qualityPlanned : null,
+      targetLabel: "Planerat",
+      hint: "Tröskel, intervall och tävling — samma definition som K6:s kvalitetsveckor på /dashboard.",
+    }),
+    statRing({
+      label: "Distans",
+      value: totalKm,
+      valueText: `${totalKm.toFixed(1)} km`,
+      target: compliance.plannedKm,
+      targetLabel: "Planerat",
+      hint: "Total distans för veckans pass.",
+    }),
+    statRing({
+      label: "Tid",
+      value: totalSeconds,
+      valueText: formatDuration(totalSeconds),
+      target: null,
+      targetLabel: "Planerat",
+      hint: "Total träningstid för veckans pass. Ingen planerad tid att jämföra mot — bara distans/typ planeras.",
+    }),
+    statRing({
+      label: "Belastning",
+      value: totalLoad,
+      valueText: String(Math.round(totalLoad)),
+      target: null,
+      targetLabel: "Planerat",
+      hint: "Summerad träningsbelastning (Garmins mått) för veckans pass.",
+    }),
+  ];
+
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -438,27 +530,13 @@ export default async function VeckanPage({
         </section>
       )}
 
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Pass", value: String(sessions.length) },
-          { label: "Distans", value: totalKm > 0 ? `${totalKm.toFixed(1)} km` : "—" },
-          { label: "Tid", value: totalSeconds > 0 ? formatDuration(totalSeconds) : "—" },
-          { label: "Belastning", value: totalLoad > 0 ? String(Math.round(totalLoad)) : "—" },
-        ].map((tile) => (
-          <div key={tile.label} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
-            <dd className="mt-0.5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {tile.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      <ComplianceCard
-        title={`Vecka ${weekLabel(from).slice(2)}`}
-        compliance={compliance}
-        dayTypeByDate={dayTypeByDate}
-      />
+      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
+          {statRings.map((r) => (
+            <KpiRing key={r.label} {...r} />
+          ))}
+        </div>
+      </div>
 
       <AvailabilityBand periods={(availabilityRows ?? []) as AvailabilityPeriod[]} />
 
