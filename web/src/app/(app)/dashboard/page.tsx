@@ -26,7 +26,8 @@ import {
 } from "@/lib/continuity";
 import { STATUS_LABEL } from "@/lib/calendar-utils";
 
-/* Idag: startsidan efter inloggning (se app/page.tsx, login/actions.ts,
+/* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
+ * sidan efter inloggning (se app/page.tsx, login/actions.ts,
  * auth/confirm/route.ts). Sidorna delades om efter loopens kadenser
  * (docs/tranarloopen.md 1.1, 3.1) — /veckan äger veckan, /blocket blocket,
  * /sasongen säsongen. Den här sidan äger bara dagen: beredskap inför
@@ -242,7 +243,7 @@ function vo2maxRing(readings: { date: string; value: number }[], todayKey: strin
   };
 }
 
-export default async function IdagPage() {
+export default async function DashboardPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -425,7 +426,7 @@ export default async function IdagPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Idag</h1>
+      <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Dashboard</h1>
 
       {/* --- Form och kondition: överst på sidan, egen sektion. Långa
           horisontmått precis som Kontinuitet nedan — formkurvan och VO2max

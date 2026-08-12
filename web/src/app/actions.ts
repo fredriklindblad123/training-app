@@ -29,5 +29,5 @@ export async function enterApp() {
     }
   });
 
-  redirect("/idag");
+  redirect("/dashboard");
 }

@@ -680,7 +680,7 @@ export default async function TrendsPage({
   );
 
   // --- C. Formkurva (P1.4) — beräknad på passnivå, aldrig per aktivitet -----
-  // Delad med /idag (lib/efficiency.ts) — samma pass-urval och formel överallt.
+  // Delad med /dashboard (lib/efficiency.ts) — samma pass-urval och formel överallt.
   const efPoints = computeEfficiencyPoints(sessions);
 
   // Veckans EF som eget lager i huvudgrafen — "fart" i Almgrens fyra axlar.

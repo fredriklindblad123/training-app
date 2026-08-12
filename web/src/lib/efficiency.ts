@@ -1,6 +1,6 @@
 // Formkurva / Efficiency Factor (P1.4 i docs/insikter-roadmap.md), som ren
 // logik — separerad ur EfficiencyChart.tsx (presentation) så att både
-// /blocket och /idag kan räkna på exakt samma pass-urval och formel. Se
+// /blocket och /dashboard kan räkna på exakt samma pass-urval och formel. Se
 // EfficiencyChart.tsx för enhets- och trendlinje-resonemanget.
 
 import type { ActivityCategory } from "@/lib/categories";

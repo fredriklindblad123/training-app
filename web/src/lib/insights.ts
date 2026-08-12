@@ -214,7 +214,7 @@ export function buildInsights(input: InsightInput): Insight[] {
       headline: `Sömnen har legat under din baslinje ${input.sleepBelowBaselineDays} dagar.`,
       detail:
         "Jämfört med ditt eget snitt, inte med en rekommendation. Värt att väga in tillsammans med hur du faktiskt känner dig.",
-      href: "/idag",
+      href: "/dashboard",
       tone: "att-bevaka",
       priority: 1,
     });

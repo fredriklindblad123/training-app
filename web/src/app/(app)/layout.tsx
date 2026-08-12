@@ -3,13 +3,15 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 
-/* Menyn namnger loopens kadenser, inte artefakttyper (docs/tranarloopen.md).
- * Ordningen är avsiktlig: från kortaste horisont till längsta, med kalendern
- * sist som uppslagsverk. Tidigare hette de Dashboard/Trender/Planering —
- * substantiv som beskriver *vad sidan innehåller* i stället för *vilken
- * fråga man har*, vilket var själva orsaken till att loopen inte syntes. */
+/* Menyns ordning namnger loopens kadenser, inte artefakttyper
+ * (docs/tranarloopen.md) — från kortaste horisont till längsta, med
+ * kalendern sist som uppslagsverk. Första länken hette tidigare "Idag";
+ * bytt tillbaka till "Dashboard" 2026-08-12 på uttrycklig begäran, trots
+ * att loop-kadens-namngivningen ursprungligen valdes bort just den
+ * benämningen (se historiken) — övriga länkar följer fortfarande
+ * kadens-principen. */
 const navLinks = [
-  { href: "/idag", label: "Idag" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/veckan", label: "Veckan" },
   { href: "/blocket", label: "Blocket" },
   { href: "/sasongen", label: "Säsongen" },

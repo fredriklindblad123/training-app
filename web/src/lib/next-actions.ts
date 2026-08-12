@@ -1,9 +1,11 @@
 /* ---------------------------------------------------------------------------
  * L2 i docs/tranarloopen.md: "vad är nästa steg?" — den fråga ingen av de
  * gamla artefakt-sidorna svarade på (avsnitt 1). Ren logik, ingen React och
- * inga egna databasanrop: anroparen (i dag `/idag`, senare `/veckan` och
- * `/blocket`) har redan hämtat allt som behövs för sin egen sida i sitt
- * befintliga Promise.all-block, den här filen bara väger och formulerar det.
+ * inga egna databasanrop: anroparen (var `/dashboard` — döpt om från
+ * `/idag` — som slutade använda den här filen 2026-08-12, se git-historiken;
+ * möjligen `/veckan` eller `/blocket` i framtiden) har redan hämtat allt som
+ * behövs för sin egen sida i sitt befintliga Promise.all-block, den här
+ * filen bara väger och formulerar det.
  *
  * Språkkravet i avsnitt 6 är styrande för varje `why`-text: appen säger
  * "kolla här", aldrig "du missade". Ingen regel nedan får formuleras som en
