@@ -42,6 +42,9 @@ export type SessionActivity = {
    * borttagna dagliga incheckningen som källa till subjektiv känsla. */
   garmin_feel: number | null;
   garmin_rpe: number | null;
+  /** Garmins egen skattning (vO2MaxValue), satt sällan — bara när klockan
+   * räknar om den, inte på varje pass. */
+  vo2max: number | null;
 };
 
 /** Kolumnlistan för `.select()` — håll i synk med `SessionActivity`. */
@@ -49,7 +52,7 @@ export const SESSION_ACTIVITY_COLUMNS =
   "id, user_id, name, activity_type, start_time, duration_seconds, distance_meters, " +
   "avg_hr, max_hr, training_load, category, " +
   "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds, " +
-  "garmin_feel, garmin_rpe";
+  "garmin_feel, garmin_rpe, vo2max";
 
 /** Ett träningspass: aggregatet av de fragment som hör ihop. */
 export type TrainingSession = {

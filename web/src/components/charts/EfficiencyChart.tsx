@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { CATEGORY_LABELS, categoryColorVar, type ActivityCategory } from "@/lib/categories";
+import { CATEGORY_LABELS, categoryColorVar } from "@/lib/categories";
 import { median, robustRange } from "@/lib/stats-utils";
+import type { EfficiencyPoint } from "@/lib/efficiency";
 
 /* ------------------------------------------------------------------------ *
  * EfficiencyChart — formkurva / Efficiency Factor (P1.4 i
@@ -28,18 +29,7 @@ import { median, robustRange } from "@/lib/stats-utils";
  * betydelse. Trendlinjen ritas i bläck: den är inte en tredje kategori.
  * ------------------------------------------------------------------------ */
 
-export type EfficiencyPoint = {
-  id: string;
-  /** YYYY-MM-DD */
-  date: string;
-  /** (distans_m / duration_s) / avg_hr — råvärdet enligt roadmapens formel. */
-  ef: number;
-  label: string;
-  category: Extract<ActivityCategory, "easy" | "long_run">;
-  durationSeconds: number;
-  distanceMeters: number;
-  avgHr: number;
-};
+export type { EfficiencyPoint };
 
 export type EfficiencyRace = { date: string; label: string };
 

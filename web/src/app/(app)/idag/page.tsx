@@ -5,6 +5,8 @@ import { KpiRing } from "@/components/KpiRing";
 import { ActionCard } from "@/components/ActionCard";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
+import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
+import { median } from "@/lib/stats-utils";
 import { QUALITY_WORKOUT_TYPES, addDays as planAddDays, mondayOf } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
 import { nextActions, type NextActionInput } from "@/lib/next-actions";
@@ -103,6 +105,85 @@ function continuityRing({
       },
     ],
     hint,
+  };
+}
+
+/** Baslinjen för formkurve-ringen kräver minst så här många lugna/långa pass
+ * innan de senaste tre jämförs mot något — annars är "baslinjen" bara
+ * ett par slumpmässiga pass. */
+const MIN_EF_BASELINE_POINTS = 5;
+/** Antal senaste passen som räknas som "nuläget", samma smetning som
+ * dämpar enskilda pass i motvind eller med tappat pulsband. */
+const EF_RECENT_COUNT = 3;
+
+/** Formkurvan (P1.4): median av de tre senaste jämförbara passen mot en
+ * baslinje av de föregående. Samma pass-urval som /blocket
+ * (lib/efficiency.ts) — bara lugna/långa pass räknas, så en hård
+ * intervallvecka inte får formkurvan att se sämre ut än den är. */
+function efficiencyRing(efPoints: { ef: number }[]) {
+  const values = efPoints.map((p) => p.ef * METERS_PER_BEAT);
+  const recent = values.slice(-EF_RECENT_COUNT);
+  const prior = values.slice(0, -EF_RECENT_COUNT);
+  const current = median(recent);
+  const baseline = prior.length >= MIN_EF_BASELINE_POINTS ? median(prior) : null;
+
+  const { fill, status } = ringFillAndStatus(current, baseline, "higher_is_better");
+  return {
+    label: "Formkurva",
+    valueText: current != null ? current.toFixed(2) : "–",
+    unit: "m/slag",
+    fill,
+    status: (baseline == null ? "unknown" : status) as RingStatus,
+    targetText: baseline != null ? `Baslinje ${baseline.toFixed(2)}` : undefined,
+    detailRows: [
+      {
+        label: `Senaste ${EF_RECENT_COUNT} lugna/långa passen`,
+        value: current != null ? `${current.toFixed(2)} m/slag` : "–",
+      },
+      {
+        label: "Baslinje",
+        value:
+          baseline != null
+            ? `${baseline.toFixed(2)} m/slag`
+            : `bygger baslinje (${prior.length} av ${MIN_EF_BASELINE_POINTS} pass)`,
+      },
+    ],
+    hint:
+      "Meter per hjärtslag på lugna/långa pass (minst 20 min, se /blocket) — högre är effektivare " +
+      "löpning vid samma puls. Intervaller och tävlingar räknas inte in, de mäter annat.",
+  };
+}
+
+/** Kondition (VO2max): Garmins egen skattning, satt sällan — bara när
+ * klockan räknar om den, inte på varje pass. Jämförs mot senaste *andra*
+ * värdet (inte ett medelvärde) eftersom det är en diskret uppdatering, inte
+ * en brusig mätning som behöver dämpas. */
+function vo2maxRing(readings: { value: number }[]) {
+  const current = readings.length > 0 ? readings[readings.length - 1].value : null;
+  let previous: number | null = null;
+  for (let i = readings.length - 2; i >= 0; i--) {
+    if (readings[i].value !== current) {
+      previous = readings[i].value;
+      break;
+    }
+  }
+
+  const { fill, status } = ringFillAndStatus(current, previous, "higher_is_better");
+  return {
+    label: "Kondition",
+    valueText: current != null ? String(Math.round(current)) : "–",
+    unit: "VO2max",
+    fill,
+    status: (previous == null ? "unknown" : status) as RingStatus,
+    targetText: previous != null ? `Förra värdet ${Math.round(previous)}` : undefined,
+    detailRows: [
+      { label: "Senaste värdet", value: current != null ? `${Math.round(current)} ml/kg/min` : "–" },
+      {
+        label: "Föregående värde",
+        value: previous != null ? `${Math.round(previous)} ml/kg/min` : "ingen tidigare mätning ännu",
+      },
+    ],
+    hint: "Garmins egen konditionsskattning. Uppdateras sällan och oregelbundet, inte per pass.",
   };
 }
 
@@ -284,6 +365,15 @@ export default async function IdagPage() {
     todayKey,
   );
 
+  // --- Form och kondition -------------------------------------------------
+  // Samma treårsfönster som kontinuiteten (allSessions) — formkurvan och
+  // VO2max-trenden ska kunna se bakåt, inte bara dagens/veckans data.
+  const efPoints = computeEfficiencyPoints(allSessions);
+  const vo2maxReadings = allSessions
+    .flatMap((s) => s.activities.map((a) => ({ date: s.date, value: a.vo2max })))
+    .filter((r): r is { date: string; value: number } => r.value != null)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
   // --- L2: nästa steg (docs/tranarloopen.md) ------------------------------
   // Allt underlag är redan hämtat ovan — den här sektionen bara samlar det
   // åt nextActions(), som är ren logik utan egna databasanrop.
@@ -343,11 +433,26 @@ export default async function IdagPage() {
     }),
   ];
 
+  const formRings = [efficiencyRing(efPoints), vo2maxRing(vo2maxReadings)];
+
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Idag</h1>
+
+      {/* --- Form och kondition: överst på sidan, egen sektion. Långa
+          horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
+          ändras inte dag för dag, så de hör hemma bredvid varandra, inte i
+          "dagens" brus. --------------------------------------------------- */}
+      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Form och kondition</h2>
+        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
+          {formRings.map((r) => (
+            <KpiRing key={r.label} {...r} />
+          ))}
+        </div>
+      </div>
 
       {/* --- L2: nästa steg, överst på sidan — se
           docs/tranarloopen.md. Max tre kort, alltid samma dämpade accent

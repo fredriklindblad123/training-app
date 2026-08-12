@@ -14,11 +14,8 @@ import {
   IntensityChart,
   type IntensityWeek,
 } from "@/components/charts/IntensityChart";
-import {
-  EfficiencyChart,
-  type EfficiencyPoint,
-  type EfficiencyRace,
-} from "@/components/charts/EfficiencyChart";
+import { EfficiencyChart, type EfficiencyRace } from "@/components/charts/EfficiencyChart";
+import { computeEfficiencyPoints } from "@/lib/efficiency";
 import {
   EMPTY_THRESHOLD_PROFILE,
   emptyZoneSeconds,
@@ -78,10 +75,6 @@ type SeasonBlockRow = {
   end_date: string;
   focus: string | null;
 };
-
-/** EF-filtret enligt P1.4: bara jämförbara pass, aldrig intervaller. */
-const EF_MIN_SECONDS = 20 * 60;
-const EF_CATEGORIES = ["easy", "long_run"] as const;
 
 /** Tävlingsdagar: `competitions`/`competition_events` (idrottarens egna
  * importerade resultat), INTE `activities.category === "race"`. Alice bär
@@ -687,25 +680,8 @@ export default async function TrendsPage({
   );
 
   // --- C. Formkurva (P1.4) — beräknad på passnivå, aldrig per aktivitet -----
-  const efPoints: EfficiencyPoint[] = sessions
-    .filter(
-      (s) =>
-        (EF_CATEGORIES as readonly string[]).includes(s.category) &&
-        s.durationSeconds >= EF_MIN_SECONDS &&
-        s.avgHr != null &&
-        s.avgHr > 0 &&
-        s.distanceMeters > 0,
-    )
-    .map((s) => ({
-      id: s.id,
-      date: s.date,
-      ef: s.distanceMeters / s.durationSeconds / (s.avgHr as number),
-      label: s.dominantActivity.name ?? "Pass",
-      category: s.category as EfficiencyPoint["category"],
-      durationSeconds: s.durationSeconds,
-      distanceMeters: s.distanceMeters,
-      avgHr: s.avgHr as number,
-    }));
+  // Delad med /idag (lib/efficiency.ts) — samma pass-urval och formel överallt.
+  const efPoints = computeEfficiencyPoints(sessions);
 
   // Veckans EF som eget lager i huvudgrafen — "fart" i Almgrens fyra axlar.
   const efByWeek = new Map<string, number[]>();
