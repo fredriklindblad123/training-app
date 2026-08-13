@@ -13,8 +13,6 @@ import {
   isValidYear,
   isValidMonth,
 } from "@/lib/calendar-utils";
-import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
-import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
 import { CalendarNav } from "@/components/CalendarHorizon";
 import { AvailabilityBand } from "@/components/AvailabilityBand";
 import type { AvailabilityPeriod } from "@/lib/planning";
@@ -22,6 +20,7 @@ import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
   type SessionActivity,
+  type TrainingSession,
 } from "@/lib/sessions";
 import {
   matchPlanToSessions,
@@ -29,18 +28,8 @@ import {
   type PlannedWorkout,
 } from "@/lib/plan-matching";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
-
-type DayInfo = {
-  status?: DayStatus;
-  activities: { id: string; name: string | null; distanceMeters: number | null }[];
-  /** Alla dagens planerade passtyper, i slot-ordning. Flera vid dubbelpass. */
-  planned?: string[];
-};
-
-function formatKm(meters: number | null): string {
-  if (meters == null) return "";
-  return `${(meters / 1000).toFixed(1)} km`;
-}
+import { PassMarker } from "@/components/PassMarker";
+import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/day-outcome";
 
 export default async function MonthPage({
   params,
@@ -68,6 +57,7 @@ export default async function MonthPage({
     { data: diaryEntries },
     { data: plannedWorkouts },
     { data: availabilityRows },
+    { data: competitionRows },
   ] = await Promise.all([
     supabase
       .from("activities")
@@ -97,6 +87,13 @@ export default async function MonthPage({
       .select("start_date, end_date, kind, label")
       .lt("start_date", monthEndExclusive)
       .gte("end_date", monthStart),
+    // Samma källa som veckovyn för tävlingsdagar — se lib/day-outcome.ts.
+    // Garmins "race"-kategori missar tävlingar utan matchande mönster.
+    supabase
+      .from("competitions")
+      .select("id, name, competition_date, priority")
+      .gte("competition_date", monthStart)
+      .lt("competition_date", monthEndExclusive),
   ]);
 
   // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
@@ -112,34 +109,30 @@ export default async function MonthPage({
   );
   const monthCompliance = summarizeCompliance(monthPlanMatches);
 
-  const days = new Map<string, DayInfo>();
+  const sessionsByDay = new Map<string, TrainingSession[]>();
+  for (const s of monthSessions) {
+    sessionsByDay.set(s.date, [...(sessionsByDay.get(s.date) ?? []), s]);
+  }
+
+  const plannedByDay = new Map<string, PlannedWorkout[]>();
+  for (const pw of (plannedWorkouts ?? []) as unknown as PlannedWorkout[]) {
+    plannedByDay.set(pw.scheduled_date, [...(plannedByDay.get(pw.scheduled_date) ?? []), pw]);
+  }
+
+  const diaryByDay = new Map<string, DayStatus>();
   for (const entry of diaryEntries ?? []) {
     // "Ledig" visas inte som egen status — se lib/day-status.ts.
     if (entry.day_type && entry.day_type !== "rest") {
-      days.set(entry.entry_date, {
-        status: entry.day_type as DayStatus,
-        activities: [],
-      });
+      diaryByDay.set(entry.entry_date, entry.day_type as DayStatus);
     }
   }
-  for (const activity of activityRows) {
-    const key = activity.start_time.slice(0, 10);
-    const existing = days.get(key) ?? { activities: [] };
-    existing.status = "training";
-    existing.activities.push({
-      id: activity.id,
-      name: activity.name,
-      distanceMeters: activity.distance_meters,
-    });
-    days.set(key, existing);
-  }
-  for (const pw of plannedWorkouts ?? []) {
-    const existing = days.get(pw.scheduled_date) ?? { activities: [] };
-    // Planerad vila har ingen motsvarighet bland genomförda pass och därför
-    // ingen kategorifärg — men den är meningsfull att se i kalendern, så den
-    // filtreras inte bort som tidigare.
-    existing.planned = [...(existing.planned ?? []), pw.workout_type];
-    days.set(pw.scheduled_date, existing);
+
+  const competitionsByDay = new Map<string, { name: string; priority: string }[]>();
+  for (const c of competitionRows ?? []) {
+    competitionsByDay.set(c.competition_date, [
+      ...(competitionsByDay.get(c.competition_date) ?? []),
+      { name: c.name, priority: c.priority },
+    ]);
   }
 
   const numDays = daysInMonth(year, month);
@@ -190,7 +183,18 @@ export default async function MonthPage({
             );
           }
           const key = dateKey(year, month, day);
-          const info = days.get(key);
+          const done = sessionsByDay.get(key) ?? [];
+          const planned = plannedByDay.get(key) ?? [];
+          const diaryStatus = diaryByDay.get(key) ?? null;
+          const comps = unmatchedCompetitions(done, competitionsByDay.get(key) ?? []);
+          // "Tränade" ovanpå ett synligt pass är ren upprepning — badgen visas
+          // bara när den säger något passlistan inte redan gör.
+          const showStatus = diaryStatus != null && (diaryStatus !== "training" || done.length === 0);
+          // Historik visar bara vad som faktiskt gjordes; framåt i tiden
+          // (fram till och med idag, om inget redan är genomfört) visas i
+          // stället vad som är planerat. Samma gräns som årsvyn (YearGrid).
+          const showPlanned = done.length === 0 && key >= todayKey && planned.length > 0;
+
           return (
             <Link
               key={key}
@@ -198,46 +202,44 @@ export default async function MonthPage({
               className="flex min-h-24 flex-col gap-1 bg-white p-2 hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800"
             >
               <span className="text-zinc-500 dark:text-zinc-400">{day}</span>
-              {info?.planned?.map((type, i) => {
-                const color = workoutTypeColorVar(type);
-                const label = isActivityCategory(type)
-                  ? CATEGORY_LABELS[type]
-                  : (WORKOUT_LABELS[type as WorkoutType] ?? type);
-                const done = info.activities.length > 0;
-                return (
-                  <span
-                    key={`${type}-${i}`}
-                    className="inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
-                    style={
-                      // Alltid genomskinlig bakgrund — planerat är planerat,
-                      // oavsett om dagen råkar ha ett utfall också. Genomförda
-                      // pass syns redan som egna rader nedanför.
-                      color
-                        ? { border: `1.5px solid ${color}`, color }
-                        : { border: "1.5px dashed var(--color-zinc-400, #a1a1aa)" }
-                    }
-                    title={`Planerat: ${label}${done ? " (dagen har utfall)" : ""}`}
-                  >
-                    {label}
-                  </span>
-                );
-              })}
-              {info?.status && (
+
+              {comps.map((c, ci) => (
                 <span
-                  className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[info.status]}`}
+                  key={`comp-${ci}`}
+                  className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium ${COMPETED_BADGE_COLOR}`}
                 >
-                  {STATUS_LABEL[info.status]}
-                </span>
-              )}
-              {info?.activities.map((a) => (
-                <span
-                  key={a.id}
-                  className="truncate text-[11px] text-zinc-700 dark:text-zinc-300"
-                >
-                  {a.name ?? "Pass"}
-                  {a.distanceMeters ? ` · ${formatKm(a.distanceMeters)}` : ""}
+                  {c.priority} · {c.name}
                 </span>
               ))}
+
+              {showStatus && diaryStatus && (
+                <span
+                  className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[diaryStatus]}`}
+                >
+                  {STATUS_LABEL[diaryStatus]}
+                </span>
+              )}
+
+              {done.map((s) => (
+                <span
+                  key={s.id}
+                  className="flex items-center gap-1.5 text-[11px] text-zinc-900 dark:text-zinc-100"
+                >
+                  <PassMarker type={s.category} planned={false} />
+                  {typeLabel(s.category)}
+                </span>
+              ))}
+
+              {showPlanned &&
+                planned.map((p) => (
+                  <span
+                    key={p.id}
+                    className="flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400"
+                  >
+                    <PassMarker type={p.workout_type} planned />
+                    {typeLabel(p.workout_type)}
+                  </span>
+                ))}
             </Link>
           );
         })}

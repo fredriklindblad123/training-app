@@ -1,17 +1,9 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDayStatuses } from "@/lib/day-status";
 import { CalendarNav, type BandBlock } from "@/components/CalendarHorizon";
 import { dateKey, isValidYear } from "@/lib/calendar-utils";
-import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
-import {
-  QUALITY_WORKOUT_TYPES,
-  WORKOUT_LABELS,
-  toDateKey,
-  workoutTypeColorVar,
-  type WorkoutType,
-} from "@/lib/planning";
+import { QUALITY_WORKOUT_TYPES, toDateKey, workoutTypeColorVar } from "@/lib/planning";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -24,6 +16,7 @@ import {
 } from "@/lib/plan-matching";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { YearGrid, type YearOutcome, type PlannedDay, type BlockDay } from "@/components/YearGrid";
+import { typeLabel } from "@/lib/day-outcome";
 
 export default async function YearPage({
   params,
@@ -40,23 +33,13 @@ export default async function YearPage({
 
   const [
     statuses,
-    { data: nextCompetition },
     { data: yearCompetitions },
     { data: plannedWorkouts },
     { data: seasonBlocks },
     { data: activities },
   ] = await Promise.all([
     getDayStatuses(supabase, `${year}-01-01`, `${year + 1}-01-01`),
-    supabase
-      .from("competitions")
-      .select("id, name, competition_date, priority")
-      .gte("competition_date", `${year}-01-01`)
-      .order("competition_date", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
-    // Alla årets tävlingar, för Tävlade-utfallet i årsvyn — se raceDates
-    // nedan. Skild från nextCompetition-frågan ovan (som bara vill ha den
-    // första/nästa), så samma tabell frågas två gånger med olika räckvidd.
+    // Årets tävlingar, för Tävlade-utfallet i årsvyn — se raceDates nedan.
     supabase
       .from("competitions")
       .select("id, name, competition_date")
@@ -81,7 +64,6 @@ export default async function YearPage({
       .lt("start_time", `${year + 1}-01-01`),
   ]);
 
-  const goalDateKey = nextCompetition?.competition_date ?? null;
   const blocks = (seasonBlocks ?? []) as BandBlock[];
 
   // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
@@ -150,12 +132,9 @@ export default async function YearPage({
     const isQuality = (QUALITY_WORKOUT_TYPES as readonly string[]).includes(pw.workout_type);
     const existing = plannedByDate[pw.scheduled_date];
     if (existing?.isQuality && !isQuality) continue;
-    const label = isActivityCategory(pw.workout_type)
-      ? CATEGORY_LABELS[pw.workout_type]
-      : (WORKOUT_LABELS[pw.workout_type as WorkoutType] ?? pw.workout_type);
     plannedByDate[pw.scheduled_date] = {
       colorVar: workoutTypeColorVar(pw.workout_type),
-      label,
+      label: typeLabel(pw.workout_type),
       isQuality,
     };
   }
@@ -173,15 +152,6 @@ export default async function YearPage({
     ) {
       blockByDate[toDateKey(d)] = { blockType: b.block_type, name: b.name };
     }
-  }
-
-  let daysUntilGoal: number | null = null;
-  if (nextCompetition) {
-    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const eventDate = new Date(`${nextCompetition.competition_date}T00:00:00`);
-    daysUntilGoal = Math.round(
-      (eventDate.getTime() - todayMidnight.getTime()) / 86_400_000,
-    );
   }
 
   const isCurrentYear = year === now.getFullYear();
@@ -207,23 +177,9 @@ export default async function YearPage({
 
       <PeriodStatTiles sessions={yearSessions} compliance={yearCompliance} />
 
-      {nextCompetition && (
-        <Link
-          href={`/sasongen`}
-          className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
-        >
-          🎯 <strong>{nextCompetition.name}</strong> — {nextCompetition.competition_date}
-          {daysUntilGoal !== null &&
-            (daysUntilGoal >= 0
-              ? ` (om ${daysUntilGoal} dagar)`
-              : ` (${Math.abs(daysUntilGoal)} dagar sedan)`)}
-        </Link>
-      )}
-
       <YearGrid
         year={year}
         todayKey={todayKey}
-        goalDateKey={goalDateKey}
         outcomeByDate={outcomeByDate}
         plannedByDate={plannedByDate}
         blockByDate={blockByDate}

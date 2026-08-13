@@ -9,26 +9,9 @@ import {
   firstWeekdayOfMonth,
 } from "@/lib/calendar-utils";
 import { BLOCK_LABELS, BLOCK_COLOR_VARS, BLOCK_TYPES, type BlockType } from "@/lib/planning";
+import { OUTCOME_COLOR, OUTCOME_LABEL, type YearOutcome } from "@/lib/day-outcome";
 
-export type YearOutcome = "trained" | "competed" | "sick" | "injured";
-
-/* "Tävlade" får en egen, tydligt skild färg från "Tränade" — båda är gröna i
- * passkategori-paletten (--cat-race ligger nära emerald), vilket hade gjort
- * dem svåra att skilja åt i en 16px ruta. Sjuk/skadad återanvänder samma
- * gult/rött som resten av kalendern (lib/calendar-utils.ts STATUS_COLOR). */
-const OUTCOME_COLOR: Record<YearOutcome, string> = {
-  trained: "bg-emerald-500",
-  competed: "bg-violet-600",
-  sick: "bg-amber-500",
-  injured: "bg-red-600",
-};
-
-const OUTCOME_LABEL: Record<YearOutcome, string> = {
-  trained: "Tränade",
-  competed: "Tävlade",
-  sick: "Sjuk",
-  injured: "Skadad",
-};
+export type { YearOutcome };
 
 export type PlannedDay = {
   colorVar: string | null;
@@ -50,7 +33,6 @@ const TOGGLE_LABEL: Record<View, string> = {
 export function YearGrid({
   year,
   todayKey,
-  goalDateKey,
   outcomeByDate,
   plannedByDate,
   blockByDate,
@@ -58,7 +40,6 @@ export function YearGrid({
 }: {
   year: number;
   todayKey: string;
-  goalDateKey: string | null;
   outcomeByDate: Record<string, YearOutcome>;
   plannedByDate: Record<string, PlannedDay>;
   blockByDate: Record<string, BlockDay>;
@@ -138,7 +119,6 @@ export function YearGrid({
                     return <span key={`empty-${i}`} />;
                   }
                   const key = dateKey(year, month, day);
-                  const isGoalDay = goalDateKey === key;
                   const dayHref = `/calendar/${year}/${month}/${day}`;
 
                   if (view === "block") {
@@ -148,9 +128,7 @@ export function YearGrid({
                         key={key}
                         href={dayHref}
                         title={`${key}${block ? ` – ${block.name}` : ""}`}
-                        className={`h-4 w-4 rounded-sm ${
-                          block ? "" : "bg-zinc-100 dark:bg-zinc-800"
-                        } ${isGoalDay ? "ring-2 ring-amber-500" : ""}`}
+                        className={`h-4 w-4 rounded-sm ${block ? "" : "bg-zinc-100 dark:bg-zinc-800"}`}
                         style={
                           block ? { backgroundColor: BLOCK_COLOR_VARS[block.blockType] } : undefined
                         }
@@ -179,7 +157,7 @@ export function YearGrid({
                       }`}
                       className={`h-4 w-4 rounded-sm ${
                         outcome ? OUTCOME_COLOR[outcome] : "bg-zinc-100 dark:bg-zinc-800"
-                      } ${isGoalDay ? "ring-2 ring-amber-500" : ""}`}
+                      }`}
                       style={
                         planned?.colorVar
                           ? { boxSizing: "border-box", border: `2px solid ${planned.colorVar}` }

@@ -2,16 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { CalendarNav } from "@/components/CalendarHorizon";
-import {
-  CATEGORY_LABELS,
-  isActivityCategory,
-} from "@/lib/categories";
-import {
-  WORKOUT_LABELS,
-  SLOT_LABELS,
-  workoutTypeColorVar,
-  type WorkoutType,
-} from "@/lib/planning";
+import { SLOT_LABELS } from "@/lib/planning";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -22,10 +13,12 @@ import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@
 import { AvailabilityBand } from "@/components/AvailabilityBand";
 import type { AvailabilityPeriod } from "@/lib/planning";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
+import { PassMarker } from "@/components/PassMarker";
 import { formatKm } from "@/lib/format";
 import { SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
 import { mentionsStrength } from "@/lib/diary-text";
+import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR, COMPETED_LABEL } from "@/lib/day-outcome";
 
 /* Veckokalendern: rutnätet, sju dagar i taget — uppslagsverket för att slå
  * upp en specifik dag (vad var planerat, vad blev det, tävling, dagbokstext).
@@ -53,37 +46,6 @@ function addDays(d: Date, n: number): Date {
   const next = new Date(d);
   next.setDate(next.getDate() + n);
   return next;
-}
-
-function typeLabel(type: string): string {
-  if (isActivityCategory(type)) return CATEGORY_LABELS[type];
-  return WORKOUT_LABELS[type as WorkoutType] ?? type;
-}
-
-
-/**
- * Ihålig ring = planerat (en avsikt), fylld prick = genomfört (något som
- * hänt). Skillnaden bär hela informationen i veckovyn, så den ska gå att
- * uppfatta utan att läsa någon etikett.
- */
-function Marker({ type, planned }: { type: string | null; planned: boolean }) {
-  const color = type ? workoutTypeColorVar(type) : null;
-  return (
-    <span
-      className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-      style={
-        planned
-          ? {
-              // Ring i passets färg, ihålig mitt. Vila saknar färg och blir
-              // streckad i stället.
-              border: color ? `2px solid ${color}` : "1.5px dashed currentColor",
-              backgroundColor: "transparent",
-            }
-          : { backgroundColor: color ?? "currentColor" }
-      }
-      aria-hidden="true"
-    />
-  );
 }
 
 export default async function WeekPage({
@@ -226,14 +188,18 @@ export default async function WeekPage({
         className="-mb-2"
       />
 
-      <div className="grid grid-cols-1 gap-2 lg:grid-cols-7">
+      <div className="grid grid-cols-1 gap-1.5 lg:grid-cols-7">
         {Array.from({ length: 7 }, (_, i) => {
           const d = addDays(monday, i);
           const key = toKey(d);
-          const planned = plannedByDay.get(key) ?? [];
           const done = sessionsByDay.get(key) ?? [];
           const diary = diaryByDay.get(key);
-          const comps = competitionsByDay.get(key) ?? [];
+          const comps = unmatchedCompetitions(done, competitionsByDay.get(key) ?? []);
+          // Historik visar bara vad som faktiskt gjordes; framåt i tiden
+          // (fram till och med idag, om inget redan är genomfört) visas i
+          // stället vad som är planerat — samma gräns som månads-/årsvyn.
+          const planned =
+            done.length === 0 && key >= todayKey ? (plannedByDay.get(key) ?? []) : [];
           // "Ledig" visas inte som egen status — se lib/day-status.ts.
           const diaryStatus = (
             diary?.day_type === "rest" ? null : (diary?.day_type ?? null)
@@ -244,7 +210,8 @@ export default async function WeekPage({
           // finns loggat.
           const showStatus =
             diaryStatus != null && (diaryStatus !== "training" || done.length === 0);
-          const isEmpty = planned.length === 0 && done.length === 0 && !diaryStatus;
+          const isEmpty =
+            planned.length === 0 && done.length === 0 && !diaryStatus && comps.length === 0;
           // Bara den första parningen för dagen driver markören — en cell på
           // 150 pixlar har inte plats för en fullständig parning när flera
           // pass ligger samma dag, och dagvyn (inte rutnätet) är platsen för
@@ -265,7 +232,7 @@ export default async function WeekPage({
             <Link
               key={key}
               href={`/calendar/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`}
-              className={`flex min-h-36 flex-col gap-2 rounded border p-2.5 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
+              className={`flex min-h-28 flex-col gap-1.5 rounded border p-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
                 isToday
                   ? "border-zinc-900 dark:border-zinc-100"
                   : isEmpty
@@ -300,7 +267,7 @@ export default async function WeekPage({
               {comps.map((c, ci) => (
                 <div
                   key={ci}
-                  className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                  className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${COMPETED_BADGE_COLOR}`}
                 >
                   {c.priority} · {c.name}
                 </div>
@@ -313,7 +280,7 @@ export default async function WeekPage({
                   className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400"
                   title="Planerat"
                 >
-                  <Marker type={p.workout_type} planned />
+                  <PassMarker type={p.workout_type} planned />
                   <span>
                     {(p.slot ?? 1) > 1 && (
                       <span className="text-zinc-400 dark:text-zinc-500">
@@ -335,7 +302,7 @@ export default async function WeekPage({
                   className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-900 dark:text-zinc-100"
                   title="Genomfört"
                 >
-                  <Marker type={sess.category} planned={false} />
+                  <PassMarker type={sess.category} planned={false} />
                   <span>
                     <span className="font-medium">
                       {sess.category ? typeLabel(sess.category) : "Pass"}
@@ -403,6 +370,10 @@ export default async function WeekPage({
             aria-hidden="true"
           />
           Styrka nämnd i loggen (inget pass med volym)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-violet-600" aria-hidden="true" />
+          {COMPETED_LABEL} (tävling utan matchande pass)
         </span>
         <span className="text-amber-700 dark:text-amber-400">
           Gul text = utfallet blev en annan passtyp än planerat
