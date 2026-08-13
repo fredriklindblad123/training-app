@@ -5,7 +5,7 @@ import { KpiRing } from "@/components/KpiRing";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
-import { median } from "@/lib/stats-utils";
+import { isoWeekStart, median } from "@/lib/stats-utils";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
 import {
@@ -243,6 +243,50 @@ function vo2maxRing(readings: { date: string; value: number }[], todayKey: strin
   };
 }
 
+/** Under den här förändringen räknas veckovolym/belastning som oförändrad —
+ * normal periodisering (en lugnare vecka efter en tävling, en tyngre
+ * uppladdningsvecka) svänger naturligt mer än en fysiologisk trend som
+ * formkurvan gör. */
+const WEEKLY_NOISE_THRESHOLD_PCT = 0.15;
+
+/** Distans/belastning per vecka (P1.5): den senaste *hela* veckan mot
+ * veckan innan den — inte "den här veckan", som ännu är ofullständig och
+ * skulle se ut som ett tapp bara för att den inte är slut än. Samma
+ * riktningsprincip som Formkurva/Kondition ovan, fast i veckotakt eftersom
+ * volym och belastning naturligt hör hemma i den kadensen (planeringen
+ * sker vecka för vecka, se docs/tranarloopen.md). */
+function weeklyTrendRing(
+  label: string,
+  weekTotals: Map<string, number>,
+  lastCompletedWeekKey: string,
+  priorWeekKey: string,
+  formatValue: (v: number) => string,
+) {
+  const current = weekTotals.get(lastCompletedWeekKey) ?? 0;
+  const prior = weekTotals.get(priorWeekKey) ?? 0;
+  const pctChange = prior > 0 ? (current - prior) / prior : null;
+
+  const { fill } = ringFillAndStatus(current, prior, "higher_is_better");
+  const status = trendRingStatus(pctChange, WEEKLY_NOISE_THRESHOLD_PCT);
+
+  return {
+    label,
+    valueText: formatValue(current),
+    fill,
+    status,
+    statusLabel: status === "neutral" ? "Oförändrad" : undefined,
+    targetText: pctChange != null ? `${formatPctChange(pctChange)} mot förra veckan` : undefined,
+    detailRows: [
+      { label: "Senaste hela veckan", value: formatValue(current) },
+      { label: "Veckan innan", value: formatValue(prior) },
+      { label: "Förändring", value: pctChange != null ? formatPctChange(pctChange) : "–" },
+    ],
+    hint:
+      `${label} den senaste avslutade veckan jämfört med veckan innan — visar riktningen, inte ` +
+      `bara nuläget. Under ±${(WEEKLY_NOISE_THRESHOLD_PCT * 100).toFixed(0)}% räknas som brus.`,
+  };
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient();
   const {
@@ -422,6 +466,30 @@ export default async function DashboardPage() {
 
   const formRings = [efficiencyRing(efPoints, todayKey), vo2maxRing(vo2maxReadings, todayKey)];
 
+  // --- Volym och belastning -----------------------------------------------
+  // Samma treårsfönster (allSessions) som Form och kondition ovan, bara
+  // summerat per ISO-vecka i stället för per rullande dagfönster.
+  const currentWeekMonday = isoWeekStart(todayKey);
+  const lastCompletedWeekKey = shiftDateKey(currentWeekMonday, -7);
+  const priorWeekKey = shiftDateKey(currentWeekMonday, -14);
+
+  const weeklyDistanceKm = new Map<string, number>();
+  const weeklyLoad = new Map<string, number>();
+  for (const s of allSessions) {
+    const wk = isoWeekStart(s.date);
+    weeklyDistanceKm.set(wk, (weeklyDistanceKm.get(wk) ?? 0) + s.distanceMeters / 1000);
+    weeklyLoad.set(wk, (weeklyLoad.get(wk) ?? 0) + s.trainingLoad);
+  }
+
+  const volumeRings = [
+    weeklyTrendRing("Distans", weeklyDistanceKm, lastCompletedWeekKey, priorWeekKey, (v) =>
+      v > 0 ? `${v.toFixed(1)} km` : "0 km",
+    ),
+    weeklyTrendRing("Belastning", weeklyLoad, lastCompletedWeekKey, priorWeekKey, (v) =>
+      String(Math.round(v)),
+    ),
+  ];
+
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
 
   return (
@@ -436,6 +504,18 @@ export default async function DashboardPage() {
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Form och kondition</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {formRings.map((r) => (
+            <KpiRing key={r.label} {...r} />
+          ))}
+        </div>
+      </div>
+
+      {/* --- Volym och belastning: egen sektion, samma riktningsprincip som
+          Form och kondition ovan men i veckotakt (P1.5) — flyttad hit från
+          den borttagna /veckan 2026-08-13. ---------------------------------- */}
+      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Volym och belastning</h2>
+        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
+          {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
         </div>
@@ -527,9 +607,11 @@ export default async function DashboardPage() {
         </Link>
       </section>
 
-      {/* --- Utgången: loopens nästa steg efter dagen är veckan. ----------- */}
+      {/* --- Utgången: loopens nästa steg efter dagen är veckan. /veckan togs
+          bort 2026-08-13 (dubblerade kalenderns veckovy) — länken pekar dit
+          i stället. ---------------------------------------------------- */}
       <Link
-        href="/veckan"
+        href={`/calendar/vecka/${todayKey}`}
         className="w-fit text-sm underline text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
       >
         Veckans genomgång →

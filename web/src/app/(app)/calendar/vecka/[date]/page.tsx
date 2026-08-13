@@ -6,16 +6,24 @@ import {
   CATEGORY_LABELS,
   isActivityCategory,
 } from "@/lib/categories";
-import { WORKOUT_LABELS, SLOT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
+import {
+  WORKOUT_LABELS,
+  SLOT_LABELS,
+  QUALITY_WORKOUT_TYPES,
+  workoutTypeColorVar,
+  type WorkoutType,
+} from "@/lib/planning";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
-import { matchPlanToSessions, type PlannedWorkout } from "@/lib/plan-matching";
+import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { AvailabilityBand } from "@/components/AvailabilityBand";
 import type { AvailabilityPeriod } from "@/lib/planning";
+import { RING_STATUS_TEXT } from "@/components/KpiRing";
+import { ringFillAndStatus } from "@/lib/kpi-ring";
 import { formatDuration, formatKm } from "@/lib/format";
 import { SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
@@ -23,10 +31,11 @@ import { mentionsStrength } from "@/lib/diary-text";
 
 /* Veckokalendern: rutnätet, sju dagar i taget — uppslagsverket för att slå
  * upp en specifik dag (vad var planerat, vad blev det, tävling, dagbokstext).
- * Genomgången (efterlevnad, pass för pass, planera nästa vecka) flyttades
- * till /veckan när sidorna delades om efter loopens kadenser
- * (docs/tranarloopen.md L1) — den här sidan länkar dit i stället för att
- * duplicera den. */
+ *
+ * Ägde tidigare bara rutnätet — genomgången (efterlevnad, nyckeltal) låg på
+ * en egen sida, /veckan. Den togs bort 2026-08-13: två sidor för samma
+ * vecka var förvirrande och dubblerade varandra. Nyckeltalen (statTile
+ * nedan) flyttade hit i stället. */
 
 function pad2(n: number): string {
   return String(n).padStart(2, "0");
@@ -51,6 +60,39 @@ function addDays(d: Date, n: number): Date {
 function typeLabel(type: string): string {
   if (isActivityCategory(type)) return CATEGORY_LABELS[type];
   return WORKOUT_LABELS[type as WorkoutType] ?? type;
+}
+
+/** Veckans fem nyckeltal (Distanspass, Kvalitetspass, Distans, Tid,
+ * Belastning) som kompakta tal + jämförelsetext — flyttad hit från den
+ * borttagna /veckan. Pass splittas i distans- och kvalitetspass
+ * (QUALITY_WORKOUT_TYPES, samma definition som K6:s kvalitetsveckor i
+ * lib/continuity.ts). Där veckan hade en plan jämförs talet mot det
+ * planerade, i samma statusfärg som dashboardens KpiRing (RING_STATUS_TEXT)
+ * — grönt/gult/rött betyder samma sak här som där. Utan plan visas bara
+ * talet. */
+function statTile({
+  label,
+  value,
+  valueText,
+  target,
+  targetLabel,
+}: {
+  label: string;
+  value: number;
+  valueText: string;
+  target: number | null;
+  targetLabel: string;
+}): { label: string; valueText: string; targetText: string | null; statusClass: string } {
+  if (target == null) {
+    return { label, valueText, targetText: null, statusClass: "" };
+  }
+  const { status } = ringFillAndStatus(value, target, "higher_is_better");
+  return {
+    label,
+    valueText,
+    targetText: `${targetLabel} ${target}`,
+    statusClass: RING_STATUS_TEXT[status],
+  };
 }
 
 /**
@@ -168,9 +210,9 @@ export default async function WeekPage({
   );
 
 
-  // K2: plan mot utfall. Rutnätet använder bara matchningen — för att kunna
-  // markera "annan typ än planerat" i cellen. Efterlevnadssammanfattningen
-  // bor på /veckan, som äger veckan som helhet (docs/tranarloopen.md L1).
+  // K2: plan mot utfall. Både rutnätets "annan typ än planerat"-markering
+  // och nyckeltalens jämförelse mot plan (statTiles nedan) bygger på samma
+  // matchning.
   const planMatches = matchPlanToSessions(plannedWorkouts, sessions);
   const matchesByDay = new Map<string, typeof planMatches>();
   for (const m of planMatches) {
@@ -185,13 +227,60 @@ export default async function WeekPage({
       { name: c.name as string, priority: c.priority as string },
     ]);
   }
+  const compliance = summarizeCompliance(planMatches);
 
   // Veckosummor räknas på pass, inte på aktiviteter — annars räknas
   // uppvärmning och nerjogg som egna pass i "antal pass".
   const totalKm = sessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
   const totalSeconds = sessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
   const totalLoad = sessions.reduce((sum, s) => sum + (s.trainingLoad ?? 0), 0);
-  const plannedCount = (plannedRows ?? []).length;
+
+  // Pass splittat i distans/kvalitet — samma QUALITY_WORKOUT_TYPES-definition
+  // som K6:s kvalitetsveckor (lib/continuity.ts).
+  const qualityCount = sessions.filter((s) =>
+    (QUALITY_WORKOUT_TYPES as readonly string[]).includes(s.category),
+  ).length;
+  const distanceSessionCount = sessions.length - qualityCount;
+  const distancePlanned =
+    compliance.plannedCount > 0 ? compliance.plannedCount - compliance.qualityPlanned : null;
+
+  const statTiles = [
+    statTile({
+      label: "Distanspass",
+      value: distanceSessionCount,
+      valueText: String(distanceSessionCount),
+      target: distancePlanned,
+      targetLabel: "av",
+    }),
+    statTile({
+      label: "Kvalitetspass",
+      value: qualityCount,
+      valueText: String(qualityCount),
+      target: compliance.plannedCount > 0 ? compliance.qualityPlanned : null,
+      targetLabel: "av",
+    }),
+    statTile({
+      label: "Distans",
+      value: totalKm,
+      valueText: totalKm > 0 ? `${totalKm.toFixed(1)} km` : "—",
+      target: compliance.plannedKm,
+      targetLabel: "av",
+    }),
+    statTile({
+      label: "Tid",
+      value: totalSeconds,
+      valueText: totalSeconds > 0 ? formatDuration(totalSeconds) : "—",
+      target: null,
+      targetLabel: "av",
+    }),
+    statTile({
+      label: "Belastning",
+      value: totalLoad,
+      valueText: totalLoad > 0 ? String(Math.round(totalLoad)) : "—",
+      target: null,
+      targetLabel: "av",
+    }),
+  ];
 
   const monthHref = `/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}`;
   const yearHref = `/calendar/${monday.getFullYear()}`;
@@ -217,36 +306,24 @@ export default async function WeekPage({
         yearHref={yearHref}
       />
 
-      {/* Rutnätet är uppslagsverket. Genomgången — efterlevnad, pass för pass,
-       * planera nästa vecka — bor på /veckan, och sidan pekar dit i stället
-       * för att duplicera den (docs/tranarloopen.md L1). */}
-      <Link
-        href={`/veckan?vecka=${from}`}
-        className="w-fit text-sm text-zinc-600 underline hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
-      >
-        Genomgång av veckan →
-      </Link>
-
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Pass", value: String(sessions.length) },
-          { label: "Distans", value: totalKm > 0 ? `${totalKm.toFixed(1)} km` : "—" },
-          { label: "Tid", value: totalSeconds > 0 ? formatDuration(totalSeconds) : "—" },
-          { label: "Belastning", value: totalLoad > 0 ? String(Math.round(totalLoad)) : "—" },
-        ].map((tile) => (
-          <div key={tile.label} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
-            <dd className="mt-0.5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {tile.value}
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {statTiles.map((t) => (
+          <div
+            key={t.label}
+            className="rounded border border-zinc-200 px-3 py-2 dark:border-zinc-800"
+          >
+            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{t.label}</dt>
+            <dd className="mt-0.5 flex items-baseline gap-1.5">
+              <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+                {t.valueText}
+              </span>
+              {t.targetText && (
+                <span className={`text-xs ${t.statusClass}`}>{t.targetText}</span>
+              )}
             </dd>
           </div>
         ))}
       </dl>
-      {plannedCount > 0 && (
-        <p className="-mt-3 text-xs text-zinc-500 dark:text-zinc-400">
-          {plannedCount} planerade pass den här veckan.
-        </p>
-      )}
 
       <AvailabilityBand
         periods={(availabilityRows ?? []) as AvailabilityPeriod[]}

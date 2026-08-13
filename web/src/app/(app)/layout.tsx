@@ -9,10 +9,12 @@ import { signOut } from "@/app/login/actions";
  * bytt tillbaka till "Dashboard" 2026-08-12 på uttrycklig begäran, trots
  * att loop-kadens-namngivningen ursprungligen valdes bort just den
  * benämningen (se historiken) — övriga länkar följer fortfarande
- * kadens-principen. */
+ * kadens-principen.
+ *
+ * "Veckan" togs bort samma dag: dubblerade kalenderns veckovy
+ * (/calendar/vecka/[date]), som nu äger både rutnätet och nyckeltalen. */
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/veckan", label: "Veckan" },
   { href: "/blocket", label: "Blocket" },
   { href: "/sasongen", label: "Säsongen" },
   { href: "/calendar", label: "Kalender" },
