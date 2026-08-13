@@ -116,11 +116,24 @@ const WARMUP_COOLDOWN_PATTERN = /uppvärmning|nerjogg|jogg|warm|cool/i;
 const QUALITY_NAME_PATTERN =
   /tröskel|threshold|tempo|intervall|interval|vo2|räck|repetition|\brep\b|sprint|backe|\d+\s*[x×]\s*\d+/i;
 
-/** Kategorier som bara får sättas om det finns belägg för kvalitetsarbete. */
-const QUALITY_CATEGORIES: ReadonlySet<string> = new Set([
-  "threshold",
-  "interval",
-]);
+/** Kategorier som bara får sättas om det finns belägg för kvalitetsarbete.
+ *
+ * Bara `threshold`, inte `interval` (rättat 2026-08-13). Skillnaden ligger i
+ * varifrån kategorin kommer när namnet inte säger något: `threshold` kan
+ * komma från Garmins TEMPO/LACTATE_THRESHOLD-etikett, som dokumenterat
+ * opålitlig för Alice — hennes lugna distanspass ligger på 81 % av maxpuls
+ * och triggar den etiketten (se
+ * supabase/migrations/20260727160000_fix_distance_run_categorisation.sql).
+ * `interval` kommer i stället från VO2MAX/ANAEROBIC_CAPACITY/SPRINT —
+ * Firstbeats etiketter för genuint hårt arbete, som `categorize_activity()`
+ * medvetet litar på rakt av även för automatnamngivna pass ("Göteborg
+ * Löpning") enligt sin egen kommentar. Ett enfragmentspass utan
+ * uppvärmning/nerjogg-uppdelning (isStructured=false) och utan
+ * intervallnotation i namnet (nameCategory=null) klarar aldrig
+ * hasQualityEvidence — innan den här ändringen nedgraderades då ett riktigt
+ * intervallpass till "easy" och, om det var långt nog, vidare till
+ * "long_run". */
+const QUALITY_CATEGORIES: ReadonlySet<string> = new Set(["threshold"]);
 
 /** Kvalitetskategori ur passnamnet, i fallande specificitet. Behövs åt båda
  * håll: Garmins `training_effect_label` säger ibland TEMPO om en lugn timme
@@ -270,13 +283,14 @@ function buildSession(fragments: SessionActivity[]): TrainingSession {
  * 2. Passets kategori = kategorin för det kärnfragment som har högst
  *    `training_load`. Saknas kärnfragment (bara "Nerjogg" den dagen) används
  *    det längsta fragmentet.
- * 3. Kvalitetskategorier kräver *belägg*. `categorize_activity()` faller
- *    tillbaka på Garmins `training_effect_label`, och den etiketten säger
- *    TEMPO/LACTATE_THRESHOLD även om en rak timmes distansjogg — det är
- *    varför 89 vanliga "Distans"-pass ligger som tröskel. Belägg = antingen
- *    ett namn som beskriver kvalitetsarbete, eller att Alice själv delat
- *    passet i uppvärmning + huvudpass + nerjogg (hon gör det bara på
- *    kvalitetspass). Utan belägg är passet lugn distans.
+ * 3. `threshold` kräver *belägg* (se QUALITY_CATEGORIES). `categorize_activity()`
+ *    faller tillbaka på Garmins `training_effect_label`, och den etiketten
+ *    säger TEMPO/LACTATE_THRESHOLD även om en rak timmes distansjogg — det
+ *    är varför 89 vanliga "Distans"-pass en gång låg som tröskel. Belägg =
+ *    antingen ett namn som beskriver kvalitetsarbete, eller att Alice själv
+ *    delat passet i uppvärmning + huvudpass + nerjogg (hon gör det bara på
+ *    kvalitetspass). Utan belägg blir passet lugn distans. `interval`
+ *    kräver inget belägg — se kommentaren vid QUALITY_CATEGORIES för varför.
  * 4. `long_run` sätts sist, på passets *totala* tid/distans, och bara på pass
  *    utan kvalitetsbelägg — ett långpass är sammanhängande lugn löpning, inte
  *    en backsession som råkar bli lång med uppvärmning inräknad. */
