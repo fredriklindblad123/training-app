@@ -2,18 +2,22 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   addDays as planAddDays,
-  PRIORITY_LABELS,
   SEASON_LABELS,
   toDateKey,
   type Priority,
   type SeasonKind,
 } from "@/lib/planning";
 import { SESSION_ACTIVITY_COLUMNS, type SessionActivity } from "@/lib/sessions";
+import { CATEGORY_VALUES, categoryColorVar } from "@/lib/categories";
 import { BAND_LABELS } from "@/lib/intensity";
 import { formatHoursMinutes } from "@/lib/format";
 import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
 import { computeRaceBuildup, BUILDUP_WINDOW_DAYS, type RaceBuildup } from "@/lib/race-buildup";
-import { RaceProgressionChart, type RaceProgressionPoint } from "@/components/charts/RaceProgressionChart";
+import {
+  RaceProgressionChart,
+  type RaceProgressionPoint,
+  type RaceProgressionSeries,
+} from "@/components/charts/RaceProgressionChart";
 
 /* Tävlingsresultat: analys och jämförelse av redan inlagda tävlingar —
  * grenutveckling över tid och upptrappningen inför två valda lopp.
@@ -22,7 +26,15 @@ import { RaceProgressionChart, type RaceProgressionPoint } from "@/components/ch
  * tävlingar (prioritet, resultat per gren) är säsongsplanering och stannar
  * på /sasongen, men att analysera resultaten som redan finns är en annan
  * fråga med en annan kadens — man går hit efter ett lopp, inte när man
- * planerar nästa block. Se docs/tranarperspektiv.md K5. */
+ * planerar nästa block. Se docs/tranarperspektiv.md K5.
+ *
+ * Ombyggd 2026-08-13: grafen bar tidigare bara en gren i taget, med en
+ * fristående "alla resultat"-tabell och en till per-gren-tabell runt
+ * omkring den — såg ut som att grafen landat mitt i en tabell av misstag.
+ * Nu väljer man en eller flera grenar som egna kurvor i samma graf (RaceProg
+ * ressionChart normaliserar mot vardera grenens eget personbästa, se den
+ * filens kommentar för varför), och EN detaljtabell under grafen visar allt
+ * som är valt just nu — ingen tabell före grafen längre. */
 
 function formatPct(v: number): string {
   return `${Math.round(v * 100)}%`;
@@ -209,7 +221,7 @@ export default async function TavlingsresultatPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    gren?: string;
+    gren?: string | string[];
     bana?: string;
     raceA?: string;
     raceB?: string;
@@ -231,11 +243,6 @@ export default async function TavlingsresultatPage({
     )
     .order("competition_date");
 
-  // En tränare jämför samma distans över tid ("hur har 1500m utvecklats?"),
-  // inte två godtyckliga lopp mot varandra — sektionen utgår därför från en
-  // gren (competition_events.event), inte från ett fritt par lopp. Se
-  // docs/tranarperspektiv.md K5. Bygger ingen egen resultattabell —
-  // competition_events har redan actual_result/placement.
   const allCompetitions: CompetitionRow[] = (competitionRows ?? []) as CompetitionRow[];
 
   type EventResultRow = {
@@ -279,64 +286,91 @@ export default async function TavlingsresultatPage({
     .map(([event, count]) => ({ event, count }))
     .sort((a, b) => b.count - a.count || a.event.localeCompare(b.event, "sv"));
 
-  const selectedEvent =
-    grenParam && eventOptions.some((o) => o.event === grenParam)
-      ? grenParam
-      : (eventOptions[0]?.event ?? null);
+  // Färgen bär grenens identitet i grafen (flera kurvor samtidigt), och är
+  // stabil per gren oavsett vilka andra grenar som råkar vara valda —
+  // annars byter en gren färg varje gång man kryssar i eller ur en annan.
+  // Cyklar den redan validerade kategoripaletten (lib/categories.ts).
+  const eventColor = (event: string): string => {
+    const idx = eventOptions.findIndex((o) => o.event === event);
+    const category = CATEGORY_VALUES[(idx < 0 ? 0 : idx) % CATEGORY_VALUES.length];
+    return categoryColorVar(category);
+  };
+
+  // Multival: flera grenar kan visas som egna kurvor samtidigt. Normaliseras
+  // till en array (Next.js ger en sträng för en enskild query-param, en
+  // array för upprepade) och filtreras mot vad som faktiskt går att välja.
+  // Utan tidigare val öppnar sidan på grenen med flest resultat.
+  const requestedEvents = grenParam == null ? [] : Array.isArray(grenParam) ? grenParam : [grenParam];
+  const validRequestedEvents = requestedEvents.filter((e) => eventOptions.some((o) => o.event === e));
+  const selectedEvents =
+    validRequestedEvents.length > 0
+      ? validRequestedEvents
+      : eventOptions[0]
+        ? [eventOptions[0].event]
+        : [];
 
   const banaFilter: "alla" | "inne" | "ute" =
     banaParam === "inne" || banaParam === "ute" ? banaParam : "alla";
   const banaVenue: SeasonKind | null =
     banaFilter === "inne" ? "indoor" : banaFilter === "ute" ? "outdoor" : null;
-
-  // Alla resultat i den valda grenen, oavsett bana — basen för
-  // upptrappningsjämförelsens väljare och för personbästat innan
-  // bana-filtret smalnar av vad som faktiskt visas.
-  const eventRaceRows = selectedEvent
-    ? eventResults
-        .filter((r) => r.event === selectedEvent)
-        .sort((a, b) => (a.competitionDate < b.competitionDate ? -1 : a.competitionDate > b.competitionDate ? 1 : 0))
-    : [];
-  // Bana-filtret smalnar av vad grafen/tabellen visar. "Personbästa" räknas
-  // ur samma filtrerade urval — annars kan hjälplinjen peka på ett lopp som
-  // inte ens syns i vyn, vilket hade sett trasigt ut med filtret på "inne".
-  const filteredRaceRows = banaVenue ? eventRaceRows.filter((r) => r.venue === banaVenue) : eventRaceRows;
-  // Delas mellan grafen (ritar sin egen PB-markör internt) och tabellen
-  // under den, så de aldrig kan peka ut olika lopp som personbästa.
-  const pbSecondsInFilter =
-    filteredRaceRows.length > 0
-      ? Math.min(...filteredRaceRows.map((r) => r.resultSeconds))
-      : null;
-  // Etiketten måste följa filtret. Inne och ute är skilda rekord i friidrott,
-  // så det snabbaste inomhusloppet är inte "personbästa" när ett utomhuslopp
-  // gått fortare — Alices 800m-bästa (2:21,99) sattes utomhus i juni, och att
-  // kalla inomhustiden personbästa hade varit direkt fel.
   const bestResultLabel =
     banaFilter === "inne" ? "Bästa inomhus" : banaFilter === "ute" ? "Bästa utomhus" : "Personbästa";
 
-  const progressionPoints: RaceProgressionPoint[] = filteredRaceRows.map((r) => ({
-    id: r.eventRowId,
-    date: r.competitionDate,
-    competitionName: r.competitionName,
-    resultLabel: r.resultLabel,
-    resultSeconds: r.resultSeconds,
-    venue: r.venue,
+  // En rad-lista per vald gren, bana-filtrerad — delas mellan grafens kurvor
+  // och detaljtabellen under, så de aldrig kan visa olika urval.
+  const rowsByEvent = new Map<string, EventResultRow[]>();
+  for (const event of selectedEvents) {
+    const rows = eventResults
+      .filter((r) => r.event === event && (!banaVenue || r.venue === banaVenue))
+      .sort((a, b) => (a.competitionDate < b.competitionDate ? -1 : a.competitionDate > b.competitionDate ? 1 : 0));
+    rowsByEvent.set(event, rows);
+  }
+
+  const series: RaceProgressionSeries[] = selectedEvents.map((event) => ({
+    event,
+    color: eventColor(event),
+    points: (rowsByEvent.get(event) ?? []).map(
+      (r): RaceProgressionPoint => ({
+        id: r.eventRowId,
+        date: r.competitionDate,
+        competitionName: r.competitionName,
+        resultLabel: r.resultLabel,
+        resultSeconds: r.resultSeconds,
+        venue: r.venue,
+      }),
+    ),
   }));
 
-  // Upptrappningsjämförelsens <select>-fält ska bara innehålla lopp i den
-  // valda grenen — det är så "jämför samma distans" blir konkret.
-  const racesInSelectedEvent = selectedEvent
-    ? allCompetitions.filter((c) =>
-        c.competition_events.some((e) => e.event === selectedEvent && e.actual_result),
-      )
-    : [];
-  // Ligger raceA/raceB inte i den valda grenen (t.ex. efter att grenen
-  // byttes) nollställs de tyst här — ingen trasig jämförelse renderas.
+  // Detaljtabellen: alla valda grenars rader i en enda kronologisk lista,
+  // med grenen som egen kolumn — personbästa markeras per gren för sig
+  // (samma bana-filtrerade urval som grafens kurva för den grenen).
+  const detailRows = selectedEvents
+    .flatMap((event) => {
+      const rows = rowsByEvent.get(event) ?? [];
+      const pb = rows.length > 0 ? Math.min(...rows.map((r) => r.resultSeconds)) : null;
+      return rows.map((r) => ({ ...r, isPb: r.resultSeconds === pb }));
+    })
+    .sort((a, b) => (a.competitionDate < b.competitionDate ? -1 : a.competitionDate > b.competitionDate ? 1 : 0));
+
+  // Upptrappningsjämförelsens <select>-fält innehåller lopp i någon av de
+  // valda grenarna — det är så "jämför upptrappningen" blir konkret utan
+  // att låsa jämförelsen till bara en gren i taget.
+  const racesInSelectedEvents = allCompetitions.filter((c) =>
+    c.competition_events.some((e) => selectedEvents.includes(e.event) && e.actual_result),
+  );
+  function raceOptionLabel(c: CompetitionRow): string {
+    const matching = c.competition_events
+      .filter((e) => selectedEvents.includes(e.event) && e.actual_result)
+      .map((e) => e.event);
+    return `${c.name} (${c.competition_date})${matching.length > 0 ? ` — ${matching.join(", ")}` : ""}`;
+  }
+  // Ligger raceA/raceB inte i någon vald gren (t.ex. efter att grenvalet
+  // ändrats) nollställs de tyst här — ingen trasig jämförelse renderas.
   const compareRaceA = raceAParam
-    ? (racesInSelectedEvent.find((c) => c.id === raceAParam) ?? null)
+    ? (racesInSelectedEvents.find((c) => c.id === raceAParam) ?? null)
     : null;
   const compareRaceB = raceBParam
-    ? (racesInSelectedEvent.find((c) => c.id === raceBParam) ?? null)
+    ? (racesInSelectedEvents.find((c) => c.id === raceBParam) ?? null)
     : null;
   // Fristående frågor per valt lopp — aldrig en fråga per tävling i listan,
   // det hade blivit dyrt så fort säsongen har ett tiotal lopp.
@@ -360,17 +394,27 @@ export default async function TavlingsresultatPage({
     raceAggregateA.competition.competition_date < TRAINING_DATA_START &&
     raceAggregateB.competition.competition_date < TRAINING_DATA_START;
 
-  // Behåller alla parametrar på sidan och byter bara det som skickas in i
-  // `overrides`. Utan den skulle t.ex. bana-knapparna nollställa grenvalet
-  // och tvärtom. raceA/raceB följer med oförändrade — väljer man en gren de
-  // inte tillhör tystnar jämförelsen själv (se racesInSelectedEvent).
-  function raceHref(overrides: Record<string, string>): string {
+  // Kryssar en gren i/ur urvalet, behåller övriga val och filter oförändrade.
+  function toggleEventHref(event: string): string {
+    const next = selectedEvents.includes(event)
+      ? selectedEvents.filter((e) => e !== event)
+      : [...selectedEvents, event];
     const params = new URLSearchParams();
-    if (grenParam) params.set("gren", grenParam);
+    for (const e of next) params.append("gren", e);
     if (banaParam) params.set("bana", banaParam);
     if (raceAParam) params.set("raceA", raceAParam);
     if (raceBParam) params.set("raceB", raceBParam);
-    for (const [key, value] of Object.entries(overrides)) params.set(key, value);
+    return `/tavlingsresultat?${params.toString()}`;
+  }
+
+  // Byter bana-filtret, behåller grenvalen (flera "gren"-parametrar) och en
+  // ev. pågående upptrappningsjämförelse oförändrade.
+  function banaHref(bana: string): string {
+    const params = new URLSearchParams();
+    for (const e of selectedEvents) params.append("gren", e);
+    params.set("bana", bana);
+    if (raceAParam) params.set("raceA", raceAParam);
+    if (raceBParam) params.set("raceB", raceBParam);
     return `/tavlingsresultat?${params.toString()}`;
   }
 
@@ -380,11 +424,12 @@ export default async function TavlingsresultatPage({
 
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Alla resultat</h2>
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Grenutveckling</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Med i storleksordningen tio lopp per säsong är det här beskrivande, inte
-            statistiskt. Ingen trendlinje och ingen prognos — bara vad som faktiskt
-            hände, gren för gren.
+            Välj en eller flera grenar för att se dem som egna kurvor i samma graf. Y-axeln är
+            andel av respektive grens eget personbästa, inte råtid — grenar med olika längd går
+            annars inte att jämföra på samma axel. Exakt tid finns i hovertooltipen och
+            tabellen under.
           </p>
         </div>
 
@@ -396,44 +441,7 @@ export default async function TavlingsresultatPage({
             </Link>
             .
           </p>
-        ) : (
-          <div className="w-full max-w-full overflow-x-auto">
-            <table className="w-full min-w-max text-left text-sm">
-              <thead>
-                <tr className="text-xs text-zinc-500 dark:text-zinc-400">
-                  <th scope="col" className="py-1 pr-4 font-normal">
-                    Datum
-                  </th>
-                  <th scope="col" className="py-1 pr-4 font-normal">
-                    Tävling
-                  </th>
-                  <th scope="col" className="py-1 pr-4 font-normal">
-                    Bana
-                  </th>
-                  <th scope="col" className="py-1 pr-4 font-normal">
-                    Prioritet
-                  </th>
-                  <th scope="col" className="py-1 font-normal">
-                    Resultat
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
-                {allCompetitions.map((c) => (
-                  <tr key={c.id}>
-                    <td className="py-1.5 pr-4 tabular-nums">{c.competition_date}</td>
-                    <td className="py-1.5 pr-4">{c.name}</td>
-                    <td className="py-1.5 pr-4">{c.venue ? SEASON_LABELS[c.venue] : "–"}</td>
-                    <td className="py-1.5 pr-4">{PRIORITY_LABELS[c.priority]}</td>
-                    <td className="py-1.5">{raceResultsLabel(c.competition_events)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {eventOptions.length === 0 ? (
+        ) : eventOptions.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Ingen gren har minst två tidtagna resultat ännu (hopp och kast mäts i meter
             och räknas inte hit). Fyll i fler resultat på{" "}
@@ -444,24 +452,30 @@ export default async function TavlingsresultatPage({
           </p>
         ) : (
           <>
-            {/* Grenväljare — flest resultat först, default öppnar på den grenen. */}
+            {/* Grenval — flera kan vara ikryssade samtidigt, flest resultat
+                först. Ikryssad gren visar sin egen färg som markering. */}
             <div className="flex flex-wrap gap-2 text-sm">
-              {eventOptions.map((o) => (
-                <Link
-                  key={o.event}
-                  href={raceHref({ gren: o.event })}
-                  className={`rounded px-3 py-1 ${
-                    o.event === selectedEvent
-                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                      : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                  }`}
-                >
-                  {o.event} ({o.count})
-                </Link>
-              ))}
+              {eventOptions.map((o) => {
+                const active = selectedEvents.includes(o.event);
+                return (
+                  <Link
+                    key={o.event}
+                    href={toggleEventHref(o.event)}
+                    aria-pressed={active}
+                    className="flex items-center gap-1.5 rounded border px-3 py-1"
+                    style={
+                      active
+                        ? { borderColor: eventColor(o.event), backgroundColor: eventColor(o.event), color: "white" }
+                        : { borderColor: "var(--color-zinc-300, #d4d4d8)" }
+                    }
+                  >
+                    {o.event} ({o.count})
+                  </Link>
+                );
+              })}
             </div>
 
-            {/* Inne/ute-filter — samma knappradsstil som väljaren ovan. Formen
+            {/* Inne/ute-filter — samma knappradsstil som grenvalet. Formen
                 (fylld/ihålig) i grafen bär skillnaden när filtret står på
                 "alla"; knapparna här smalnar av vad som visas. */}
             <div className="flex flex-wrap gap-2 text-sm">
@@ -474,7 +488,7 @@ export default async function TavlingsresultatPage({
               ).map((b) => (
                 <Link
                   key={b.key}
-                  href={raceHref({ bana: b.key })}
+                  href={banaHref(b.key)}
                   className={`rounded px-3 py-1 ${
                     banaFilter === b.key
                       ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
@@ -487,20 +501,22 @@ export default async function TavlingsresultatPage({
             </div>
 
             <RaceProgressionChart
-              points={progressionPoints}
-              bestLabel={bestResultLabel}
-              emptyLabel="Inga lopp i den här grenen med det valda banfiltret."
+              series={series}
+              emptyLabel="Inga lopp i de valda grenarna med det valda banfiltret."
             />
 
-            {/* Tabellen under grafen — samma urval som grafen (gren + bana),
-                kronologisk, personbästa markerad. */}
-            {filteredRaceRows.length > 0 && (
+            {/* Detaljtabell — allt som är valt just nu, en rad per lopp,
+                grenen som egen kolumn, personbästa markerad per gren. */}
+            {detailRows.length > 0 && (
               <div className="w-full max-w-full overflow-x-auto">
                 <table className="w-full min-w-max text-left text-sm">
                   <thead>
                     <tr className="text-xs text-zinc-500 dark:text-zinc-400">
                       <th scope="col" className="py-1 pr-4 font-normal">
                         Datum
+                      </th>
+                      <th scope="col" className="py-1 pr-4 font-normal">
+                        Gren
                       </th>
                       <th scope="col" className="py-1 pr-4 font-normal">
                         Tävling
@@ -514,40 +530,42 @@ export default async function TavlingsresultatPage({
                     </tr>
                   </thead>
                   <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
-                    {filteredRaceRows.map((r) => {
-                      const isPb = r.resultSeconds === pbSecondsInFilter;
-                      return (
-                        <tr
-                          key={r.eventRowId}
-                          className={isPb ? "bg-zinc-50 dark:bg-zinc-900" : undefined}
-                        >
-                          <td className="py-1.5 pr-4 tabular-nums">{r.competitionDate}</td>
-                          <td className="py-1.5 pr-4">{r.competitionName}</td>
-                          <td className="py-1.5 pr-4">
-                            {r.venue ? SEASON_LABELS[r.venue] : "–"}
-                          </td>
-                          <td className="py-1.5 tabular-nums">
-                            {r.resultLabel}
-                            {isPb && (
-                              <span className="ml-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                                {bestResultLabel}
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {detailRows.map((r) => (
+                      <tr key={r.eventRowId} className={r.isPb ? "bg-zinc-50 dark:bg-zinc-900" : undefined}>
+                        <td className="py-1.5 pr-4 tabular-nums">{r.competitionDate}</td>
+                        <td className="py-1.5 pr-4">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: eventColor(r.event) }}
+                            />
+                            {r.event}
+                          </span>
+                        </td>
+                        <td className="py-1.5 pr-4">{r.competitionName}</td>
+                        <td className="py-1.5 pr-4">{r.venue ? SEASON_LABELS[r.venue] : "–"}</td>
+                        <td className="py-1.5 tabular-nums">
+                          {r.resultLabel}
+                          {r.isPb && (
+                            <span className="ml-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                              {bestResultLabel}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
 
             {/* Upptrappningsjämförelsen — samma tabellstruktur som
-                blockjämförelsen på /sasongen, men bara lopp i den valda grenen. */}
-            {racesInSelectedEvent.length < 2 ? (
+                blockjämförelsen på /sasongen, men bara lopp i någon av de
+                valda grenarna. */}
+            {racesInSelectedEvents.length < 2 ? (
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                Upptrappningsjämförelsen kräver minst två lopp i den här grenen med
-                registrerat resultat.
+                Upptrappningsjämförelsen kräver minst två lopp med registrerat resultat i de
+                valda grenarna.
               </p>
             ) : (
               <>
@@ -556,7 +574,9 @@ export default async function TavlingsresultatPage({
                   method="get"
                   className="flex flex-wrap items-end gap-3 text-sm"
                 >
-                  {selectedEvent && <input type="hidden" name="gren" value={selectedEvent} />}
+                  {selectedEvents.map((e) => (
+                    <input key={e} type="hidden" name="gren" value={e} />
+                  ))}
                   {banaParam && <input type="hidden" name="bana" value={banaParam} />}
                   <label className="flex flex-col gap-1">
                     <span className="text-zinc-600 dark:text-zinc-400">Lopp A</span>
@@ -568,9 +588,9 @@ export default async function TavlingsresultatPage({
                       <option value="" disabled>
                         Välj lopp
                       </option>
-                      {racesInSelectedEvent.map((c) => (
+                      {racesInSelectedEvents.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name} ({c.competition_date})
+                          {raceOptionLabel(c)}
                         </option>
                       ))}
                     </select>
@@ -585,9 +605,9 @@ export default async function TavlingsresultatPage({
                       <option value="" disabled>
                         Välj lopp
                       </option>
-                      {racesInSelectedEvent.map((c) => (
+                      {racesInSelectedEvents.map((c) => (
                         <option key={c.id} value={c.id}>
-                          {c.name} ({c.competition_date})
+                          {raceOptionLabel(c)}
                         </option>
                       ))}
                     </select>
@@ -599,7 +619,7 @@ export default async function TavlingsresultatPage({
 
                 {raceAParam && raceBParam && !(raceAggregateA && raceAggregateB) && (
                   <p className="text-sm text-zinc-500 dark:text-zinc-400">
-                    Kunde inte jämföra — välj två olika lopp i den här grenen med resultat.
+                    Kunde inte jämföra — välj två olika lopp med resultat.
                   </p>
                 )}
 

@@ -1,33 +1,34 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { categoryColorVar } from "@/lib/categories";
 
 /* ------------------------------------------------------------------------ *
  * RaceProgressionChart — K5 i docs/tranarperspektiv.md: "hur har 1500m
- * utvecklats?" för en vald gren, en punkt per lopp på en datumaxel.
+ * utvecklats?", en kurva per vald gren, en punkt per lopp på en datumaxel.
+ *
+ * ── Flera grenar samtidigt (2026-08-13) ──────────────────────────────────
+ * Sekunder är inte jämförbart mellan grenar (800m ligger runt 2 min, 5000m
+ * runt 17) — att rita flera grenars råtider på samma axel hade antingen
+ * krävt en axel per gren (svårläst) eller gjort skalan meningslös för alla
+ * utom en. Y-axeln är i stället "andel av grenens eget personbästa" (100 % =
+ * PB, lägre är aldrig möjligt) — varje kurva mäts mot sig själv, så flera
+ * grenar delar samma axel utan att bli jämförda mot varandra. Exakt tid
+ * finns kvar i hovertooltipen och detaljtabellen under grafen.
  *
  * ── Geometrin vänds ALDRIG ───────────────────────────────────────────────
- * Löptid mäts i sekunder där lägre är bättre. Precis som ComboChartens
- * kommentar säger om vilopuls ("Geometrin vänds aldrig efter bra/dåligt")
- * ritas tiden stigande uppåt som vanligt — en snabbare tid hamnar alltså
- * lägre i diagrammet, inte högre. Det är axeletiketten ("Tid — lägre är
- * bättre") som bär den tolkningen, inte en spegling av skalan. Att tyst
- * vända en axel gör grafen omöjlig att lita på.
+ * Trots normaliseringen: lägre än 100 % är fortfarande omöjligt, och ett
+ * lägre värde är fortfarande bättre. Axeln ritas stigande uppåt som vanligt.
  *
  * ── Inne/ute ──────────────────────────────────────────────────────────────
- * Alla punkter är tävlingar och bär därför samma färg (kategoripalettens
- * "race", samma gröna nyans som tävlingsmarkören i EfficiencyChart). Inne
- * och ute skiljs i stället åt med form — fylld prick för utomhus, ihålig
- * ring för inomhus — samma princip som veckovyns `Marker` använder för
- * genomfört/planerat (calendar/vecka/[date]/page.tsx). En tävling utan känt
- * `venue` (importluckor) ritas fylld, som utomhus, hellre än en tredje form
- * som sällan förekommer.
+ * Färgen bär grenens identitet nu (en kurva per gren), så inne/ute skiljs i
+ * stället åt med form — fylld prick för utomhus, ihålig ring för inomhus —
+ * samma princip som veckovyns `PassMarker` använder för genomfört/planerat.
+ * En tävling utan känt `venue` (importluckor) ritas fylld, som utomhus.
  *
  * ── Personbästa ───────────────────────────────────────────────────────────
- * Markeras med en extra ring i bläck (inte kategorifärg — det är ett
- * bläckelement, inte en tredje kategori, se EfficiencyChartens trendlinje)
- * plus en vågrät hjälplinje genom hela plotytan.
+ * Eftersom varje kurva är normaliserad mot sitt eget PB ligger PB alltid på
+ * exakt 100 % — en enda vågrät hjälplinje räcker för alla kurvor samtidigt,
+ * i stället för en linje per gren.
  * ------------------------------------------------------------------------ */
 
 export type RaceProgressionVenue = "indoor" | "outdoor" | null;
@@ -46,10 +47,18 @@ export type RaceProgressionPoint = {
   venue: RaceProgressionVenue;
 };
 
+export type RaceProgressionSeries = {
+  event: string;
+  /** CSS-färgvärde (t.ex. `var(--cat-easy)`) — en per vald gren, stabil
+   * oavsett vilka andra grenar som råkar vara valda samtidigt. */
+  color: string;
+  points: RaceProgressionPoint[];
+};
+
 const WIDTH = 800;
-const HEIGHT = 260;
+const HEIGHT = 280;
 const PAD_TOP = 14;
-const PAD_LEFT = 58;
+const PAD_LEFT = 46;
 const PAD_RIGHT = 16;
 const X_AXIS_H = 20;
 const PLOT_H = HEIGHT - PAD_TOP - X_AXIS_H;
@@ -101,35 +110,49 @@ function yearTicks(fromMs: number, toMs: number): { ms: number; label: string }[
   return out;
 }
 
+type PlottedPoint = RaceProgressionPoint & {
+  seriesEvent: string;
+  color: string;
+  pctOfPb: number;
+  isPb: boolean;
+};
+
 export function RaceProgressionChart({
-  points,
-  bestLabel = "Personbästa",
+  series,
   emptyLabel = "Inga lopp i den valda grenen med det här filtret.",
 }: {
-  points: RaceProgressionPoint[];
-  /** Vad den snabbaste tiden i urvalet ska kallas. Måste följa bana-filtret:
-   * inne och ute är skilda rekord i friidrott, och att kalla den bästa
-   * inomhustiden "personbästa" är fel så snart ett utomhuslopp gått fortare
-   * (Alices 800m-PB 2:21,99 sattes utomhus i juni). */
-  bestLabel?: string;
+  series: RaceProgressionSeries[];
   emptyLabel?: string;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  const sorted = useMemo(
-    () => [...points].sort((a, b) => dayMs(a.date) - dayMs(b.date)),
-    [points],
-  );
+  const allPoints = useMemo(() => {
+    const out: PlottedPoint[] = [];
+    for (const s of series) {
+      if (s.points.length === 0) continue;
+      const pb = Math.min(...s.points.map((p) => p.resultSeconds));
+      for (const p of s.points) {
+        out.push({
+          ...p,
+          seriesEvent: s.event,
+          color: s.color,
+          pctOfPb: (p.resultSeconds / pb) * 100,
+          isPb: p.resultSeconds === pb,
+        });
+      }
+    }
+    return out.sort((a, b) => dayMs(a.date) - dayMs(b.date));
+  }, [series]);
 
-  if (sorted.length === 0) {
+  if (allPoints.length === 0) {
     return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
   }
 
   /* ------------------------------- skalor -------------------------------- */
 
-  const rawFromMs = dayMs(sorted[0].date);
-  const rawToMs = Math.max(dayMs(sorted[sorted.length - 1].date), rawFromMs + DAY_MS);
+  const rawFromMs = dayMs(allPoints[0].date);
+  const rawToMs = Math.max(dayMs(allPoints[allPoints.length - 1].date), rawFromMs + DAY_MS);
   const span = rawToMs - rawFromMs;
   // Padding så att första/sista loppet inte hamnar exakt på plotkanten.
   const xPad = Math.max(span * 0.06, 20 * DAY_MS);
@@ -137,26 +160,20 @@ export function RaceProgressionChart({
   const toMs = rawToMs + xPad;
   const xFor = (date: string) => PAD_LEFT + ((dayMs(date) - fromMs) / (toMs - fromMs)) * PLOT_W;
 
-  const values = sorted.map((p) => p.resultSeconds);
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
-  const pad = (rawMax - rawMin || rawMin * 0.05 || 1) * 0.15;
+  const pctValues = allPoints.map((p) => p.pctOfPb);
+  const rawMin = Math.min(100, ...pctValues);
+  const rawMax = Math.max(...pctValues);
+  const pad = Math.max((rawMax - rawMin) * 0.15, 1);
   const yMin = Math.max(0, rawMin - pad);
   const yMax = rawMax + pad;
-  const yFor = (seconds: number) =>
-    PAD_TOP + PLOT_H - ((seconds - yMin) / (yMax - yMin || 1)) * PLOT_H;
+  const yFor = (pct: number) => PAD_TOP + PLOT_H - ((pct - yMin) / (yMax - yMin || 1)) * PLOT_H;
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) / 4) * i);
 
-  const linePath = sorted.map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(p.date)} ${yFor(p.resultSeconds)}`).join(" ");
-
-  const pbSeconds = Math.min(...values);
-  const pbPoint = sorted.find((p) => p.resultSeconds === pbSeconds) ?? null;
-
-  const hoveredPoint = sorted.find((p) => p.id === hovered) ?? null;
+  const hoveredPoint = allPoints.find((p) => p.id === hovered) ?? null;
 
   /** Samma "hela plotytan är träffyta"-mönster som EfficiencyChart — med
-   * 6–16 punkter utspridda över flera år är en prick i sig en omöjlig
+   * ett fåtal punkter utspridda över flera år är en prick i sig en omöjlig
    * träffyta. */
   const handlePointer = (event: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -167,11 +184,11 @@ export function RaceProgressionChart({
     const x = (event.clientX - rect.left) / scale;
     const y = (event.clientY - rect.top) / scale;
 
-    let best: RaceProgressionPoint | null = null;
+    let best: PlottedPoint | null = null;
     let bestDistance = Infinity;
-    for (const p of sorted) {
+    for (const p of allPoints) {
       const dx = xFor(p.date) - x;
-      const dy = yFor(p.resultSeconds) - y;
+      const dy = yFor(p.pctOfPb) - y;
       const distance = dx * dx + dy * dy;
       if (distance < bestDistance) {
         bestDistance = distance;
@@ -188,7 +205,7 @@ export function RaceProgressionChart({
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-auto w-full"
         role="img"
-        aria-label="Resultat per lopp över tid för den valda grenen. Lägre är bättre."
+        aria-label="Resultat per lopp över tid för de valda grenarna, som andel av respektive grens personbästa. Lägre är bättre."
         onPointerMove={handlePointer}
         onPointerLeave={() => setHovered(null)}
       >
@@ -210,7 +227,7 @@ export function RaceProgressionChart({
               className="fill-zinc-500 tabular-nums dark:fill-zinc-400"
               style={{ fontSize: 10 }}
             >
-              {formatRaceTime(v)}
+              {v.toFixed(0)}%
             </text>
           </g>
         ))}
@@ -220,44 +237,52 @@ export function RaceProgressionChart({
           className="fill-zinc-500 dark:fill-zinc-400"
           style={{ fontSize: 10 }}
         >
-          Tid — lägre är bättre
+          Andel av personbästa — lägre är bättre
         </text>
 
-        {/* --- personbästa: hjälplinje genom hela plotytan --- */}
-        {pbPoint && (
-          <line
-            x1={PAD_LEFT}
-            x2={WIDTH - PAD_RIGHT}
-            y1={yFor(pbSeconds)}
-            y2={yFor(pbSeconds)}
-            strokeWidth={1.5}
-            strokeDasharray="4 3"
-            className="stroke-zinc-900 dark:stroke-zinc-100"
-            opacity={0.45}
-          />
-        )}
-
-        {/* --- linje mellan loppen, kronologisk ordning --- */}
-        <path
-          d={linePath}
-          fill="none"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ stroke: categoryColorVar("race") }}
-          opacity={0.55}
+        {/* --- personbästa: en hjälplinje för alla kurvor, alltid vid 100 % --- */}
+        <line
+          x1={PAD_LEFT}
+          x2={WIDTH - PAD_RIGHT}
+          y1={yFor(100)}
+          y2={yFor(100)}
+          strokeWidth={1.5}
+          strokeDasharray="4 3"
+          className="stroke-zinc-900 dark:stroke-zinc-100"
+          opacity={0.35}
         />
 
-        {sorted.map((p) => {
+        {/* --- en linje per gren, kronologisk ordning inom grenen --- */}
+        {series.map((s) => {
+          if (s.points.length === 0) return null;
+          const pb = Math.min(...s.points.map((p) => p.resultSeconds));
+          const sorted = [...s.points].sort((a, b) => dayMs(a.date) - dayMs(b.date));
+          const path = sorted
+            .map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(p.date)} ${yFor((p.resultSeconds / pb) * 100)}`)
+            .join(" ");
+          return (
+            <path
+              key={s.event}
+              d={path}
+              fill="none"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ stroke: s.color }}
+              opacity={0.55}
+            />
+          );
+        })}
+
+        {allPoints.map((p) => {
           const isHovered = p.id === hovered;
-          const isPb = p.id === pbPoint?.id;
           const isIndoor = p.venue === "indoor";
           const cx = xFor(p.date);
-          const cy = yFor(p.resultSeconds);
+          const cy = yFor(p.pctOfPb);
           const r = isHovered ? 6 : 4.5;
           return (
             <g key={p.id}>
-              {isPb && (
+              {p.isPb && (
                 <circle
                   cx={cx}
                   cy={cy}
@@ -273,8 +298,8 @@ export function RaceProgressionChart({
                 r={r}
                 style={
                   isIndoor
-                    ? { fill: "transparent", stroke: categoryColorVar("race") }
-                    : { fill: categoryColorVar("race") }
+                    ? { fill: "transparent", stroke: p.color }
+                    : { fill: p.color }
                 }
                 strokeWidth={2}
                 className={isIndoor ? "" : "stroke-white dark:stroke-zinc-950"}
@@ -283,7 +308,7 @@ export function RaceProgressionChart({
                 onFocus={() => setHovered(p.id)}
                 onBlur={() => setHovered(null)}
               >
-                <title>{`${formatShortDate(p.date)} — ${p.competitionName}: ${p.resultLabel} (${venueLabel(p.venue)})${isPb ? ` — ${bestLabel.toLowerCase()}` : ""}`}</title>
+                <title>{`${p.seriesEvent} — ${formatShortDate(p.date)} — ${p.competitionName}: ${p.resultLabel} (${venueLabel(p.venue)})${p.isPb ? " — personbästa" : ""}`}</title>
               </circle>
             </g>
           );
@@ -304,49 +329,52 @@ export function RaceProgressionChart({
       </svg>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+        {series.map((s) => (
+          <span key={s.event} className="inline-flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: s.color }}
+            />
+            {s.event}
+          </span>
+        ))}
         <span className="inline-flex items-center gap-1.5">
-          <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: categoryColorVar("race") }}
-          />
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-500" />
           Utomhus
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full border-2"
-            style={{ borderColor: categoryColorVar("race") }}
-          />
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-zinc-400 dark:border-zinc-500" />
           Inomhus
         </span>
-        {pbPoint && (
-          <span className="inline-flex items-center gap-1.5">
-            <svg width={14} height={14} aria-hidden="true" className="shrink-0">
-              <circle
-                cx={7}
-                cy={7}
-                r={6}
-                fill="none"
-                strokeWidth={1.5}
-                className="stroke-zinc-900 dark:stroke-zinc-100"
-              />
-            </svg>
-            {bestLabel} ({formatRaceTime(pbSeconds)})
-          </span>
-        )}
+        <span className="inline-flex items-center gap-1.5">
+          <svg width={14} height={14} aria-hidden="true" className="shrink-0">
+            <circle
+              cx={7}
+              cy={7}
+              r={6}
+              fill="none"
+              strokeWidth={1.5}
+              className="stroke-zinc-900 dark:stroke-zinc-100"
+            />
+          </svg>
+          Personbästa (100 %)
+        </span>
       </div>
 
       {hoveredPoint && (
         <div className="flex flex-col gap-1 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
           <div className="font-medium text-zinc-900 dark:text-zinc-100">
-            {formatShortDate(hoveredPoint.date)} — {hoveredPoint.competitionName}
+            {hoveredPoint.seriesEvent} — {formatShortDate(hoveredPoint.date)} —{" "}
+            {hoveredPoint.competitionName}
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
             <span className="tabular-nums">
               {hoveredPoint.resultLabel} ({formatRaceTime(hoveredPoint.resultSeconds)})
             </span>
             <span>{venueLabel(hoveredPoint.venue)}</span>
-            {hoveredPoint.id === pbPoint?.id && (
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">{bestLabel}</span>
+            <span className="tabular-nums">{hoveredPoint.pctOfPb.toFixed(1)}% av PB</span>
+            {hoveredPoint.isPb && (
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">Personbästa</span>
             )}
           </div>
         </div>
