@@ -4,20 +4,19 @@ import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 
 /* Menyns ordning namnger loopens kadenser, inte artefakttyper
- * (docs/tranarloopen.md) — från kortaste horisont till längsta, med
- * kalendern sist som uppslagsverk. Första länken hette tidigare "Idag";
- * bytt tillbaka till "Dashboard" 2026-08-12 på uttrycklig begäran, trots
- * att loop-kadens-namngivningen ursprungligen valdes bort just den
- * benämningen (se historiken) — övriga länkar följer fortfarande
- * kadens-principen.
+ * (docs/tranarloopen.md). Första länken hette tidigare "Idag"; bytt tillbaka
+ * till "Dashboard" 2026-08-12 på uttrycklig begäran. Träningskalendern
+ * flyttades upp som andra länk 2026-08-13 (uppslagsverket man går till näst
+ * oftast efter dashboarden) och döptes om från "Kalender" för att skilja
+ * den från kalenderappar i största allmänhet.
  *
- * "Veckan" togs bort samma dag: dubblerade kalenderns veckovy
+ * "Veckan" togs bort 2026-08-13: dubblerade kalenderns veckovy
  * (/calendar/vecka/[date]), som nu äger både rutnätet och nyckeltalen. */
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/calendar", label: "Träningskalender" },
   { href: "/blocket", label: "Blocket" },
   { href: "/sasongen", label: "Säsongen" },
-  { href: "/calendar", label: "Kalender" },
   { href: "/settings", label: "Inställningar" },
 ];
 

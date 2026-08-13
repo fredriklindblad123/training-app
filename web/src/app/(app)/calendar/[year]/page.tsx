@@ -3,17 +3,15 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getDayStatuses } from "@/lib/day-status";
 import { CalendarNav, type BandBlock } from "@/components/CalendarHorizon";
+import { dateKey, isValidYear } from "@/lib/calendar-utils";
+import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import {
-  SV_MONTHS,
-  STATUS_COLOR,
-  STATUS_LABEL,
-  dateKey,
-  daysInMonth,
-  firstWeekdayOfMonth,
-  isValidYear,
-} from "@/lib/calendar-utils";
-import { CATEGORY_LABELS, isActivityCategory, type ActivityCategory } from "@/lib/categories";
-import { BLOCK_COLOR_VARS, blocksInRange } from "@/lib/planning";
+  QUALITY_WORKOUT_TYPES,
+  WORKOUT_LABELS,
+  toDateKey,
+  workoutTypeColorVar,
+  type WorkoutType,
+} from "@/lib/planning";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -25,6 +23,7 @@ import {
   type PlannedWorkout,
 } from "@/lib/plan-matching";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
+import { YearGrid, type YearOutcome, type PlannedDay, type BlockDay } from "@/components/YearGrid";
 
 export default async function YearPage({
   params,
@@ -90,28 +89,72 @@ export default async function YearPage({
   );
   const yearCompliance = summarizeCompliance(yearPlanMatches);
 
-  const plannedMap = new Map<string, ActivityCategory>();
+  const now = new Date();
+  const todayKey = toDateKey(now);
+
+  // Tävlade är ett eget utfall, skilt från "tränade" — se YearGrid.tsx för
+  // varför. En dag kan i teorin ha flera pass; ett tävlingspass vinner alltid
+  // över ett vanligt träningspass samma dag.
+  const raceDates = new Set(
+    yearSessions.filter((s) => s.category === "race").map((s) => s.date),
+  );
+
+  const outcomeByDate: Record<string, YearOutcome> = {};
+  for (const [key, status] of statuses) {
+    if (raceDates.has(key)) {
+      outcomeByDate[key] = "competed";
+    } else if (status === "training") {
+      outcomeByDate[key] = "trained";
+    } else if (status === "sick" || status === "injured") {
+      outcomeByDate[key] = status;
+    }
+  }
+  for (const key of raceDates) {
+    outcomeByDate[key] = "competed";
+  }
+
+  // Ett dubbelpass en dag ska hellre visa kvalitetspasset (tröskel/intervall)
+  // än ett samtidigt lugnt distanspass — det är kvalitetspasset man vill se
+  // ligga var i årshjulet.
+  const plannedByDate: Record<string, PlannedDay & { isQuality: boolean }> = {};
   for (const pw of plannedWorkouts ?? []) {
-    if (isActivityCategory(pw.workout_type)) {
-      plannedMap.set(pw.scheduled_date, pw.workout_type);
+    const isQuality = (QUALITY_WORKOUT_TYPES as readonly string[]).includes(pw.workout_type);
+    const existing = plannedByDate[pw.scheduled_date];
+    if (existing?.isQuality && !isQuality) continue;
+    const label = isActivityCategory(pw.workout_type)
+      ? CATEGORY_LABELS[pw.workout_type]
+      : (WORKOUT_LABELS[pw.workout_type as WorkoutType] ?? pw.workout_type);
+    plannedByDate[pw.scheduled_date] = {
+      colorVar: workoutTypeColorVar(pw.workout_type),
+      label,
+      isQuality,
+    };
+  }
+
+  const blockByDate: Record<string, BlockDay> = {};
+  const yearStartKey = `${year}-01-01`;
+  const yearEndKey = `${year}-12-31`;
+  for (const b of blocks) {
+    const from = b.start_date > yearStartKey ? b.start_date : yearStartKey;
+    const to = b.end_date < yearEndKey ? b.end_date : yearEndKey;
+    for (
+      let d = new Date(`${from}T00:00:00`);
+      toDateKey(d) <= to;
+      d.setDate(d.getDate() + 1)
+    ) {
+      blockByDate[toDateKey(d)] = { blockType: b.block_type, name: b.name };
     }
   }
 
   let daysUntilGoal: number | null = null;
   if (nextCompetition) {
-    const today = new Date();
-    const todayMidnight = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-    );
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const eventDate = new Date(`${nextCompetition.competition_date}T00:00:00`);
     daysUntilGoal = Math.round(
       (eventDate.getTime() - todayMidnight.getTime()) / 86_400_000,
     );
   }
 
-  const now = new Date();
   const isCurrentYear = year === now.getFullYear();
   const dayHref = isCurrentYear
     ? `/calendar/${year}/${now.getMonth() + 1}/${now.getDate()}`
@@ -135,18 +178,6 @@ export default async function YearPage({
 
       <PeriodStatTiles sessions={yearSessions} compliance={yearCompliance} />
 
-      <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
-        {/* "Ledig" har ingen egen färg i kalendern — se lib/day-status.ts. */}
-        {(Object.keys(STATUS_LABEL) as Array<keyof typeof STATUS_LABEL>)
-          .filter((key) => key !== "rest")
-          .map((key) => (
-            <span key={key} className="flex items-center gap-1">
-              <span className={`h-3 w-3 rounded-sm ${STATUS_COLOR[key]}`} />
-              {STATUS_LABEL[key]}
-            </span>
-          ))}
-      </div>
-
       {nextCompetition && (
         <Link
           href={`/sasongen`}
@@ -159,86 +190,15 @@ export default async function YearPage({
               : ` (${Math.abs(daysUntilGoal)} dagar sedan)`)}
         </Link>
       )}
-      <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
-        {SV_MONTHS.map((monthName, idx) => {
-          const month = idx + 1;
-          const numDays = daysInMonth(year, month);
-          const offset = firstWeekdayOfMonth(year, month);
-          const cells: Array<number | null> = [
-            ...Array.from({ length: offset }, () => null),
-            ...Array.from({ length: numDays }, (_, i) => i + 1),
-          ];
-          const monthStart = dateKey(year, month, 1);
-          const monthEnd = dateKey(year, month, numDays);
-          // Årsvyns dagar är för små (16px) för egna block-markeringar, så
-          // blocken listas i stället som etiketter under månadsnamnet — det
-          // ger samma information (vilket block täcker månaden) utan att
-          // rutnätet behöver plats för en stapel per dag.
-          const monthBlocks = blocksInRange(blocks, monthStart, monthEnd);
 
-          return (
-            <div key={month} className="flex flex-col gap-2">
-              <div className="flex flex-col gap-0.5">
-                <Link
-                  href={`/calendar/${year}/${month}`}
-                  className="text-sm font-medium text-zinc-800 hover:underline dark:text-zinc-200"
-                >
-                  {monthName}
-                </Link>
-                {monthBlocks.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {monthBlocks.map((b) => (
-                      <span
-                        key={b.id}
-                        className="rounded px-1 py-0.5 text-[9px] font-medium text-white"
-                        style={{ backgroundColor: BLOCK_COLOR_VARS[b.block_type] }}
-                        title={`${b.name}, ${b.start_date} – ${b.end_date}${b.focus ? `. ${b.focus}` : ""}`}
-                      >
-                        {b.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="grid grid-cols-7 gap-1">
-                {cells.map((day, i) => {
-                  if (day === null) {
-                    return <span key={`empty-${i}`} />;
-                  }
-                  const key = dateKey(year, month, day);
-                  const status = statuses.get(key);
-                  const isGoalDay = goalDateKey === key;
-                  const plannedCategory = plannedMap.get(key);
-                  const isFulfilled = status === "training";
-                  return (
-                    <Link
-                      key={key}
-                      href={`/calendar/${year}/${month}/${day}`}
-                      title={`${key}${status ? ` – ${STATUS_LABEL[status]}` : ""}${
-                        plannedCategory
-                          ? ` – Planerat: ${CATEGORY_LABELS[plannedCategory]}${
-                              isFulfilled ? " (genomfört)" : ""
-                            }`
-                          : ""
-                      }`}
-                      className={`h-4 w-4 rounded-sm ${
-                        status
-                          ? STATUS_COLOR[status]
-                          : "bg-zinc-100 dark:bg-zinc-800"
-                      } ${isGoalDay ? "ring-2 ring-amber-500" : ""}`}
-                      style={
-                        plannedCategory
-                          ? { boxSizing: "border-box", border: `2px solid var(--cat-${plannedCategory})` }
-                          : undefined
-                      }
-                    />
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <YearGrid
+        year={year}
+        todayKey={todayKey}
+        goalDateKey={goalDateKey}
+        outcomeByDate={outcomeByDate}
+        plannedByDate={plannedByDate}
+        blockByDate={blockByDate}
+      />
     </div>
   );
 }
