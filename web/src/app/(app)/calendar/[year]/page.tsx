@@ -41,6 +41,7 @@ export default async function YearPage({
   const [
     statuses,
     { data: nextCompetition },
+    { data: yearCompetitions },
     { data: plannedWorkouts },
     { data: seasonBlocks },
     { data: activities },
@@ -53,6 +54,14 @@ export default async function YearPage({
       .order("competition_date", { ascending: true })
       .limit(1)
       .maybeSingle(),
+    // Alla årets tävlingar, för Tävlade-utfallet i årsvyn — se raceDates
+    // nedan. Skild från nextCompetition-frågan ovan (som bara vill ha den
+    // första/nästa), så samma tabell frågas två gånger med olika räckvidd.
+    supabase
+      .from("competitions")
+      .select("id, name, competition_date")
+      .gte("competition_date", `${year}-01-01`)
+      .lt("competition_date", `${year + 1}-01-01`),
     supabase
       .from("planned_workouts")
       .select(
@@ -95,9 +104,29 @@ export default async function YearPage({
   // Tävlade är ett eget utfall, skilt från "tränade" — se YearGrid.tsx för
   // varför. En dag kan i teorin ha flera pass; ett tävlingspass vinner alltid
   // över ett vanligt träningspass samma dag.
-  const raceDates = new Set(
+  //
+  // Källan är unionen av två saker, inte bara Garmin-kategorin: dels
+  // sessioner Garmin själv taggat "race" (namnmönster/training_effect_label,
+  // se categorizeSession i lib/sessions.ts), dels den manuellt inlagda
+  // competitions-tabellen — samma tabell veckovyn redan använder för sina
+  // tävlingsmarkeringar. Garmin-kategorin missar tävlingar där passet inte
+  // matchade dess mönster (vanligt för medeldistanslopp med kortare
+  // delmoment), så att bara lita på den missade flera av Alices tävlingar i
+  // juni/juli.
+  const raceDatesFromSessions = new Set(
     yearSessions.filter((s) => s.category === "race").map((s) => s.date),
   );
+  const competitionNamesByDate = new Map<string, string[]>();
+  for (const c of yearCompetitions ?? []) {
+    competitionNamesByDate.set(c.competition_date, [
+      ...(competitionNamesByDate.get(c.competition_date) ?? []),
+      c.name,
+    ]);
+  }
+  const raceDates = new Set([
+    ...raceDatesFromSessions,
+    ...competitionNamesByDate.keys(),
+  ]);
 
   const outcomeByDate: Record<string, YearOutcome> = {};
   for (const [key, status] of statuses) {
@@ -198,6 +227,7 @@ export default async function YearPage({
         outcomeByDate={outcomeByDate}
         plannedByDate={plannedByDate}
         blockByDate={blockByDate}
+        competitionNamesByDate={Object.fromEntries(competitionNamesByDate)}
       />
     </div>
   );

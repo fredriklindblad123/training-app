@@ -54,6 +54,7 @@ export function YearGrid({
   outcomeByDate,
   plannedByDate,
   blockByDate,
+  competitionNamesByDate,
 }: {
   year: number;
   todayKey: string;
@@ -61,6 +62,7 @@ export function YearGrid({
   outcomeByDate: Record<string, YearOutcome>;
   plannedByDate: Record<string, PlannedDay>;
   blockByDate: Record<string, BlockDay>;
+  competitionNamesByDate: Record<string, string[]>;
 }) {
   const [view, setView] = useState<View>("traning");
 
@@ -161,16 +163,19 @@ export function YearGrid({
                   // dag-/veckovyerna): dagens datum räknas som "framåt" tills
                   // det faktiskt har ett utfall.
                   const planned = !outcome && key >= todayKey ? plannedByDate[key] : undefined;
+                  const compNames = competitionNamesByDate[key];
                   return (
                     <Link
                       key={key}
                       href={dayHref}
                       title={`${key}${
-                        outcome
-                          ? ` – ${OUTCOME_LABEL[outcome]}`
-                          : planned
-                            ? ` – Planerat: ${planned.label}`
-                            : ""
+                        outcome === "competed" && compNames?.length
+                          ? ` – ${compNames.join(", ")}`
+                          : outcome
+                            ? ` – ${OUTCOME_LABEL[outcome]}`
+                            : planned
+                              ? ` – Planerat: ${planned.label}`
+                              : ""
                       }`}
                       className={`h-4 w-4 rounded-sm ${
                         outcome ? OUTCOME_COLOR[outcome] : "bg-zinc-100 dark:bg-zinc-800"
