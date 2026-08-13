@@ -243,11 +243,11 @@ function vo2maxRing(readings: { date: string; value: number }[], todayKey: strin
   };
 }
 
-/** Under den här förändringen räknas veckovolym/belastning som oförändrad —
- * normal periodisering (en lugnare vecka efter en tävling, en tyngre
- * uppladdningsvecka) svänger naturligt mer än en fysiologisk trend som
- * formkurvan gör. */
-const WEEKLY_NOISE_THRESHOLD_PCT = 0.15;
+/** Under den här förändringen räknas rullande volym/belastning som
+ * oförändrad. Satt lägre än den gamla vecka-mot-vecka-jämförelsen (15%) —
+ * baslinjen är nu årets snitt, ett mycket stabilare tal än förra veckan, så
+ * en mindre avvikelse mot den baslinjen är redan ett meningsfullt utslag. */
+const WEEKLY_NOISE_THRESHOLD_PCT = 0.08;
 
 /** Distans/belastning (P1.5): rullande 7 dagar mot årets snitt per vecka —
  * inte förra veckan, som bara flyttar jämförelsen en vecka bakåt utan att
