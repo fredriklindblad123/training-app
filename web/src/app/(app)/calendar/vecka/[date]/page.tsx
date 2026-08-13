@@ -9,7 +9,6 @@ import {
 import {
   WORKOUT_LABELS,
   SLOT_LABELS,
-  QUALITY_WORKOUT_TYPES,
   workoutTypeColorVar,
   type WorkoutType,
 } from "@/lib/planning";
@@ -22,9 +21,8 @@ import {
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { AvailabilityBand } from "@/components/AvailabilityBand";
 import type { AvailabilityPeriod } from "@/lib/planning";
-import { RING_STATUS_TEXT } from "@/components/KpiRing";
-import { ringFillAndStatus } from "@/lib/kpi-ring";
-import { formatDuration, formatKm } from "@/lib/format";
+import { PeriodStatTiles } from "@/components/PeriodStatTiles";
+import { formatKm } from "@/lib/format";
 import { SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
 import { mentionsStrength } from "@/lib/diary-text";
@@ -62,38 +60,6 @@ function typeLabel(type: string): string {
   return WORKOUT_LABELS[type as WorkoutType] ?? type;
 }
 
-/** Veckans fem nyckeltal (Distanspass, Kvalitetspass, Distans, Tid,
- * Belastning) som kompakta tal + jämförelsetext — flyttad hit från den
- * borttagna /veckan. Pass splittas i distans- och kvalitetspass
- * (QUALITY_WORKOUT_TYPES, samma definition som K6:s kvalitetsveckor i
- * lib/continuity.ts). Där veckan hade en plan jämförs talet mot det
- * planerade, i samma statusfärg som dashboardens KpiRing (RING_STATUS_TEXT)
- * — grönt/gult/rött betyder samma sak här som där. Utan plan visas bara
- * talet. */
-function statTile({
-  label,
-  value,
-  valueText,
-  target,
-  targetLabel,
-}: {
-  label: string;
-  value: number;
-  valueText: string;
-  target: number | null;
-  targetLabel: string;
-}): { label: string; valueText: string; targetText: string | null; statusClass: string } {
-  if (target == null) {
-    return { label, valueText, targetText: null, statusClass: "" };
-  }
-  const { status } = ringFillAndStatus(value, target, "higher_is_better");
-  return {
-    label,
-    valueText,
-    targetText: `${targetLabel} ${target}`,
-    statusClass: RING_STATUS_TEXT[status],
-  };
-}
 
 /**
  * Ihålig ring = planerat (en avsikt), fylld prick = genomfört (något som
@@ -229,59 +195,6 @@ export default async function WeekPage({
   }
   const compliance = summarizeCompliance(planMatches);
 
-  // Veckosummor räknas på pass, inte på aktiviteter — annars räknas
-  // uppvärmning och nerjogg som egna pass i "antal pass".
-  const totalKm = sessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
-  const totalSeconds = sessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
-  const totalLoad = sessions.reduce((sum, s) => sum + (s.trainingLoad ?? 0), 0);
-
-  // Pass splittat i distans/kvalitet — samma QUALITY_WORKOUT_TYPES-definition
-  // som K6:s kvalitetsveckor (lib/continuity.ts).
-  const qualityCount = sessions.filter((s) =>
-    (QUALITY_WORKOUT_TYPES as readonly string[]).includes(s.category),
-  ).length;
-  const distanceSessionCount = sessions.length - qualityCount;
-  const distancePlanned =
-    compliance.plannedCount > 0 ? compliance.plannedCount - compliance.qualityPlanned : null;
-
-  const statTiles = [
-    statTile({
-      label: "Distanspass",
-      value: distanceSessionCount,
-      valueText: String(distanceSessionCount),
-      target: distancePlanned,
-      targetLabel: "av",
-    }),
-    statTile({
-      label: "Kvalitetspass",
-      value: qualityCount,
-      valueText: String(qualityCount),
-      target: compliance.plannedCount > 0 ? compliance.qualityPlanned : null,
-      targetLabel: "av",
-    }),
-    statTile({
-      label: "Distans",
-      value: totalKm,
-      valueText: totalKm > 0 ? `${totalKm.toFixed(1)} km` : "—",
-      target: compliance.plannedKm,
-      targetLabel: "av",
-    }),
-    statTile({
-      label: "Tid",
-      value: totalSeconds,
-      valueText: totalSeconds > 0 ? formatDuration(totalSeconds) : "—",
-      target: null,
-      targetLabel: "av",
-    }),
-    statTile({
-      label: "Belastning",
-      value: totalLoad,
-      valueText: totalLoad > 0 ? String(Math.round(totalLoad)) : "—",
-      target: null,
-      targetLabel: "av",
-    }),
-  ];
-
   const monthHref = `/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}`;
   const yearHref = `/calendar/${monday.getFullYear()}`;
 
@@ -306,24 +219,7 @@ export default async function WeekPage({
         yearHref={yearHref}
       />
 
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {statTiles.map((t) => (
-          <div
-            key={t.label}
-            className="rounded border border-zinc-200 px-3 py-2 dark:border-zinc-800"
-          >
-            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{t.label}</dt>
-            <dd className="mt-0.5 flex items-baseline gap-1.5">
-              <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-                {t.valueText}
-              </span>
-              {t.targetText && (
-                <span className={`text-xs ${t.statusClass}`}>{t.targetText}</span>
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <PeriodStatTiles sessions={sessions} compliance={compliance} />
 
       <AvailabilityBand
         periods={(availabilityRows ?? []) as AvailabilityPeriod[]}

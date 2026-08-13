@@ -6,6 +6,12 @@ import { DaySection } from "@/components/DaySection";
 import { CalendarNav } from "@/components/CalendarHorizon";
 import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
 import {
+  matchPlanToSessions,
+  summarizeCompliance,
+  type PlannedWorkout,
+} from "@/lib/plan-matching";
+import { PeriodStatTiles } from "@/components/PeriodStatTiles";
+import {
   SV_MONTHS,
   dateKey,
   nextDateKey,
@@ -193,7 +199,13 @@ export default async function DayPage({
   // veta om den innehåller något.
   const dayKm = daySessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
   const daySeconds = daySessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
-  const dayLoad = daySessions.reduce((sum, s) => sum + (s.trainingLoad ?? 0), 0);
+
+  // Samma nyckeltalsrad som kalenderns övriga vyer (components/PeriodStatTiles.tsx).
+  const dayPlanMatches = matchPlanToSessions(
+    (plannedWorkouts ?? []) as unknown as PlannedWorkout[],
+    daySessions,
+  );
+  const dayCompliance = summarizeCompliance(dayPlanMatches);
 
   const doneSummary =
     daySessions.length === 0
@@ -297,21 +309,7 @@ export default async function DayPage({
         yearHref={`/calendar/${year}`}
       />
 
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Pass", value: String(daySessions.length) },
-          { label: "Distans", value: dayKm > 0 ? `${dayKm.toFixed(1)} km` : "—" },
-          { label: "Tid", value: daySeconds > 0 ? formatDuration(daySeconds) : "—" },
-          { label: "Belastning", value: dayLoad > 0 ? String(Math.round(dayLoad)) : "—" },
-        ].map((tile) => (
-          <div key={tile.label} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
-            <dd className="mt-0.5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {tile.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />
 
       {plannedTest && hasOutcome && lt2Estimate && (
         <ThresholdTestCard

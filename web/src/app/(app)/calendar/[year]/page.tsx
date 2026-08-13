@@ -19,7 +19,12 @@ import {
   groupActivitiesIntoSessions,
   type SessionActivity,
 } from "@/lib/sessions";
-import { formatDuration } from "@/lib/format";
+import {
+  matchPlanToSessions,
+  summarizeCompliance,
+  type PlannedWorkout,
+} from "@/lib/plan-matching";
+import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 
 export default async function YearPage({
   params,
@@ -51,7 +56,9 @@ export default async function YearPage({
       .maybeSingle(),
     supabase
       .from("planned_workouts")
-      .select("scheduled_date, workout_type")
+      .select(
+        "id, scheduled_date, workout_type, slot, title, target_distance_meters, target_duration_seconds",
+      )
       .gte("scheduled_date", `${year}-01-01`)
       .lt("scheduled_date", `${year + 1}-01-01`),
     supabase
@@ -75,9 +82,13 @@ export default async function YearPage({
   const yearSessions = groupActivitiesIntoSessions(
     (activities ?? []) as unknown as SessionActivity[],
   );
-  const yearKm = yearSessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
-  const yearSeconds = yearSessions.reduce((sum, s) => sum + s.durationSeconds, 0);
-  const yearLoad = yearSessions.reduce((sum, s) => sum + s.trainingLoad, 0);
+
+  // Samma nyckeltalsrad som kalenderns övriga vyer (components/PeriodStatTiles.tsx).
+  const yearPlanMatches = matchPlanToSessions(
+    (plannedWorkouts ?? []) as unknown as PlannedWorkout[],
+    yearSessions,
+  );
+  const yearCompliance = summarizeCompliance(yearPlanMatches);
 
   const plannedMap = new Map<string, ActivityCategory>();
   for (const pw of plannedWorkouts ?? []) {
@@ -122,21 +133,7 @@ export default async function YearPage({
         yearHref={`/calendar/${year}`}
       />
 
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Pass", value: String(yearSessions.length) },
-          { label: "Distans", value: yearKm > 0 ? `${yearKm.toFixed(0)} km` : "—" },
-          { label: "Tid", value: yearSeconds > 0 ? formatDuration(yearSeconds) : "—" },
-          { label: "Belastning", value: yearLoad > 0 ? String(Math.round(yearLoad)) : "—" },
-        ].map((tile) => (
-          <div key={tile.label} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
-            <dd className="mt-0.5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {tile.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <PeriodStatTiles sessions={yearSessions} compliance={yearCompliance} />
 
       <div className="flex flex-wrap gap-4 text-xs text-zinc-600 dark:text-zinc-400">
         {/* "Ledig" har ingen egen färg i kalendern — se lib/day-status.ts. */}

@@ -23,7 +23,12 @@ import {
   groupActivitiesIntoSessions,
   type SessionActivity,
 } from "@/lib/sessions";
-import { formatDuration } from "@/lib/format";
+import {
+  matchPlanToSessions,
+  summarizeCompliance,
+  type PlannedWorkout,
+} from "@/lib/plan-matching";
+import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 
 type DayInfo = {
   status?: DayStatus;
@@ -78,7 +83,7 @@ export default async function MonthPage({
       .not("day_type", "is", null),
     supabase
       .from("planned_workouts")
-      .select("scheduled_date, workout_type, slot")
+      .select("id, scheduled_date, workout_type, slot, title, target_distance_meters, target_duration_seconds")
       .order("slot")
       .gte("scheduled_date", monthStart)
       .lt("scheduled_date", monthEndExclusive),
@@ -99,9 +104,13 @@ export default async function MonthPage({
   // /dashboard och /trends.
   const activityRows = (activities ?? []) as unknown as SessionActivity[];
   const monthSessions = groupActivitiesIntoSessions(activityRows);
-  const monthKm = monthSessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
-  const monthSeconds = monthSessions.reduce((sum, s) => sum + s.durationSeconds, 0);
-  const monthLoad = monthSessions.reduce((sum, s) => sum + s.trainingLoad, 0);
+
+  // Samma nyckeltalsrad som kalenderns övriga vyer (components/PeriodStatTiles.tsx).
+  const monthPlanMatches = matchPlanToSessions(
+    (plannedWorkouts ?? []) as unknown as PlannedWorkout[],
+    monthSessions,
+  );
+  const monthCompliance = summarizeCompliance(monthPlanMatches);
 
   const days = new Map<string, DayInfo>();
   for (const entry of diaryEntries ?? []) {
@@ -155,21 +164,7 @@ export default async function MonthPage({
         yearHref={`/calendar/${year}`}
       />
 
-      <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Pass", value: String(monthSessions.length) },
-          { label: "Distans", value: monthKm > 0 ? `${monthKm.toFixed(1)} km` : "—" },
-          { label: "Tid", value: monthSeconds > 0 ? formatDuration(monthSeconds) : "—" },
-          { label: "Belastning", value: monthLoad > 0 ? String(Math.round(monthLoad)) : "—" },
-        ].map((tile) => (
-          <div key={tile.label} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-            <dt className="text-xs text-zinc-500 dark:text-zinc-400">{tile.label}</dt>
-            <dd className="mt-0.5 text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {tile.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <PeriodStatTiles sessions={monthSessions} compliance={monthCompliance} />
 
       <AvailabilityBand
         periods={(availabilityRows ?? []) as AvailabilityPeriod[]}
