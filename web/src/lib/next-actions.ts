@@ -3,7 +3,7 @@
  * gamla artefakt-sidorna svarade på (avsnitt 1). Ren logik, ingen React och
  * inga egna databasanrop: anroparen (var `/dashboard` — döpt om från
  * `/idag` — som slutade använda den här filen 2026-08-12, se git-historiken;
- * möjligen `/veckan` eller `/blocket` i framtiden) har redan hämtat allt som
+ * möjligen `/trender` i framtiden) har redan hämtat allt som
  * behövs för sin egen sida i sitt befintliga Promise.all-block, den här
  * filen bara väger och formulerar det.
  *
@@ -135,7 +135,7 @@ export function nextActions(input: NextActionInput): NextAction[] {
         phase: "block",
         title: "Utvärdera blocket",
         why: "Blocket närmar sig sitt slut — bra läge att forma nästa innan det gör det.",
-        href: "/blocket",
+        href: "/trender",
         priority: 5,
       });
     }

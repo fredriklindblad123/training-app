@@ -113,9 +113,9 @@ export type DailyStatus = {
  * dagbokstext att tolka) och dubblerade den då mycket tydligare manuella
  * incheckningen (P0.4). Incheckningen är i sin tur borttagen 2026-08-12 (för
  * sällan ifylld för att ge meningsfull data) och ersatt av Garmins egen
- * Känsla/Ansträngning-skattning per pass (activities.garmin_feel/garmin_rpe)
- * plus den textbaserade tolkningen, som lever kvar för sitt eget syfte i
- * /blocket korrelationskort ("HRV ↔ känsla ur dagbokstext"). */
+ * Känsla/Ansträngning-skattning per pass (activities.garmin_feel/garmin_rpe).
+ * Den textbaserade tolkningen (P2.2) användes tidigare även i Trenders
+ * korrelationskort, borttagna 2026-08-13 (visade inget relevant). */
 export type DailyStatusInput = {
   date: string;
   hrv?: number | null;

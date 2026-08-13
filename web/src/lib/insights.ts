@@ -126,7 +126,7 @@ export function buildInsights(input: InsightInput): Insight[] {
         phase: "block",
         headline: `Formkurvan har stigit ${up} veckor i rad.`,
         detail: `Senaste veckan ${last.toFixed(2)} m/slag. Stigande värde vid samma puls betyder att du kommer längre per hjärtslag.`,
-        href: "/blocket",
+        href: "/trender",
         tone: "positiv",
         priority: 2,
       });
@@ -136,7 +136,7 @@ export function buildInsights(input: InsightInput): Insight[] {
         phase: "block",
         headline: `Formkurvan har fallit ${down} veckor i rad.`,
         detail: `Senaste veckan ${last.toFixed(2)} m/slag. Värt att lägga märke till — men kurvan påverkas också av värme, stress och underlag, så en enskild period säger inte allt.`,
-        href: "/blocket",
+        href: "/trender",
         tone: "att-bevaka",
         priority: 2,
       });
@@ -157,7 +157,7 @@ export function buildInsights(input: InsightInput): Insight[] {
         phase: "block",
         headline: `Andelen tid på eller över tröskel har stigit ${up} veckor i rad.`,
         detail: `Senaste veckan ${Math.round(last * 100)} %. Räknat på klockans zoner — siffran blir jämförbar mot din egen fysiologi först när ett tröskeltest är gjort.`,
-        href: "/blocket",
+        href: "/trender",
         tone: "att-bevaka",
         priority: 1,
       });

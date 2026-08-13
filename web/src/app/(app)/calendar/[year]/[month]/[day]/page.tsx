@@ -252,21 +252,6 @@ export default async function DayPage({
     },
   } as const;
 
-  // Dagtyp är sammanfattningen av allt annat på sidan — inte ett fält bland
-  // andra i dagboken. Ett redan satt värde vinner alltid; annars föreslås ett
-  // utifrån det som redan finns: sjuk-/skadeord i dagbokstexten (samma
-  // regelbaserade analys som färgar anteckningarna), och i andra hand om
-  // dagen faktiskt har ett genomfört pass.
-  const suggestedDayType: string | null =
-    diaryEntry?.day_type ??
-    (noteAnalysis.healthFlags.includes("sick")
-      ? "sick"
-      : noteAnalysis.healthFlags.includes("injured")
-        ? "injured"
-        : daySessions.length > 0
-          ? "training"
-          : null);
-
   const sleepSummary = dailyMetrics
     ? [
         formatHoursMinutes(dailyMetrics.sleep_seconds),
@@ -321,39 +306,6 @@ export default async function DayPage({
           saveAction={saveTestLt2}
         />
       )}
-
-      <form
-        action={saveDiaryEntry}
-        className="flex flex-wrap items-center gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-      >
-        <input type="hidden" name="entry_date" value={dateStr} />
-        <input type="hidden" name="entry_id" value={diaryEntry?.id ?? ""} />
-        <label className="flex flex-col gap-1 text-sm">
-          Dagtyp
-          <select
-            name="day_type"
-            defaultValue={suggestedDayType ?? ""}
-            className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-          >
-            <option value="">Ej satt</option>
-            <option value="training">Träning</option>
-            <option value="rest">Vila</option>
-            <option value="sick">Sjuk</option>
-            <option value="injured">Skadad</option>
-          </select>
-        </label>
-        {!diaryEntry?.day_type && suggestedDayType && (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Föreslaget utifrån dagens pass och dagbokstext — ändra om det inte stämmer.
-          </p>
-        )}
-        <button
-          type="submit"
-          className="w-fit rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-        >
-          Spara
-        </button>
-      </form>
 
       <DaySection
         title="Planerat pass"

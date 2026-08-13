@@ -2,7 +2,6 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
-import { ScatterChart } from "@/components/charts/ScatterChart";
 import {
   ComboChart,
   type ComboEvent,
@@ -30,33 +29,20 @@ import {
 } from "@/lib/sessions";
 import {
   coefficientOfVariation,
-  correlationStrengthLabel,
   isoWeekStart,
   mean,
   median,
-  pearsonCorrelation,
   weekLabel,
 } from "@/lib/stats-utils";
-import { formatHoursMinutes } from "@/lib/format";
-import { analyzeDiaryNote } from "@/lib/diary-text";
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
-import { addZoneSeconds, bandsFromZones, zoneTotal, BAND_LABELS, type BandKey } from "@/lib/intensity";
 import {
   addDays as planAddDays,
-  AVAILABILITY_KINDS,
-  AVAILABILITY_LABELS,
   BLOCK_LABELS,
-  type AvailabilityKind,
   type BlockType,
 } from "@/lib/planning";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { ComplianceCard } from "@/components/ComplianceCard";
-import {
-  CATEGORY_LABELS,
-  isActivityCategory,
-  type ActivityCategory,
-} from "@/lib/categories";
 import {
   buildWeekSeries,
   buildWeekSeriesForRange,
@@ -124,247 +110,6 @@ function buildRaceDays(
   return raceDays;
 }
 
-/** Sammandrag för ett enskilt block, till P1.5-jämförelseläget. Räknat helt
- * fristående från sidans huvudfönster — jämförelsen ska kunna ställa två
- * block mot varandra oavsett vilket (om något) som är valt som huvudvy. */
-type BlockAggregate = {
-  block: SeasonBlockRow;
-  sessionCount: number;
-  totalDistanceKm: number;
-  totalSeconds: number;
-  totalLoad: number;
-  avgWeeklyLoad: number | null;
-  loadCv: number | null;
-  categoryPct: Partial<Record<ActivityCategory, number>>;
-  bandPct: Record<BandKey, number>;
-  avgSleepHours: number | null;
-  avgHrv: number | null;
-  avgRestingHr: number | null;
-  sickDays: number;
-  injuredDays: number;
-  raceLabels: string[];
-  /** K7: tillgänglighetsperioder som överlappar blocket, sammanfattade per
-   * sort ("2 skola/prov, 1 läger"). Ren kontext — påverkar inga beräkningar. */
-  availabilitySummary: string;
-};
-
-/** "2 skola/prov, 1 läger" — perioderna räknade per sort, i AVAILABILITY_KINDS
- * fasta ordning så att två block bredvid varandra listar dem likadant. */
-function summarizeAvailability(periods: { kind: AvailabilityKind }[]): string {
-  if (periods.length === 0) return "inga";
-  const counts = new Map<AvailabilityKind, number>();
-  for (const p of periods) counts.set(p.kind, (counts.get(p.kind) ?? 0) + 1);
-  return AVAILABILITY_KINDS.filter((k) => counts.has(k))
-    .map((k) => `${counts.get(k)} ${AVAILABILITY_LABELS[k].toLowerCase()}`)
-    .join(", ");
-}
-
-async function loadBlockAggregate(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  block: SeasonBlockRow,
-): Promise<BlockAggregate> {
-  const endExclusive = toDateKey(planAddDays(new Date(`${block.end_date}T00:00:00`), 1));
-
-  const [
-    { data: activityRows },
-    { data: dailyMetrics },
-    { data: diaryEntries },
-    { data: availabilityRows },
-    { data: competitionRows },
-  ] = await Promise.all([
-    supabase
-      .from("activities")
-      .select(SESSION_ACTIVITY_COLUMNS)
-      .gte("start_time", block.start_date)
-      .lt("start_time", endExclusive)
-      .order("start_time"),
-    supabase
-      .from("daily_metrics")
-      .select("metric_date, sleep_seconds, resting_hr, hrv_overnight_avg")
-      .gte("metric_date", block.start_date)
-      .lt("metric_date", endExclusive),
-    supabase
-      .from("diary_entries")
-      .select("entry_date, day_type")
-      .gte("entry_date", block.start_date)
-      .lt("entry_date", endExclusive),
-    // K7: överlappande tillgänglighetsperioder. Det är hela poängen med
-    // förslaget — att kunna se att grundperioden 25/26 innehöll två
-    // tentaveckor och 26/27 ingen, i stället för att bara konstatera att
-    // volymen skilde sig.
-    supabase
-      .from("availability_periods")
-      .select("start_date, end_date, kind, label")
-      .lte("start_date", block.end_date)
-      .gte("end_date", block.start_date),
-    // Tävlingsdagar från idrottarens egna importerade resultat, inte Garmin
-    // — se kommentaren vid buildRaceDays.
-    supabase
-      .from("competitions")
-      .select("name, competition_date, competition_events(event)")
-      .gte("competition_date", block.start_date)
-      .lt("competition_date", endExclusive),
-  ]);
-
-  const sessions = groupActivitiesIntoSessions(
-    (activityRows ?? []) as unknown as SessionActivity[],
-  );
-  const blockWeeks = buildWeekSeriesForRange(block.start_date, block.end_date);
-
-  const loadByWeek = new Map<string, number>();
-  const loadByCategory = new Map<string, number>();
-  const zones = emptyZoneSeconds();
-  for (const s of sessions) {
-    const wk = isoWeekStart(s.date);
-    loadByWeek.set(wk, (loadByWeek.get(wk) ?? 0) + s.trainingLoad);
-    loadByCategory.set(s.category, (loadByCategory.get(s.category) ?? 0) + s.trainingLoad);
-    addZoneSeconds(zones, [
-      s.hrZone1Seconds,
-      s.hrZone2Seconds,
-      s.hrZone3Seconds,
-      s.hrZone4Seconds,
-      s.hrZone5Seconds,
-    ]);
-  }
-  const raceLabels = [
-    ...buildRaceDays(
-      (competitionRows ?? []) as CompetitionLite[],
-      sessions.filter((s) => s.category === "race"),
-    ).values(),
-  ];
-
-  const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
-  const weeklyLoadTotals = blockWeeks.map((wk) => loadByWeek.get(wk) ?? 0);
-  const loadCv =
-    weeklyLoadTotals.filter((v) => v > 0).length >= 2
-      ? coefficientOfVariation(weeklyLoadTotals)
-      : null;
-
-  const categoryPct: Partial<Record<ActivityCategory, number>> = {};
-  if (totalLoad > 0) {
-    for (const [cat, catLoad] of loadByCategory) {
-      if (isActivityCategory(cat)) categoryPct[cat] = catLoad / totalLoad;
-    }
-  }
-
-  const bands = bandsFromZones(zones);
-  const bandTotal = zoneTotal(zones);
-  const bandPct: Record<BandKey, number> = {
-    easy: bandTotal > 0 ? bands.easy / bandTotal : 0,
-    middle: bandTotal > 0 ? bands.middle / bandTotal : 0,
-    threshold: bandTotal > 0 ? bands.threshold / bandTotal : 0,
-  };
-
-  const sleepHours = (dailyMetrics ?? [])
-    .map((m) => m.sleep_seconds)
-    .filter((v): v is number => v != null)
-    .map((v) => v / 3600);
-  const hrvValues = (dailyMetrics ?? [])
-    .map((m) => m.hrv_overnight_avg)
-    .filter((v): v is number => v != null);
-  const rhrValues = (dailyMetrics ?? [])
-    .map((m) => m.resting_hr)
-    .filter((v): v is number => v != null);
-
-  return {
-    block,
-    sessionCount: sessions.length,
-    totalDistanceKm: sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000,
-    totalSeconds: sessions.reduce((sum, s) => sum + s.durationSeconds, 0),
-    totalLoad,
-    avgWeeklyLoad: blockWeeks.length > 0 ? totalLoad / blockWeeks.length : null,
-    loadCv,
-    categoryPct,
-    bandPct,
-    avgSleepHours: mean(sleepHours),
-    avgHrv: mean(hrvValues),
-    avgRestingHr: mean(rhrValues),
-    sickDays: (diaryEntries ?? []).filter((e) => e.day_type === "sick").length,
-    injuredDays: (diaryEntries ?? []).filter((e) => e.day_type === "injured").length,
-    raceLabels,
-    availabilitySummary: summarizeAvailability(
-      (availabilityRows ?? []) as { kind: AvailabilityKind }[],
-    ),
-  };
-}
-
-const primaryButtonClass =
-  "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
-
-function formatPct(v: number): string {
-  return `${Math.round(v * 100)}%`;
-}
-
-/** Kategorifördelningen som en kort läsbar rad, t.ex. "Lugn distans 52 %,
- * Tröskel 24 %, Intervaller 18 %" — bara kategorier med belastning i
- * blocket, störst först. */
-function categoryBreakdownLabel(pct: Partial<Record<ActivityCategory, number>>): string {
-  const entries = Object.entries(pct) as [ActivityCategory, number][];
-  if (entries.length === 0) return "–";
-  return entries
-    .sort((a, b) => b[1] - a[1])
-    .map(([cat, v]) => `${CATEGORY_LABELS[cat]} ${formatPct(v)}`)
-    .join(", ");
-}
-
-/** Radlista för blockjämförelsetabellen (P1.5) — volym, intensitetsfördelning,
- * sömn, sjuk-/skadedagar och tävlingsresultat, precis den listan
- * insikter-roadmapen efterfrågar för "vad gav det i tävling efteråt". */
-function blockComparisonRows(
-  a: BlockAggregate,
-  b: BlockAggregate,
-): { label: string; a: string; b: string }[] {
-  return [
-    { label: "Period", a: `${a.block.start_date} – ${a.block.end_date}`, b: `${b.block.start_date} – ${b.block.end_date}` },
-    { label: "Blocktyp", a: BLOCK_LABELS[a.block.block_type], b: BLOCK_LABELS[b.block.block_type] },
-    { label: "Pass", a: String(a.sessionCount), b: String(b.sessionCount) },
-    { label: "Distans", a: `${a.totalDistanceKm.toFixed(0)} km`, b: `${b.totalDistanceKm.toFixed(0)} km` },
-    { label: "Träningstid", a: formatHoursMinutes(a.totalSeconds), b: formatHoursMinutes(b.totalSeconds) },
-    { label: "Träningsbelastning", a: a.totalLoad.toFixed(0), b: b.totalLoad.toFixed(0) },
-    {
-      label: "Snitt/vecka",
-      a: a.avgWeeklyLoad != null ? a.avgWeeklyLoad.toFixed(0) : "–",
-      b: b.avgWeeklyLoad != null ? b.avgWeeklyLoad.toFixed(0) : "–",
-    },
-    {
-      label: "Konsekvens (CV)",
-      a: a.loadCv != null ? a.loadCv.toFixed(2) : "för kort period",
-      b: b.loadCv != null ? b.loadCv.toFixed(2) : "för kort period",
-    },
-    { label: "Passkategorier", a: categoryBreakdownLabel(a.categoryPct), b: categoryBreakdownLabel(b.categoryPct) },
-    {
-      label: `${BAND_LABELS.easy} / ${BAND_LABELS.threshold}`,
-      a: `${formatPct(a.bandPct.easy)} / ${formatPct(a.bandPct.threshold)}`,
-      b: `${formatPct(b.bandPct.easy)} / ${formatPct(b.bandPct.threshold)}`,
-    },
-    {
-      label: "Snittsömn",
-      a: a.avgSleepHours != null ? formatHoursMinutes(a.avgSleepHours * 3600) : "ingen data",
-      b: b.avgSleepHours != null ? formatHoursMinutes(b.avgSleepHours * 3600) : "ingen data",
-    },
-    {
-      label: "Snitt-HRV",
-      a: a.avgHrv != null ? `${Math.round(a.avgHrv)} ms` : "ingen data",
-      b: b.avgHrv != null ? `${Math.round(b.avgHrv)} ms` : "ingen data",
-    },
-    {
-      label: "Snitt vilopuls",
-      a: a.avgRestingHr != null ? `${Math.round(a.avgRestingHr)} slag/min` : "ingen data",
-      b: b.avgRestingHr != null ? `${Math.round(b.avgRestingHr)} slag/min` : "ingen data",
-    },
-    { label: "Sjukdagar", a: String(a.sickDays), b: String(b.sickDays) },
-    { label: "Skadedagar", a: String(a.injuredDays), b: String(b.injuredDays) },
-    {
-      label: "Tävlingar",
-      a: a.raceLabels.length > 0 ? a.raceLabels.join(", ") : "inga",
-      b: b.raceLabels.length > 0 ? b.raceLabels.join(", ") : "inga",
-    },
-    // K7: sist i tabellen, som kontext till allt ovanför — en grundperiod med
-    // två tentaveckor är inte jämförbar rakt av med en utan.
-    { label: "Tillgänglighet", a: a.availabilitySummary, b: b.availabilitySummary },
-  ];
-}
-
 function formatDateRange(from: string | null, to: string | null): string {
   if (!from || !to) return "ingen data";
   return from === to ? from : `${from} – ${to}`;
@@ -405,16 +150,9 @@ export default async function TrendsPage({
   searchParams: Promise<{
     weeks?: string;
     block?: string;
-    compareA?: string;
-    compareB?: string;
   }>;
 }) {
-  const {
-    weeks: weeksParam,
-    block: blockParam,
-    compareA: compareAParam,
-    compareB: compareBParam,
-  } = await searchParams;
+  const { weeks: weeksParam, block: blockParam } = await searchParams;
   const weeksNum = Number(weeksParam);
   const weeks: WeekOption = (WEEK_OPTIONS as readonly number[]).includes(weeksNum)
     ? (weeksNum as WeekOption)
@@ -561,20 +299,12 @@ export default async function TrendsPage({
     if (rpe != null) rpeByDay.set(session.date, rpe);
   }
 
-  // P2.2: känsla härledd ur dagbokstexten. Egen källa, oberoende av Garmin —
-  // en maskinellt tolkad siffra ur Alices egna ord, användbar även för
-  // perioder utan Garmin-data (t.ex. innan hon skaffade klockan). Hålls
-  // medvetet åtskild från feelingByDay i UI:t, så de två inte blandas ihop.
-  const derivedFeelingByDay = new Map<string, number>();
-
   for (const entry of diaryEntries ?? []) {
     const day: string = entry.entry_date;
     const wk = isoWeekStart(day);
     if (entry.notes) {
       const label = `${day.slice(8, 10)}/${day.slice(5, 7)}`;
       notesByWeek.set(wk, [...(notesByWeek.get(wk) ?? []), `${label}: ${entry.notes}`]);
-      const analysis = analyzeDiaryNote(entry.notes);
-      if (analysis.score != null) derivedFeelingByDay.set(day, analysis.score);
     }
     if (entry.day_type === "sick") {
       sickDaysByWeek.set(wk, [...(sickDaysByWeek.get(wk) ?? []), day]);
@@ -835,117 +565,9 @@ export default async function TrendsPage({
     (diaryEntries ?? []).map((e) => [e.entry_date as string, e.day_type as string | null]),
   );
 
-  // --- D. Korrelationer, på pass i stället för aktiviteter -------------------
-  const loadByDay = new Map<string, number>();
-  for (const session of sessions) {
-    loadByDay.set(session.date, (loadByDay.get(session.date) ?? 0) + session.trainingLoad);
-  }
-
-  const metricDays = new Set([
-    ...hrvValueByDay.keys(),
-    ...rhrValueByDay.keys(),
-    ...sleepHoursByDay.keys(),
-    ...sleepScoreByDay.keys(),
-  ]);
+  // Bara datumen behövs här (Datatäckning-tabellen nedan) — Korrelationer
+  // (som annars byggde det här från rpeByDay) flyttades ut 2026-08-13.
   const rpeDays = new Set(rpeByDay.keys());
-  const metricRange = dateRange(metricDays);
-  const rpeRange = dateRange(rpeDays);
-  const overlapDays = [...metricDays].filter((day) => rpeDays.has(day)).length;
-
-  function pairsFrom(
-    x: Map<string, number>,
-    y: Map<string, number>,
-  ): [number, number][] {
-    const out: [number, number][] = [];
-    for (const [day, xv] of x) {
-      const yv = y.get(day);
-      if (yv != null) out.push([xv, yv]);
-    }
-    return out;
-  }
-
-  const correlations = [
-    {
-      title: "Sömnpoäng ↔ RPE (Garmin)",
-      description:
-        "Hur väl sov du natten innan, jämfört med hur ansträngande passet kändes (Alices egen skattning i Garmin Connect-appen).",
-      pairs: pairsFrom(sleepScoreByDay, rpeByDay),
-      needsRpe: true,
-    },
-    {
-      title: "HRV ↔ RPE (Garmin)",
-      description: "Din morgon-HRV jämfört med upplevd ansträngning samma dag.",
-      pairs: pairsFrom(hrvValueByDay, rpeByDay),
-      needsRpe: true,
-    },
-    {
-      title: "Vilopuls ↔ RPE (Garmin)",
-      description: "Förhöjd vilopuls (ofta tecken på otillräcklig återhämtning) mot RPE.",
-      pairs: pairsFrom(rhrValueByDay, rpeByDay),
-      needsRpe: true,
-    },
-    {
-      title: "Sömntid ↔ RPE (Garmin)",
-      description: "Antal timmars sömn mot upplevd ansträngning.",
-      pairs: pairsFrom(sleepHoursByDay, rpeByDay),
-      needsRpe: true,
-    },
-    {
-      title: "Sömnpoäng ↔ dagens belastning",
-      description: "Sömnkvalitet mot summerad träningsbelastning för dagens pass.",
-      pairs: pairsFrom(sleepScoreByDay, loadByDay),
-      needsRpe: false,
-    },
-    {
-      title: "HRV ↔ dagens belastning",
-      description: "Morgon-HRV mot hur tung träningen samma dag blev.",
-      pairs: pairsFrom(hrvValueByDay, loadByDay),
-      needsRpe: false,
-    },
-    // P2.2: de här tre bygger på känsla härledd ur dagbokstexten i stället
-    // för Garmins Känsla-skattning — täcker perioder utan Garmin-data (t.ex.
-    // innan klockan) eftersom källan är Alices egna ord, inte klockan.
-    {
-      title: "HRV ↔ känsla (ur dagbokstext)",
-      description:
-        "Morgon-HRV mot hur dagen beskrivs i dina egna dagboksord. Tolkad text, inte en siffra du själv satt.",
-      pairs: pairsFrom(hrvValueByDay, derivedFeelingByDay),
-      needsRpe: false,
-    },
-    {
-      title: "Sömnpoäng ↔ känsla (ur dagbokstext)",
-      description: "Nattens sömnpoäng mot hur dagen beskrivs i dagboken.",
-      pairs: pairsFrom(sleepScoreByDay, derivedFeelingByDay),
-      needsRpe: false,
-    },
-    {
-      title: "Vilopuls ↔ känsla (ur dagbokstext)",
-      description: "Förhöjd vilopuls mot hur dagen beskrivs i dagboken.",
-      pairs: pairsFrom(rhrValueByDay, derivedFeelingByDay),
-      needsRpe: false,
-    },
-  ].map((c) => {
-    const r = pearsonCorrelation(c.pairs);
-    let reason: string | null = null;
-    if (r == null) {
-      if (metricDays.size === 0) {
-        reason =
-          "Ingen sömn-, HRV- eller vilopulsdata i perioden. Synka Garmin på /settings.";
-      } else if (c.needsRpe && rpeDays.size === 0) {
-        reason =
-          "Ingen RPE är synkad i perioden. RPE hämtas från Garmin Connect-appens egen \"Utvärdering\" per pass — kräver att Alice fyllt i Upplevd ansträngning där.";
-      } else if (c.needsRpe && overlapDays === 0) {
-        reason =
-          `Måtten täcker olika perioder: återhämtningsdata finns ${formatDateRange(metricRange.from, metricRange.to)}, ` +
-          `RPE finns ${formatDateRange(rpeRange.from, rpeRange.to)}. Det finns alltså ingen dag där båda är mätta.`;
-      } else {
-        reason = `Bara ${c.pairs.length} ${c.pairs.length === 1 ? "dag" : "dagar"} med båda måtten (minst 5 krävs).`;
-      }
-    }
-    return { ...c, r, reason };
-  });
-
-  const sleepScoreVsRpe = correlations[0].pairs;
 
   const coverage = [
     {
@@ -980,20 +602,6 @@ export default async function TrendsPage({
     },
   ];
 
-  // --- P1.5: blockjämförelse -------------------------------------------
-  // Fristående från fönstret/blocket ovan — man kan stå i en rullande
-  // 12-veckorsvy och samtidigt jämföra två tidigare block, t.ex. samma
-  // blocktyp mellan två säsonger.
-  const compareBlockA = compareAParam ? (blocks.find((b) => b.id === compareAParam) ?? null) : null;
-  const compareBlockB = compareBParam ? (blocks.find((b) => b.id === compareBParam) ?? null) : null;
-  const [compareAggregateA, compareAggregateB] =
-    compareBlockA && compareBlockB && compareBlockA.id !== compareBlockB.id
-      ? await Promise.all([
-          loadBlockAggregate(supabase, compareBlockA),
-          loadBlockAggregate(supabase, compareBlockB),
-        ])
-      : [null, null];
-
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -1022,7 +630,7 @@ export default async function TrendsPage({
             {WEEK_OPTIONS.map((w) => (
               <Link
                 key={w}
-                href={`/blocket?weeks=${w}`}
+                href={`/trender?weeks=${w}`}
                 className={`rounded px-3 py-1 ${
                   !activeBlock && weeks === w
                     ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
@@ -1038,7 +646,7 @@ export default async function TrendsPage({
               {blocks.map((b) => (
                 <Link
                   key={b.id}
-                  href={`/blocket?block=${b.id}`}
+                  href={`/trender?block=${b.id}`}
                   title={`${BLOCK_LABELS[b.block_type]}, ${b.start_date} – ${b.end_date}`}
                   className={`rounded px-3 py-1 ${
                     activeBlock?.id === b.id
@@ -1234,7 +842,6 @@ export default async function TrendsPage({
         </p>
       </section>
 
-      {/* ================= D. Korrelationer ================================ */}
       {/* ============ P2.1: passkvalitet ============ */}
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
@@ -1242,149 +849,6 @@ export default async function TrendsPage({
         </h2>
         <SessionQuality groups={signatureGroups} />
       </section>
-
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Korrelationer</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Pearson-korrelation mellan -1 och 1, räknad på dagar där båda måtten finns. Kräver
-            minst 5 sådana dagar. Ett samband är inte samma sak som orsak.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {correlations.map((c) => (
-            <div
-              key={c.title}
-              className="flex flex-col gap-2 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-            >
-              <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                {c.title}
-              </div>
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">{c.description}</div>
-              {c.r != null ? (
-                <>
-                  <div className="text-2xl font-semibold text-zinc-900 dark:text-zinc-100">
-                    {c.r.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                    {correlationStrengthLabel(c.r)} ({c.pairs.length} dagar)
-                  </div>
-                </>
-              ) : (
-                <div className="text-xs text-zinc-500 dark:text-zinc-400">{c.reason}</div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {sleepScoreVsRpe.length >= 5 && (
-          <div className="flex flex-col gap-2 sm:max-w-xs">
-            <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-              Sömnpoäng vs RPE
-            </h3>
-            <ScatterChart
-              data={sleepScoreVsRpe.map(([x, y], i) => ({ x, y, label: `Dag ${i + 1}` }))}
-              xLabel="Sömnpoäng"
-              yLabel="RPE"
-              xFormatKind="decimal0"
-              yFormatKind="decimal1"
-            />
-          </div>
-        )}
-      </section>
-
-      {/* ================= P1.5: blockjämförelse ============================ */}
-      {blocks.length >= 2 && (
-        <section className="flex flex-col gap-4">
-          <div>
-            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-              Jämför block
-            </h2>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Ställ två block mot varandra, t.ex. samma blocktyp mellan två säsonger — volym,
-              intensitetsfördelning, sömn, sjuk-/skadedagar och tävlingsresultat.
-            </p>
-          </div>
-
-          <form action="/blocket" method="get" className="flex flex-wrap items-end gap-3 text-sm">
-            <label className="flex flex-col gap-1">
-              <span className="text-zinc-600 dark:text-zinc-400">Block A</span>
-              <select
-                name="compareA"
-                defaultValue={compareAParam ?? ""}
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <option value="" disabled>
-                  Välj block
-                </option>
-                {blocks.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} ({BLOCK_LABELS[b.block_type]}, {b.start_date} – {b.end_date})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-zinc-600 dark:text-zinc-400">Block B</span>
-              <select
-                name="compareB"
-                defaultValue={compareBParam ?? ""}
-                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <option value="" disabled>
-                  Välj block
-                </option>
-                {blocks.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} ({BLOCK_LABELS[b.block_type]}, {b.start_date} – {b.end_date})
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" className={primaryButtonClass}>
-              Jämför
-            </button>
-          </form>
-
-          {compareAParam && compareBParam && !(compareAggregateA && compareAggregateB) && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Kunde inte jämföra — välj två olika block.
-            </p>
-          )}
-
-          {compareAggregateA && compareAggregateB && (
-            <div className="w-full max-w-full overflow-x-auto">
-              <table className="w-full min-w-max text-left text-sm">
-                <thead>
-                  <tr className="text-xs text-zinc-500 dark:text-zinc-400">
-                    <th scope="col" className="py-1 pr-4 font-normal">
-                      Mått
-                    </th>
-                    <th scope="col" className="py-1 pr-4 font-normal">
-                      {compareAggregateA.block.name}
-                    </th>
-                    <th scope="col" className="py-1 font-normal">
-                      {compareAggregateB.block.name}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
-                  {blockComparisonRows(compareAggregateA, compareAggregateB).map((row) => (
-                    <tr key={row.label}>
-                      <th scope="row" className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400">
-                        {row.label}
-                      </th>
-                      <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
-                      <td className="py-1.5 tabular-nums">{row.b}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
 
       {/* L5 (docs/tranarloopen.md): loopens utgång. Sidan slutar med nästa
           steg, inte med sista diagrammet — det är det som gör sidorna till en

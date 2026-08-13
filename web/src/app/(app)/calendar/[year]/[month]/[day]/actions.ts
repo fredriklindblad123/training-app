@@ -245,7 +245,7 @@ export async function saveManualActivity(formData: FormData) {
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/dashboard", "layout");
-  revalidatePath("/blocket");
+  revalidatePath("/trender");
 }
 
 export async function deleteManualActivity(formData: FormData) {
@@ -262,7 +262,7 @@ export async function deleteManualActivity(formData: FormData) {
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/dashboard", "layout");
-  revalidatePath("/blocket");
+  revalidatePath("/trender");
 }
 
 // --- Planerade pass --------------------------------------------------------
@@ -329,7 +329,7 @@ export async function saveTestLt2(formData: FormData) {
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/settings");
-  revalidatePath("/blocket");
+  revalidatePath("/trender");
 }
 
 export async function updatePlannedWorkout(formData: FormData) {

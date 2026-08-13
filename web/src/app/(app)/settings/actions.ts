@@ -111,5 +111,5 @@ export async function saveThresholds(formData: FormData) {
     .eq("id", user.id);
 
   revalidatePath("/settings");
-  revalidatePath("/blocket");
+  revalidatePath("/trender");
 }

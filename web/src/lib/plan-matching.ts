@@ -142,7 +142,7 @@ export function matchPlanToSessions(
 }
 
 /** Efterlevnad, aggregerat över en godtycklig mängd matchningar — en vecka
- * (veckovyn) eller ett helt block (`/blocket?block=`). Ren sammanräkning, inga
+ * (veckovyn) eller ett helt block (`/trender?block=`). Ren sammanräkning, inga
  * antaganden om tidsfönstret. */
 export type Compliance = {
   /** Antal planerade pass i perioden, inklusive vilodagar — en ordinerad

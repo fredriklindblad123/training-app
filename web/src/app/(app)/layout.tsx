@@ -10,13 +10,19 @@ import { signOut } from "@/app/login/actions";
  * oftast efter dashboarden) och döptes om från "Kalender" för att skilja
  * den från kalenderappar i största allmänhet.
  *
+ * "Blocket" döptes 2026-08-13 om till "Trender" (och /blocket → /trender) —
+ * sidan visade redan trendanalys internt (rubriken sa "Trender"), bara
+ * menyn och adressen hade halkat efter. "Tävlingsresultat" fick en egen
+ * länk samma dag, utbruten ur Säsongen (se sasongen/page.tsx).
+ *
  * "Veckan" togs bort 2026-08-13: dubblerade kalenderns veckovy
  * (/calendar/vecka/[date]), som nu äger både rutnätet och nyckeltalen. */
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/calendar", label: "Träningskalender" },
-  { href: "/blocket", label: "Blocket" },
+  { href: "/trender", label: "Trender" },
   { href: "/sasongen", label: "Säsongen" },
+  { href: "/tavlingsresultat", label: "Tävlingsresultat" },
   { href: "/settings", label: "Inställningar" },
 ];
 

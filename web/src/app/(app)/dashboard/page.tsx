@@ -29,8 +29,8 @@ import { STATUS_LABEL } from "@/lib/calendar-utils";
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
  * sidan efter inloggning (se app/page.tsx, login/actions.ts,
  * auth/confirm/route.ts). Sidorna delades om efter loopens kadenser
- * (docs/tranarloopen.md 1.1, 3.1) — /veckan äger veckan, /blocket blocket,
- * /sasongen säsongen. Den här sidan äger bara dagen: beredskap inför
+ * (docs/tranarloopen.md 1.1, 3.1) — kalenderns veckovy äger veckan, /trender
+ * blocket, /sasongen säsongen. Den här sidan äger bara dagen: beredskap inför
  * morgondagen (K3), status mot baslinjen (P1.2) och dagens pass.
  * Kontinuiteten (K6) är enda undantaget med lång horisont — den står kvar
  * som ett ankare, inte som en periodvy. Nyckeltalen visas som samma sorts
@@ -42,7 +42,7 @@ import { STATUS_LABEL } from "@/lib/calendar-utils";
  * data. Samma sorts skattning (Känsla/Upplevd ansträngning) hämtas nu istället
  * från Garmin Connect-appens egen "Utvärdering" per pass
  * (activities.garmin_feel/garmin_rpe), och känsla ur Alices egna ord från
- * dagbokstexten (lib/diary-text.ts) — se /blocket och veckoagendan. */
+ * dagbokstexten (lib/diary-text.ts) — se /trender. */
 
 /** Fallgrop 3 i K6 (tranarperspektiv.md): under den här mängden avslutade
  * veckor är "personbästa" bara brus från en kort historik — bättre att visa
@@ -108,7 +108,7 @@ function continuityRing({
 }
 
 /** Rullande fönster, samma längd som trendlinjen i EfficiencyChart — så
- * ringen och grafen på /blocket alltid pratar om samma period. En statisk
+ * ringen och grafen på /trender alltid pratar om samma period. En statisk
  * "hela historiken"-baslinje svarar på "var ligger jag mot mitt vanliga",
  * inte på frågan den här ringen faktiskt ska svara på: förbättrar jag mig?
  * Därför jämförs senaste fönstret alltid mot det *föregående* fönstret,
@@ -148,7 +148,7 @@ function formatPctChange(pctChange: number): string {
 }
 
 /** Formkurvan (P1.4): senaste 4 veckorna mot de 4 veckorna innan — samma
- * pass-urval som /blocket (lib/efficiency.ts), bara lugna/långa pass, så en
+ * pass-urval som /trender (lib/efficiency.ts), bara lugna/långa pass, så en
  * hård intervallvecka inte får kurvan att se sämre ut än den är. */
 function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: string) {
   const recentFrom = shiftDateKey(todayKey, -EF_TREND_WINDOW_DAYS);
@@ -195,7 +195,7 @@ function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: stri
     hint:
       "Meter per hjärtslag på lugna/långa pass (minst 20 min), senaste 4 veckorna mot de 4 " +
       `veckorna innan — visar om du bättrar dig, inte var du ligger mot ditt vanliga. Under ±` +
-      `${(EF_NOISE_THRESHOLD_PCT * 100).toFixed(0)}% räknas som brus. Hela kurvan finns på /blocket.`,
+      `${(EF_NOISE_THRESHOLD_PCT * 100).toFixed(0)}% räknas som brus. Hela kurvan finns på /trender.`,
   };
 }
 
