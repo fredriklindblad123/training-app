@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import {
   SeasonTimeline,
   type TimelineBlock,
@@ -182,6 +183,7 @@ function summarizeAvailability(periods: { kind: AvailabilityKind }[]): string {
 
 async function loadBlockAggregate(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
   block: SeasonBlockRow,
 ): Promise<BlockAggregate> {
   const endExclusive = toDateKey(planAddDays(new Date(`${block.end_date}T00:00:00`), 1));
@@ -196,17 +198,20 @@ async function loadBlockAggregate(
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", userId)
       .gte("start_time", block.start_date)
       .lt("start_time", endExclusive)
       .order("start_time"),
     supabase
       .from("daily_metrics")
       .select("metric_date, sleep_seconds, resting_hr, hrv_overnight_avg")
+      .eq("user_id", userId)
       .gte("metric_date", block.start_date)
       .lt("metric_date", endExclusive),
     supabase
       .from("diary_entries")
       .select("entry_date, day_type")
+      .eq("user_id", userId)
       .gte("entry_date", block.start_date)
       .lt("entry_date", endExclusive),
     // K7: överlappande tillgänglighetsperioder — se motiveringen vid
@@ -214,6 +219,7 @@ async function loadBlockAggregate(
     supabase
       .from("availability_periods")
       .select("start_date, end_date, kind, label")
+      .eq("user_id", userId)
       .lte("start_date", block.end_date)
       .gte("end_date", block.start_date),
     // Tävlingsdagar från idrottarens egna importerade resultat, inte Garmin
@@ -221,6 +227,7 @@ async function loadBlockAggregate(
     supabase
       .from("competitions")
       .select("name, competition_date, competition_events(event)")
+      .eq("user_id", userId)
       .gte("competition_date", block.start_date)
       .lt("competition_date", endExclusive),
   ]);
@@ -404,6 +411,9 @@ export default async function PlaneringPage({
     /** P1.5: blockjämförelsen, flyttad hit från /trender. */
     compareA?: string;
     compareB?: string;
+    /** Fas 0: vilken löpare en coach tittar på just nu. Ignoreras helt för
+     * en löpare (ser alltid bara sig själv) — se lib/auth-scope.ts. */
+    athlete?: string;
   }>;
 }) {
   const supabase = await createClient();
@@ -414,7 +424,12 @@ export default async function PlaneringPage({
     tavlingsBana: tavlingsBanaParam,
     compareA: compareAParam,
     compareB: compareBParam,
+    athlete: athleteParam,
   } = await searchParams;
+
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null; // Layouten redirectar redan utan inloggning.
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
 
   const [
     { data: blocks },
@@ -425,17 +440,19 @@ export default async function PlaneringPage({
     { data: competitionDateRows },
     { data: nextACompetition },
   ] = await Promise.all([
-    supabase.from("season_blocks").select("*").order("start_date"),
+    supabase.from("season_blocks").select("*").eq("user_id", scopedUserId).order("start_date"),
     // template_rep_groups(*) hämtas nästlat två led ner (K1) — en saknad
     // tabell (migrationen inte körd) ger bara undefined per mallrad, aldrig
     // ett kastat fel. Alla ställen nedan som läser det gör det via `?? []`.
     supabase
       .from("week_templates")
       .select("*, week_template_items(*, template_rep_groups(*))")
+      .eq("user_id", scopedUserId)
       .order("created_at"),
     supabase
       .from("planned_workouts")
       .select("scheduled_date")
+      .eq("user_id", scopedUserId)
       .gte("scheduled_date", today),
     // Vilka mallar som redan rullats ut i vilket block — härlett ur de
     // planerade passens egna block_id/template_id, eftersom det inte finns
@@ -443,17 +460,22 @@ export default async function PlaneringPage({
     supabase
       .from("planned_workouts")
       .select("block_id, template_id")
+      .eq("user_id", scopedUserId)
       .not("block_id", "is", null)
       .not("template_id", "is", null),
     // K7: migrationen är inte körd (se AGENTS/uppdraget) — en saknad tabell
     // ger bara { data: null, error }, aldrig ett kastat fel, och `?? []`
     // nedan faller tillbaka till "inga perioder" precis som övriga frågor
     // på den här sidan gör för sina egna eventuellt okörda tabeller.
-    supabase.from("availability_periods").select("*").order("start_date"),
+    supabase.from("availability_periods").select("*").eq("user_id", scopedUserId).order("start_date"),
     // Smal fråga för årsväljaren: bara datumet, inte hela raden med
     // competition_events(*) nästlat — historiken (flera säsongers
     // tävlingar) ska kunna byggas till en väljare utan att dra in allt.
-    supabase.from("competitions").select("competition_date").order("competition_date"),
+    supabase
+      .from("competitions")
+      .select("competition_date")
+      .eq("user_id", scopedUserId)
+      .order("competition_date"),
     // "Nästa A-tävling" i läget-just-nu-korten ska visa sanningen oavsett
     // vilket år/bana som råkar vara valt i tävlingslistan längre ner —
     // därför en egen liten fråga i stället för att söka i competitionList
@@ -461,6 +483,7 @@ export default async function PlaneringPage({
     supabase
       .from("competitions")
       .select("name, competition_date")
+      .eq("user_id", scopedUserId)
       .eq("priority", "A")
       .gte("competition_date", today)
       .order("competition_date")
@@ -484,6 +507,7 @@ export default async function PlaneringPage({
   let competitionsQuery = supabase
     .from("competitions")
     .select("*, competition_events(*)")
+    .eq("user_id", scopedUserId)
     .order("competition_date");
   if (tavlingsAr !== "alla") {
     competitionsQuery = competitionsQuery
@@ -504,7 +528,19 @@ export default async function PlaneringPage({
     const params = new URLSearchParams();
     params.set("tavlingsAr", overrides.tavlingsAr ?? tavlingsAr);
     params.set("tavlingsBana", overrides.tavlingsBana ?? tavlingsBana);
+    if (athleteParam) params.set("athlete", athleteParam);
     return `/sasongen?${params.toString()}#tavlingar`;
+  }
+
+  /** Byter vilken löpare en coach tittar på, behåller övriga filter/val
+   * oförändrade. No-op-länk (samma URL) för en löpare, som aldrig ser
+   * väljaren över huvud taget. */
+  function athleteHref(id: string): string {
+    const params = new URLSearchParams();
+    params.set("tavlingsAr", tavlingsAr);
+    params.set("tavlingsBana", tavlingsBana);
+    params.set("athlete", id);
+    return `/sasongen?${params.toString()}`;
   }
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
@@ -566,16 +602,19 @@ export default async function PlaneringPage({
     supabase
       .from("diary_entries")
       .select("entry_date, day_type, notes")
+      .eq("user_id", scopedUserId)
       .gte("entry_date", timelineLookbackFrom)
       .order("entry_date"),
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
       .gte("start_time", timelineLookbackFrom)
       .order("start_time"),
     supabase
       .from("daily_metrics")
       .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+      .eq("user_id", scopedUserId)
       .gte("metric_date", timelineLookbackFrom)
       .order("metric_date"),
   ]);
@@ -625,8 +664,8 @@ export default async function PlaneringPage({
   const [compareAggregateA, compareAggregateB] =
     compareBlockA && compareBlockB && compareBlockA.id !== compareBlockB.id
       ? await Promise.all([
-          loadBlockAggregate(supabase, compareBlockA),
-          loadBlockAggregate(supabase, compareBlockB),
+          loadBlockAggregate(supabase, scopedUserId, compareBlockA),
+          loadBlockAggregate(supabase, scopedUserId, compareBlockB),
         ])
       : [null, null];
 
@@ -640,6 +679,34 @@ export default async function PlaneringPage({
           fyller aldrig i samma vecka två gånger.
         </p>
       </div>
+
+      {/* Fas 0: löparväljare, bara synlig för en coach. En löpare ser aldrig
+          det här — hen är alltid sig själv (se lib/auth-scope.ts). */}
+      {scoped.role === "coach" && (
+        <div className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+          <span className="text-zinc-500 dark:text-zinc-400">Löpare:</span>
+          {scoped.linkedAthletes.length === 0 ? (
+            <span className="text-zinc-400 dark:text-zinc-600">
+              Inga löpare kopplade än — lägg till en under Inställningar.
+            </span>
+          ) : (
+            scoped.linkedAthletes.map((a) => (
+              <Link
+                key={a.id}
+                href={athleteHref(a.id)}
+                aria-current={a.id === scopedUserId ? "page" : undefined}
+                className={`rounded px-3 py-1 ${
+                  a.id === scopedUserId
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                }`}
+              >
+                {a.fullName ?? "Namnlös löpare"}
+              </Link>
+            ))
+          )}
+        </div>
+      )}
 
       {/* ---------------- Läget just nu ---------------- */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -701,6 +768,7 @@ export default async function PlaneringPage({
           action={suggestPeriodisation}
           className="flex flex-wrap items-end gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
         >
+          <input type="hidden" name="athlete" value={scopedUserId} />
           <Field label="Tävlingsdatum">
             <input type="date" name="competition_date" required className={input} />
           </Field>
@@ -1027,6 +1095,7 @@ export default async function PlaneringPage({
                         action={createTemplate}
                         className="mt-3 flex flex-wrap items-end gap-3"
                       >
+                        <input type="hidden" name="athlete" value={scopedUserId} />
                         <input type="hidden" name="block_type" value={b.block_type} />
                         <Field label="Ny mall för den här blocktypen">
                           <input
@@ -1063,6 +1132,7 @@ export default async function PlaneringPage({
             Lägg till block för hand
           </summary>
           <form action={createBlock} className="mt-3 flex flex-wrap items-end gap-3">
+            <input type="hidden" name="athlete" value={scopedUserId} />
             <Field label="Namn">
               <input name="name" required placeholder="Grundträning 1" className={input} />
             </Field>
@@ -1128,6 +1198,7 @@ export default async function PlaneringPage({
           </div>
 
           <form action="/sasongen" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+            {athleteParam && <input type="hidden" name="athlete" value={athleteParam} />}
             <label className="flex flex-col gap-1">
               <span className="text-zinc-600 dark:text-zinc-400">Block A</span>
               <select
@@ -1371,6 +1442,7 @@ export default async function PlaneringPage({
              * år/bana i så fall — se motiveringen i actions.ts. */}
             <input type="hidden" name="current_tavlingsAr" value={tavlingsAr} />
             <input type="hidden" name="current_tavlingsBana" value={tavlingsBana} />
+            <input type="hidden" name="athlete" value={scopedUserId} />
             <Field label="Namn">
               <input name="name" required placeholder="Inomhus-SM" className={input} />
             </Field>
@@ -1469,6 +1541,7 @@ export default async function PlaneringPage({
             Lägg till period
           </summary>
           <form action={createAvailabilityPeriod} className="mt-3 flex flex-wrap items-end gap-3">
+            <input type="hidden" name="athlete" value={scopedUserId} />
             <Field label="Från">
               <input type="date" name="start_date" required className={input} />
             </Field>

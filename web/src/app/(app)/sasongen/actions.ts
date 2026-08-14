@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import {
   datesForWeekday,
   generateFromTemplate,
@@ -36,12 +37,35 @@ function refresh() {
   revalidatePath("/calendar", "layout");
 }
 
-async function currentUserId() {
+/** Bara "är någon inloggad" — för actions som opererar på en rad via `id`.
+ * RLS (season_blocks/competitions/... `coach_athletes`-policyerna, se
+ * migration 20260814100000) avgör redan om raden faktiskt går att nå; den
+ * här funktionen behöver aldrig veta VILKEN löpare raden tillhör. Där en
+ * action ändå behöver ägarens user_id (t.ex. för att synka veckomallar mot
+ * rätt löpares block) hämtas det ur raden själv — se updateBlock/
+ * deleteTemplateItem/syncTemplateAcrossBlocks nedan — aldrig från klienten. */
+async function requireUser(): Promise<{ supabase: SupabaseServerClient } | null> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return { supabase, userId: user?.id ?? null };
+  return user ? { supabase } : null;
+}
+
+/** För actions som skapar en helt ny toppnivårad (inget existerande block/
+ * mall/tävling att härleda ägaren ur) — vilken löpares rad det blir. En
+ * löpare får alltid sitt eget id; en coach växlar via det dolda
+ * `athlete`-fältet formuläret skickar med (samma `athlete`-param som sidans
+ * URL, se page.tsx). Säkerheten ligger i RLS, inte här — ett manipulerat
+ * fält ger på sin höjd en nekad insert om avsändaren inte faktiskt coachar
+ * den löparen. */
+async function resolvedAthleteId(
+  supabase: SupabaseServerClient,
+  formData: FormData,
+): Promise<string | null> {
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  return resolveScopedUserId(scoped, str(formData, "athlete") ?? undefined);
 }
 
 /**
@@ -176,15 +200,12 @@ async function syncBlockWithTemplates(
 }
 
 /** Synkar en mall in i alla befintliga block av dess typ — anropas när ett
- * pass läggs till i mallen. */
-async function syncTemplateAcrossBlocks(
-  supabase: SupabaseServerClient,
-  userId: string,
-  templateId: string,
-) {
+ * pass läggs till i mallen. Härleder ägaren ur mallen själv (inte klienten)
+ * — mallen finns redan och RLS avgör om anroparen får nå den. */
+async function syncTemplateAcrossBlocks(supabase: SupabaseServerClient, templateId: string) {
   const { data: template } = await supabase
     .from("week_templates")
-    .select("block_type")
+    .select("user_id, block_type")
     .eq("id", templateId)
     .maybeSingle();
   if (!template?.block_type) return;
@@ -192,17 +213,18 @@ async function syncTemplateAcrossBlocks(
   const { data: blocks } = await supabase
     .from("season_blocks")
     .select("id, start_date, end_date")
-    .eq("user_id", userId)
+    .eq("user_id", template.user_id)
     .eq("block_type", template.block_type);
   for (const b of (blocks ?? []) as BlockRange[]) {
-    await syncTemplateIntoBlock(supabase, userId, templateId, b);
+    await syncTemplateIntoBlock(supabase, template.user_id as string, templateId, b);
   }
 }
 
 // --- Säsongsblock ----------------------------------------------------------
 
 export async function createBlock(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const supabase = await createClient();
+  const userId = await resolvedAthleteId(supabase, formData);
   if (!userId) return;
 
   const name = str(formData, "name");
@@ -234,9 +256,10 @@ export async function createBlock(formData: FormData) {
 }
 
 export async function updateBlock(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
+  if (!auth || !id) return;
+  const { supabase } = auth;
 
   const name = str(formData, "name");
   const start = str(formData, "start_date");
@@ -245,7 +268,9 @@ export async function updateBlock(formData: FormData) {
   if (!name || !start || !end || !blockType) return;
   if (end < start) return;
 
-  await supabase
+  // Ägaren härleds ur den uppdaterade raden (RLS avgör om anroparen fick
+  // uppdatera den alls) — inte ur klienten, precis som deleteTemplateItem.
+  const { data: block } = await supabase
     .from("season_blocks")
     .update({
       name,
@@ -255,11 +280,14 @@ export async function updateBlock(formData: FormData) {
       end_date: end,
       focus: str(formData, "focus"),
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("user_id")
+    .single();
+  if (!block) return;
 
   // T ex ett förlängt slutdatum ska direkt ge fler pass i kalendern, utan
   // ett separat "rulla ut igen"-steg.
-  await syncBlockWithTemplates(supabase, userId, {
+  await syncBlockWithTemplates(supabase, block.user_id as string, {
     id,
     start_date: start,
     end_date: end,
@@ -270,10 +298,10 @@ export async function updateBlock(formData: FormData) {
 }
 
 export async function deleteBlock(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
-  await supabase.from("season_blocks").delete().eq("id", id);
+  if (!auth || !id) return;
+  await auth.supabase.from("season_blocks").delete().eq("id", id);
   refresh();
 }
 
@@ -285,7 +313,8 @@ export async function deleteBlock(formData: FormData) {
  * och byta namn på efteråt.
  */
 export async function suggestPeriodisation(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const supabase = await createClient();
+  const userId = await resolvedAthleteId(supabase, formData);
   if (!userId) return;
 
   const competitionDate = str(formData, "competition_date");
@@ -306,7 +335,8 @@ export async function suggestPeriodisation(formData: FormData) {
 // --- Tävlingar -------------------------------------------------------------
 
 export async function createCompetition(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const supabase = await createClient();
+  const userId = await resolvedAthleteId(supabase, formData);
   if (!userId) return;
 
   const name = str(formData, "name");
@@ -370,18 +400,18 @@ export async function createCompetition(formData: FormData) {
 }
 
 export async function deleteCompetition(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
-  await supabase.from("competitions").delete().eq("id", id);
+  if (!auth || !id) return;
+  await auth.supabase.from("competitions").delete().eq("id", id);
   refresh();
 }
 
 export async function saveEventResult(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "event_id");
-  if (!userId || !id) return;
-  await supabase
+  if (!auth || !id) return;
+  await auth.supabase
     .from("competition_events")
     .update({
       actual_result: str(formData, "actual_result"),
@@ -394,7 +424,8 @@ export async function saveEventResult(formData: FormData) {
 // --- Veckomallar -----------------------------------------------------------
 
 export async function createTemplate(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const supabase = await createClient();
+  const userId = await resolvedAthleteId(supabase, formData);
   if (!userId) return;
   const name = str(formData, "name");
   if (!name) return;
@@ -410,16 +441,17 @@ export async function createTemplate(formData: FormData) {
 }
 
 export async function deleteTemplate(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
-  await supabase.from("week_templates").delete().eq("id", id);
+  if (!auth || !id) return;
+  await auth.supabase.from("week_templates").delete().eq("id", id);
   refresh();
 }
 
 export async function addTemplateItem(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
-  if (!userId) return;
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
 
   const templateId = str(formData, "template_id");
   const weekday = num(formData, "weekday");
@@ -444,16 +476,18 @@ export async function addTemplateItem(formData: FormData) {
   );
 
   // Passet ska synas i kalendern direkt, i varje block som redan finns för
-  // mallens blocktyp — inget separat "rulla ut"-steg.
-  await syncTemplateAcrossBlocks(supabase, userId, templateId);
+  // mallens blocktyp — inget separat "rulla ut"-steg. Ägaren härleds ur
+  // mallen själv, se syncTemplateAcrossBlocks.
+  await syncTemplateAcrossBlocks(supabase, templateId);
 
   refresh();
 }
 
 export async function deleteTemplateItem(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
+  if (!auth || !id) return;
+  const { supabase } = auth;
 
   const { data: item } = await supabase
     .from("week_template_items")
@@ -468,17 +502,18 @@ export async function deleteTemplateItem(formData: FormData) {
   // Tar bort exakt de kalenderrader det här passet skapade (aldrig genomförda
   // pass eller sådant som lagts in för hand — de saknar template_id, och
   // status filtreras till "planned"), i alla block av mallens blocktyp.
+  // Ägaren härleds ur mallen (inte klienten) — samma mönster som ovan.
   if (item) {
     const { data: template } = await supabase
       .from("week_templates")
-      .select("block_type")
+      .select("user_id, block_type")
       .eq("id", item.template_id)
       .maybeSingle();
     if (template?.block_type) {
       const { data: blocks } = await supabase
         .from("season_blocks")
         .select("start_date, end_date")
-        .eq("user_id", userId)
+        .eq("user_id", template.user_id)
         .eq("block_type", template.block_type);
       for (const b of blocks ?? []) {
         const dates = datesForWeekday(b.start_date, b.end_date, item.weekday);
@@ -488,7 +523,7 @@ export async function deleteTemplateItem(formData: FormData) {
         await supabase
           .from("planned_workouts")
           .delete()
-          .eq("user_id", userId)
+          .eq("user_id", template.user_id)
           .eq("template_id", item.template_id)
           .eq("slot", item.slot)
           .eq("status", "planned")
@@ -536,8 +571,9 @@ function repGroupFieldsFromForm(formData: FormData): Omit<RepGroupInput, "sort_o
 }
 
 export async function addTemplateRepGroup(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
-  if (!userId) return;
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
 
   const templateItemId = str(formData, "template_item_id");
   if (!templateItemId) return;
@@ -567,22 +603,22 @@ export async function addTemplateRepGroup(formData: FormData) {
 }
 
 export async function updateTemplateRepGroup(formData: FormData) {
-  const { userId, supabase } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
+  if (!auth || !id) return;
 
   const fields = repGroupFieldsFromForm(formData);
   if (fields.distance_meters == null && fields.duration_seconds == null) return;
 
-  await supabase.from("template_rep_groups").update(fields).eq("id", id);
+  await auth.supabase.from("template_rep_groups").update(fields).eq("id", id);
   refresh();
 }
 
 export async function deleteTemplateRepGroup(formData: FormData) {
-  const { userId, supabase } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
-  await supabase.from("template_rep_groups").delete().eq("id", id);
+  if (!auth || !id) return;
+  await auth.supabase.from("template_rep_groups").delete().eq("id", id);
   refresh();
 }
 
@@ -593,7 +629,8 @@ export async function deleteTemplateRepGroup(formData: FormData) {
 // datumintervall och en etikett — se motiveringen i migrationen.
 
 export async function createAvailabilityPeriod(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const supabase = await createClient();
+  const userId = await resolvedAthleteId(supabase, formData);
   if (!userId) return;
 
   const start = str(formData, "start_date");
@@ -618,9 +655,9 @@ export async function createAvailabilityPeriod(formData: FormData) {
 }
 
 export async function deleteAvailabilityPeriod(formData: FormData) {
-  const { supabase, userId } = await currentUserId();
+  const auth = await requireUser();
   const id = str(formData, "id");
-  if (!userId || !id) return;
-  await supabase.from("availability_periods").delete().eq("id", id);
+  if (!auth || !id) return;
+  await auth.supabase.from("availability_periods").delete().eq("id", id);
   refresh();
 }
