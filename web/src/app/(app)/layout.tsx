@@ -16,12 +16,17 @@ import { signOut } from "@/app/login/actions";
  * länk samma dag, utbruten ur Säsongen (se sasongen/page.tsx).
  *
  * "Veckan" togs bort 2026-08-13: dubblerade kalenderns veckovy
- * (/calendar/vecka/[date]), som nu äger både rutnätet och nyckeltalen. */
+ * (/calendar/vecka/[date]), som nu äger både rutnätet och nyckeltalen.
+ *
+ * "Flerårsplan" (fas 0, 2026-08-14): mål/volym/tävlingar per år, en egen
+ * länk bredvid Säsongen eftersom den lever på en längre horisont än en
+ * enskild säsong — se /flerarsplan/page.tsx. */
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/calendar", label: "Träningskalender" },
   { href: "/trender", label: "Trender" },
   { href: "/sasongen", label: "Säsongen" },
+  { href: "/flerarsplan", label: "Flerårsplan" },
   { href: "/tavlingsresultat", label: "Tävlingsresultat" },
   { href: "/settings", label: "Inställningar" },
 ];

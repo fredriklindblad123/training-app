@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { TRAINING_FACTORS } from "@/lib/training-factors";
 import {
   datesForWeekday,
   generateFromTemplate,
@@ -659,5 +660,45 @@ export async function deleteAvailabilityPeriod(formData: FormData) {
   const id = str(formData, "id");
   if (!auth || !id) return;
   await auth.supabase.from("availability_periods").delete().eq("id", id);
+  refresh();
+}
+
+// --- Årsplan: vecka-för-vecka (fas 0) ---------------------------------------
+// En rad per (löpare, veckas måndag) — se lib/training-factors.ts för den
+// fasta listan av faktornycklar. Upsert, inte separat create/update: en
+// vecka har alltid högst en rad (unique user_id+week_start_date), så samma
+// formulär fungerar oavsett om veckan redan har sparad data eller inte.
+
+export async function upsertWeekPlan(formData: FormData) {
+  const supabase = await createClient();
+  const userId = await resolvedAthleteId(supabase, formData);
+  if (!userId) return;
+
+  const weekStartDate = str(formData, "week_start_date");
+  if (!weekStartDate) return;
+
+  const trainingFactors: Record<string, string> = {};
+  for (const factor of TRAINING_FACTORS) {
+    const v = str(formData, `factor_${factor.key}`);
+    if (v) trainingFactors[factor.key] = v;
+  }
+
+  await supabase.from("season_week_plans").upsert(
+    {
+      user_id: userId,
+      week_start_date: weekStartDate,
+      period_type: str(formData, "period_type"),
+      sub_phase: str(formData, "sub_phase"),
+      note: str(formData, "note"),
+      sessions_count: num(formData, "sessions_count"),
+      days_count: num(formData, "days_count"),
+      starts_count: num(formData, "starts_count"),
+      hours_count: num(formData, "hours_count"),
+      has_test: formData.get("has_test") === "on",
+      training_factors: trainingFactors,
+    },
+    { onConflict: "user_id,week_start_date" },
+  );
+
   refresh();
 }
