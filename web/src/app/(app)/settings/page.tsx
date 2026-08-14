@@ -1,7 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
-import { connectGarmin, syncGarminNow, saveThresholds } from "./actions";
+import { connectGarmin, syncGarminNow, saveThresholds, addAthlete, removeAthlete } from "./actions";
+import { getScopedProfile } from "@/lib/auth-scope";
 import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
 import { formatDateTime } from "@/lib/format";
+
+const ATHLETE_ADDED_LABEL: Record<string, string> = {
+  linked: "Löparen kopplad — hittar redan ett konto på den e-posten.",
+  invited: "Inbjudan sparad. Löparen kopplas automatiskt nästa gång du lägger till samma e-post, när kontot finns.",
+};
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Ansluten",
@@ -12,9 +18,9 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; athleteAdded?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, athleteAdded } = await searchParams;
   const supabase = await createClient();
   const { data: connection } = await supabase
     .from("garmin_connections")
@@ -26,6 +32,7 @@ export default async function SettingsPage({
       "lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr, lt2_source, lt2_measured_on",
     )
     .maybeSingle();
+  const scoped = await getScopedProfile(supabase);
 
   // K8: ett fälttest är en uppskattning, ett laktattest en mätning — visa
   // alltid vilket ett sparat LT2 bygger på, aldrig som en anonym siffra.
@@ -206,6 +213,70 @@ export default async function SettingsPage({
           </div>
         </form>
       </section>
+
+      {scoped?.role === "coach" && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Löpare du coachar
+          </h2>
+          <p className="max-w-2xl text-sm text-zinc-500 dark:text-zinc-400">
+            Lägg till en löpares e-post. Har hen redan ett konto kopplas ni direkt; annars
+            sparas en inbjudan — lägg till samma e-post igen när löparen har signat upp, så
+            kopplas ni då.
+          </p>
+
+          {athleteAdded && ATHLETE_ADDED_LABEL[athleteAdded] && (
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">
+              {ATHLETE_ADDED_LABEL[athleteAdded]}
+            </p>
+          )}
+
+          {scoped.linkedAthletes.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {scoped.linkedAthletes.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
+                >
+                  <span className="text-zinc-900 dark:text-zinc-100">
+                    {a.fullName ?? "Namnlös löpare"}
+                  </span>
+                  <form action={removeAthlete}>
+                    <input type="hidden" name="athlete_id" value={a.id} />
+                    <button
+                      type="submit"
+                      className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                    >
+                      Ta bort
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <form
+            action={addAthlete}
+            className="flex flex-wrap items-end gap-3 rounded border border-zinc-200 p-4 sm:max-w-sm dark:border-zinc-800"
+          >
+            <label className="flex flex-1 flex-col gap-1 text-sm">
+              Löparens e-post
+              <input
+                type="email"
+                name="athlete_email"
+                required
+                className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+              />
+            </label>
+            <button
+              type="submit"
+              className="w-fit rounded border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            >
+              Lägg till
+            </button>
+          </form>
+        </section>
+      )}
     </div>
   );
 }

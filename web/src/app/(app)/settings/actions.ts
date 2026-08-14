@@ -113,3 +113,64 @@ export async function saveThresholds(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/trender");
 }
+
+// --- Fas 0: coach lägger till löpare ----------------------------------------
+// Se supabase/migrations/20260814140000_coach_add_athlete.sql för RLS-/
+// funktionssidan. Två utfall: e-posten har redan ett konto -> länkas direkt
+// (coach_athletes); annars bara inbjuden (allowed_signup_emails) — länken
+// skapas nästa gång formuläret körs efter att personen har signat upp,
+// eftersom coach_athletes.athlete_id måste peka på en riktig profilrad.
+export async function addAthlete(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const email = (formData.get("athlete_email") as string | null)?.trim().toLowerCase();
+  if (!email) return;
+
+  // Idempotent — harmlöst om e-posten redan finns i allowlistan sedan innan.
+  await supabase
+    .from("allowed_signup_emails")
+    .upsert({ email, note: "löpare" }, { onConflict: "email", ignoreDuplicates: true });
+
+  const { data: athleteId } = await supabase.rpc("find_user_id_by_email", {
+    lookup_email: email,
+  });
+
+  if (athleteId) {
+    await supabase
+      .from("coach_athletes")
+      .upsert(
+        { coach_id: user.id, athlete_id: athleteId },
+        { onConflict: "coach_id,athlete_id", ignoreDuplicates: true },
+      );
+    revalidatePath("/settings");
+    revalidatePath("/sasongen");
+    revalidatePath("/flerarsplan");
+    redirect("/settings?athleteAdded=linked");
+  }
+
+  revalidatePath("/settings");
+  redirect("/settings?athleteAdded=invited");
+}
+
+export async function removeAthlete(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const athleteId = formData.get("athlete_id") as string | null;
+  if (!user || !athleteId) return;
+
+  await supabase
+    .from("coach_athletes")
+    .delete()
+    .eq("coach_id", user.id)
+    .eq("athlete_id", athleteId);
+
+  revalidatePath("/settings");
+  revalidatePath("/sasongen");
+  revalidatePath("/flerarsplan");
+}
