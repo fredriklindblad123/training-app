@@ -14,7 +14,22 @@
 --    profiles.lt2_hr, vilket en coach inte kunde göra åt en löpares vägnar.
 --    Additiv policy, rör inte löparens egen fulla rätt till sin rad.
 
-drop policy "activity_splits: åtkomst via ägd aktivitet" on activity_splits;
+-- Döper om vad tabellen nu faktiskt heter i stället för att gissa namnet —
+-- "drop policy <hårdkodat namn>" gav "policy ... does not exist" när det här
+-- kördes, den ursprungliga policyn hette tydligen inte exakt vad
+-- 20260723213258_initial_schema.sql påstår.
+do $$
+declare
+  pol record;
+begin
+  for pol in
+    select policyname from pg_policies
+    where schemaname = 'public' and tablename = 'activity_splits'
+  loop
+    execute format('drop policy %I on public.activity_splits', pol.policyname);
+  end loop;
+end $$;
+
 create policy "activity_splits: åtkomst via ägd aktivitet eller coachad löpares"
   on activity_splits for all
   using (
