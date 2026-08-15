@@ -5,7 +5,9 @@ import {
   getScopedProfile,
   planningOwnerId,
   resolveScopedUserId,
+  viewableAthletes,
 } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   SeasonTimeline,
   type TimelineBlock,
@@ -883,29 +885,12 @@ export default async function PlaneringPage({
       {/* Fas 0: löparväljare, bara synlig för en coach. En löpare ser aldrig
           det här — hen är alltid sig själv (se lib/auth-scope.ts). */}
       {scoped.role === "coach" && (
-        <div className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-          <span className="text-zinc-500 dark:text-zinc-400">Löpare:</span>
-          {scoped.linkedAthletes.length === 0 ? (
-            <span className="text-zinc-400 dark:text-zinc-600">
-              Inga löpare kopplade än — lägg till en under Inställningar.
-            </span>
-          ) : (
-            scoped.linkedAthletes.map((a) => (
-              <Link
-                key={a.id}
-                href={athleteHref(a.id)}
-                aria-current={a.id === scopedUserId ? "page" : undefined}
-                className={`rounded px-3 py-1 ${
-                  a.id === scopedUserId
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                }`}
-              >
-                {a.fullName ?? "Namnlös löpare"}
-              </Link>
-            ))
-          )}
-        </div>
+        <AthleteSwitcher
+          athletes={viewableAthletes(scoped)}
+          activeId={scopedUserId}
+          viewerUserId={scoped.userId}
+          buildHref={athleteHref}
+        />
       )}
 
       {/* ---------------- Läget just nu ---------------- */}
@@ -986,7 +971,7 @@ export default async function PlaneringPage({
             </div>
             {scoped.role === "coach" && (
               <AthleteTargetFields
-                athletes={scoped.linkedAthletes}
+                athletes={viewableAthletes(scoped)}
                 selectedIds={new Set([scopedUserId])}
               />
             )}
@@ -1096,7 +1081,7 @@ export default async function PlaneringPage({
 
                       {scoped.role === "coach" && (
                         <AthleteTargetFields
-                          athletes={scoped.linkedAthletes}
+                          athletes={viewableAthletes(scoped)}
                           selectedIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
                         />
                       )}
@@ -1414,7 +1399,7 @@ export default async function PlaneringPage({
 
             {scoped.role === "coach" && (
               <AthleteTargetFields
-                athletes={scoped.linkedAthletes}
+                athletes={viewableAthletes(scoped)}
                 selectedIds={new Set([scopedUserId])}
               />
             )}

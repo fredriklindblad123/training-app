@@ -113,12 +113,29 @@ export function canEditPlanning(scoped: ScopedProfile): boolean {
 }
 
 /**
+ * Alla "vyer" en coach kan växla mellan i löparväljaren: sig själv (Fredrik
+ * tränar ju också, utan egen tränare — se `canEditPlanning`, det gör hans
+ * egen planering fullt redigerbar precis som innan Fas 0) plus alla länkade
+ * löpare (Alice, Nike, ...). Skild från `linkedAthletes` med flit: den
+ * listan är fortfarande den strikta coach_athletes-kopplingen (t.ex.
+ * "löpare du coachar"-listan i Inställningar, där "ta bort dig själv" inte
+ * skulle betyda något), den här är bara till för väljar-UI:t och för vilka
+ * löpare ett block kan gälla för. En löpare (utan coach-roll) har ingen
+ * växlare alls — bara sig själv.
+ */
+export function viewableAthletes(scoped: ScopedProfile): AthleteOption[] {
+  if (scoped.role !== "coach") return [];
+  return [{ id: scoped.userId, fullName: "Jag själv" }, ...scoped.linkedAthletes];
+}
+
+/**
  * Vilket user_id en sidas frågor ska filtrera/skriva på.
  *
  * En löpare ser alltid bara sig själv — `athleteParam` ignoreras helt för
  * den rollen. En coach växlar via en `athlete`-query-parameter (samma
- * URL-drivna mönster som resten av /sasongen, se `competitionHref`) —
- * ogiltiga eller ej länkade värden faller tillbaka till första länkade
+ * URL-drivna mönster som resten av /sasongen, se `competitionHref`) — och
+ * kan växla till sig själv precis som till en länkad löpare (se
+ * `viewableAthletes`). Ogiltiga värden faller tillbaka till första länkade
  * löparen. Har coachen ingen länkad löpare alls faller det tillbaka till
  * coachens eget id, vilket bara ger tomma resultat (coachen äger normalt
  * inga season_blocks/competitions själv) — ett medvetet ofarligt tomt läge,
@@ -126,7 +143,7 @@ export function canEditPlanning(scoped: ScopedProfile): boolean {
  */
 export function resolveScopedUserId(scoped: ScopedProfile, athleteParam?: string): string {
   if (scoped.role !== "coach") return scoped.userId;
-  if (athleteParam && scoped.linkedAthletes.some((a) => a.id === athleteParam)) {
+  if (athleteParam && viewableAthletes(scoped).some((a) => a.id === athleteParam)) {
     return athleteParam;
   }
   return scoped.linkedAthletes[0]?.id ?? scoped.userId;

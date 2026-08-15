@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   addDays as planAddDays,
@@ -453,7 +453,8 @@ export default async function TavlingsresultatPage({
 
       {scoped.role === "coach" && (
         <AthleteSwitcher
-          linkedAthletes={scoped.linkedAthletes}
+          athletes={viewableAthletes(scoped)}
+          viewerUserId={scoped.userId}
           activeId={scopedUserId}
           buildHref={athleteHref}
         />

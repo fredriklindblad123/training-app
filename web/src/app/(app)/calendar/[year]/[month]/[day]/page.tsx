@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { ManualSessions, type ManualActivity } from "@/components/ManualSessions";
 import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
@@ -311,7 +311,8 @@ export default async function DayPage({
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
       {scoped.role === "coach" && (
         <AthleteSwitcher
-          linkedAthletes={scoped.linkedAthletes}
+          athletes={viewableAthletes(scoped)}
+          viewerUserId={scoped.userId}
           activeId={scopedUserId}
           buildHref={(id) => `/calendar/${year}/${month}/${day}?athlete=${id}`}
         />

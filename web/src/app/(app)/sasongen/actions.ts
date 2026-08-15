@@ -7,6 +7,7 @@ import {
   getScopedProfile,
   planningOwnerId,
   resolveScopedUserId,
+  viewableAthletes,
   type ScopedProfile,
 } from "@/lib/auth-scope";
 import { TRAINING_FACTORS } from "@/lib/training-factors";
@@ -98,17 +99,19 @@ async function resolvedAthleteId(
 }
 
 /** Vilka löpare ett block/en periodisering ska gälla för — en coach kryssar
- * i en delmängd av sina länkade löpare (formulärfältet `athletes`, ett värde
- * per ikryssad löpare); en löpare utan coach gäller alltid bara sig själv,
- * det finns ingen väljare att visa. Ogiltiga id:n (inte en faktiskt länkad
- * löpare) filtreras bort — säkerheten ligger ändå i RLS på
- * season_block_athletes, det här är bara att inte spara skräp. */
+ * i en delmängd av sina "vyer" (formulärfältet `athletes`, ett värde per
+ * ikryssad löpare) — sig själv (Fredrik tränar också, utan egen tränare) och
+ * länkade löpare, se viewableAthletes; en löpare utan coach gäller alltid
+ * bara sig själv, det finns ingen väljare att visa. Ogiltiga id:n filtreras
+ * bort — säkerheten ligger ändå i RLS på season_block_athletes, det här är
+ * bara att inte spara skräp. */
 function targetAthletesFromForm(scoped: ScopedProfile, formData: FormData): string[] {
   if (scoped.role !== "coach") return [scoped.userId];
+  const valid = viewableAthletes(scoped);
   return formData
     .getAll("athletes")
     .map(String)
-    .filter((id) => scoped.linkedAthletes.some((a) => a.id === id));
+    .filter((id) => valid.some((a) => a.id === id));
 }
 
 /** Vilka löpare ett block gäller för just nu — season_block_athletes, se
