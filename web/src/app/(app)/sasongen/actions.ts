@@ -13,13 +13,10 @@ import {
 import {
   datesForWeekday,
   generateFromTemplate,
-  suggestBlocks,
-  toDateKey,
   type AvailabilityKind,
   type PeriodType,
   type PhaseType,
   type RepGroupInput,
-  type SeasonKind,
   type TemplateItem,
 } from "@/lib/planning";
 
@@ -399,43 +396,6 @@ export async function deleteBlock(formData: FormData) {
   const id = str(formData, "id");
   if (!auth || !id) return;
   await auth.supabase.from("season_blocks").delete().eq("id", id);
-  refresh();
-}
-
-/**
- * Skapar en hel periodisering bakåt från en A-tävling.
- *
- * Det här är den funktion som gör att man slipper lägga in fyra block för
- * hand varje säsong. Förslaget är en utgångspunkt — blocken går att flytta
- * och byta namn på efteråt.
- */
-export async function suggestPeriodisation(formData: FormData) {
-  const supabase = await createClient();
-  const scoped = await getScopedProfile(supabase);
-  if (!scoped) return;
-
-  const competitionDate = str(formData, "competition_date");
-  const startFrom = str(formData, "start_from") ?? toDateKey(new Date());
-  const season = str(formData, "season") as SeasonKind | null;
-  if (!competitionDate) return;
-
-  const athleteIds = targetAthletesFromForm(scoped, formData);
-  if (athleteIds.length === 0) return;
-
-  const blocks = suggestBlocks(competitionDate, season, startFrom);
-  if (blocks.length === 0) return;
-
-  const { data: inserted } = await supabase
-    .from("season_blocks")
-    .insert(blocks.map((b) => ({ ...b, user_id: scoped.userId })))
-    .select("id");
-
-  for (const row of inserted ?? []) {
-    await supabase
-      .from("season_block_athletes")
-      .insert(athleteIds.map((athlete_id) => ({ block_id: row.id, athlete_id })));
-  }
-
   refresh();
 }
 

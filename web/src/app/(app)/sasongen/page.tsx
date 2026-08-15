@@ -55,7 +55,6 @@ import {
   deleteTemplateItem,
   deleteTemplateRepGroup,
   saveEventResult,
-  suggestPeriodisation,
   updateBlock,
   updateTemplateRepGroup,
 } from "./actions";
@@ -945,49 +944,6 @@ export default async function PlaneringPage({
         <SeasonTimeline blocks={blockList} competitions={competitionList} />
       </section>
 
-      {/* ---------------- Periodiseringsförslag ---------------- */}
-      {canEdit && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Föreslå periodisering
-          </h2>
-          <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-            Räknar bakåt från en tävling och delar tiden i allmän, tävlingsförberedande, tävling
-            (form) och stabiliserande. Blocklängderna följer principen att strukturen hålls fast i ungefär
-            sex veckor i taget — Almgren beskriver det som att man kan justera, men bör vara
-            konsekvent inom perioden. Förslaget är en utgångspunkt att flytta på, inte ett facit.
-          </p>
-          <form
-            action={suggestPeriodisation}
-            className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-          >
-            <div className="flex flex-wrap items-end gap-3">
-              <Field label="Tävlingsdatum">
-                <input type="date" name="competition_date" required className={input} />
-              </Field>
-              <Field label="Börja planera från">
-                <input type="date" name="start_from" defaultValue={today} className={input} />
-              </Field>
-              <Field label="Säsong">
-                <select name="season" className={input} defaultValue="">
-                  <option value="">Ingen</option>
-                  <option value="indoor">{SEASON_LABELS.indoor}</option>
-                  <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-                </select>
-              </Field>
-            </div>
-            {scoped.role === "coach" && (
-              <AthleteTargetFields
-                athletes={viewableAthletes(scoped)}
-                selectedIds={new Set([scopedUserId])}
-              />
-            )}
-            <button type="submit" className={`${primaryBtn} self-start`}>
-              Skapa block
-            </button>
-          </form>
-        </section>
-      )}
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
