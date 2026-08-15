@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { CalendarNav } from "@/components/CalendarHorizon";
 import { SLOT_LABELS } from "@/lib/planning";
 import {
@@ -50,8 +52,10 @@ function addDays(d: Date, n: number): Date {
 
 export default async function WeekPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ date: string }>;
+  searchParams: Promise<{ athlete?: string }>;
 }) {
   const { date } = await params;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) notFound();
@@ -64,6 +68,12 @@ export default async function WeekPage({
   const todayKey = toKey(new Date());
 
   const supabase = await createClient();
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  const { athlete: athleteParam } = await searchParams;
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
+
   const [
     { data: activityRows },
     { data: plannedRows },
@@ -77,6 +87,7 @@ export default async function WeekPage({
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
       .gte("start_time", from)
       .lt("start_time", nextExclusive)
       .order("start_time"),
@@ -85,17 +96,20 @@ export default async function WeekPage({
       .select(
         "id, scheduled_date, slot, workout_type, title, target_distance_meters, target_duration_seconds",
       )
+      .eq("user_id", scopedUserId)
       .gte("scheduled_date", from)
       .lte("scheduled_date", to)
       .order("slot"),
     supabase
       .from("diary_entries")
       .select("entry_date, day_type, notes, session_log")
+      .eq("user_id", scopedUserId)
       .gte("entry_date", from)
       .lte("entry_date", to),
     supabase
       .from("competitions")
       .select("id, name, competition_date, priority")
+      .eq("user_id", scopedUserId)
       .gte("competition_date", from)
       .lte("competition_date", to),
     // K7: tillgänglighetsperioder som överlappar veckan. Överlapp, inte
@@ -104,6 +118,7 @@ export default async function WeekPage({
     supabase
       .from("availability_periods")
       .select("start_date, end_date, kind, label")
+      .eq("user_id", scopedUserId)
       .lte("start_date", to)
       .gte("end_date", from),
   ]);
@@ -157,11 +172,19 @@ export default async function WeekPage({
   }
   const compliance = summarizeCompliance(planMatches);
 
-  const monthHref = `/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}`;
-  const yearHref = `/calendar/${monday.getFullYear()}`;
+  const monthHref = `/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}${athleteQuery}`;
+  const yearHref = `/calendar/${monday.getFullYear()}${athleteQuery}`;
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+      {scoped.role === "coach" && (
+        <AthleteSwitcher
+          linkedAthletes={scoped.linkedAthletes}
+          activeId={scopedUserId}
+          buildHref={(id) => `/calendar/vecka/${date}?athlete=${id}`}
+        />
+      )}
+
       <CalendarNav
         current="week"
         title={
@@ -172,13 +195,14 @@ export default async function WeekPage({
             </span>
           </>
         }
-        prevHref={`/calendar/vecka/${toKey(addDays(monday, -7))}`}
-        nextHref={`/calendar/vecka/${toKey(addDays(monday, 7))}`}
+        prevHref={`/calendar/vecka/${toKey(addDays(monday, -7))}${athleteQuery}`}
+        nextHref={`/calendar/vecka/${toKey(addDays(monday, 7))}${athleteQuery}`}
         jumpDate={todayKey}
-        dayHref={`/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}/${monday.getDate()}`}
-        weekHref={`/calendar/vecka/${todayKey}`}
+        dayHref={`/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}/${monday.getDate()}${athleteQuery}`}
+        weekHref={`/calendar/vecka/${todayKey}${athleteQuery}`}
         monthHref={monthHref}
         yearHref={yearHref}
+        athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 
       <PeriodStatTiles sessions={sessions} compliance={compliance} />
@@ -231,7 +255,7 @@ export default async function WeekPage({
           return (
             <Link
               key={key}
-              href={`/calendar/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`}
+              href={`/calendar/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}${athleteQuery}`}
               className={`flex min-h-28 flex-col gap-1.5 rounded border p-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
                 isToday
                   ? "border-zinc-900 dark:border-zinc-100"

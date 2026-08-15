@@ -31,11 +31,16 @@ export function ManualSessions({
   activities,
   saveAction,
   deleteAction,
+  athleteId,
 }: {
   dateStr: string;
   activities: ManualActivity[];
   saveAction: (formData: FormData) => void;
   deleteAction: (formData: FormData) => void;
+  /** Fas 0-uppföljning: vilken löpare ett nytt eget pass ska skrivas på — se
+   * resolvedAthleteId i actions.ts. Bara relevant för "Lägg till"-formuläret
+   * nedan, en uppdatering av ett befintligt pass rör aldrig ägaren. */
+  athleteId: string;
 }) {
   const sorted = [...activities].sort((a, b) => a.start_time.localeCompare(b.start_time));
 
@@ -143,6 +148,7 @@ export function ManualSessions({
         </summary>
         <form action={saveAction} className="mt-3 flex flex-wrap items-end gap-3">
           <input type="hidden" name="entry_date" value={dateStr} />
+          <input type="hidden" name="athlete" value={athleteId} />
           <label className="flex flex-col gap-1 text-sm">
             Typ
             <select name="category" defaultValue="strength" className={inputClass}>

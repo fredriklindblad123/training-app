@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   SV_MONTHS,
   SV_WEEKDAYS_SHORT,
@@ -33,8 +35,10 @@ import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/da
 
 export default async function MonthPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ year: string; month: string }>;
+  searchParams: Promise<{ athlete?: string }>;
 }) {
   const { year: yearParam, month: monthParam } = await params;
   const year = Number(yearParam);
@@ -51,6 +55,11 @@ export default async function MonthPage({
   const todayKey = dateKey(now.getFullYear(), now.getMonth() + 1, now.getDate());
 
   const supabase = await createClient();
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  const { athlete: athleteParam } = await searchParams;
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 
   const [
     { data: activities },
@@ -62,18 +71,21 @@ export default async function MonthPage({
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
       .gte("start_time", monthStart)
       .lt("start_time", monthEndExclusive)
       .order("start_time"),
     supabase
       .from("diary_entries")
       .select("entry_date, day_type")
+      .eq("user_id", scopedUserId)
       .gte("entry_date", monthStart)
       .lt("entry_date", monthEndExclusive)
       .not("day_type", "is", null),
     supabase
       .from("planned_workouts")
       .select("id, scheduled_date, workout_type, slot, title, target_distance_meters, target_duration_seconds")
+      .eq("user_id", scopedUserId)
       .order("slot")
       .gte("scheduled_date", monthStart)
       .lt("scheduled_date", monthEndExclusive),
@@ -85,6 +97,7 @@ export default async function MonthPage({
     supabase
       .from("availability_periods")
       .select("start_date, end_date, kind, label")
+      .eq("user_id", scopedUserId)
       .lt("start_date", monthEndExclusive)
       .gte("end_date", monthStart),
     // Samma källa som veckovyn för tävlingsdagar — se lib/day-outcome.ts.
@@ -92,6 +105,7 @@ export default async function MonthPage({
     supabase
       .from("competitions")
       .select("id, name, competition_date, priority")
+      .eq("user_id", scopedUserId)
       .gte("competition_date", monthStart)
       .lt("competition_date", monthEndExclusive),
   ]);
@@ -145,16 +159,25 @@ export default async function MonthPage({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+      {scoped.role === "coach" && (
+        <AthleteSwitcher
+          linkedAthletes={scoped.linkedAthletes}
+          activeId={scopedUserId}
+          buildHref={(id) => `/calendar/${year}/${month}?athlete=${id}`}
+        />
+      )}
+
       <CalendarNav
         current="month"
         title={`${SV_MONTHS[month - 1]} ${year}`}
-        prevHref={`/calendar/${prevMonth.year}/${prevMonth.month}`}
-        nextHref={`/calendar/${nextMonth.year}/${nextMonth.month}`}
+        prevHref={`/calendar/${prevMonth.year}/${prevMonth.month}${athleteQuery}`}
+        nextHref={`/calendar/${nextMonth.year}/${nextMonth.month}${athleteQuery}`}
         jumpDate={todayKey}
-        dayHref={`/calendar/${year}/${month}/1`}
-        weekHref={`/calendar/vecka/${monthStart}`}
-        monthHref={`/calendar/${year}/${month}`}
-        yearHref={`/calendar/${year}`}
+        dayHref={`/calendar/${year}/${month}/1${athleteQuery}`}
+        weekHref={`/calendar/vecka/${monthStart}${athleteQuery}`}
+        monthHref={`/calendar/${year}/${month}${athleteQuery}`}
+        yearHref={`/calendar/${year}${athleteQuery}`}
+        athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 
       <PeriodStatTiles sessions={monthSessions} compliance={monthCompliance} />
@@ -198,7 +221,7 @@ export default async function MonthPage({
           return (
             <Link
               key={key}
-              href={`/calendar/${year}/${month}/${day}`}
+              href={`/calendar/${year}/${month}/${day}${athleteQuery}`}
               className="flex min-h-24 flex-col gap-1 bg-white p-2 hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800"
             >
               <span className="text-zinc-500 dark:text-zinc-400">{day}</span>

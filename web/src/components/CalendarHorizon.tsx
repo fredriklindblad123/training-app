@@ -68,6 +68,7 @@ export function CalendarNav({
   weekHref,
   monthHref,
   yearHref,
+  athleteId,
 }: {
   current: Horizon;
   title: React.ReactNode;
@@ -79,6 +80,10 @@ export function CalendarNav({
   weekHref: string;
   monthHref: string;
   yearHref: string;
+  /** Fas 0-uppföljning: en coachs valda löpare — skickas med som dolt fält
+   * i "hoppa till datum"-formuläret (GET till /calendar/goto), som annars
+   * inte har någon URL att läsa den ur (formuläret postar bara horizon+date). */
+  athleteId?: string;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -100,6 +105,7 @@ export function CalendarNav({
       <div className="flex flex-wrap items-center gap-2">
         <form action="/calendar/goto" className="flex items-center gap-1.5 text-sm">
           <input type="hidden" name="horizon" value={current} />
+          {athleteId && <input type="hidden" name="athlete" value={athleteId} />}
           <input
             type="date"
             name="date"

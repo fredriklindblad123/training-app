@@ -11,6 +11,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
  */
 export async function getDayStatuses(
   supabase: SupabaseServerClient,
+  userId: string,
   startDate: string,
   endDateExclusive: string,
 ): Promise<Map<string, DayStatus>> {
@@ -20,12 +21,14 @@ export async function getDayStatuses(
     supabase
       .from("diary_entries")
       .select("entry_date, day_type")
+      .eq("user_id", userId)
       .gte("entry_date", startDate)
       .lt("entry_date", endDateExclusive)
       .not("day_type", "is", null),
     supabase
       .from("activities")
       .select("start_time")
+      .eq("user_id", userId)
       .gte("start_time", startDate)
       .lt("start_time", endDateExclusive),
   ]);

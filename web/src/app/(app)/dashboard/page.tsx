@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
@@ -301,12 +303,23 @@ function rollingWeekRing(
   };
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  /** Fas 0-uppföljning (2026-08-16): vilken löpare en coach tittar på just
+   * nu — samma `athlete`-param-mönster som /sasongen, se lib/auth-scope.ts.
+   * Ignoreras helt för en löpare (ser alltid bara sig själv). */
+  searchParams: Promise<{ athlete?: string }>;
+}) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null; // Layouten redirectar redan utan inloggning.
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null; // Layouten redirectar redan utan inloggning.
+  const { athlete: athleteParam } = await searchParams;
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  // Bifogas på sidans egna länkar (till dagvyn/veckovyn) så växlingen
+  // följer med dit också — huvudmenyn (NavLinks) gör samma sak för
+  // menylänkarna.
+  const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 
   const now = new Date();
   const todayKey = toDateKey(now);
@@ -336,6 +349,7 @@ export default async function DashboardPage() {
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
       .gte("start_time", todayKey)
       .order("start_time"),
     // Kontinuitetssviterna (K6) mäts över historiken, inte dagen — "personbästa"
@@ -349,17 +363,20 @@ export default async function DashboardPage() {
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
       .gte("start_time", continuityFrom)
       .order("start_time"),
     supabase
       .from("diary_entries")
       .select("entry_date, day_type")
+      .eq("user_id", scopedUserId)
       .gte("entry_date", continuityFrom)
       .in("day_type", ["sick", "injured"]),
     // P1.2-baslinjen (fysiologi) är alltid de senaste 60 dagarna.
     supabase
       .from("daily_metrics")
       .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+      .eq("user_id", scopedUserId)
       .gte(
         "metric_date",
         (() => {
@@ -377,6 +394,7 @@ export default async function DashboardPage() {
     supabase
       .from("planned_workouts")
       .select("workout_type, title, planned_rep_groups(reps, distance_meters, duration_seconds, sort_order)")
+      .eq("user_id", scopedUserId)
       .eq("scheduled_date", tomorrowKey)
       .in("workout_type", QUALITY_WORKOUT_TYPES)
       .order("slot", { ascending: true }),
@@ -413,7 +431,7 @@ export default async function DashboardPage() {
     tomorrowQualityWorkouts ?? [],
     wasEasingOffYesterday,
   );
-  const tomorrowHref = `/calendar/${tomorrow.getFullYear()}/${tomorrow.getMonth() + 1}/${tomorrow.getDate()}`;
+  const tomorrowHref = `/calendar/${tomorrow.getFullYear()}/${tomorrow.getMonth() + 1}/${tomorrow.getDate()}${athleteQuery}`;
 
   // --- Pass som analysenhet (P0.5), precis som /trends -------------------
   const sessions: TrainingSession[] = groupActivitiesIntoSessions(
@@ -500,11 +518,19 @@ export default async function DashboardPage() {
     rollingWeekRing("Belastning", dailyLoad, todayKey, yearStartKey, (v) => String(Math.round(v))),
   ];
 
-  const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}`;
+  const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}${athleteQuery}`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Dashboard</h1>
+
+      {scoped.role === "coach" && (
+        <AthleteSwitcher
+          linkedAthletes={scoped.linkedAthletes}
+          activeId={scopedUserId}
+          buildHref={(id) => `/dashboard?athlete=${id}`}
+        />
+      )}
 
       {/* --- Form och kondition: överst på sidan, egen sektion. Långa
           horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
@@ -621,7 +647,7 @@ export default async function DashboardPage() {
           bort 2026-08-13 (dubblerade kalenderns veckovy) — länken pekar dit
           i stället. ---------------------------------------------------- */}
       <Link
-        href={`/calendar/vecka/${todayKey}`}
+        href={`/calendar/vecka/${todayKey}${athleteQuery}`}
         className="w-fit text-sm underline text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
       >
         Veckans genomgång →

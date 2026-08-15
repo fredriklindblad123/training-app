@@ -1,7 +1,8 @@
-import Link from "next/link";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
+import { NavLinks } from "@/components/NavLinks";
 
 /* Menyns ordning namnger loopens kadenser, inte artefakttyper
  * (docs/tranarloopen.md). Första länken hette tidigare "Idag"; bytt tillbaka
@@ -20,16 +21,11 @@ import { signOut } from "@/app/login/actions";
  *
  * "Flerårsplan" (fas 0, 2026-08-14): mål/volym/tävlingar per år, en egen
  * länk bredvid Säsongen eftersom den lever på en längre horisont än en
- * enskild säsong — se /flerarsplan/page.tsx. */
-const navLinks = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/calendar", label: "Träningskalender" },
-  { href: "/trender", label: "Trender" },
-  { href: "/sasongen", label: "Säsongen" },
-  { href: "/flerarsplan", label: "Flerårsplan" },
-  { href: "/tavlingsresultat", label: "Tävlingsresultat" },
-  { href: "/settings", label: "Inställningar" },
-];
+ * enskild säsong — se /flerarsplan/page.tsx.
+ *
+ * Själva länklistan bor numera i components/NavLinks.tsx — utbruten till en
+ * klientkomponent 2026-08-16 så att en coachs valda löpare (?athlete=)
+ * följer med genom hela menyn, inte bara inom en sida. */
 
 export default async function AppLayout({
   children,
@@ -48,17 +44,9 @@ export default async function AppLayout({
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
-        <nav className="flex gap-4 text-sm font-medium">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </nav>
+        <Suspense fallback={<span className="text-sm text-zinc-400">Laddar meny…</span>}>
+          <NavLinks />
+        </Suspense>
         <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
           <span>{user.email}</span>
           <form action={signOut}>

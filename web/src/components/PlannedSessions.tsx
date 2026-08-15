@@ -51,6 +51,7 @@ export function PlannedSessions({
   addRepGroupAction,
   updateRepGroupAction,
   deleteRepGroupAction,
+  athleteId,
 }: {
   dateStr: string;
   planned: PlannedRow[];
@@ -63,6 +64,9 @@ export function PlannedSessions({
   addRepGroupAction: (formData: FormData) => void;
   updateRepGroupAction: (formData: FormData) => void;
   deleteRepGroupAction: (formData: FormData) => void;
+  /** Fas 0-uppföljning: vilken löpare ett för hand tillagt pass ska skrivas
+   * på — se resolvedAthleteId i actions.ts. */
+  athleteId: string;
 }) {
   const sorted = [...planned].sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
 
@@ -255,6 +259,7 @@ export function PlannedSessions({
           <form action={createAction} className="mt-3 flex flex-wrap items-end gap-3">
             <input type="hidden" name="scheduled_date" value={dateStr} />
             <input type="hidden" name="block_id" value={activeBlock.id} />
+            <input type="hidden" name="athlete" value={athleteId} />
             <label className="flex flex-col gap-1 text-sm">
               Typ
               <select name="workout_type" defaultValue="easy" className={inputClass}>

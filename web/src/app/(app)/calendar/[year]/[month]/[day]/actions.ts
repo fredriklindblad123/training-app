@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { isActivityCategory } from "@/lib/categories";
 import { THRESHOLD_TEST_PROTOCOL } from "@/lib/planning";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /** Ett tröskeltest ska alltid bära protokollet i sin beskrivning (K8) — utan
  * det är "Tröskeltest" bara ett namn utan instruktion. Skriver bara över en
@@ -12,6 +15,27 @@ function descriptionFor(workoutType: string, typed: string): string | null {
   const trimmed = typed.trim();
   if (trimmed) return trimmed;
   return workoutType === "test" ? THRESHOLD_TEST_PROTOCOL : null;
+}
+
+/** Fas 0-uppföljning (2026-08-16): vilken löpares rad en helt ny post (ett
+ * eget pass, en ny dagboksrad, ett för hand inlagt planerat pass) ska
+ * skrivas på — en löpare får alltid sitt eget id, en coach växlar via det
+ * dolda `athlete`-fältet sidan skickar med (samma `athlete`-param som
+ * URL:en, se page.tsx). Säkerheten ligger i RLS (widened i migration
+ * 20260814110000), inte här — samma mönster som resolvedAthleteId i
+ * sasongen/actions.ts. Uppdaterings-/raderingsactioner nedan behöver den
+ * INTE: de opererar på en rad som redan finns, och RLS avgör redan om
+ * anroparen får nå den — ett extra `.eq("user_id", ...)` mot den inloggade
+ * personens EGET id skulle bara göra att en coachs ändring av en löpares
+ * rad tyst missar (fel id att filtrera på).
+ */
+async function resolvedAthleteId(
+  supabase: SupabaseServerClient,
+  formData: FormData,
+): Promise<string | null> {
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  return resolveScopedUserId(scoped, (formData.get("athlete") as string | null) ?? undefined);
 }
 
 export async function saveDiaryEntry(formData: FormData) {
@@ -30,10 +54,7 @@ export async function saveDiaryEntry(formData: FormData) {
   // ut anteckningar, och tvärtom. rpe/mood sätts inte alls härifrån — den
   // dagliga incheckningen som tidigare ägde rpe togs bort 2026-08-12
   // (se activities.garmin_feel/garmin_rpe och lib/diary-text.ts istället).
-  const payload: Record<string, unknown> = {
-    user_id: user.id,
-    entry_date: entryDate,
-  };
+  const payload: Record<string, unknown> = {};
   if (formData.has("notes")) {
     payload.notes = (formData.get("notes") as string) || null;
   }
@@ -46,9 +67,16 @@ export async function saveDiaryEntry(formData: FormData) {
   }
 
   if (entryId) {
+    // Ägaren rörs aldrig vid en uppdatering — user_id hör inte till
+    // payloaden ovan, så en coachs redigering av en löpares rad aldrig kan
+    // av misstag byta ägare till coachens eget id.
     await supabase.from("diary_entries").update(payload).eq("id", entryId);
   } else {
-    await supabase.from("diary_entries").insert(payload);
+    const athleteId = await resolvedAthleteId(supabase, formData);
+    if (!athleteId) return;
+    await supabase
+      .from("diary_entries")
+      .insert({ ...payload, user_id: athleteId, entry_date: entryDate });
   }
 
   revalidatePath("/calendar", "layout");
@@ -69,8 +97,7 @@ export async function updateActivityCategory(formData: FormData) {
   await supabase
     .from("activities")
     .update({ category, category_source: "manual" })
-    .eq("id", activityId)
-    .eq("user_id", user.id);
+    .eq("id", activityId);
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/dashboard", "layout");
@@ -86,11 +113,7 @@ export async function deletePlannedWorkout(formData: FormData) {
   const workoutId = formData.get("workout_id") as string;
   if (!workoutId) return;
 
-  await supabase
-    .from("planned_workouts")
-    .delete()
-    .eq("id", workoutId)
-    .eq("user_id", user.id);
+  await supabase.from("planned_workouts").delete().eq("id", workoutId);
 
   revalidatePath("/calendar", "layout");
 }
@@ -110,8 +133,7 @@ export async function resetActivityCategory(formData: FormData) {
   await supabase
     .from("activities")
     .update({ category_source: "auto" })
-    .eq("id", activityId)
-    .eq("user_id", user.id);
+    .eq("id", activityId);
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/dashboard", "layout");
@@ -211,7 +233,6 @@ export async function saveManualActivity(formData: FormData) {
       : null;
 
   const payload = {
-    user_id: user.id,
     source: "manual",
     activity_type:
       category === "strength"
@@ -232,10 +253,15 @@ export async function saveManualActivity(formData: FormData) {
   };
 
   if (activityId) {
+    // Ägaren rörs aldrig vid en uppdatering — user_id hör inte till
+    // payloaden ovan, se samma motivering i saveDiaryEntry.
     await supabase.from("activities").update(payload).eq("id", activityId);
   } else {
+    const athleteId = await resolvedAthleteId(supabase, formData);
+    if (!athleteId) return;
     await supabase.from("activities").insert({
       ...payload,
+      user_id: athleteId,
       // Slumpad nyckel i stället för datumet: unik-constrainten på
       // (user_id, source, external_id) är det som annars begränsar till ett
       // eget pass per dag.
@@ -273,10 +299,8 @@ export async function deleteManualActivity(formData: FormData) {
 
 export async function addPlannedWorkout(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  const athleteId = await resolvedAthleteId(supabase, formData);
+  if (!athleteId) return;
 
   const scheduledDate = formData.get("scheduled_date") as string;
   const blockId = formData.get("block_id") as string;
@@ -287,7 +311,7 @@ export async function addPlannedWorkout(formData: FormData) {
   const durationRaw = formData.get("target_duration_min") as string;
 
   await supabase.from("planned_workouts").insert({
-    user_id: user.id,
+    user_id: athleteId,
     scheduled_date: scheduledDate,
     slot: Number(formData.get("slot")) || 1,
     workout_type: workoutType,
@@ -309,10 +333,12 @@ export async function addPlannedWorkout(formData: FormData) {
 // hur säkert värdet är.
 export async function saveTestLt2(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  // Ett tröskeltest sparas mot löparens EGEN profil, aldrig coachens —
+  // profiles-RLS tillåter en coach att uppdatera bara sin egen rad (läsning
+  // breddades i migration 20260814130000, skrivning medvetet inte), så det
+  // här måste gå via athleteId, inte user.id.
+  const athleteId = await resolvedAthleteId(supabase, formData);
+  if (!athleteId) return;
 
   const lt2Raw = formData.get("lt2_hr") as string;
   const measuredOn = formData.get("measured_on") as string;
@@ -325,7 +351,7 @@ export async function saveTestLt2(formData: FormData) {
       lt2_source: "test_field",
       lt2_measured_on: measuredOn,
     })
-    .eq("id", user.id);
+    .eq("id", athleteId);
 
   revalidatePath("/calendar", "layout");
   revalidatePath("/settings");
@@ -356,8 +382,7 @@ export async function updatePlannedWorkout(formData: FormData) {
       target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
       target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
     })
-    .eq("id", workoutId)
-    .eq("user_id", user.id);
+    .eq("id", workoutId);
 
   revalidatePath("/calendar", "layout");
 }

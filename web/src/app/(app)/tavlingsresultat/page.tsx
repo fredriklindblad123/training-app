@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   addDays as planAddDays,
   SEASON_LABELS,
@@ -93,6 +95,7 @@ function racePlacementsLabel(events: CompetitionEventRow[]): string {
  * nedan). */
 async function loadRaceAggregate(
   supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
   competition: CompetitionRow,
 ): Promise<RaceAggregate> {
   const raceDate = competition.competition_date;
@@ -109,12 +112,14 @@ async function loadRaceAggregate(
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", userId)
       .gte("start_time", windowStart)
       .lt("start_time", raceDate)
       .order("start_time"),
     supabase
       .from("daily_metrics")
       .select("metric_date, hrv_overnight_avg, resting_hr, sleep_seconds, sleep_score")
+      .eq("user_id", userId)
       .gte("metric_date", baselineStart)
       .lte("metric_date", raceDate),
   ]);
@@ -225,12 +230,24 @@ export default async function TavlingsresultatPage({
     bana?: string;
     raceA?: string;
     raceB?: string;
+    /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
+     * mönster som /sasongen, se lib/auth-scope.ts. */
+    athlete?: string;
   }>;
 }) {
-  const { gren: grenParam, bana: banaParam, raceA: raceAParam, raceB: raceBParam } =
-    await searchParams;
+  const {
+    gren: grenParam,
+    bana: banaParam,
+    raceA: raceAParam,
+    raceB: raceBParam,
+    athlete: athleteParam,
+  } = await searchParams;
 
   const supabase = await createClient();
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const athleteQuery = scoped.role === "coach" ? scopedUserId : null;
 
   // Hela historiken, inte bara ett valt säsongsår — grenutvecklingen ska
   // kunna visa fler säsonger tillbaka. Billig fråga (en handfull rader per
@@ -241,6 +258,7 @@ export default async function TavlingsresultatPage({
     .select(
       "id, name, competition_date, priority, venue, competition_events(id, event, target_result, actual_result, placement, result_seconds)",
     )
+    .eq("user_id", scopedUserId)
     .order("competition_date");
 
   const allCompetitions: CompetitionRow[] = (competitionRows ?? []) as CompetitionRow[];
@@ -377,8 +395,8 @@ export default async function TavlingsresultatPage({
   const [raceAggregateA, raceAggregateB] =
     compareRaceA && compareRaceB && compareRaceA.id !== compareRaceB.id
       ? await Promise.all([
-          loadRaceAggregate(supabase, compareRaceA),
-          loadRaceAggregate(supabase, compareRaceB),
+          loadRaceAggregate(supabase, scopedUserId, compareRaceA),
+          loadRaceAggregate(supabase, scopedUserId, compareRaceB),
         ])
       : [null, null];
 
@@ -404,6 +422,7 @@ export default async function TavlingsresultatPage({
     if (banaParam) params.set("bana", banaParam);
     if (raceAParam) params.set("raceA", raceAParam);
     if (raceBParam) params.set("raceB", raceBParam);
+    if (athleteQuery) params.set("athlete", athleteQuery);
     return `/tavlingsresultat?${params.toString()}`;
   }
 
@@ -415,12 +434,30 @@ export default async function TavlingsresultatPage({
     params.set("bana", bana);
     if (raceAParam) params.set("raceA", raceAParam);
     if (raceBParam) params.set("raceB", raceBParam);
+    if (athleteQuery) params.set("athlete", athleteQuery);
+    return `/tavlingsresultat?${params.toString()}`;
+  }
+
+  /** Byter vilken löpare en coach tittar på, behåller grenval/bana-filter. */
+  function athleteHref(id: string): string {
+    const params = new URLSearchParams();
+    for (const e of selectedEvents) params.append("gren", e);
+    if (banaParam) params.set("bana", banaParam);
+    params.set("athlete", id);
     return `/tavlingsresultat?${params.toString()}`;
   }
 
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Tävlingsresultat</h1>
+
+      {scoped.role === "coach" && (
+        <AthleteSwitcher
+          linkedAthletes={scoped.linkedAthletes}
+          activeId={scopedUserId}
+          buildHref={athleteHref}
+        />
+      )}
 
       <section className="flex flex-col gap-4">
         <div>
@@ -436,7 +473,10 @@ export default async function TavlingsresultatPage({
         {allCompetitions.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Inga tävlingar inlagda ännu. Lägg till dem på{" "}
-            <Link href="/sasongen" className="underline">
+            <Link
+              href={athleteQuery ? `/sasongen?athlete=${athleteQuery}` : "/sasongen"}
+              className="underline"
+            >
               planeringssidan
             </Link>
             .
@@ -445,7 +485,10 @@ export default async function TavlingsresultatPage({
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Ingen gren har minst två tidtagna resultat ännu (hopp och kast mäts i meter
             och räknas inte hit). Fyll i fler resultat på{" "}
-            <Link href="/sasongen" className="underline">
+            <Link
+              href={athleteQuery ? `/sasongen?athlete=${athleteQuery}` : "/sasongen"}
+              className="underline"
+            >
               planeringssidan
             </Link>
             .
@@ -578,6 +621,7 @@ export default async function TavlingsresultatPage({
                     <input key={e} type="hidden" name="gren" value={e} />
                   ))}
                   {banaParam && <input type="hidden" name="bana" value={banaParam} />}
+                  {athleteQuery && <input type="hidden" name="athlete" value={athleteQuery} />}
                   <label className="flex flex-col gap-1">
                     <span className="text-zinc-600 dark:text-zinc-400">Lopp A</span>
                     <select

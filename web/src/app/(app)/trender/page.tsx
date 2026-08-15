@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
 import {
@@ -150,27 +152,45 @@ export default async function TrendsPage({
   searchParams: Promise<{
     weeks?: string;
     block?: string;
+    /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
+     * mönster som /sasongen, se lib/auth-scope.ts. */
+    athlete?: string;
   }>;
 }) {
-  const { weeks: weeksParam, block: blockParam } = await searchParams;
+  const { weeks: weeksParam, block: blockParam, athlete: athleteParam } = await searchParams;
   const weeksNum = Number(weeksParam);
   const weeks: WeekOption = (WEEK_OPTIONS as readonly number[]).includes(weeksNum)
     ? (weeksNum as WeekOption)
     : 12;
 
   const supabase = await createClient();
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const athleteQuery = scoped.role === "coach" ? `&athlete=${scopedUserId}` : "";
   const todayKey = toDateKey(new Date());
 
-  // P1.5: träningsblock som tidsenhet. Blocken hämtas alltid (billigt, en
-  // rad per block) så att både väljaren och jämförelseläget kan använda dem,
-  // oavsett om ett block faktiskt är valt just nu. Bara påbörjade block visas
-  // som väljare — ett framtida planerat block har per definition ingen data
-  // att visa, och skulle bara se trasigt ut om man klickade på det.
-  const { data: blockRows } = await supabase
-    .from("season_blocks")
-    .select("id, name, phase, start_date, end_date, focus")
-    .lte("start_date", todayKey)
-    .order("start_date", { ascending: false });
+  // P1.5: träningsblock som tidsenhet. Block är kopplade till löpare via
+  // season_block_athletes (samma block kan gälla flera löpare), inte
+  // user_id — se migration 20260816100000. Blocken hämtas alltid (billigt,
+  // en rad per block) så att både väljaren och jämförelseläget kan använda
+  // dem, oavsett om ett block faktiskt är valt just nu. Bara påbörjade block
+  // visas som väljare — ett framtida planerat block har per definition ingen
+  // data att visa, och skulle bara se trasigt ut om man klickade på det.
+  const { data: blockAthleteRows } = await supabase
+    .from("season_block_athletes")
+    .select("block_id")
+    .eq("athlete_id", scopedUserId);
+  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
+  const { data: blockRows } =
+    blockIds.length > 0
+      ? await supabase
+          .from("season_blocks")
+          .select("id, name, phase, start_date, end_date, focus")
+          .in("id", blockIds)
+          .lte("start_date", todayKey)
+          .order("start_date", { ascending: false })
+      : { data: [] as SeasonBlockRow[] };
   const blocks: SeasonBlockRow[] = blockRows ?? [];
   const activeBlock = blockParam ? (blocks.find((b) => b.id === blockParam) ?? null) : null;
 
@@ -203,6 +223,7 @@ export default async function TrendsPage({
       let q = supabase
         .from("activities")
         .select(SESSION_ACTIVITY_COLUMNS)
+        .eq("user_id", scopedUserId)
         .gte("start_time", startDate);
       if (endDateExclusive) q = q.lt("start_time", endDateExclusive);
       return q.order("start_time");
@@ -211,6 +232,7 @@ export default async function TrendsPage({
       let q = supabase
         .from("daily_metrics")
         .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+        .eq("user_id", scopedUserId)
         .gte("metric_date", startDate);
       if (endDateExclusive) q = q.lt("metric_date", endDateExclusive);
       return q.order("metric_date");
@@ -219,6 +241,7 @@ export default async function TrendsPage({
       let q = supabase
         .from("diary_entries")
         .select("entry_date, day_type, notes")
+        .eq("user_id", scopedUserId)
         .gte("entry_date", startDate);
       if (endDateExclusive) q = q.lt("entry_date", endDateExclusive);
       return q.order("entry_date");
@@ -226,7 +249,7 @@ export default async function TrendsPage({
     supabase
       .from("profiles")
       .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr")
-      .limit(1)
+      .eq("id", scopedUserId)
       .maybeSingle(),
     // K2: bara hämtad i blockvy — efterlevnad hör bara hemma där (se
     // ComplianceCard och tranarperspektiv.md K2 punkt 5), så ett rullande
@@ -237,6 +260,7 @@ export default async function TrendsPage({
           .select(
             "id, scheduled_date, slot, workout_type, title, target_distance_meters, target_duration_seconds",
           )
+          .eq("user_id", scopedUserId)
           .gte("scheduled_date", startDate)
           .lt("scheduled_date", endDateExclusive as string)
       : Promise.resolve({ data: [] as PlannedWorkout[] | null }),
@@ -246,6 +270,7 @@ export default async function TrendsPage({
       let q = supabase
         .from("competitions")
         .select("name, competition_date, competition_events(event)")
+        .eq("user_id", scopedUserId)
         .gte("competition_date", startDate);
       if (endDateExclusive) q = q.lt("competition_date", endDateExclusive);
       return q.order("competition_date");
@@ -604,6 +629,16 @@ export default async function TrendsPage({
 
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+      {scoped.role === "coach" && (
+        <AthleteSwitcher
+          linkedAthletes={scoped.linkedAthletes}
+          activeId={scopedUserId}
+          buildHref={(id) =>
+            `/trender?${activeBlock ? `block=${activeBlock.id}` : `weeks=${weeks}`}&athlete=${id}`
+          }
+        />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Trender</h1>
@@ -630,7 +665,7 @@ export default async function TrendsPage({
             {WEEK_OPTIONS.map((w) => (
               <Link
                 key={w}
-                href={`/trender?weeks=${w}`}
+                href={`/trender?weeks=${w}${athleteQuery}`}
                 className={`rounded px-3 py-1 ${
                   !activeBlock && weeks === w
                     ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
@@ -646,7 +681,7 @@ export default async function TrendsPage({
               {blocks.map((b) => (
                 <Link
                   key={b.id}
-                  href={`/trender?block=${b.id}`}
+                  href={`/trender?block=${b.id}${athleteQuery}`}
                   title={`${PHASE_LABELS[b.phase]}, ${b.start_date} – ${b.end_date}`}
                   className={`rounded px-3 py-1 ${
                     activeBlock?.id === b.id
@@ -865,7 +900,7 @@ export default async function TrendsPage({
             </p>
           </div>
           <Link
-            href={`/sasongen?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`}
+            href={`/sasongen?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}${athleteQuery}`}
             className="rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
           >
             Skapa nästa block →

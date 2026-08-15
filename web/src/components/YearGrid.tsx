@@ -37,6 +37,7 @@ export function YearGrid({
   plannedByDate,
   blockByDate,
   competitionNamesByDate,
+  athleteQuery = "",
 }: {
   year: number;
   todayKey: string;
@@ -44,6 +45,10 @@ export function YearGrid({
   plannedByDate: Record<string, PlannedDay>;
   blockByDate: Record<string, BlockDay>;
   competitionNamesByDate: Record<string, string[]>;
+  /** Fas 0-uppföljning: `?athlete=<id>` (eller tomt) — hakas på varje
+   * månads-/dagslänk så en coachs valda löpare följer med vidare in i
+   * kalendern. */
+  athleteQuery?: string;
 }) {
   const [view, setView] = useState<View>("traning");
 
@@ -108,7 +113,7 @@ export function YearGrid({
           return (
             <div key={month} className="flex flex-col gap-2">
               <Link
-                href={`/calendar/${year}/${month}`}
+                href={`/calendar/${year}/${month}${athleteQuery}`}
                 className="text-sm font-medium text-zinc-800 hover:underline dark:text-zinc-200"
               >
                 {monthName}
@@ -119,7 +124,7 @@ export function YearGrid({
                     return <span key={`empty-${i}`} />;
                   }
                   const key = dateKey(year, month, day);
-                  const dayHref = `/calendar/${year}/${month}/${day}`;
+                  const dayHref = `/calendar/${year}/${month}/${day}${athleteQuery}`;
 
                   if (view === "block") {
                     const block = blockByDate[key];

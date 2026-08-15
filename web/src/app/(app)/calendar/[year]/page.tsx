@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { getDayStatuses } from "@/lib/day-status";
 import { CalendarNav, type BandBlock } from "@/components/CalendarHorizon";
 import { dateKey, isValidYear } from "@/lib/calendar-utils";
@@ -20,8 +22,10 @@ import { typeLabel } from "@/lib/day-outcome";
 
 export default async function YearPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ year: string }>;
+  searchParams: Promise<{ athlete?: string }>;
 }) {
   const { year: yearParam } = await params;
   const year = Number(yearParam);
@@ -30,6 +34,19 @@ export default async function YearPage({
   }
 
   const supabase = await createClient();
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  const { athlete: athleteParam } = await searchParams;
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
+
+  // Block är kopplade till löpare via season_block_athletes (samma block
+  // kan gälla flera löpare), inte user_id — se migration 20260816100000.
+  const { data: blockAthleteRows } = await supabase
+    .from("season_block_athletes")
+    .select("block_id")
+    .eq("athlete_id", scopedUserId);
+  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
 
   const [
     statuses,
@@ -38,11 +55,12 @@ export default async function YearPage({
     { data: seasonBlocks },
     { data: activities },
   ] = await Promise.all([
-    getDayStatuses(supabase, `${year}-01-01`, `${year + 1}-01-01`),
+    getDayStatuses(supabase, scopedUserId, `${year}-01-01`, `${year + 1}-01-01`),
     // Årets tävlingar, för Tävlade-utfallet i årsvyn — se raceDates nedan.
     supabase
       .from("competitions")
       .select("id, name, competition_date")
+      .eq("user_id", scopedUserId)
       .gte("competition_date", `${year}-01-01`)
       .lt("competition_date", `${year + 1}-01-01`),
     supabase
@@ -50,16 +68,21 @@ export default async function YearPage({
       .select(
         "id, scheduled_date, workout_type, slot, title, target_distance_meters, target_duration_seconds",
       )
+      .eq("user_id", scopedUserId)
       .gte("scheduled_date", `${year}-01-01`)
       .lt("scheduled_date", `${year + 1}-01-01`),
-    supabase
-      .from("season_blocks")
-      .select("id, name, phase, start_date, end_date, focus")
-      .lte("start_date", `${year}-12-31`)
-      .gte("end_date", `${year}-01-01`),
+    blockIds.length > 0
+      ? supabase
+          .from("season_blocks")
+          .select("id, name, phase, start_date, end_date, focus")
+          .in("id", blockIds)
+          .lte("start_date", `${year}-12-31`)
+          .gte("end_date", `${year}-01-01`)
+      : Promise.resolve({ data: [] as never[] }),
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
       .gte("start_time", `${year}-01-01`)
       .lt("start_time", `${year + 1}-01-01`),
   ]);
@@ -155,24 +178,35 @@ export default async function YearPage({
   }
 
   const isCurrentYear = year === now.getFullYear();
-  const dayHref = isCurrentYear
-    ? `/calendar/${year}/${now.getMonth() + 1}/${now.getDate()}`
-    : `/calendar/${year}/1/1`;
-  const weekHref = `/calendar/vecka/${isCurrentYear ? now.toISOString().slice(0, 10) : `${year}-01-01`}`;
-  const monthHref = `/calendar/${year}/${isCurrentYear ? now.getMonth() + 1 : 1}`;
+  const dayHref =
+    (isCurrentYear
+      ? `/calendar/${year}/${now.getMonth() + 1}/${now.getDate()}`
+      : `/calendar/${year}/1/1`) + athleteQuery;
+  const weekHref =
+    `/calendar/vecka/${isCurrentYear ? now.toISOString().slice(0, 10) : `${year}-01-01`}` + athleteQuery;
+  const monthHref = `/calendar/${year}/${isCurrentYear ? now.getMonth() + 1 : 1}${athleteQuery}`;
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+      {scoped.role === "coach" && (
+        <AthleteSwitcher
+          linkedAthletes={scoped.linkedAthletes}
+          activeId={scopedUserId}
+          buildHref={(id) => `/calendar/${year}?athlete=${id}`}
+        />
+      )}
+
       <CalendarNav
         current="year"
         title={year}
-        prevHref={`/calendar/${year - 1}`}
-        nextHref={`/calendar/${year + 1}`}
+        prevHref={`/calendar/${year - 1}${athleteQuery}`}
+        nextHref={`/calendar/${year + 1}${athleteQuery}`}
         jumpDate={dateKey(now.getFullYear(), now.getMonth() + 1, now.getDate())}
         dayHref={dayHref}
         weekHref={weekHref}
         monthHref={monthHref}
-        yearHref={`/calendar/${year}`}
+        yearHref={`/calendar/${year}${athleteQuery}`}
+        athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 
       <PeriodStatTiles sessions={yearSessions} compliance={yearCompliance} />
@@ -184,6 +218,7 @@ export default async function YearPage({
         plannedByDate={plannedByDate}
         blockByDate={blockByDate}
         competitionNamesByDate={Object.fromEntries(competitionNamesByDate)}
+        athleteQuery={athleteQuery}
       />
     </div>
   );

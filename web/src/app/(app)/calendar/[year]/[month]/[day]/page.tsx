@@ -1,5 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { ManualSessions, type ManualActivity } from "@/components/ManualSessions";
 import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
 import { DaySection } from "@/components/DaySection";
@@ -70,8 +72,10 @@ function TypeDot({ type }: { type: string | null }) {
 
 export default async function DayPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ year: string; month: string; day: string }>;
+  searchParams: Promise<{ athlete?: string }>;
 }) {
   const { year: yearParam, month: monthParam, day: dayParam } = await params;
   const year = Number(yearParam);
@@ -91,6 +95,21 @@ export default async function DayPage({
   const nextDate = new Date(year, month - 1, day + 1);
 
   const supabase = await createClient();
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return null;
+  const { athlete: athleteParam } = await searchParams;
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
+
+  // Det/de block vars datumintervall täcker den här dagen OCH gäller för
+  // scopedUserId — block är kopplade till löpare via season_block_athletes,
+  // inte user_id (samma block kan gälla flera löpare), se migration
+  // 20260816100000.
+  const { data: blockAthleteRows } = await supabase
+    .from("season_block_athletes")
+    .select("block_id")
+    .eq("athlete_id", scopedUserId);
+  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
 
   const [
     { data: activities },
@@ -103,12 +122,14 @@ export default async function DayPage({
       supabase
         .from("activities")
         .select("*, activity_splits(*)")
+        .eq("user_id", scopedUserId)
         .gte("start_time", dateStr)
         .lt("start_time", nextDateStr)
         .order("start_time"),
       supabase
         .from("diary_entries")
         .select("*")
+        .eq("user_id", scopedUserId)
         .eq("entry_date", dateStr)
         .order("created_at", { ascending: true })
         .limit(1)
@@ -124,19 +145,24 @@ export default async function DayPage({
       supabase
         .from("planned_workouts")
         .select("*, season_blocks(name), planned_rep_groups(*)")
+        .eq("user_id", scopedUserId)
         .eq("scheduled_date", dateStr)
         .order("slot", { ascending: true }),
-      // Det/de block vars datumintervall täcker den här dagen — styr både
-      // vilket block ett nytt manuellt pass ska höra till, och om det ens går
-      // att lägga in ett (inget block = ingenstans att lägga passet).
-      supabase
-        .from("season_blocks")
-        .select("id, name")
-        .lte("start_date", dateStr)
-        .gte("end_date", dateStr),
+      // Styr både vilket block ett nytt manuellt pass ska höra till, och om
+      // det ens går att lägga in ett (inget block = ingenstans att lägga
+      // passet).
+      blockIds.length > 0
+        ? supabase
+            .from("season_blocks")
+            .select("id, name")
+            .in("id", blockIds)
+            .lte("start_date", dateStr)
+            .gte("end_date", dateStr)
+        : Promise.resolve({ data: [] as never[] }),
       supabase
         .from("daily_metrics")
         .select("*")
+        .eq("user_id", scopedUserId)
         .eq("metric_date", dateStr)
         .maybeSingle(),
       // Bara för K8-kortet nedan: befintligt LT2 (för att visa "ersätter",
@@ -144,6 +170,7 @@ export default async function DayPage({
       supabase
         .from("profiles")
         .select("lt2_hr, lt2_source, lt2_measured_on")
+        .eq("id", scopedUserId)
         .maybeSingle(),
     ]);
 
@@ -282,16 +309,25 @@ export default async function DayPage({
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+      {scoped.role === "coach" && (
+        <AthleteSwitcher
+          linkedAthletes={scoped.linkedAthletes}
+          activeId={scopedUserId}
+          buildHref={(id) => `/calendar/${year}/${month}/${day}?athlete=${id}`}
+        />
+      )}
+
       <CalendarNav
         current="day"
         title={`${day} ${SV_MONTHS[month - 1]} ${year}`}
-        prevHref={`/calendar/${prevDate.getFullYear()}/${prevDate.getMonth() + 1}/${prevDate.getDate()}`}
-        nextHref={`/calendar/${nextDate.getFullYear()}/${nextDate.getMonth() + 1}/${nextDate.getDate()}`}
+        prevHref={`/calendar/${prevDate.getFullYear()}/${prevDate.getMonth() + 1}/${prevDate.getDate()}${athleteQuery}`}
+        nextHref={`/calendar/${nextDate.getFullYear()}/${nextDate.getMonth() + 1}/${nextDate.getDate()}${athleteQuery}`}
         jumpDate={todayStr}
-        dayHref={`/calendar/${year}/${month}/${day}`}
-        weekHref={`/calendar/vecka/${dateStr}`}
-        monthHref={`/calendar/${year}/${month}`}
-        yearHref={`/calendar/${year}`}
+        dayHref={`/calendar/${year}/${month}/${day}${athleteQuery}`}
+        weekHref={`/calendar/vecka/${dateStr}${athleteQuery}`}
+        monthHref={`/calendar/${year}/${month}${athleteQuery}`}
+        yearHref={`/calendar/${year}${athleteQuery}`}
+        athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 
       <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />
@@ -299,6 +335,7 @@ export default async function DayPage({
       {plannedTest && hasOutcome && lt2Estimate && (
         <ThresholdTestCard
           dateStr={dateStr}
+          athleteId={scopedUserId}
           estimate={lt2Estimate}
           currentLt2={profile?.lt2_hr ?? null}
           currentSource={profile?.lt2_source ?? null}
@@ -336,6 +373,7 @@ export default async function DayPage({
           addRepGroupAction={addPlannedRepGroup}
           updateRepGroupAction={updatePlannedRepGroup}
           deleteRepGroupAction={deletePlannedRepGroup}
+          athleteId={scopedUserId}
         />
       </DaySection>
 
@@ -493,6 +531,7 @@ export default async function DayPage({
           activities={manualActivities as ManualActivity[]}
           saveAction={saveManualActivity}
           deleteAction={deleteManualActivity}
+          athleteId={scopedUserId}
         />
       </DaySection>
 
@@ -521,6 +560,7 @@ export default async function DayPage({
         >
           <input type="hidden" name="entry_date" value={dateStr} />
           <input type="hidden" name="entry_id" value={diaryEntry?.id ?? ""} />
+          <input type="hidden" name="athlete" value={scopedUserId} />
 
           <label className="flex flex-col gap-1 text-sm">
             <span className="flex items-center gap-2">
@@ -622,6 +662,7 @@ function PlanStatusBadge({
  */
 function ThresholdTestCard({
   dateStr,
+  athleteId,
   estimate,
   currentLt2,
   currentSource,
@@ -629,6 +670,9 @@ function ThresholdTestCard({
   saveAction,
 }: {
   dateStr: string;
+  /** Fas 0-uppföljning: vilken löpares profil ett sparat LT2 ska skrivas
+   * till — se resolvedAthleteId i actions.ts. */
+  athleteId: string;
   estimate: Lt2Estimate;
   currentLt2: number | null;
   currentSource: string | null;
@@ -682,6 +726,7 @@ function ThresholdTestCard({
           <form action={saveAction} className="flex flex-wrap items-center gap-3">
             <input type="hidden" name="lt2_hr" value={estimate.lt2} />
             <input type="hidden" name="measured_on" value={dateStr} />
+            <input type="hidden" name="athlete" value={athleteId} />
             <button
               type="submit"
               className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
