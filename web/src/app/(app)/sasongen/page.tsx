@@ -1,6 +1,11 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import {
+  canEditPlanning,
+  getScopedProfile,
+  planningOwnerId,
+  resolveScopedUserId,
+} from "@/lib/auth-scope";
 import {
   SeasonTimeline,
   type TimelineBlock,
@@ -101,6 +106,66 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function formatPct(v: number): string {
   return `${Math.round(v * 100)}%`;
+}
+
+/** Vilka löpare ett block gäller för — bara synlig för en coach (en
+ * självcoachad löpare har ingen väljare, blocket gäller alltid bara hen
+ * själv, se targetAthletesFromForm i actions.ts). De flesta tränar
+ * tillsammans, så samma block/mall kryssas ofta i för flera löpare i stället
+ * för att matas in en gång per löpare. */
+function AthleteTargetFields({
+  athletes,
+  selectedIds,
+}: {
+  athletes: { id: string; fullName: string | null }[];
+  selectedIds: Set<string>;
+}) {
+  if (athletes.length === 0) return null;
+  return (
+    <fieldset className="flex flex-wrap items-center gap-3 text-sm">
+      <legend className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Gäller för</legend>
+      {athletes.map((a) => (
+        <label key={a.id} className="flex items-center gap-1.5">
+          <input type="checkbox" name="athletes" value={a.id} defaultChecked={selectedIds.has(a.id)} />
+          {a.fullName ?? "Namnlös löpare"}
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+/** Läsvy av ett block för en coachad löpare — samma innehåll som
+ * redigeringsformuläret visar, men utan formulär/knappar. Planeringen ägs av
+ * coachen (se canEditPlanning); löparen ska ändå se vad som väntar och
+ * varför. */
+function ReadOnlyBlockSummary({
+  block,
+  templateNames,
+}: {
+  block: {
+    focus: string | null;
+    sessions_count: number | null;
+    days_count: number | null;
+    starts_count: number | null;
+    hours_count: number | null;
+    has_test: boolean;
+  };
+  templateNames: string[];
+}) {
+  const bits = [
+    block.sessions_count != null ? `${block.sessions_count} pass/vecka` : null,
+    block.days_count != null ? `${block.days_count} dagar` : null,
+    block.starts_count != null ? `${block.starts_count} tävlingsstarter` : null,
+    block.hours_count != null ? `${block.hours_count} timmar` : null,
+    block.has_test ? "test" : null,
+  ].filter(Boolean);
+  return (
+    <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+      {block.focus && <p>{block.focus}</p>}
+      <p>{bits.length > 0 ? bits.join(" · ") : "Ingen standardvecka ifylld ännu."}</p>
+      {templateNames.length > 0 && <p>Veckomallar: {templateNames.join(", ")}</p>}
+    </div>
+  );
 }
 
 /** Standardveckan för ett block — samma Årsplan-parametrar som tidigare
@@ -532,6 +597,21 @@ export default async function PlaneringPage({
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null; // Layouten redirectar redan utan inloggning.
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  // Vem som äger block/mallar (coachen för delad planering, löparen själv
+  // annars) — inte nödvändigtvis samma som scopedUserId, se planningOwnerId.
+  // canEdit styr om redigeringsformulären visas alls (RLS är den faktiska
+  // spärren, se migration 20260816100000).
+  const owner = planningOwnerId(scoped);
+  const canEdit = canEditPlanning(scoped);
+
+  // Block är kopplade till löpare via season_block_athletes, inte user_id
+  // (samma block kan gälla flera löpare) — ett separat steg före
+  // Promise.all nedan, eftersom season_blocks-frågan beror på resultatet.
+  const { data: blockAthleteRows } = await supabase
+    .from("season_block_athletes")
+    .select("block_id")
+    .eq("athlete_id", scopedUserId);
+  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
 
   const [
     { data: blocks },
@@ -541,15 +621,20 @@ export default async function PlaneringPage({
     { data: availabilityPeriods },
     { data: competitionDateRows },
     { data: nextACompetition },
+    { data: blockMembership },
   ] = await Promise.all([
-    supabase.from("season_blocks").select("*").eq("user_id", scopedUserId).order("start_date"),
+    blockIds.length > 0
+      ? supabase.from("season_blocks").select("*").in("id", blockIds).order("start_date")
+      : Promise.resolve({ data: [] as never[] }),
     // template_rep_groups(*) hämtas nästlat två led ner (K1) — en saknad
     // tabell (migrationen inte körd) ger bara undefined per mallrad, aldrig
     // ett kastat fel. Alla ställen nedan som läser det gör det via `?? []`.
+    // Mallar ägs av samma person som blocken (owner), inte nödvändigtvis den
+    // löpare som råkar vara vald i växlaren — se planningOwnerId.
     supabase
       .from("week_templates")
       .select("*, week_template_items(*, template_rep_groups(*))")
-      .eq("user_id", scopedUserId)
+      .eq("user_id", owner)
       .order("created_at"),
     supabase
       .from("planned_workouts")
@@ -591,7 +676,20 @@ export default async function PlaneringPage({
       .order("competition_date")
       .limit(1)
       .maybeSingle(),
+    // Vilka löpare varje block gäller för — bara relevant för
+    // kryssrutorna i redigeringsformuläret (bara en coach ser dem), men
+    // hämtas alltid, samma "tomt är ofarligt"-mönster som resten av sidan.
+    blockIds.length > 0
+      ? supabase.from("season_block_athletes").select("block_id, athlete_id").in("block_id", blockIds)
+      : Promise.resolve({ data: [] as { block_id: string; athlete_id: string }[] }),
   ]);
+
+  const athleteIdsByBlockId = new Map<string, Set<string>>();
+  for (const row of blockMembership ?? []) {
+    const set = athleteIdsByBlockId.get(row.block_id as string) ?? new Set<string>();
+    set.add(row.athlete_id as string);
+    athleteIdsByBlockId.set(row.block_id as string, set);
+  }
 
   const { years: competitionYears, countsByYear: competitionCountsByYear } =
     competitionYearCounts((competitionDateRows ?? []).map((r) => r.competition_date as string));
@@ -856,39 +954,48 @@ export default async function PlaneringPage({
       </section>
 
       {/* ---------------- Periodiseringsförslag ---------------- */}
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-          Föreslå periodisering
-        </h2>
-        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Räknar bakåt från en tävling och delar tiden i allmän, tävlingsförberedande, tävling
-          (form) och stabiliserande. Blocklängderna följer principen att strukturen hålls fast i ungefär
-          sex veckor i taget — Almgren beskriver det som att man kan justera, men bör vara
-          konsekvent inom perioden. Förslaget är en utgångspunkt att flytta på, inte ett facit.
-        </p>
-        <form
-          action={suggestPeriodisation}
-          className="flex flex-wrap items-end gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <input type="hidden" name="athlete" value={scopedUserId} />
-          <Field label="Tävlingsdatum">
-            <input type="date" name="competition_date" required className={input} />
-          </Field>
-          <Field label="Börja planera från">
-            <input type="date" name="start_from" defaultValue={today} className={input} />
-          </Field>
-          <Field label="Säsong">
-            <select name="season" className={input} defaultValue="">
-              <option value="">Ingen</option>
-              <option value="indoor">{SEASON_LABELS.indoor}</option>
-              <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-            </select>
-          </Field>
-          <button type="submit" className={primaryBtn}>
-            Skapa block
-          </button>
-        </form>
-      </section>
+      {canEdit && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            Föreslå periodisering
+          </h2>
+          <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+            Räknar bakåt från en tävling och delar tiden i allmän, tävlingsförberedande, tävling
+            (form) och stabiliserande. Blocklängderna följer principen att strukturen hålls fast i ungefär
+            sex veckor i taget — Almgren beskriver det som att man kan justera, men bör vara
+            konsekvent inom perioden. Förslaget är en utgångspunkt att flytta på, inte ett facit.
+          </p>
+          <form
+            action={suggestPeriodisation}
+            className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
+          >
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Tävlingsdatum">
+                <input type="date" name="competition_date" required className={input} />
+              </Field>
+              <Field label="Börja planera från">
+                <input type="date" name="start_from" defaultValue={today} className={input} />
+              </Field>
+              <Field label="Säsong">
+                <select name="season" className={input} defaultValue="">
+                  <option value="">Ingen</option>
+                  <option value="indoor">{SEASON_LABELS.indoor}</option>
+                  <option value="outdoor">{SEASON_LABELS.outdoor}</option>
+                </select>
+              </Field>
+            </div>
+            {scoped.role === "coach" && (
+              <AthleteTargetFields
+                athletes={scoped.linkedAthletes}
+                selectedIds={new Set([scopedUserId])}
+              />
+            )}
+            <button type="submit" className={`${primaryBtn} self-start`}>
+              Skapa block
+            </button>
+          </form>
+        </section>
+      )}
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
@@ -928,6 +1035,7 @@ export default async function PlaneringPage({
                     </span>
                   </summary>
 
+                  {canEdit ? (
                   <div className="mt-4 flex flex-col gap-4">
                     <form
                       action={updateBlock}
@@ -985,6 +1093,13 @@ export default async function PlaneringPage({
                           <input name="focus" defaultValue={b.focus ?? ""} className={input} />
                         </Field>
                       </div>
+
+                      {scoped.role === "coach" && (
+                        <AthleteTargetFields
+                          athletes={scoped.linkedAthletes}
+                          selectedIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
+                        />
+                      )}
 
                       <StandardWeekFields block={b} />
 
@@ -1211,7 +1326,6 @@ export default async function PlaneringPage({
                         action={createTemplate}
                         className="mt-3 flex flex-wrap items-end gap-3"
                       >
-                        <input type="hidden" name="athlete" value={scopedUserId} />
                         <input type="hidden" name="phase" value={b.phase} />
                         <Field label="Ny mall för den här fasen">
                           <input
@@ -1237,19 +1351,22 @@ export default async function PlaneringPage({
                       </button>
                     </form>
                   </div>
+                  ) : (
+                    <ReadOnlyBlockSummary block={b} templateNames={matchingTemplates.map((t) => t.name as string)} />
+                  )}
                 </details>
               );
             })}
           </div>
         )}
 
+        {canEdit && (
         <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
           <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Lägg till block för hand
           </summary>
           <form action={createBlock} className="mt-3 flex flex-col gap-3">
             <div className="flex flex-wrap items-end gap-3">
-              <input type="hidden" name="athlete" value={scopedUserId} />
               <Field label="Namn">
                 <input name="name" required placeholder="Grundträning 1" className={input} />
               </Field>
@@ -1295,6 +1412,13 @@ export default async function PlaneringPage({
               </Field>
             </div>
 
+            {scoped.role === "coach" && (
+              <AthleteTargetFields
+                athletes={scoped.linkedAthletes}
+                selectedIds={new Set([scopedUserId])}
+              />
+            )}
+
             <StandardWeekFields />
 
             <button type="submit" className={`${primaryBtn} self-start`}>
@@ -1312,6 +1436,7 @@ export default async function PlaneringPage({
             ))}
           </dl>
         </details>
+        )}
       </section>
 
       {/* ---------------- Jämför block (P1.5) ---------------- */}

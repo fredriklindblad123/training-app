@@ -25,6 +25,11 @@ export type ScopedProfile = {
   role: "athlete" | "coach";
   /** Bara ifyllt för en coach — löparna `coach_athletes` länkar hen till. */
   linkedAthletes: AthleteOption[];
+  /** Bara ifyllt för en löpare som har en coach — coachens id. Styr vem som
+   * äger säsongsplaneringen (se planningOwnerId/canEditPlanning nedan). En
+   * löpare kan i teorin ha flera coacher i schemat, men produkten har hittills
+   * bara ett coach↔löpare-förhållande — första länken vinner. */
+  coachId: string | null;
 };
 
 export async function getScopedProfile(
@@ -43,7 +48,18 @@ export async function getScopedProfile(
   const role: "athlete" | "coach" = profileRow?.role === "coach" ? "coach" : "athlete";
 
   if (role !== "coach") {
-    return { userId: user.id, role, linkedAthletes: [] };
+    const { data: coachLink } = await supabase
+      .from("coach_athletes")
+      .select("coach_id")
+      .eq("athlete_id", user.id)
+      .limit(1)
+      .maybeSingle();
+    return {
+      userId: user.id,
+      role,
+      linkedAthletes: [],
+      coachId: (coachLink?.coach_id as string | undefined) ?? null,
+    };
   }
 
   const { data: links } = await supabase
@@ -65,7 +81,35 @@ export async function getScopedProfile(
     }));
   }
 
-  return { userId: user.id, role, linkedAthletes };
+  return { userId: user.id, role, linkedAthletes, coachId: null };
+}
+
+/**
+ * Vem som äger säsongsplaneringen (block, veckomallar) för den här personen
+ * — coachens id om löparen har en coach, annars den egna. En coach äger
+ * alltid sin egen planering oavsett vilken löpare hen råkar visa just nu i
+ * växlaren (den styr bara VILKEN löpares block som listas, inte vem
+ * innehållet tillhör) — det är det som gör att samma block/mall kan gälla
+ * flera löpare utan att dupliceras, se season_block_athletes i migration
+ * 20260816100000.
+ */
+export function planningOwnerId(scoped: ScopedProfile): string {
+  if (scoped.role === "coach") return scoped.userId;
+  return scoped.coachId ?? scoped.userId;
+}
+
+/**
+ * Får den inloggade personen redigera säsongsplaneringen (skapa/ändra block
+ * och veckomallar) själv? En coach: alltid. En löpare: bara om hen inte har
+ * en coach (självcoachat läge, samma som appen fungerade innan Fas 0) —
+ * annars äger coachen planeringen och löparens vy är skrivskyddad.
+ *
+ * Ren UI-signal (döljer redigeringsformulär) — den faktiska spärren ligger i
+ * RLS (season_blocks/week_templates m.fl., migration 20260816100000), så en
+ * manipulerad request stoppas där oavsett vad den här funktionen svarar.
+ */
+export function canEditPlanning(scoped: ScopedProfile): boolean {
+  return scoped.role === "coach" || scoped.coachId == null;
 }
 
 /**

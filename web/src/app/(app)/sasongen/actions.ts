@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import {
+  getScopedProfile,
+  planningOwnerId,
+  resolveScopedUserId,
+  type ScopedProfile,
+} from "@/lib/auth-scope";
 import { TRAINING_FACTORS } from "@/lib/training-factors";
 import {
   datesForWeekday,
@@ -90,6 +95,30 @@ async function resolvedAthleteId(
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
   return resolveScopedUserId(scoped, str(formData, "athlete") ?? undefined);
+}
+
+/** Vilka löpare ett block/en periodisering ska gälla för — en coach kryssar
+ * i en delmängd av sina länkade löpare (formulärfältet `athletes`, ett värde
+ * per ikryssad löpare); en löpare utan coach gäller alltid bara sig själv,
+ * det finns ingen väljare att visa. Ogiltiga id:n (inte en faktiskt länkad
+ * löpare) filtreras bort — säkerheten ligger ändå i RLS på
+ * season_block_athletes, det här är bara att inte spara skräp. */
+function targetAthletesFromForm(scoped: ScopedProfile, formData: FormData): string[] {
+  if (scoped.role !== "coach") return [scoped.userId];
+  return formData
+    .getAll("athletes")
+    .map(String)
+    .filter((id) => scoped.linkedAthletes.some((a) => a.id === id));
+}
+
+/** Vilka löpare ett block gäller för just nu — season_block_athletes, se
+ * migration 20260816100000_shared_planning_and_readonly_athlete.sql. */
+async function athletesForBlock(supabase: SupabaseServerClient, blockId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from("season_block_athletes")
+    .select("athlete_id")
+    .eq("block_id", blockId);
+  return (data ?? []).map((r) => r.athlete_id as string);
 }
 
 /**
@@ -206,26 +235,37 @@ async function syncTemplateIntoBlock(
   }
 }
 
-/** Synkar alla mallar för ett blocks typ in i blocket — anropas när ett block
- * skapas eller ändras (nytt datumintervall, eller ny typ). */
+/** Synkar alla mallar för ett blocks ägare+fas in i blocket, för VARJE
+ * löpare blocket gäller för — anropas när ett block skapas eller ändras
+ * (nytt datumintervall, ny fas, eller nya löpare). `ownerId` är vem som äger
+ * blocket och mallarna (coachen för ett delat block, löparen själv för ett
+ * självcoachat) — INTE nödvändigtvis samma person passen skrivs in på. Det
+ * är season_block_athletes (athletesForBlock) som avgör vilka löpares
+ * kalendrar som faktiskt får passen. */
 async function syncBlockWithTemplates(
   supabase: SupabaseServerClient,
-  userId: string,
+  ownerId: string,
   block: BlockRange & { phase: string },
 ) {
   const { data: templates } = await supabase
     .from("week_templates")
     .select("id")
-    .eq("user_id", userId)
+    .eq("user_id", ownerId)
     .eq("phase", block.phase);
-  for (const t of templates ?? []) {
-    await syncTemplateIntoBlock(supabase, userId, t.id as string, block);
+  if (!templates || templates.length === 0) return;
+
+  const athleteIds = await athletesForBlock(supabase, block.id);
+  for (const t of templates) {
+    for (const athleteId of athleteIds) {
+      await syncTemplateIntoBlock(supabase, athleteId, t.id as string, block);
+    }
   }
 }
 
-/** Synkar en mall in i alla befintliga block av dess fas — anropas när ett
- * pass läggs till i mallen. Härleder ägaren ur mallen själv (inte klienten)
- * — mallen finns redan och RLS avgör om anroparen får nå den. */
+/** Synkar en mall in i alla befintliga block av dess fas, för varje löpare
+ * respektive block gäller för — anropas när ett pass läggs till i mallen.
+ * Härleder ägaren ur mallen själv (inte klienten) — mallen finns redan och
+ * RLS avgör om anroparen får nå den. */
 async function syncTemplateAcrossBlocks(supabase: SupabaseServerClient, templateId: string) {
   const { data: template } = await supabase
     .from("week_templates")
@@ -240,7 +280,10 @@ async function syncTemplateAcrossBlocks(supabase: SupabaseServerClient, template
     .eq("user_id", template.user_id)
     .eq("phase", template.phase);
   for (const b of (blocks ?? []) as BlockRange[]) {
-    await syncTemplateIntoBlock(supabase, template.user_id as string, templateId, b);
+    const athleteIds = await athletesForBlock(supabase, b.id);
+    for (const athleteId of athleteIds) {
+      await syncTemplateIntoBlock(supabase, athleteId, templateId, b);
+    }
   }
 }
 
@@ -248,8 +291,8 @@ async function syncTemplateAcrossBlocks(supabase: SupabaseServerClient, template
 
 export async function createBlock(formData: FormData) {
   const supabase = await createClient();
-  const userId = await resolvedAthleteId(supabase, formData);
-  if (!userId) return;
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return;
 
   const name = str(formData, "name");
   const start = str(formData, "start_date");
@@ -261,10 +304,16 @@ export async function createBlock(formData: FormData) {
   // bättre än ett 500-fel när någon vänt på datumen.
   if (end < start) return;
 
+  const athleteIds = targetAthletesFromForm(scoped, formData);
+  if (athleteIds.length === 0) return;
+
+  // Ägaren (user_id) är vem som skapade/äger blocket — coachen för ett delat
+  // block, löparen själv för ett självcoachat. Vilka löpare blocket faktiskt
+  // gäller för avgörs separat av season_block_athletes nedan, inte user_id.
   const { data: block } = await supabase
     .from("season_blocks")
     .insert({
-      user_id: userId,
+      user_id: scoped.userId,
       name,
       period,
       phase,
@@ -276,17 +325,22 @@ export async function createBlock(formData: FormData) {
     })
     .select("id, start_date, end_date, phase")
     .single();
+  if (!block) return;
 
-  if (block) await syncBlockWithTemplates(supabase, userId, block);
+  await supabase
+    .from("season_block_athletes")
+    .insert(athleteIds.map((athlete_id) => ({ block_id: block.id, athlete_id })));
+
+  await syncBlockWithTemplates(supabase, scoped.userId, block);
 
   refresh();
 }
 
 export async function updateBlock(formData: FormData) {
-  const auth = await requireUser();
+  const supabase = await createClient();
+  const scoped = await getScopedProfile(supabase);
   const id = str(formData, "id");
-  if (!auth || !id) return;
-  const { supabase } = auth;
+  if (!scoped || !id) return;
 
   const name = str(formData, "name");
   const start = str(formData, "start_date");
@@ -314,6 +368,19 @@ export async function updateBlock(formData: FormData) {
     .select("user_id")
     .single();
   if (!block) return;
+
+  // Bara en coach kan ändra vilka löpare ett block gäller för — en
+  // självcoachad löpares block har ingen väljare i formuläret (bara sig
+  // själv), och det fältet skickas då inte med alls.
+  if (scoped.role === "coach") {
+    const athleteIds = targetAthletesFromForm(scoped, formData);
+    await supabase.from("season_block_athletes").delete().eq("block_id", id);
+    if (athleteIds.length > 0) {
+      await supabase
+        .from("season_block_athletes")
+        .insert(athleteIds.map((athlete_id) => ({ block_id: id, athlete_id })));
+    }
+  }
 
   // T ex ett förlängt slutdatum ska direkt ge fler pass i kalendern, utan
   // ett separat "rulla ut igen"-steg.
@@ -344,20 +411,30 @@ export async function deleteBlock(formData: FormData) {
  */
 export async function suggestPeriodisation(formData: FormData) {
   const supabase = await createClient();
-  const userId = await resolvedAthleteId(supabase, formData);
-  if (!userId) return;
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return;
 
   const competitionDate = str(formData, "competition_date");
   const startFrom = str(formData, "start_from") ?? toDateKey(new Date());
   const season = str(formData, "season") as SeasonKind | null;
   if (!competitionDate) return;
 
+  const athleteIds = targetAthletesFromForm(scoped, formData);
+  if (athleteIds.length === 0) return;
+
   const blocks = suggestBlocks(competitionDate, season, startFrom);
   if (blocks.length === 0) return;
 
-  await supabase
+  const { data: inserted } = await supabase
     .from("season_blocks")
-    .insert(blocks.map((b) => ({ ...b, user_id: userId })));
+    .insert(blocks.map((b) => ({ ...b, user_id: scoped.userId })))
+    .select("id");
+
+  for (const row of inserted ?? []) {
+    await supabase
+      .from("season_block_athletes")
+      .insert(athleteIds.map((athlete_id) => ({ block_id: row.id, athlete_id })));
+  }
 
   refresh();
 }
@@ -455,13 +532,16 @@ export async function saveEventResult(formData: FormData) {
 
 export async function createTemplate(formData: FormData) {
   const supabase = await createClient();
-  const userId = await resolvedAthleteId(supabase, formData);
-  if (!userId) return;
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return;
   const name = str(formData, "name");
   if (!name) return;
 
+  // Mallen ägs av samma person som blocken den matchar mot (coachen för ett
+  // delat block, löparen själv för ett självcoachat) — inte nödvändigtvis
+  // löparen som råkar vara vald i växlaren just nu, se planningOwnerId.
   await supabase.from("week_templates").insert({
-    user_id: userId,
+    user_id: planningOwnerId(scoped),
     name,
     phase: str(formData, "phase"),
     notes: str(formData, "notes"),
@@ -542,22 +622,25 @@ export async function deleteTemplateItem(formData: FormData) {
     if (template?.phase) {
       const { data: blocks } = await supabase
         .from("season_blocks")
-        .select("start_date, end_date")
+        .select("id, start_date, end_date")
         .eq("user_id", template.user_id)
         .eq("phase", template.phase);
       for (const b of blocks ?? []) {
         const dates = datesForWeekday(b.start_date, b.end_date, item.weekday);
         if (dates.length === 0) continue;
-        // planned_rep_groups för de här raderna städas också av on delete
-        // cascade — de pekar på planned_workouts.id, inte på mallraden.
-        await supabase
-          .from("planned_workouts")
-          .delete()
-          .eq("user_id", template.user_id)
-          .eq("template_id", item.template_id)
-          .eq("slot", item.slot)
-          .eq("status", "planned")
-          .in("scheduled_date", dates);
+        const athleteIds = await athletesForBlock(supabase, b.id as string);
+        for (const athleteId of athleteIds) {
+          // planned_rep_groups för de här raderna städas också av on delete
+          // cascade — de pekar på planned_workouts.id, inte på mallraden.
+          await supabase
+            .from("planned_workouts")
+            .delete()
+            .eq("user_id", athleteId)
+            .eq("template_id", item.template_id)
+            .eq("slot", item.slot)
+            .eq("status", "planned")
+            .in("scheduled_date", dates);
+        }
       }
     }
   }
