@@ -59,6 +59,14 @@ create policy "activity_splits: åtkomst via ägd aktivitet eller coachad löpar
     )
   );
 
+-- Samma idempotens-försiktighet som ovan: tidigare körningsförsök av den
+-- här migrationen (innan activity_splits-delen gjordes om) verkar ha
+-- lyckats skapa den här policyn trots att statementet innan den fallerade —
+-- Supabase SQL-editorn kör tydligen inte pastade statements i en enda
+-- transaktion. "if exists" gör det säkert att köra om oavsett vad som redan
+-- lyckats.
+drop policy if exists "profiles: coach uppdaterar länkad löpares rad" on profiles;
+
 create policy "profiles: coach uppdaterar länkad löpares rad"
   on profiles for update
   using (
