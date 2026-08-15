@@ -23,13 +23,21 @@ const navLinks = [
   { href: "/settings", label: "Inställningar" },
 ];
 
-export function NavLinks() {
+/** "Översikt" (alla adepter sida vid sida, 2026-08-16 på uttrycklig begäran
+ * — jobbigt att scrolla mellan varje löpares dashboard en och en) hör bara
+ * hemma i menyn för en coach; en löpare har ingen adept att se en översikt
+ * av. Ligger direkt efter Dashboard — det är precis det den ersätter för en
+ * coach med flera löpare. */
+const coachNavLink = { href: "/oversikt", label: "Översikt" };
+
+export function NavLinks({ isCoach }: { isCoach: boolean }) {
   const pathname = usePathname();
   const athlete = useSearchParams().get("athlete");
+  const links = isCoach ? [navLinks[0], coachNavLink, ...navLinks.slice(1)] : navLinks;
 
   return (
     <nav className="flex gap-4 text-sm font-medium">
-      {navLinks.map((link) => {
+      {links.map((link) => {
         const href = athlete ? `${link.href}?athlete=${athlete}` : link.href;
         const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
         return (

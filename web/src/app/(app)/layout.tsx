@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile } from "@/lib/auth-scope";
 import { signOut } from "@/app/login/actions";
 import { NavLinks } from "@/components/NavLinks";
 
@@ -41,11 +42,15 @@ export default async function AppLayout({
     redirect("/login");
   }
 
+  // Bara till för att veta om "Översikt" (alla adepter sida vid sida) ska
+  // synas i menyn — en löpare har ingen egen adept att se en översikt av.
+  const scoped = await getScopedProfile(supabase);
+
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
         <Suspense fallback={<span className="text-sm text-zinc-400">Laddar meny…</span>}>
-          <NavLinks />
+          <NavLinks isCoach={scoped?.role === "coach"} />
         </Suspense>
         <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
           <span>{user.email}</span>
