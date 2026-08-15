@@ -20,6 +20,7 @@ import { formatHoursMinutes } from "@/lib/format";
 import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
 import { computeRaceBuildup, BUILDUP_WINDOW_DAYS, type RaceBuildup } from "@/lib/race-buildup";
 import { computeEfficiencyPoints } from "@/lib/efficiency";
+import { isoWeekStart, median } from "@/lib/stats-utils";
 import {
   RaceProgressionChart,
   type RaceProgressionPoint,
@@ -46,6 +47,21 @@ import {
 
 function formatPct(v: number): string {
   return `${Math.round(v * 100)}%`;
+}
+
+/** Ett värde per iso-vecka (medianen av de dagsvärden som föll i veckan) —
+ * samma aggregering som formkurvan på /trender redan använder. Råvärde per
+ * pass ger annars en hackig, spretig linje i RaceProgressionChart (EF
+ * svänger kraftigt med väder/underlag, se varningstexten längre ner). */
+function weeklyMedianPoints(points: { date: string; value: number }[]): { date: string; value: number }[] {
+  const byWeek = new Map<string, number[]>();
+  for (const p of points) {
+    const wk = isoWeekStart(p.date);
+    byWeek.set(wk, [...(byWeek.get(wk) ?? []), p.value]);
+  }
+  return [...byWeek.entries()]
+    .map(([date, values]) => ({ date, value: median(values) as number }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 type CompetitionEventRow = {
@@ -394,10 +410,19 @@ export default async function TavlingsresultatPage({
     (trainingActivityRows ?? []) as unknown as SessionActivity[],
   );
 
-  const efPoints = computeEfficiencyPoints(trainingSessions);
-  const vo2maxPoints = trainingSessions
-    .flatMap((s) => s.activities.map((a) => ({ date: s.date, value: a.vo2max })))
-    .filter((p): p is { date: string; value: number } => p.value != null);
+  // EF/VO2max som råvärde per pass ritar en hackig, spretig linje (EF
+  // svänger kraftigt med väder/underlag/uttorkning, se varningen längre ner
+  // på sidan) — samma veckovisa median som /trender redan använder för
+  // formkurvan (isoWeekStart+median) ger en läsbar kurva att jämföra mot
+  // tävlingsutvecklingen i stället för ett moln av punkter.
+  const efPoints = weeklyMedianPoints(
+    computeEfficiencyPoints(trainingSessions).map((p) => ({ date: p.date, value: p.ef * 60 })),
+  );
+  const vo2maxPoints = weeklyMedianPoints(
+    trainingSessions
+      .flatMap((s) => s.activities.map((a) => ({ date: s.date, value: a.vo2max })))
+      .filter((p): p is { date: string; value: number } => p.value != null),
+  );
   const lt2Points =
     profileThresholdRow?.lt2_hr != null && profileThresholdRow.lt2_measured_on
       ? [{ date: profileThresholdRow.lt2_measured_on as string, value: profileThresholdRow.lt2_hr as number }]
@@ -410,7 +435,7 @@ export default async function TavlingsresultatPage({
       unit: "m/slag",
       color: "#0891b2",
       higherIsBetter: true,
-      points: efPoints.map((p) => ({ date: p.date, value: p.ef * 60 })),
+      points: efPoints,
       insufficientDataNote:
         efPoints.length < 2 ? "för få lugna/långa pass med puls i perioden ännu" : undefined,
     },
@@ -545,7 +570,8 @@ export default async function TavlingsresultatPage({
             tabellen under. Kryssa i en streckad träningskurva (formkurva/VO2max/LT2) under
             grafen för att se om den följer tävlingsutvecklingen — ren visuell jämförelse, ingen
             uträknad korrelation (för få tävlingar per säsong för att ett sådant tal skulle
-            betyda något).
+            betyda något). Tidsknapparna ovanför grafen zoomar in ett kortare fönster;
+            personbästa räknas alltid ut från hela historiken, oavsett vad som visas just nu.
           </p>
         </div>
 

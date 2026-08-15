@@ -180,14 +180,29 @@ export function RaceProgressionChart({
   const [visibleTraining, setVisibleTraining] = useState<Set<string>>(
     () => new Set(trainingSeries[0] ? [trainingSeries[0].id] : []),
   );
+  // Tidsfönster för VISNINGEN — påverkar aldrig vad som räknas som
+  // personbästa (den räknas alltid ur hela historiken, se allPoints/
+  // toTrainingPct nedan), bara vilka punkter som faktiskt ritas. `cutoffMs`
+  // räknas ut i klick-hanteraren (inte under render, där Date.now() räknas
+  // som en otillåten sidoeffekt) och sparas färdigräknad i state.
+  const [period, setPeriod] = useState<{ years: number | null; cutoffMs: number }>({
+    years: null,
+    cutoffMs: -Infinity,
+  });
   const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const hasAnyRaceData = series.some((s) => s.points.length > 0);
 
   const allPoints = useMemo(() => {
     const out: PlottedPoint[] = [];
     for (const s of series) {
       if (s.points.length === 0) continue;
+      // Personbästa räknas alltid ur hela grenens historik, inte bara det
+      // som råkar visas — annars skulle "senaste året" kunna få ett lopp
+      // att se ut som personbästa fast det inte är det.
       const pb = Math.min(...s.points.map((p) => p.resultSeconds));
       for (const p of s.points) {
+        if (dayMs(p.date) < period.cutoffMs) continue;
         out.push({
           ...p,
           seriesEvent: s.event,
@@ -198,20 +213,65 @@ export function RaceProgressionChart({
       }
     }
     return out.sort((a, b) => dayMs(a.date) - dayMs(b.date));
-  }, [series]);
+  }, [series, period]);
 
   const activeTrainingSeries = trainingSeries.filter((s) => visibleTraining.has(s.id));
   const trainingPctBySeriesId = useMemo(() => {
     const map = new Map<string, PlottedTrainingPoint[]>();
     for (const s of trainingSeries) {
       if (!visibleTraining.has(s.id)) continue;
-      map.set(s.id, toTrainingPct(s).sort((a, b) => dayMs(a.date) - dayMs(b.date)));
+      const visible = toTrainingPct(s).filter((p) => dayMs(p.date) >= period.cutoffMs);
+      map.set(s.id, visible.sort((a, b) => dayMs(a.date) - dayMs(b.date)));
     }
     return map;
-  }, [trainingSeries, visibleTraining]);
+  }, [trainingSeries, visibleTraining, period]);
+
+  const periodOptions: { years: number | null; label: string }[] = [
+    { years: null, label: "Alla" },
+    { years: 1, label: "Senaste året" },
+    { years: 2, label: "Senaste 2 åren" },
+    { years: 3, label: "Senaste 3 åren" },
+  ];
+
+  const periodSelector = (
+    <div className="flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Tidsperiod">
+      {periodOptions.map((opt) => (
+        <button
+          key={opt.label}
+          type="button"
+          onClick={() =>
+            setPeriod(
+              opt.years != null
+                ? { years: opt.years, cutoffMs: Date.now() - opt.years * 365 * DAY_MS }
+                : { years: null, cutoffMs: -Infinity },
+            )
+          }
+          aria-pressed={period.years === opt.years}
+          className={`rounded px-3 py-1 ${
+            period.years === opt.years
+              ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+              : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (!hasAnyRaceData) {
+    return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
+  }
 
   if (allPoints.length === 0) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
+    return (
+      <div className="flex flex-col gap-3">
+        {periodSelector}
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Inga lopp i den valda perioden — testa ett bredare tidsfönster.
+        </p>
+      </div>
+    );
   }
 
   /* ------------------------------- skalor -------------------------------- */
@@ -288,6 +348,7 @@ export function RaceProgressionChart({
 
   return (
     <div className="flex w-full max-w-full flex-col gap-3">
+      {periodSelector}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
