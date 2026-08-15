@@ -319,6 +319,7 @@ export async function addPlannedWorkout(formData: FormData) {
     description: descriptionFor(workoutType, (formData.get("description") as string) || ""),
     target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
     target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
+    training_factor: (formData.get("training_factor") as string) || null,
     block_id: blockId,
   });
 
@@ -381,6 +382,7 @@ export async function updatePlannedWorkout(formData: FormData) {
       description: descriptionFor(workoutType, (formData.get("description") as string) || ""),
       target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
       target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
+      training_factor: (formData.get("training_factor") as string) || null,
     })
     .eq("id", workoutId);
 

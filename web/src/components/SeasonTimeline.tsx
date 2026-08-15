@@ -29,7 +29,6 @@ export type TimelineBlock = {
   starts_count: number | null;
   hours_count: number | null;
   has_test: boolean;
-  training_factors: Record<string, string>;
 };
 
 export type TimelineCompetition = {

@@ -176,6 +176,12 @@ function ReadOnlyBlockSummary({
  * för varje kalendervecka inom blockets datumintervall. Delad mellan
  * redigerings- och skapa-formulären nedan, så fältlistan aldrig kan glida
  * isär mellan dem. */
+/** Blockets aggregatsiffror (Årsplan: pass/dagar/tävlingsstarter/timmar/
+ * test per vecka) — bara de här, INTE träningsfaktorerna (Snabbhet/
+ * Uthållighet/...). Rättat 2026-08-16: den detaljnivån hör hemma per pass,
+ * inte som en klumpsumma för blocket — se Träningsfaktor-fältet på "Lägg
+ * till pass" i veckomallen nedan, och training_factor på
+ * week_template_items/planned_workouts. */
 function StandardWeekFields({
   block,
 }: {
@@ -185,7 +191,6 @@ function StandardWeekFields({
     starts_count: number | null;
     hours_count: number | null;
     has_test: boolean;
-    training_factors: Record<string, string>;
   };
 }) {
   return (
@@ -232,27 +237,30 @@ function StandardWeekFields({
           Test
         </label>
       </div>
-
-      {(Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[]).map((group) => (
-        <fieldset key={group} className="flex flex-col gap-2">
-          <legend className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-            {TRAINING_FACTOR_GROUP_LABELS[group]}
-          </legend>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {TRAINING_FACTORS.filter((f) => f.group === group).map((f) => (
-              <Field key={f.key} label={f.label}>
-                <input
-                  name={`factor_${f.key}`}
-                  defaultValue={block?.training_factors?.[f.key] ?? ""}
-                  placeholder="Stor / Medel / Liten betoning, eller fri text"
-                  className={input}
-                />
-              </Field>
-            ))}
-          </div>
-        </fieldset>
-      ))}
     </div>
+  );
+}
+
+/** Träningsfaktor-väljare för ett enskilt pass (Årsplan-raden passet räknas
+ * mot, t.ex. "Tröskel" eller "Maximal" snabbhet) — grupperad precis som
+ * Årsplan-fliken. Fritt att lämna tom; inte alla pass (vila, ett obestämt
+ * lugnt pass) hör till en specifik faktor. */
+function TrainingFactorSelect({ defaultValue }: { defaultValue?: string | null }) {
+  return (
+    <Field label="Träningsfaktor">
+      <select name="training_factor" defaultValue={defaultValue ?? ""} className={input}>
+        <option value="">— Ingen —</option>
+        {(Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[]).map((group) => (
+          <optgroup key={group} label={TRAINING_FACTOR_GROUP_LABELS[group]}>
+            {TRAINING_FACTORS.filter((f) => f.group === group).map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </Field>
   );
 }
 
@@ -274,7 +282,6 @@ type SeasonBlockRow = {
   starts_count: number | null;
   hours_count: number | null;
   has_test: boolean;
-  training_factors: Record<string, string>;
 };
 
 /** Tävlingsdagar: `competitions`/`competition_events` (idrottarens egna
@@ -1113,6 +1120,7 @@ export default async function PlaneringPage({
                             workout_type: string;
                             title: string | null;
                             description: string | null;
+                            training_factor: string | null;
                             template_rep_groups?: RepGroupRow[] | null;
                           }[];
                           const isLinked = linkedNames.includes(t.name as string);
@@ -1168,6 +1176,12 @@ export default async function PlaneringPage({
                                           {it.title && (
                                             <div className="text-zinc-600 dark:text-zinc-400">
                                               {it.title}
+                                            </div>
+                                          )}
+                                          {it.training_factor && (
+                                            <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
+                                              {TRAINING_FACTORS.find((f) => f.key === it.training_factor)
+                                                ?.label ?? it.training_factor}
                                             </div>
                                           )}
                                           {(() => {
@@ -1288,6 +1302,7 @@ export default async function PlaneringPage({
                                     className={`${input} w-24`}
                                   />
                                 </Field>
+                                <TrainingFactorSelect />
                                 <button type="submit" className={ghostBtn}>
                                   Lägg till pass
                                 </button>

@@ -10,7 +10,6 @@ import {
   viewableAthletes,
   type ScopedProfile,
 } from "@/lib/auth-scope";
-import { TRAINING_FACTORS } from "@/lib/training-factors";
 import {
   datesForWeekday,
   generateFromTemplate,
@@ -45,25 +44,21 @@ function refresh() {
   revalidatePath("/calendar", "layout");
 }
 
-/** Standardveckan (Årsplan-parametrarna) för ett block — gäller för varje
- * kalendervecka inom blockets datumintervall, i stället för att fyllas i en
- * gång per vecka (den tidigare season_week_plans-modellen, se migration
- * 20260815100000_block_period_redesign.sql). Delad mellan createBlock och
- * updateBlock, som repGroupFieldsFromForm är delad mellan rep-actionerna
- * nedan. */
+/** Standardveckans aggregatsiffror (Årsplan-parametrarna pass/dagar/starter/
+ * timmar/test) för ett block — gäller för varje kalendervecka inom blockets
+ * datumintervall, se migration 20260815100000_block_period_redesign.sql.
+ * Träningsfaktorerna (Snabbhet/Uthållighet/...) hör INTE hemma här — rättat
+ * 2026-08-16: planeringen sker per pass, inte som en klumpsumma för hela
+ * blocket, se training_factor på week_template_items/planned_workouts i
+ * stället. Delad mellan createBlock och updateBlock, som
+ * repGroupFieldsFromForm är delad mellan rep-actionerna nedan. */
 function standardWeekFieldsFromForm(formData: FormData) {
-  const trainingFactors: Record<string, string> = {};
-  for (const factor of TRAINING_FACTORS) {
-    const v = str(formData, `factor_${factor.key}`);
-    if (v) trainingFactors[factor.key] = v;
-  }
   return {
     sessions_count: num(formData, "sessions_count"),
     days_count: num(formData, "days_count"),
     starts_count: num(formData, "starts_count"),
     hours_count: num(formData, "hours_count"),
     has_test: formData.get("has_test") === "on",
-    training_factors: trainingFactors,
   };
 }
 
@@ -147,7 +142,7 @@ async function syncTemplateIntoBlock(
   const { data: items } = await supabase
     .from("week_template_items")
     .select(
-      "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, " +
+      "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, " +
         "template_rep_groups(sort_order, reps, distance_meters, duration_seconds, target_pace_seconds_per_km, target_hr_low, target_hr_high, recovery_seconds, recovery_kind, note)",
     )
     .eq("template_id", templateId);
@@ -172,6 +167,7 @@ async function syncTemplateIntoBlock(
     description: it.description,
     target_distance_meters: it.target_distance_meters,
     target_duration_seconds: it.target_duration_seconds,
+    training_factor: it.training_factor,
     rep_groups: it.template_rep_groups ?? [],
   }));
 
@@ -206,6 +202,7 @@ async function syncTemplateIntoBlock(
       description: w.description,
       target_distance_meters: w.target_distance_meters,
       target_duration_seconds: w.target_duration_seconds,
+      training_factor: w.training_factor,
       block_id: w.block_id,
       template_id: w.template_id,
       status: w.status,
@@ -584,6 +581,7 @@ export async function addTemplateItem(formData: FormData) {
         num(formData, "target_duration_minutes") != null
           ? (num(formData, "target_duration_minutes") as number) * 60
           : null,
+      training_factor: str(formData, "training_factor"),
     },
     { onConflict: "template_id,weekday,slot" },
   );

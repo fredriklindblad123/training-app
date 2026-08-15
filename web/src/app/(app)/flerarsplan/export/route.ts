@@ -5,6 +5,7 @@ import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { TRAINING_FACTORS, TRAINING_FACTOR_GROUP_LABELS, type TrainingFactorGroup } from "@/lib/training-factors";
 import { blockForDate, PERIOD_LABELS, PHASE_LABELS, type PeriodType, type PhaseType } from "@/lib/planning";
 import { buildWeekSeriesForRange } from "@/lib/week-series";
+import { isoWeekStart } from "@/lib/stats-utils";
 
 /* Excel-export: Flerårsplan + Årsplan, de två flikarna Daniel (coach)
  * faktiskt ska skicka in till Svensk Friidrott — se konversationen. Målgrupp,
@@ -56,7 +57,6 @@ type SeasonBlockRow = {
   starts_count: number | null;
   hours_count: number | null;
   has_test: boolean;
-  training_factors: Record<string, string>;
 };
 
 function isoWeekNumber(dateKey: string): number {
@@ -140,7 +140,12 @@ function mergeConsecutiveBlockRuns(
   }
 }
 
-function buildArsplanSheet(workbook: ExcelJS.Workbook, blocks: SeasonBlockRow[]) {
+async function buildArsplanSheet(
+  workbook: ExcelJS.Workbook,
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  scopedUserId: string,
+  blocks: SeasonBlockRow[],
+) {
   const sheet = workbook.addWorksheet("Årsplan");
   const sortedBlocks = [...blocks].sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
 
@@ -175,6 +180,28 @@ function buildArsplanSheet(workbook: ExcelJS.Workbook, blocks: SeasonBlockRow[])
   sheet.addRow(["Antal timmar", ...blockPerWeek.map((b) => b?.hours_count ?? "")]);
   sheet.addRow(["Tester", ...blockPerWeek.map((b) => (b?.has_test ? "x" : ""))]);
 
+  // Träningsfaktorerna (Snabbhet/Uthållighet/...) härleds ur faktiskt
+  // taggade pass, inte ur ett fält på blocket — rättat 2026-08-16:
+  // planeringen sker per pass (se training_factor på week_template_items/
+  // planned_workouts), inte som en klumpsumma för hela blocket. Varje rad
+  // visar hur många pass den veckan som är taggade med den faktorn.
+  const { data: taggedWorkouts } = await supabase
+    .from("planned_workouts")
+    .select("scheduled_date, training_factor")
+    .eq("user_id", scopedUserId)
+    .gte("scheduled_date", minDate)
+    .lte("scheduled_date", maxDate)
+    .not("training_factor", "is", null);
+
+  const factorCountsByWeek = new Map<string, Map<string, number>>();
+  for (const w of taggedWorkouts ?? []) {
+    const wk = isoWeekStart(w.scheduled_date as string);
+    const byFactor = factorCountsByWeek.get(wk) ?? new Map<string, number>();
+    const key = w.training_factor as string;
+    byFactor.set(key, (byFactor.get(key) ?? 0) + 1);
+    factorCountsByWeek.set(wk, byFactor);
+  }
+
   let lastGroup: TrainingFactorGroup | null = null;
   for (const factor of TRAINING_FACTORS) {
     if (factor.group !== lastGroup) {
@@ -183,7 +210,7 @@ function buildArsplanSheet(workbook: ExcelJS.Workbook, blocks: SeasonBlockRow[])
     }
     sheet.addRow([
       factor.label,
-      ...blockPerWeek.map((b) => b?.training_factors?.[factor.key] ?? ""),
+      ...weeks.map((wk) => factorCountsByWeek.get(wk)?.get(factor.key) ?? ""),
     ]);
   }
 
@@ -209,7 +236,7 @@ export async function GET(request: Request) {
       .order("sort_order"),
     supabase
       .from("season_blocks")
-      .select("id, start_date, end_date, period, phase, sessions_count, days_count, starts_count, hours_count, has_test, training_factors")
+      .select("id, start_date, end_date, period, phase, sessions_count, days_count, starts_count, hours_count, has_test")
       .eq("user_id", scopedUserId)
       .order("start_date"),
   ]);
@@ -219,7 +246,7 @@ export async function GET(request: Request) {
   workbook.created = new Date();
 
   buildFlerarsplanSheet(workbook, (yearRows ?? []) as MultiYearPlanRow[]);
-  buildArsplanSheet(workbook, (blockRows ?? []) as SeasonBlockRow[]);
+  await buildArsplanSheet(workbook, supabase, scopedUserId, (blockRows ?? []) as SeasonBlockRow[]);
 
   const buffer = await workbook.xlsx.writeBuffer();
 

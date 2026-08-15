@@ -343,6 +343,13 @@ export type TemplateItem = {
   description: string | null;
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
+  /** Vilken Årsplan-rad (lib/training-factors.ts) det här passet räknas mot
+   * — t.ex. "Tröskel" eller "Maximal" snabbhet. Planeringen sker per pass,
+   * inte som en klumpsumma för blocket (rättat 2026-08-16) — Excel-exportens
+   * Årsplan-flik härleds numera ur vilka pass som faktiskt är taggade med
+   * vilken faktor, inte ur ett separat block-fält. Nullable — inte alla pass
+   * (vila, ett obestämt lugnt pass) hör till en specifik faktor. */
+  training_factor?: string | null;
   /** Repgrupperna på mallraden (template_rep_groups). Saknas fältet helt
    * (äldre anrop, eller en frågad som inte hämtat dem) tolkas som "inga" —
    * se generateFromTemplate. */
@@ -358,6 +365,7 @@ export type GeneratedWorkout = {
   description: string | null;
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
+  training_factor: string | null;
   block_id: string | null;
   template_id: string;
   status: "planned";
@@ -417,6 +425,7 @@ export function generateFromTemplate({
         description: item.description,
         target_distance_meters: item.target_distance_meters,
         target_duration_seconds: item.target_duration_seconds,
+        training_factor: item.training_factor ?? null,
         block_id: blockId,
         template_id: templateId,
         status: "planned",

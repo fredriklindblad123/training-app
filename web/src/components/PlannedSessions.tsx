@@ -6,6 +6,11 @@ import {
   WORKOUT_TYPES,
   type WorkoutType,
 } from "@/lib/planning";
+import {
+  TRAINING_FACTORS,
+  TRAINING_FACTOR_GROUP_LABELS,
+  type TrainingFactorGroup,
+} from "@/lib/training-factors";
 import { formatDuration, formatKm } from "@/lib/format";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
@@ -26,6 +31,7 @@ export type PlannedRow = {
   description: string | null;
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
+  training_factor: string | null;
   season_blocks?: { name: string } | null;
   /** K1: repgrupperna på passet. `?? []` överallt den här läses — en saknad
    * tabell (migrationen inte körd) ska inte krascha dagvyn, bara visa passet
@@ -39,6 +45,34 @@ const inputClass =
 function label(type: string): string {
   if (isActivityCategory(type)) return CATEGORY_LABELS[type];
   return WORKOUT_LABELS[type as WorkoutType] ?? type;
+}
+
+function factorLabel(key: string | null): string | null {
+  if (!key) return null;
+  return TRAINING_FACTORS.find((f) => f.key === key)?.label ?? key;
+}
+
+/** Vilken Årsplan-rad (lib/training-factors.ts) passet räknas mot —
+ * planeringen sker per pass, inte som en klumpsumma för blocket (se
+ * motiveringen i sasongen/page.tsx:s motsvarande fält). Frivilligt. */
+function TrainingFactorField({ defaultValue }: { defaultValue?: string | null }) {
+  return (
+    <label className="flex flex-col gap-1 text-sm">
+      Träningsfaktor
+      <select name="training_factor" defaultValue={defaultValue ?? ""} className={inputClass}>
+        <option value="">— Ingen —</option>
+        {(Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[]).map((group) => (
+          <optgroup key={group} label={TRAINING_FACTOR_GROUP_LABELS[group]}>
+            {TRAINING_FACTORS.filter((f) => f.group === group).map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 export function PlannedSessions({
@@ -141,6 +175,11 @@ export function PlannedSessions({
                 .filter(Boolean)
                 .join(" · ")}
             </span>
+            {factorLabel(p.training_factor) && (
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                {factorLabel(p.training_factor)}
+              </span>
+            )}
             {p.season_blocks?.name && (
               <span className="ml-auto rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
                 {p.season_blocks.name}
@@ -214,6 +253,7 @@ export function PlannedSessions({
                 className={inputClass}
               />
             </label>
+            <TrainingFactorField defaultValue={p.training_factor} />
             <button
               type="submit"
               className="w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
@@ -311,6 +351,7 @@ export function PlannedSessions({
               Beskrivning
               <textarea name="description" rows={2} className={inputClass} />
             </label>
+            <TrainingFactorField />
             <button
               type="submit"
               className="w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
