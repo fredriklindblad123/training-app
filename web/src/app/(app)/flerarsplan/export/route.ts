@@ -3,14 +3,23 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { TRAINING_FACTORS, TRAINING_FACTOR_GROUP_LABELS, type TrainingFactorGroup } from "@/lib/training-factors";
+import { blockForDate, PERIOD_LABELS, PHASE_LABELS, type PeriodType, type PhaseType } from "@/lib/planning";
+import { buildWeekSeriesForRange } from "@/lib/week-series";
 
 /* Excel-export: Flerårsplan + Årsplan, de två flikarna Daniel (coach)
  * faktiskt ska skicka in till Svensk Friidrott — se konversationen. Målgrupp,
  * Detaljplan och övningsbiblioteken skrivs medvetet inte hit (avgränsning
  * bekräftad med användaren). Radetiketterna speglar originalmallens rubriker
- * men det här är en ny arbetsbok, inte en ifylld kopia av källfilen — exakt
- * visuell matchning (färger, sammanslagna celler) är inte målet i det här
- * steget, bara att data hamnar rätt.
+ * men det här är en ny arbetsbok, inte en ifylld kopia av källfilen.
+ *
+ * Årsplan-fliken byggs numera ur season_blocks (period/fas/standardvecka per
+ * block, se supabase/migrations/20260815100000_block_period_redesign.sql)
+ * i stället för en rad per vecka — samma standardvecka projiceras över varje
+ * kalendervecka i blockets datumintervall. Period- och fasraderna slås ihop
+ * med sammanslagna celler över de veckor blocket täcker, precis som
+ * originalmallens Period-rad faktiskt är uppbyggd (en sammanslagen cell per
+ * period, inte upprepad text) — övriga rader (pass/dagar/timmar/faktorer)
+ * skrivs som upprepat värde per vecka, också det likt originalet.
  *
  * exceljs kräver Node-API:er (Buffer m.m.) — måste köra i Node-runtimen,
  * inte Edge. */
@@ -36,11 +45,12 @@ type MultiYearPlanRow = {
   evaluations: string | null;
 };
 
-type SeasonWeekPlanRow = {
-  week_start_date: string;
-  period_type: string | null;
-  sub_phase: string | null;
-  note: string | null;
+type SeasonBlockRow = {
+  id: string;
+  start_date: string;
+  end_date: string;
+  period: PeriodType;
+  phase: PhaseType;
   sessions_count: number | null;
   days_count: number | null;
   starts_count: number | null;
@@ -108,23 +118,62 @@ function buildFlerarsplanSheet(workbook: ExcelJS.Workbook, years: MultiYearPlanR
   for (let i = 2; i <= header.length; i++) sheet.getColumn(i).width = 18;
 }
 
-function buildArsplanSheet(workbook: ExcelJS.Workbook, weeks: SeasonWeekPlanRow[]) {
-  const sheet = workbook.addWorksheet("Årsplan");
-  const sorted = [...weeks].sort((a, b) => (a.week_start_date < b.week_start_date ? -1 : 1));
+/** Slår ihop cellerna i en rad över varje sammanhängande körd veckor som
+ * tillhör samma block (jämfört på block-id) — precis som originalmallens
+ * Period-rad är en sammanslagen cell per period, inte samma text upprepad i
+ * varje veckokolumn. `weekIndex` är 0-baserat; kolumn 1 är radetiketten, så
+ * vecka 0 hamnar i kolumn 2. */
+function mergeConsecutiveBlockRuns(
+  sheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  blockPerWeek: (SeasonBlockRow | null)[],
+) {
+  let runStart = 0;
+  for (let i = 1; i <= blockPerWeek.length; i++) {
+    const continuesRun = i < blockPerWeek.length && blockPerWeek[i]?.id === blockPerWeek[runStart]?.id;
+    if (!continuesRun) {
+      if (blockPerWeek[runStart] && i - runStart > 1) {
+        sheet.mergeCells(rowNumber, runStart + 2, rowNumber, i + 1);
+      }
+      runStart = i;
+    }
+  }
+}
 
-  sheet.addRow(["Vecka #", ...sorted.map((w) => isoWeekNumber(w.week_start_date))]).font = {
-    bold: true,
-  };
-  sheet.addRow(["Datum", ...sorted.map((w) => w.week_start_date)]);
-  sheet.addRow(["Månad", ...sorted.map((w) => monthLabel(w.week_start_date))]);
-  sheet.addRow(["Period", ...sorted.map((w) => w.period_type ?? "")]);
-  sheet.addRow(["", ...sorted.map((w) => w.sub_phase ?? "")]);
-  sheet.addRow(["Tävlingar / Läger / Skola", ...sorted.map((w) => w.note ?? "")]);
-  sheet.addRow(["Antal pass", ...sorted.map((w) => w.sessions_count ?? "")]);
-  sheet.addRow(["Antal dagar", ...sorted.map((w) => w.days_count ?? "")]);
-  sheet.addRow(["Antal tävlingsstarter", ...sorted.map((w) => w.starts_count ?? "")]);
-  sheet.addRow(["Antal timmar", ...sorted.map((w) => w.hours_count ?? "")]);
-  sheet.addRow(["Tester", ...sorted.map((w) => (w.has_test ? "x" : ""))]);
+function buildArsplanSheet(workbook: ExcelJS.Workbook, blocks: SeasonBlockRow[]) {
+  const sheet = workbook.addWorksheet("Årsplan");
+  const sortedBlocks = [...blocks].sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+
+  if (sortedBlocks.length === 0) {
+    sheet.addRow(["Vecka #"]).font = { bold: true };
+    sheet.getColumn(1).width = 32;
+    return;
+  }
+
+  // Veckorna som faktiskt har blockdata — spannet från det tidigaste
+  // blockets start till det senaste blockets slut, inte ett kalenderår.
+  const minDate = sortedBlocks.reduce((m, b) => (b.start_date < m ? b.start_date : m), sortedBlocks[0].start_date);
+  const maxDate = sortedBlocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), sortedBlocks[0].end_date);
+  const weeks = buildWeekSeriesForRange(minDate, maxDate);
+  const blockPerWeek = weeks.map((w) => blockForDate(sortedBlocks, w));
+
+  sheet.addRow(["Vecka #", ...weeks.map((w) => isoWeekNumber(w))]).font = { bold: true };
+  sheet.addRow(["Datum", ...weeks]);
+  sheet.addRow(["Månad", ...weeks.map((w) => monthLabel(w))]);
+
+  const periodRow = sheet.addRow([
+    "Period",
+    ...blockPerWeek.map((b) => (b ? PERIOD_LABELS[b.period] : "")),
+  ]);
+  const phaseRow = sheet.addRow(["", ...blockPerWeek.map((b) => (b ? PHASE_LABELS[b.phase] : ""))]);
+  mergeConsecutiveBlockRuns(sheet, periodRow.number, blockPerWeek);
+  mergeConsecutiveBlockRuns(sheet, phaseRow.number, blockPerWeek);
+
+  sheet.addRow(["Antal pass", ...blockPerWeek.map((b) => b?.sessions_count ?? "")]);
+  sheet.addRow(["Antal dagar", ...blockPerWeek.map((b) => b?.days_count ?? "")]);
+  sheet.addRow(["Antal tävlingsstarter", ...blockPerWeek.map((b) => b?.starts_count ?? "")]);
+  sheet.addRow(["Antal timmar", ...blockPerWeek.map((b) => b?.hours_count ?? "")]);
+  sheet.addRow(["Tester", ...blockPerWeek.map((b) => (b?.has_test ? "x" : ""))]);
 
   let lastGroup: TrainingFactorGroup | null = null;
   for (const factor of TRAINING_FACTORS) {
@@ -132,11 +181,14 @@ function buildArsplanSheet(workbook: ExcelJS.Workbook, weeks: SeasonWeekPlanRow[
       sheet.addRow([TRAINING_FACTOR_GROUP_LABELS[factor.group]]).font = { italic: true };
       lastGroup = factor.group;
     }
-    sheet.addRow([factor.label, ...sorted.map((w) => w.training_factors?.[factor.key] ?? "")]);
+    sheet.addRow([
+      factor.label,
+      ...blockPerWeek.map((b) => b?.training_factors?.[factor.key] ?? ""),
+    ]);
   }
 
   sheet.getColumn(1).width = 32;
-  for (let i = 2; i <= sorted.length + 1; i++) sheet.getColumn(i).width = 14;
+  for (let i = 2; i <= weeks.length + 1; i++) sheet.getColumn(i).width = 14;
 }
 
 export async function GET(request: Request) {
@@ -149,17 +201,17 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const scopedUserId = resolveScopedUserId(scoped, searchParams.get("athlete") ?? undefined);
 
-  const [{ data: yearRows }, { data: weekRows }] = await Promise.all([
+  const [{ data: yearRows }, { data: blockRows }] = await Promise.all([
     supabase
       .from("multi_year_plans")
       .select("*")
       .eq("user_id", scopedUserId)
       .order("sort_order"),
     supabase
-      .from("season_week_plans")
-      .select("*")
+      .from("season_blocks")
+      .select("id, start_date, end_date, period, phase, sessions_count, days_count, starts_count, hours_count, has_test, training_factors")
       .eq("user_id", scopedUserId)
-      .order("week_start_date"),
+      .order("start_date"),
   ]);
 
   const workbook = new ExcelJS.Workbook();
@@ -167,7 +219,7 @@ export async function GET(request: Request) {
   workbook.created = new Date();
 
   buildFlerarsplanSheet(workbook, (yearRows ?? []) as MultiYearPlanRow[]);
-  buildArsplanSheet(workbook, (weekRows ?? []) as SeasonWeekPlanRow[]);
+  buildArsplanSheet(workbook, (blockRows ?? []) as SeasonBlockRow[]);
 
   const buffer = await workbook.xlsx.writeBuffer();
 

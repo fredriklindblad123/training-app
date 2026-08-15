@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { type BlockType } from "@/lib/planning";
+import { type PhaseType } from "@/lib/planning";
 
 /* Delad navigering mellan kalenderns tidshorisonter, plus BandBlock-typen
  * som veckans/månadens/årets vyer använder för att integrera säsongsblocken
@@ -129,7 +129,7 @@ export function CalendarNav({
 export type BandBlock = {
   id: string;
   name: string;
-  block_type: BlockType;
+  phase: PhaseType;
   start_date: string;
   end_date: string;
   focus?: string | null;

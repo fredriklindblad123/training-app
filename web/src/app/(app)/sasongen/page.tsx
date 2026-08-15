@@ -10,12 +10,14 @@ import {
   addDays as planAddDays,
   AVAILABILITY_KINDS,
   AVAILABILITY_LABELS,
-  BLOCK_INTENT,
-  BLOCK_LABELS,
-  BLOCK_TYPES,
   COMMON_EVENTS,
   competitionYearCounts,
   defaultCompetitionYear,
+  PERIOD_LABELS,
+  PERIOD_TYPES,
+  PHASE_INTENT,
+  PHASE_LABELS,
+  PHASE_TYPES,
   PRIORITY_LABELS,
   QUALITY_WORKOUT_TYPES,
   SEASON_LABELS,
@@ -26,7 +28,8 @@ import {
   toDateKey,
   weeksBetween,
   type AvailabilityKind,
-  type BlockType,
+  type PeriodType,
+  type PhaseType,
   type WorkoutType,
 } from "@/lib/planning";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
@@ -48,7 +51,6 @@ import {
   suggestPeriodisation,
   updateBlock,
   updateTemplateRepGroup,
-  upsertWeekPlan,
 } from "./actions";
 import {
   TRAINING_FACTORS,
@@ -101,6 +103,92 @@ function formatPct(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 
+/** Standardveckan för ett block — samma Årsplan-parametrar som tidigare
+ * fylldes i en gång per vecka (season_week_plans, se
+ * supabase/migrations/20260815100000_block_period_redesign.sql) gäller nu
+ * för varje kalendervecka inom blockets datumintervall. Delad mellan
+ * redigerings- och skapa-formulären nedan, så fältlistan aldrig kan glida
+ * isär mellan dem. */
+function StandardWeekFields({
+  block,
+}: {
+  block?: {
+    sessions_count: number | null;
+    days_count: number | null;
+    starts_count: number | null;
+    hours_count: number | null;
+    has_test: boolean;
+    training_factors: Record<string, string>;
+  };
+}) {
+  return (
+    <div className="flex flex-col gap-3 rounded border border-zinc-100 p-3 dark:border-zinc-800">
+      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        Standardvecka — gäller varje vecka i blocket
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <Field label="Pass">
+          <input
+            type="number"
+            name="sessions_count"
+            defaultValue={block?.sessions_count ?? ""}
+            className={`${input} w-20`}
+          />
+        </Field>
+        <Field label="Dagar">
+          <input
+            type="number"
+            name="days_count"
+            defaultValue={block?.days_count ?? ""}
+            className={`${input} w-20`}
+          />
+        </Field>
+        <Field label="Tävlingsstarter">
+          <input
+            type="number"
+            name="starts_count"
+            defaultValue={block?.starts_count ?? ""}
+            className={`${input} w-20`}
+          />
+        </Field>
+        <Field label="Timmar">
+          <input
+            type="number"
+            step="0.5"
+            name="hours_count"
+            defaultValue={block?.hours_count ?? ""}
+            className={`${input} w-20`}
+          />
+        </Field>
+        <label className="flex items-center gap-1.5 self-end pb-1.5 text-sm">
+          <input type="checkbox" name="has_test" defaultChecked={block?.has_test ?? false} />
+          Test
+        </label>
+      </div>
+
+      {(Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[]).map((group) => (
+        <fieldset key={group} className="flex flex-col gap-2">
+          <legend className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            {TRAINING_FACTOR_GROUP_LABELS[group]}
+          </legend>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {TRAINING_FACTORS.filter((f) => f.group === group).map((f) => (
+              <Field key={f.key} label={f.label}>
+                <input
+                  name={`factor_${f.key}`}
+                  defaultValue={block?.training_factors?.[f.key] ?? ""}
+                  placeholder="Stor / Medel / Liten betoning, eller fri text"
+                  className={input}
+                />
+              </Field>
+            ))}
+          </div>
+        </fieldset>
+      ))}
+    </div>
+  );
+}
+
 // --- P1.5: blockjämförelse, flyttad hit från /trender --------------------
 // Att jämföra två block hör hemma i planeringen, inte i trendanalysen —
 // samma skäl som K5/K6 redan flyttades hit: "vad gav förra blocket, och hur
@@ -109,10 +197,17 @@ function formatPct(v: number): string {
 type SeasonBlockRow = {
   id: string;
   name: string;
-  block_type: BlockType;
+  period: PeriodType;
+  phase: PhaseType;
   start_date: string;
   end_date: string;
   focus: string | null;
+  sessions_count: number | null;
+  days_count: number | null;
+  starts_count: number | null;
+  hours_count: number | null;
+  has_test: boolean;
+  training_factors: Record<string, string>;
 };
 
 /** Tävlingsdagar: `competitions`/`competition_events` (idrottarens egna
@@ -340,8 +435,9 @@ function blockComparisonRows(
   b: BlockAggregate,
 ): { label: string; a: string; b: string }[] {
   return [
-    { label: "Period", a: `${a.block.start_date} – ${a.block.end_date}`, b: `${b.block.start_date} – ${b.block.end_date}` },
-    { label: "Blocktyp", a: BLOCK_LABELS[a.block.block_type], b: BLOCK_LABELS[b.block.block_type] },
+    { label: "Datumintervall", a: `${a.block.start_date} – ${a.block.end_date}`, b: `${b.block.start_date} – ${b.block.end_date}` },
+    { label: "Period", a: PERIOD_LABELS[a.block.period], b: PERIOD_LABELS[b.block.period] },
+    { label: "Fas", a: PHASE_LABELS[a.block.phase], b: PHASE_LABELS[b.block.phase] },
     { label: "Pass", a: String(a.sessionCount), b: String(b.sessionCount) },
     { label: "Distans", a: `${a.totalDistanceKm.toFixed(0)} km`, b: `${b.totalDistanceKm.toFixed(0)} km` },
     { label: "Träningstid", a: formatHoursMinutes(a.totalSeconds), b: formatHoursMinutes(b.totalSeconds) },
@@ -524,21 +620,6 @@ export default async function PlaneringPage({
     competitionsQuery = competitionsQuery.eq("venue", venueFilter);
   }
   const { data: competitions } = await competitionsQuery;
-
-  // Årsplan (fas 0): vecka-för-vecka, samma årsfiltrering som tävlingslistan
-  // ovan — "alla år" gör ingen mening för en 52-veckorsgrid, så det året
-  // faller tillbaka till innevarande år.
-  const arsplanYear = tavlingsAr !== "alla" ? tavlingsAr : currentYear;
-  const arsplanWeeks = buildWeekSeriesForRange(`${arsplanYear}-01-01`, `${arsplanYear}-12-31`);
-  const { data: weekPlanRows } = await supabase
-    .from("season_week_plans")
-    .select("*")
-    .eq("user_id", scopedUserId)
-    .gte("week_start_date", arsplanWeeks[0])
-    .lte("week_start_date", arsplanWeeks[arsplanWeeks.length - 1]);
-  const weekPlanByWeek = new Map(
-    (weekPlanRows ?? []).map((w) => [w.week_start_date as string, w]),
-  );
 
   /** Bygger en /planering-länk som behåller både årsfiltret och bana-filtret
    * — bara den del som skickas in i `overrides` byts ut. Samma mönster som
@@ -738,7 +819,7 @@ export default async function PlaneringPage({
           </div>
           {activeBlock && (
             <div className="text-sm text-zinc-500 dark:text-zinc-400">
-              {BLOCK_LABELS[activeBlock.block_type]} · slutar {activeBlock.end_date}
+              {PHASE_LABELS[activeBlock.phase]} · slutar {activeBlock.end_date}
             </div>
           )}
         </div>
@@ -780,8 +861,8 @@ export default async function PlaneringPage({
           Föreslå periodisering
         </h2>
         <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Räknar bakåt från en tävling och delar tiden i grund, uppbyggnad, skärpning och
-          nedtrappning. Blocklängderna följer principen att strukturen hålls fast i ungefär
+          Räknar bakåt från en tävling och delar tiden i allmän, tävlingsförberedande, tävling
+          (form) och stabiliserande. Blocklängderna följer principen att strukturen hålls fast i ungefär
           sex veckor i taget — Almgren beskriver det som att man kan justera, men bör vara
           konsekvent inom perioden. Förslaget är en utgångspunkt att flytta på, inte ett facit.
         </p>
@@ -829,7 +910,7 @@ export default async function PlaneringPage({
               // här i stället för i en egen lista: den hör hemma där den
               // faktiskt används.
               const matchingTemplates = (templates ?? []).filter(
-                (t) => t.block_type === b.block_type,
+                (t) => t.phase === b.phase,
               );
 
               return (
@@ -840,7 +921,7 @@ export default async function PlaneringPage({
                   <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
                     <span className="font-medium text-zinc-900 dark:text-zinc-100">{b.name}</span>
                     <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {BLOCK_LABELS[b.block_type]}
+                      {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
                       {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""} · {b.start_date} –{" "}
                       {b.end_date} · {weeksBetween(b.start_date, b.end_date)} veckor
                       {linkedNames.length > 0 ? ` · ${linkedNames.join(", ")}` : ""}
@@ -850,57 +931,71 @@ export default async function PlaneringPage({
                   <div className="mt-4 flex flex-col gap-4">
                     <form
                       action={updateBlock}
-                      className="flex flex-wrap items-end gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
+                      className="flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
                     >
                       <input type="hidden" name="id" value={b.id} />
-                      <Field label="Namn">
-                        <input name="name" defaultValue={b.name} required className={input} />
-                      </Field>
-                      <Field label="Typ">
-                        <select name="block_type" defaultValue={b.block_type} className={input}>
-                          {BLOCK_TYPES.map((t) => (
-                            <option key={t} value={t}>
-                              {BLOCK_LABELS[t]}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Säsong">
-                        <select name="season" defaultValue={b.season ?? ""} className={input}>
-                          <option value="">Ingen</option>
-                          <option value="indoor">{SEASON_LABELS.indoor}</option>
-                          <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-                        </select>
-                      </Field>
-                      <Field label="Från">
-                        <input
-                          type="date"
-                          name="start_date"
-                          defaultValue={b.start_date}
-                          required
-                          className={input}
-                        />
-                      </Field>
-                      <Field label="Till">
-                        <input
-                          type="date"
-                          name="end_date"
-                          defaultValue={b.end_date}
-                          required
-                          className={input}
-                        />
-                      </Field>
-                      <Field label="Fokus">
-                        <input name="focus" defaultValue={b.focus ?? ""} className={input} />
-                      </Field>
-                      <button type="submit" className={primaryBtn}>
+                      <div className="flex flex-wrap items-end gap-3">
+                        <Field label="Namn">
+                          <input name="name" defaultValue={b.name} required className={input} />
+                        </Field>
+                        <Field label="Period">
+                          <select name="period" defaultValue={b.period} className={input}>
+                            {PERIOD_TYPES.map((p) => (
+                              <option key={p} value={p}>
+                                {PERIOD_LABELS[p]}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field label="Fas">
+                          <select name="phase" defaultValue={b.phase} className={input}>
+                            {PHASE_TYPES.map((p) => (
+                              <option key={p} value={p}>
+                                {PHASE_LABELS[p]}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field label="Säsong">
+                          <select name="season" defaultValue={b.season ?? ""} className={input}>
+                            <option value="">Ingen</option>
+                            <option value="indoor">{SEASON_LABELS.indoor}</option>
+                            <option value="outdoor">{SEASON_LABELS.outdoor}</option>
+                          </select>
+                        </Field>
+                        <Field label="Från">
+                          <input
+                            type="date"
+                            name="start_date"
+                            defaultValue={b.start_date}
+                            required
+                            className={input}
+                          />
+                        </Field>
+                        <Field label="Till">
+                          <input
+                            type="date"
+                            name="end_date"
+                            defaultValue={b.end_date}
+                            required
+                            className={input}
+                          />
+                        </Field>
+                        <Field label="Fokus">
+                          <input name="focus" defaultValue={b.focus ?? ""} className={input} />
+                        </Field>
+                      </div>
+
+                      <StandardWeekFields block={b} />
+
+                      <button type="submit" className={`${primaryBtn} self-start`}>
                         Spara ändringar
                       </button>
                     </form>
 
                     <div className="border-t border-zinc-100 pt-3 dark:border-zinc-800">
                       <div className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                        Veckomallar för {BLOCK_LABELS[b.block_type]}
+                        Veckomallar för {PHASE_LABELS[b.phase]}
                       </div>
 
                       {matchingTemplates.length === 0 && (
@@ -1117,8 +1212,8 @@ export default async function PlaneringPage({
                         className="mt-3 flex flex-wrap items-end gap-3"
                       >
                         <input type="hidden" name="athlete" value={scopedUserId} />
-                        <input type="hidden" name="block_type" value={b.block_type} />
-                        <Field label="Ny mall för den här blocktypen">
+                        <input type="hidden" name="phase" value={b.phase} />
+                        <Field label="Ny mall för den här fasen">
                           <input
                             name="name"
                             required
@@ -1152,53 +1247,67 @@ export default async function PlaneringPage({
           <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Lägg till block för hand
           </summary>
-          <form action={createBlock} className="mt-3 flex flex-wrap items-end gap-3">
-            <input type="hidden" name="athlete" value={scopedUserId} />
-            <Field label="Namn">
-              <input name="name" required placeholder="Grundträning 1" className={input} />
-            </Field>
-            <Field label="Typ">
-              <select name="block_type" className={input} defaultValue="grund">
-                {BLOCK_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {BLOCK_LABELS[t]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Säsong">
-              <select name="season" className={input} defaultValue="">
-                <option value="">Ingen</option>
-                <option value="indoor">{SEASON_LABELS.indoor}</option>
-                <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-              </select>
-            </Field>
-            <Field label="Från">
-              <input
-                type="date"
-                name="start_date"
-                required
-                defaultValue={nyttBlockFranParam ?? undefined}
-                className={input}
-              />
-            </Field>
-            <Field label="Till">
-              <input type="date" name="end_date" required className={input} />
-            </Field>
-            <Field label="Fokus">
-              <input name="focus" placeholder="Tröskelvolym, 2 pass/vecka" className={input} />
-            </Field>
-            <button type="submit" className={primaryBtn}>
+          <form action={createBlock} className="mt-3 flex flex-col gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <input type="hidden" name="athlete" value={scopedUserId} />
+              <Field label="Namn">
+                <input name="name" required placeholder="Grundträning 1" className={input} />
+              </Field>
+              <Field label="Period">
+                <select name="period" className={input} defaultValue="forberedelse">
+                  {PERIOD_TYPES.map((p) => (
+                    <option key={p} value={p}>
+                      {PERIOD_LABELS[p]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Fas">
+                <select name="phase" className={input} defaultValue="allman">
+                  {PHASE_TYPES.map((p) => (
+                    <option key={p} value={p}>
+                      {PHASE_LABELS[p]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Säsong">
+                <select name="season" className={input} defaultValue="">
+                  <option value="">Ingen</option>
+                  <option value="indoor">{SEASON_LABELS.indoor}</option>
+                  <option value="outdoor">{SEASON_LABELS.outdoor}</option>
+                </select>
+              </Field>
+              <Field label="Från">
+                <input
+                  type="date"
+                  name="start_date"
+                  required
+                  defaultValue={nyttBlockFranParam ?? undefined}
+                  className={input}
+                />
+              </Field>
+              <Field label="Till">
+                <input type="date" name="end_date" required className={input} />
+              </Field>
+              <Field label="Fokus">
+                <input name="focus" placeholder="Tröskelvolym, 2 pass/vecka" className={input} />
+              </Field>
+            </div>
+
+            <StandardWeekFields />
+
+            <button type="submit" className={`${primaryBtn} self-start`}>
               Lägg till
             </button>
           </form>
           <dl className="mt-4 grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2 dark:text-zinc-400">
-            {BLOCK_TYPES.map((t) => (
-              <div key={t}>
+            {PHASE_TYPES.map((p) => (
+              <div key={p}>
                 <dt className="inline font-medium text-zinc-700 dark:text-zinc-300">
-                  {BLOCK_LABELS[t]}:{" "}
+                  {PHASE_LABELS[p]}:{" "}
                 </dt>
-                <dd className="inline">{BLOCK_INTENT[t]}</dd>
+                <dd className="inline">{PHASE_INTENT[p]}</dd>
               </div>
             ))}
           </dl>
@@ -1232,7 +1341,7 @@ export default async function PlaneringPage({
                 </option>
                 {blockList.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.name} ({BLOCK_LABELS[b.block_type]}, {b.start_date} – {b.end_date})
+                    {b.name} ({PHASE_LABELS[b.phase]}, {b.start_date} – {b.end_date})
                   </option>
                 ))}
               </select>
@@ -1249,7 +1358,7 @@ export default async function PlaneringPage({
                 </option>
                 {blockList.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.name} ({BLOCK_LABELS[b.block_type]}, {b.start_date} – {b.end_date})
+                    {b.name} ({PHASE_LABELS[b.phase]}, {b.start_date} – {b.end_date})
                   </option>
                 ))}
               </select>
@@ -1298,160 +1407,6 @@ export default async function PlaneringPage({
         </section>
       )}
 
-      {/* ---------------- Årsplan (fas 0) ---------------- */}
-      {/* Vecka-för-vecka, samma träningsfaktor-taxonomi som Årsplan-fliken i
-          Svensk Friidrotts mall (lib/training-factors.ts) — period, undertyp
-          och en betoning/fri text per faktor. En rad per vecka i stället för
-          en spreadsheet-lik cellmatris: det är samma information, men går
-          att bygga med samma expanderbara formulär-mönster som resten av
-          sidan i stället för klientstyrd cellredigering. */}
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Årsplan {arsplanYear}
-          </h2>
-          <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-            En rad per vecka — period, pass/timmar och betoning per träningsfaktor. Byt år via
-            tävlingsårsväljaren i Tävlingar-sektionen nedan.
-          </p>
-        </div>
-        <div className="flex flex-col gap-1">
-          {arsplanWeeks.map((weekStart, i) => {
-            const wp = weekPlanByWeek.get(weekStart) as
-              | {
-                  period_type: string | null;
-                  sub_phase: string | null;
-                  note: string | null;
-                  sessions_count: number | null;
-                  days_count: number | null;
-                  starts_count: number | null;
-                  hours_count: number | null;
-                  has_test: boolean;
-                  training_factors: Record<string, string>;
-                }
-              | undefined;
-            const summaryBits = [
-              wp?.period_type,
-              wp?.sub_phase,
-              wp?.hours_count != null ? `${wp.hours_count} h` : null,
-              wp?.sessions_count != null ? `${wp.sessions_count} pass` : null,
-            ].filter(Boolean);
-            return (
-              <details
-                key={weekStart}
-                className="rounded border border-zinc-200 px-3 py-1.5 dark:border-zinc-800"
-              >
-                <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                    Vecka {i + 1} · {weekStart}
-                  </span>
-                  <span className="text-zinc-500 dark:text-zinc-400">
-                    {summaryBits.length > 0 ? summaryBits.join(" · ") : "Ej ifylld"}
-                  </span>
-                </summary>
-
-                <form
-                  action={upsertWeekPlan}
-                  className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
-                >
-                  <input type="hidden" name="athlete" value={scopedUserId} />
-                  <input type="hidden" name="week_start_date" value={weekStart} />
-
-                  <div className="flex flex-wrap gap-3">
-                    <Field label="Period">
-                      <input
-                        name="period_type"
-                        placeholder="Förberedelseperiod"
-                        defaultValue={wp?.period_type ?? ""}
-                        className={input}
-                      />
-                    </Field>
-                    <Field label="Undertyp">
-                      <input
-                        name="sub_phase"
-                        placeholder="Tävling (form)"
-                        defaultValue={wp?.sub_phase ?? ""}
-                        className={input}
-                      />
-                    </Field>
-                    <Field label="Pass">
-                      <input
-                        type="number"
-                        name="sessions_count"
-                        defaultValue={wp?.sessions_count ?? ""}
-                        className={`${input} w-20`}
-                      />
-                    </Field>
-                    <Field label="Dagar">
-                      <input
-                        type="number"
-                        name="days_count"
-                        defaultValue={wp?.days_count ?? ""}
-                        className={`${input} w-20`}
-                      />
-                    </Field>
-                    <Field label="Tävlingsstarter">
-                      <input
-                        type="number"
-                        name="starts_count"
-                        defaultValue={wp?.starts_count ?? ""}
-                        className={`${input} w-20`}
-                      />
-                    </Field>
-                    <Field label="Timmar">
-                      <input
-                        type="number"
-                        step="0.5"
-                        name="hours_count"
-                        defaultValue={wp?.hours_count ?? ""}
-                        className={`${input} w-20`}
-                      />
-                    </Field>
-                    <label className="flex items-center gap-1.5 self-end pb-1.5 text-sm">
-                      <input type="checkbox" name="has_test" defaultChecked={wp?.has_test ?? false} />
-                      Test
-                    </label>
-                  </div>
-
-                  <Field label="Tävlingar / Läger / Skola">
-                    <input
-                      name="note"
-                      defaultValue={wp?.note ?? ""}
-                      className={input}
-                    />
-                  </Field>
-
-                  {(Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[]).map(
-                    (group) => (
-                      <fieldset key={group} className="flex flex-col gap-2">
-                        <legend className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                          {TRAINING_FACTOR_GROUP_LABELS[group]}
-                        </legend>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                          {TRAINING_FACTORS.filter((f) => f.group === group).map((f) => (
-                            <Field key={f.key} label={f.label}>
-                              <input
-                                name={`factor_${f.key}`}
-                                defaultValue={wp?.training_factors?.[f.key] ?? ""}
-                                placeholder="Stor / Medel / Liten betoning, eller fri text"
-                                className={input}
-                              />
-                            </Field>
-                          ))}
-                        </div>
-                      </fieldset>
-                    ),
-                  )}
-
-                  <button type="submit" className={primaryBtn}>
-                    Spara vecka
-                  </button>
-                </form>
-              </details>
-            );
-          })}
-        </div>
-      </section>
 
       {/* ---------------- Tävlingar ---------------- */}
       <section id="tavlingar" className="flex flex-col gap-3">

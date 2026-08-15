@@ -8,7 +8,7 @@ import {
   daysInMonth,
   firstWeekdayOfMonth,
 } from "@/lib/calendar-utils";
-import { BLOCK_LABELS, BLOCK_COLOR_VARS, BLOCK_TYPES, type BlockType } from "@/lib/planning";
+import { PHASE_LABELS, PHASE_COLOR_VARS, PHASE_TYPES, type PhaseType } from "@/lib/planning";
 import { OUTCOME_COLOR, OUTCOME_LABEL, type YearOutcome } from "@/lib/day-outcome";
 
 export type { YearOutcome };
@@ -19,7 +19,7 @@ export type PlannedDay = {
 };
 
 export type BlockDay = {
-  blockType: BlockType;
+  phase: PhaseType;
   name: string;
 };
 
@@ -82,13 +82,13 @@ export function YearGrid({
           </div>
         ) : (
           <div className="flex flex-wrap gap-3 text-xs text-zinc-600 dark:text-zinc-400">
-            {BLOCK_TYPES.map((type) => (
+            {PHASE_TYPES.map((type) => (
               <span key={type} className="flex items-center gap-1">
                 <span
                   className="h-3 w-3 rounded-sm"
-                  style={{ backgroundColor: BLOCK_COLOR_VARS[type] }}
+                  style={{ backgroundColor: PHASE_COLOR_VARS[type] }}
                 />
-                {BLOCK_LABELS[type]}
+                {PHASE_LABELS[type]}
               </span>
             ))}
           </div>
@@ -130,7 +130,7 @@ export function YearGrid({
                         title={`${key}${block ? ` – ${block.name}` : ""}`}
                         className={`h-4 w-4 rounded-sm ${block ? "" : "bg-zinc-100 dark:bg-zinc-800"}`}
                         style={
-                          block ? { backgroundColor: BLOCK_COLOR_VARS[block.blockType] } : undefined
+                          block ? { backgroundColor: PHASE_COLOR_VARS[block.phase] } : undefined
                         }
                       />
                     );

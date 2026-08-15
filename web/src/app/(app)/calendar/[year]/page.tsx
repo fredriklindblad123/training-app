@@ -54,7 +54,7 @@ export default async function YearPage({
       .lt("scheduled_date", `${year + 1}-01-01`),
     supabase
       .from("season_blocks")
-      .select("id, name, block_type, start_date, end_date, focus")
+      .select("id, name, phase, start_date, end_date, focus")
       .lte("start_date", `${year}-12-31`)
       .gte("end_date", `${year}-01-01`),
     supabase
@@ -150,7 +150,7 @@ export default async function YearPage({
       toDateKey(d) <= to;
       d.setDate(d.getDate() + 1)
     ) {
-      blockByDate[toDateKey(d)] = { blockType: b.block_type, name: b.name };
+      blockByDate[toDateKey(d)] = { phase: b.phase, name: b.name };
     }
   }
 

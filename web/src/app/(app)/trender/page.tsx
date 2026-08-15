@@ -38,8 +38,8 @@ import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 import {
   addDays as planAddDays,
-  BLOCK_LABELS,
-  type BlockType,
+  PHASE_LABELS,
+  type PhaseType,
 } from "@/lib/planning";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { ComplianceCard } from "@/components/ComplianceCard";
@@ -56,7 +56,7 @@ type WeekOption = (typeof WEEK_OPTIONS)[number];
 type SeasonBlockRow = {
   id: string;
   name: string;
-  block_type: BlockType;
+  phase: PhaseType;
   start_date: string;
   end_date: string;
   focus: string | null;
@@ -168,7 +168,7 @@ export default async function TrendsPage({
   // att visa, och skulle bara se trasigt ut om man klickade på det.
   const { data: blockRows } = await supabase
     .from("season_blocks")
-    .select("id, name, block_type, start_date, end_date, focus")
+    .select("id, name, phase, start_date, end_date, focus")
     .lte("start_date", todayKey)
     .order("start_date", { ascending: false });
   const blocks: SeasonBlockRow[] = blockRows ?? [];
@@ -612,7 +612,7 @@ export default async function TrendsPage({
               <strong className="font-medium text-zinc-900 dark:text-zinc-100">
                 {activeBlock.name}
               </strong>{" "}
-              ({BLOCK_LABELS[activeBlock.block_type]}), {activeBlock.start_date} –{" "}
+              ({PHASE_LABELS[activeBlock.phase]}), {activeBlock.start_date} –{" "}
               {activeBlock.end_date}
               {activeBlock.focus ? ` — ${activeBlock.focus}` : ""}. Räknas per{" "}
               <strong className="font-medium">pass</strong>, inte per Garmin-aktivitet.
@@ -647,7 +647,7 @@ export default async function TrendsPage({
                 <Link
                   key={b.id}
                   href={`/trender?block=${b.id}`}
-                  title={`${BLOCK_LABELS[b.block_type]}, ${b.start_date} – ${b.end_date}`}
+                  title={`${PHASE_LABELS[b.phase]}, ${b.start_date} – ${b.end_date}`}
                   className={`rounded px-3 py-1 ${
                     activeBlock?.id === b.id
                       ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"

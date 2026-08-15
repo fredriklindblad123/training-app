@@ -1,9 +1,10 @@
 import {
-  BLOCK_COLOR_VARS,
-  BLOCK_LABELS,
+  PHASE_COLOR_VARS,
+  PHASE_LABELS,
   PRIORITY_SHORT,
   SEASON_LABELS,
-  type BlockType,
+  type PeriodType,
+  type PhaseType,
   type Priority,
   type SeasonKind,
 } from "@/lib/planning";
@@ -18,10 +19,17 @@ import {
 export type TimelineBlock = {
   id: string;
   name: string;
-  block_type: BlockType;
+  period: PeriodType;
+  phase: PhaseType;
   season: SeasonKind | null;
   start_date: string;
   end_date: string;
+  sessions_count: number | null;
+  days_count: number | null;
+  starts_count: number | null;
+  hours_count: number | null;
+  has_test: boolean;
+  training_factors: Record<string, string>;
 };
 
 export type TimelineCompetition = {
@@ -91,9 +99,9 @@ export function SeasonTimeline({
                   style={{
                     left: `${left}%`,
                     width: `${width}%`,
-                    backgroundColor: BLOCK_COLOR_VARS[b.block_type],
+                    backgroundColor: PHASE_COLOR_VARS[b.phase],
                   }}
-                  title={`${b.name} — ${BLOCK_LABELS[b.block_type]}, ${shortDate(b.start_date)}–${shortDate(b.end_date)}`}
+                  title={`${b.name} — ${PHASE_LABELS[b.phase]}, ${shortDate(b.start_date)}–${shortDate(b.end_date)}`}
                 >
                   <span className="truncate text-xs font-medium text-white drop-shadow-sm">
                     {b.name}
@@ -139,13 +147,13 @@ export function SeasonTimeline({
       </div>
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
-        {[...new Set(sortedBlocks.map((b) => b.block_type))].map((t) => (
+        {[...new Set(sortedBlocks.map((b) => b.phase))].map((t) => (
           <span key={t} className="flex items-center gap-1.5">
             <span
               className="inline-block h-2.5 w-2.5 rounded-sm"
-              style={{ backgroundColor: BLOCK_COLOR_VARS[t] }}
+              style={{ backgroundColor: PHASE_COLOR_VARS[t] }}
             />
-            {BLOCK_LABELS[t]}
+            {PHASE_LABELS[t]}
           </span>
         ))}
         {competitions.length > 0 && (

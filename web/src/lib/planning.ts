@@ -7,45 +7,61 @@
  * ju närmare tävlingarna man kommer.
  * ------------------------------------------------------------------------ */
 
-export const BLOCK_TYPES = [
-  "grund",
-  "uppbyggnad",
-  "skarpning",
-  "tavling",
-  "nedtrappning",
+// Period + fas — samma tvånivå-vokabulär som rad 5-6 i Årsplan-fliken i
+// Svensk Friidrotts mall ("Träningsplanering Friidrottstränare steg 3").
+// Ersätter det tidigare egna block_type-ordförrådet (grund/uppbyggnad/...)
+// helt, så att ett block i appen heter samma sak som i mallen tränaren
+// faktiskt skickar in — se supabase/migrations/20260815100000_block_period_redesign.sql
+// för värdemappningen från det gamla ordförrådet.
+
+export const PERIOD_TYPES = ["forberedelse", "tavling", "atehamtning"] as const;
+export type PeriodType = (typeof PERIOD_TYPES)[number];
+
+export const PERIOD_LABELS: Record<PeriodType, string> = {
+  forberedelse: "Förberedelseperiod",
+  tavling: "Tävlingsperiod",
+  atehamtning: "Återhämtning",
+};
+
+export const PHASE_TYPES = [
+  "allman",
+  "tavlingsforberedande",
+  "tavling_form",
+  "tavling_stabiliserande",
+  "stabiliserande",
   "vila",
 ] as const;
 
-export type BlockType = (typeof BLOCK_TYPES)[number];
+export type PhaseType = (typeof PHASE_TYPES)[number];
 
-export const BLOCK_LABELS: Record<BlockType, string> = {
-  grund: "Grundträning",
-  uppbyggnad: "Uppbyggnad",
-  skarpning: "Skärpning",
-  tavling: "Tävlingsperiod",
-  nedtrappning: "Nedtrappning",
-  vila: "Vila/övergång",
+export const PHASE_LABELS: Record<PhaseType, string> = {
+  allman: "Allmän",
+  tavlingsforberedande: "Tävlingsförberedande",
+  tavling_form: "Tävling (form)",
+  tavling_stabiliserande: "Tävling (stabiliserande)",
+  stabiliserande: "Stabiliserande",
+  vila: "Vila",
 };
 
-/** Vad blocket är till för — visas som hjälptext när man väljer typ. */
-export const BLOCK_INTENT: Record<BlockType, string> = {
-  grund: "Volym vid kontrollerad intensitet. Bygger uthålligheten som allt annat vilar på.",
-  uppbyggnad: "Mer specifikt arbete, tröskel och längre intervaller. Volymen hålls uppe.",
-  skarpning: "Tävlingsfart och kortare repetitioner. Volymen sjunker, kvaliteten stiger.",
-  tavling: "Tävlingar varvat med underhåll. Inga stora belastningssprång.",
-  nedtrappning: "Sänkt volym inför A-tävling, bibehållen intensitet.",
+/** Vad blocket är till för — visas som hjälptext när man väljer fas. */
+export const PHASE_INTENT: Record<PhaseType, string> = {
+  allman: "Volym vid kontrollerad intensitet. Bygger uthålligheten som allt annat vilar på.",
+  tavlingsforberedande: "Mer specifikt arbete, tröskel och längre intervaller. Volymen hålls uppe.",
+  tavling_form: "Tävlingsfart och kortare repetitioner. Volymen sjunker, kvaliteten stiger.",
+  tavling_stabiliserande: "Tävlingar varvat med underhåll. Inga stora belastningssprång.",
+  stabiliserande: "Sänkt volym inför A-tävling, bibehållen intensitet.",
   vila: "Övergång mellan säsonger. Alternativ träning och återhämtning.",
 };
 
-// Slot-ordning ur den kategoriska paletten i lib/categories.ts. Blocken ska
+// Slot-ordning ur den kategoriska paletten i lib/categories.ts. Faserna ska
 // gå att skilja åt i en tidslinje, även i gråskala och för färgblinda — därför
 // återanvänds den redan validerade paletten i stället för nya färger.
-export const BLOCK_COLOR_VARS: Record<BlockType, string> = {
-  grund: "var(--cat-easy)",
-  uppbyggnad: "var(--cat-threshold)",
-  skarpning: "var(--cat-interval)",
-  tavling: "var(--cat-race)",
-  nedtrappning: "var(--cat-strength)",
+export const PHASE_COLOR_VARS: Record<PhaseType, string> = {
+  allman: "var(--cat-easy)",
+  tavlingsforberedande: "var(--cat-threshold)",
+  tavling_form: "var(--cat-interval)",
+  tavling_stabiliserande: "var(--cat-race)",
+  stabiliserande: "var(--cat-strength)",
   vila: "var(--cat-cross_training)",
 };
 
@@ -84,7 +100,7 @@ export const AVAILABILITY_LABELS: Record<AvailabilityKind, string> = {
 };
 
 /** En enda dämpad gråton för alla fem sorter, medvetet skild från både
- * passpaletten (--cat-*) och blockfärgerna (BLOCK_COLOR_VARS ovan). En
+ * passpaletten (--cat-*) och fasfärgerna (PHASE_COLOR_VARS ovan). En
  * tillgänglighetsperiod är en annan sorts information än en passkategori
  * eller ett periodiseringsblock — den säger inget om *vad* som tränades,
  * bara att omständigheterna var annorlunda. Att låna en av de andra
@@ -434,7 +450,8 @@ export function datesForWeekday(from: string, to: string, weekday: number): stri
 
 export type SuggestedBlock = {
   name: string;
-  block_type: BlockType;
+  period: PeriodType;
+  phase: PhaseType;
   season: SeasonKind | null;
   start_date: string;
   end_date: string;
@@ -467,7 +484,8 @@ export function suggestBlocks(
     return [
       {
         name: "Skärpning",
-        block_type: "skarpning",
+        period: "tavling",
+        phase: "tavling_form",
         season,
         start_date: startFrom,
         end_date: toDateKey(addDays(target, -taperWeeks * 7 - 1)),
@@ -475,7 +493,8 @@ export function suggestBlocks(
       },
       {
         name: "Nedtrappning",
-        block_type: "nedtrappning",
+        period: "tavling",
+        phase: "stabiliserande",
         season,
         start_date: toDateKey(addDays(target, -taperWeeks * 7)),
         end_date: competitionDate,
@@ -498,7 +517,8 @@ export function suggestBlocks(
 
   const push = (
     name: string,
-    block_type: BlockType,
+    period: PeriodType,
+    phase: PhaseType,
     weeks: number,
     focus: string,
   ) => {
@@ -506,7 +526,8 @@ export function suggestBlocks(
     const end = addDays(start, weeks * 7 - 1);
     blocks.push({
       name,
-      block_type,
+      period,
+      phase,
       season,
       start_date: toDateKey(start),
       end_date: toDateKey(end),
@@ -515,9 +536,9 @@ export function suggestBlocks(
     cursor = addDays(end, 1);
   };
 
-  push("Grundträning", "grund", base, "Volym vid kontrollerad intensitet, 2 tröskelpass/vecka.");
-  push("Uppbyggnad", "uppbyggnad", build, "Längre intervaller, volymen hålls uppe.");
-  push("Skärpning", "skarpning", sharpen, "Tävlingsfart, kortare repetitioner, lägre volym.");
+  push("Grundträning", "forberedelse", "allman", base, "Volym vid kontrollerad intensitet, 2 tröskelpass/vecka.");
+  push("Uppbyggnad", "forberedelse", "tavlingsforberedande", build, "Längre intervaller, volymen hålls uppe.");
+  push("Skärpning", "tavling", "tavling_form", sharpen, "Tävlingsfart, kortare repetitioner, lägre volym.");
 
   // Nedtrappningen ankras mot tävlingsdatumet medan blocken före räknas
   // framåt från startdatumet. De två räkningarna möts sällan exakt, så
@@ -531,7 +552,8 @@ export function suggestBlocks(
 
   blocks.push({
     name: "Nedtrappning",
-    block_type: "nedtrappning",
+    period: "tavling",
+    phase: "stabiliserande",
     season,
     start_date: taperStart,
     end_date: competitionDate,

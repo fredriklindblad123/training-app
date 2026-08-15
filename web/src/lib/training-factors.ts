@@ -2,17 +2,22 @@
  * "Träningsplanering Friidrottstränare steg 3" (Svensk Friidrott). Cellerna
  * i originalmallen blandar betoningsord ("Stor betoning") och fri text
  * ("3 pass/vecka (från 30min - 1h)") för samma sorts rad — därför är värdet
- * per faktor och vecka bara text (`season_week_plans.training_factors`,
- * en jsonb-karta nyckel→text), inte ett fast enum. Nycklarna nedan är den
- * enda platsen ordningen och etiketterna är definierade, så att
- * Årsplan-vyn och Excel-exporten (samma radordning som originalmallen)
- * aldrig kan glida isär. */
+ * per faktor bara text (`season_blocks.training_factors`, en jsonb-karta
+ * nyckel→text, samma värde för varje vecka i blocket — se
+ * supabase/migrations/20260815100000_block_period_redesign.sql), inte ett
+ * fast enum. Nycklarna nedan är den enda platsen ordningen och etiketterna
+ * är definierade, så att blockformuläret och Excel-exporten (samma
+ * radordning som originalmallen) aldrig kan glida isär.
+ *
+ * Originalmallens Grenteknik-grupp (Sprint/Häck, Hopp, Kast, Specifik,
+ * Häck/Löpkoordination, Hoppkoordination, Kastkoordination) och
+ * Styrka/Allmän-Lyftteknik är bortplockade 2026-08-15 — irrelevanta för
+ * medeldistans, som är den enda grenen den här appen används för. */
 
 export type TrainingFactorGroup =
   | "snabbhet"
   | "uthallighet"
   | "ovrigt"
-  | "grenteknik"
   | "styrka"
   | "rorlighet";
 
@@ -20,7 +25,6 @@ export const TRAINING_FACTOR_GROUP_LABELS: Record<TrainingFactorGroup, string> =
   snabbhet: "Snabbhet",
   uthallighet: "Uthållighet",
   ovrigt: "Övrigt",
-  grenteknik: "Grenteknik",
   styrka: "Styrka",
   rorlighet: "Rörlighet",
 };
@@ -53,15 +57,6 @@ export const TRAINING_FACTORS: readonly TrainingFactor[] = [
   { key: "alternativ_traning", label: "Alternativ träning", group: "ovrigt" },
   { key: "koordination", label: "Koordination (inkl stödövningar)", group: "ovrigt" },
 
-  { key: "teknik_sprint_hack", label: "Sprint/Häck", group: "grenteknik" },
-  { key: "teknik_hopp", label: "Hopp", group: "grenteknik" },
-  { key: "teknik_kast", label: "Kast", group: "grenteknik" },
-  { key: "teknik_specifik", label: "Specifik", group: "grenteknik" },
-  { key: "teknik_hack_lopkoordination", label: "Häck / Löpkoordination", group: "grenteknik" },
-  { key: "teknik_hoppkoordination", label: "Hoppkoordination", group: "grenteknik" },
-  { key: "teknik_kastkoordination", label: "Kastkoordination", group: "grenteknik" },
-
-  { key: "styrka_allman_lyftteknik", label: "Allmän / Lyftteknik", group: "styrka" },
   { key: "styrka_grund", label: "Grund", group: "styrka" },
   { key: "styrka_max", label: "Max", group: "styrka" },
   { key: "styrka_snabb", label: "Snabb", group: "styrka" },

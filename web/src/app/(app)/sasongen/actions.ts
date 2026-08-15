@@ -11,7 +11,8 @@ import {
   suggestBlocks,
   toDateKey,
   type AvailabilityKind,
-  type BlockType,
+  type PeriodType,
+  type PhaseType,
   type RepGroupInput,
   type SeasonKind,
   type TemplateItem,
@@ -36,6 +37,28 @@ function num(form: FormData, key: string): number | null {
 function refresh() {
   revalidatePath("/sasongen");
   revalidatePath("/calendar", "layout");
+}
+
+/** Standardveckan (Årsplan-parametrarna) för ett block — gäller för varje
+ * kalendervecka inom blockets datumintervall, i stället för att fyllas i en
+ * gång per vecka (den tidigare season_week_plans-modellen, se migration
+ * 20260815100000_block_period_redesign.sql). Delad mellan createBlock och
+ * updateBlock, som repGroupFieldsFromForm är delad mellan rep-actionerna
+ * nedan. */
+function standardWeekFieldsFromForm(formData: FormData) {
+  const trainingFactors: Record<string, string> = {};
+  for (const factor of TRAINING_FACTORS) {
+    const v = str(formData, `factor_${factor.key}`);
+    if (v) trainingFactors[factor.key] = v;
+  }
+  return {
+    sessions_count: num(formData, "sessions_count"),
+    days_count: num(formData, "days_count"),
+    starts_count: num(formData, "starts_count"),
+    hours_count: num(formData, "hours_count"),
+    has_test: formData.get("has_test") === "on",
+    training_factors: trainingFactors,
+  };
 }
 
 /** Bara "är någon inloggad" — för actions som opererar på en rad via `id`.
@@ -188,34 +211,34 @@ async function syncTemplateIntoBlock(
 async function syncBlockWithTemplates(
   supabase: SupabaseServerClient,
   userId: string,
-  block: BlockRange & { block_type: string },
+  block: BlockRange & { phase: string },
 ) {
   const { data: templates } = await supabase
     .from("week_templates")
     .select("id")
     .eq("user_id", userId)
-    .eq("block_type", block.block_type);
+    .eq("phase", block.phase);
   for (const t of templates ?? []) {
     await syncTemplateIntoBlock(supabase, userId, t.id as string, block);
   }
 }
 
-/** Synkar en mall in i alla befintliga block av dess typ — anropas när ett
+/** Synkar en mall in i alla befintliga block av dess fas — anropas när ett
  * pass läggs till i mallen. Härleder ägaren ur mallen själv (inte klienten)
  * — mallen finns redan och RLS avgör om anroparen får nå den. */
 async function syncTemplateAcrossBlocks(supabase: SupabaseServerClient, templateId: string) {
   const { data: template } = await supabase
     .from("week_templates")
-    .select("user_id, block_type")
+    .select("user_id, phase")
     .eq("id", templateId)
     .maybeSingle();
-  if (!template?.block_type) return;
+  if (!template?.phase) return;
 
   const { data: blocks } = await supabase
     .from("season_blocks")
     .select("id, start_date, end_date")
     .eq("user_id", template.user_id)
-    .eq("block_type", template.block_type);
+    .eq("phase", template.phase);
   for (const b of (blocks ?? []) as BlockRange[]) {
     await syncTemplateIntoBlock(supabase, template.user_id as string, templateId, b);
   }
@@ -231,8 +254,9 @@ export async function createBlock(formData: FormData) {
   const name = str(formData, "name");
   const start = str(formData, "start_date");
   const end = str(formData, "end_date");
-  const blockType = str(formData, "block_type") as BlockType | null;
-  if (!name || !start || !end || !blockType) return;
+  const period = str(formData, "period") as PeriodType | null;
+  const phase = str(formData, "phase") as PhaseType | null;
+  if (!name || !start || !end || !period || !phase) return;
   // Databasen har en check-constraint, men ett tyst avvisat formulär är
   // bättre än ett 500-fel när någon vänt på datumen.
   if (end < start) return;
@@ -242,13 +266,15 @@ export async function createBlock(formData: FormData) {
     .insert({
       user_id: userId,
       name,
-      block_type: blockType,
+      period,
+      phase,
       season: str(formData, "season"),
       start_date: start,
       end_date: end,
       focus: str(formData, "focus"),
+      ...standardWeekFieldsFromForm(formData),
     })
-    .select("id, start_date, end_date, block_type")
+    .select("id, start_date, end_date, phase")
     .single();
 
   if (block) await syncBlockWithTemplates(supabase, userId, block);
@@ -265,8 +291,9 @@ export async function updateBlock(formData: FormData) {
   const name = str(formData, "name");
   const start = str(formData, "start_date");
   const end = str(formData, "end_date");
-  const blockType = str(formData, "block_type") as BlockType | null;
-  if (!name || !start || !end || !blockType) return;
+  const period = str(formData, "period") as PeriodType | null;
+  const phase = str(formData, "phase") as PhaseType | null;
+  if (!name || !start || !end || !period || !phase) return;
   if (end < start) return;
 
   // Ägaren härleds ur den uppdaterade raden (RLS avgör om anroparen fick
@@ -275,11 +302,13 @@ export async function updateBlock(formData: FormData) {
     .from("season_blocks")
     .update({
       name,
-      block_type: blockType,
+      period,
+      phase,
       season: str(formData, "season"),
       start_date: start,
       end_date: end,
       focus: str(formData, "focus"),
+      ...standardWeekFieldsFromForm(formData),
     })
     .eq("id", id)
     .select("user_id")
@@ -292,7 +321,7 @@ export async function updateBlock(formData: FormData) {
     id,
     start_date: start,
     end_date: end,
-    block_type: blockType,
+    phase,
   });
 
   refresh();
@@ -434,7 +463,7 @@ export async function createTemplate(formData: FormData) {
   await supabase.from("week_templates").insert({
     user_id: userId,
     name,
-    block_type: str(formData, "block_type"),
+    phase: str(formData, "phase"),
     notes: str(formData, "notes"),
   });
 
@@ -507,15 +536,15 @@ export async function deleteTemplateItem(formData: FormData) {
   if (item) {
     const { data: template } = await supabase
       .from("week_templates")
-      .select("user_id, block_type")
+      .select("user_id, phase")
       .eq("id", item.template_id)
       .maybeSingle();
-    if (template?.block_type) {
+    if (template?.phase) {
       const { data: blocks } = await supabase
         .from("season_blocks")
         .select("start_date, end_date")
         .eq("user_id", template.user_id)
-        .eq("block_type", template.block_type);
+        .eq("phase", template.phase);
       for (const b of blocks ?? []) {
         const dates = datesForWeekday(b.start_date, b.end_date, item.weekday);
         if (dates.length === 0) continue;
@@ -663,42 +692,3 @@ export async function deleteAvailabilityPeriod(formData: FormData) {
   refresh();
 }
 
-// --- Årsplan: vecka-för-vecka (fas 0) ---------------------------------------
-// En rad per (löpare, veckas måndag) — se lib/training-factors.ts för den
-// fasta listan av faktornycklar. Upsert, inte separat create/update: en
-// vecka har alltid högst en rad (unique user_id+week_start_date), så samma
-// formulär fungerar oavsett om veckan redan har sparad data eller inte.
-
-export async function upsertWeekPlan(formData: FormData) {
-  const supabase = await createClient();
-  const userId = await resolvedAthleteId(supabase, formData);
-  if (!userId) return;
-
-  const weekStartDate = str(formData, "week_start_date");
-  if (!weekStartDate) return;
-
-  const trainingFactors: Record<string, string> = {};
-  for (const factor of TRAINING_FACTORS) {
-    const v = str(formData, `factor_${factor.key}`);
-    if (v) trainingFactors[factor.key] = v;
-  }
-
-  await supabase.from("season_week_plans").upsert(
-    {
-      user_id: userId,
-      week_start_date: weekStartDate,
-      period_type: str(formData, "period_type"),
-      sub_phase: str(formData, "sub_phase"),
-      note: str(formData, "note"),
-      sessions_count: num(formData, "sessions_count"),
-      days_count: num(formData, "days_count"),
-      starts_count: num(formData, "starts_count"),
-      hours_count: num(formData, "hours_count"),
-      has_test: formData.get("has_test") === "on",
-      training_factors: trainingFactors,
-    },
-    { onConflict: "user_id,week_start_date" },
-  );
-
-  refresh();
-}
