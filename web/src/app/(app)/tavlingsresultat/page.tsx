@@ -9,16 +9,22 @@ import {
   type Priority,
   type SeasonKind,
 } from "@/lib/planning";
-import { SESSION_ACTIVITY_COLUMNS, type SessionActivity } from "@/lib/sessions";
+import {
+  SESSION_ACTIVITY_COLUMNS,
+  groupActivitiesIntoSessions,
+  type SessionActivity,
+} from "@/lib/sessions";
 import { CATEGORY_VALUES, categoryColorVar } from "@/lib/categories";
 import { BAND_LABELS } from "@/lib/intensity";
 import { formatHoursMinutes } from "@/lib/format";
 import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
 import { computeRaceBuildup, BUILDUP_WINDOW_DAYS, type RaceBuildup } from "@/lib/race-buildup";
+import { computeEfficiencyPoints } from "@/lib/efficiency";
 import {
   RaceProgressionChart,
   type RaceProgressionPoint,
   type RaceProgressionSeries,
+  type TrainingSeries,
 } from "@/components/charts/RaceProgressionChart";
 
 /* Tävlingsresultat: analys och jämförelse av redan inlagda tävlingar —
@@ -249,6 +255,12 @@ export default async function TavlingsresultatPage({
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
   const athleteQuery = scoped.role === "coach" ? scopedUserId : null;
 
+  // Träningsdatan (Garmin-synken) börjar 2025-07-25, men de importerade
+  // tävlingsresultaten går längre tillbaka — så för lopp före det datumet
+  // saknas träningskurvor (formkurva/VO2max) och upptrappningsdata helt.
+  // Ett dataläge, inte ett fel; sant tills äldre Garmin-historik importeras.
+  const TRAINING_DATA_START = "2025-07-25";
+
   // Hela historiken, inte bara ett valt säsongsår — grenutvecklingen ska
   // kunna visa fler säsonger tillbaka. Billig fråga (en handfull rader per
   // säsong); upptrappningsprofilerna för de två valda loppen hämtas separat,
@@ -359,6 +371,72 @@ export default async function TavlingsresultatPage({
     ),
   }));
 
+  // --- Träningskurvor att jämföra tävlingsutvecklingen mot (uttrycklig
+  // begäran) — formkurva (EF) och VO2max har riktig löpande historik sedan
+  // Garmin-synken startade; LT2 har bara ett sparat värde i taget (skrivs
+  // över vid varje nytt tröskeltest, se profiles.lt2_hr) så den blir en
+  // enstaka punkt, inte en kurva, tills fler tröskeltest loggas regelbundet.
+  const [{ data: trainingActivityRows }, { data: profileThresholdRow }] = await Promise.all([
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
+      .gte("start_time", TRAINING_DATA_START)
+      .order("start_time"),
+    supabase
+      .from("profiles")
+      .select("lt2_hr, lt2_measured_on")
+      .eq("id", scopedUserId)
+      .maybeSingle(),
+  ]);
+
+  const trainingSessions = groupActivitiesIntoSessions(
+    (trainingActivityRows ?? []) as unknown as SessionActivity[],
+  );
+
+  const efPoints = computeEfficiencyPoints(trainingSessions);
+  const vo2maxPoints = trainingSessions
+    .flatMap((s) => s.activities.map((a) => ({ date: s.date, value: a.vo2max })))
+    .filter((p): p is { date: string; value: number } => p.value != null);
+  const lt2Points =
+    profileThresholdRow?.lt2_hr != null && profileThresholdRow.lt2_measured_on
+      ? [{ date: profileThresholdRow.lt2_measured_on as string, value: profileThresholdRow.lt2_hr as number }]
+      : [];
+
+  const trainingSeries: TrainingSeries[] = [
+    {
+      id: "ef",
+      label: "Formkurva (EF)",
+      unit: "m/slag",
+      color: "#0891b2",
+      higherIsBetter: true,
+      points: efPoints.map((p) => ({ date: p.date, value: p.ef * 60 })),
+      insufficientDataNote:
+        efPoints.length < 2 ? "för få lugna/långa pass med puls i perioden ännu" : undefined,
+    },
+    {
+      id: "vo2max",
+      label: "VO2max",
+      unit: "ml/kg/min",
+      color: "#d97706",
+      higherIsBetter: true,
+      points: vo2maxPoints,
+      insufficientDataNote: vo2maxPoints.length < 2 ? "ingen VO2max-skattning från klockan ännu" : undefined,
+    },
+    {
+      id: "lt2",
+      label: "Tröskelpuls (LT2)",
+      unit: "slag/min",
+      color: "#7c3aed",
+      higherIsBetter: true,
+      points: lt2Points,
+      insufficientDataNote:
+        lt2Points.length < 2
+          ? "bara en sparad mätning — tröskelpuls har ingen entydig bättre/sämre-riktning för sig, och räcker inte till en kurva än"
+          : undefined,
+    },
+  ].filter((s) => s.points.length > 0);
+
   // Detaljtabellen: alla valda grenars rader i en enda kronologisk lista,
   // med grenen som egen kolumn — personbästa markeras per gren för sig
   // (samma bana-filtrerade urval som grafens kurva för den grenen).
@@ -400,12 +478,9 @@ export default async function TavlingsresultatPage({
         ])
       : [null, null];
 
-  // Träningsdatan (Garmin-synken) börjar 2025-07-25, men de importerade
-  // tävlingsresultaten slutar 2024-07-21. För tidiga lopp saknas därför
-  // träningsdata i de 21 dagarna före — upptrappningstabellen blir tom av
-  // det skälet, inte för att inget hände. Ett dataläge, inte ett fel; sant
-  // tills nyare lopp läggs in.
-  const TRAINING_DATA_START = "2025-07-25";
+  // 21-dagarsfönstret för upptrappningen kan falla helt före
+  // TRAINING_DATA_START (se ovan) — upptrappningstabellen blir tom av det
+  // skälet, inte för att inget hände.
   const buildupDataGapApplies =
     raceAggregateA != null &&
     raceAggregateB != null &&
@@ -467,7 +542,10 @@ export default async function TavlingsresultatPage({
             Välj en eller flera grenar för att se dem som egna kurvor i samma graf. Y-axeln är
             andel av respektive grens eget personbästa, inte råtid — grenar med olika längd går
             annars inte att jämföra på samma axel. Exakt tid finns i hovertooltipen och
-            tabellen under.
+            tabellen under. Kryssa i en streckad träningskurva (formkurva/VO2max/LT2) under
+            grafen för att se om den följer tävlingsutvecklingen — ren visuell jämförelse, ingen
+            uträknad korrelation (för få tävlingar per säsong för att ett sådant tal skulle
+            betyda något).
           </p>
         </div>
 
@@ -546,6 +624,7 @@ export default async function TavlingsresultatPage({
 
             <RaceProgressionChart
               series={series}
+              trainingSeries={trainingSeries}
               emptyLabel="Inga lopp i de valda grenarna med det valda banfiltret."
             />
 

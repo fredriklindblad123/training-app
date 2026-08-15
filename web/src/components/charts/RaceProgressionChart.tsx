@@ -15,20 +15,21 @@ import { useMemo, useRef, useState } from "react";
  * grenar delar samma axel utan att bli jämförda mot varandra. Exakt tid
  * finns kvar i hovertooltipen och detaljtabellen under grafen.
  *
- * ── Geometrin vänds ALDRIG ───────────────────────────────────────────────
- * Trots normaliseringen: lägre än 100 % är fortfarande omöjligt, och ett
- * lägre värde är fortfarande bättre. Axeln ritas stigande uppåt som vanligt.
+ * ── Geometrin vänds ALDRIG (för tävlingsresultat) ─────────────────────────
+ * Trots normaliseringen: lägre än 100 % är fortfarande omöjligt för en
+ * tävlingskurva, och ett lägre värde är fortfarande bättre.
  *
- * ── Inne/ute ──────────────────────────────────────────────────────────────
- * Färgen bär grenens identitet nu (en kurva per gren), så inne/ute skiljs i
- * stället åt med form — fylld prick för utomhus, ihålig ring för inomhus —
- * samma princip som veckovyns `PassMarker` använder för genomfört/planerat.
- * En tävling utan känt `venue` (importluckor) ritas fylld, som utomhus.
- *
- * ── Personbästa ───────────────────────────────────────────────────────────
- * Eftersom varje kurva är normaliserad mot sitt eget PB ligger PB alltid på
- * exakt 100 % — en enda vågrät hjälplinje räcker för alla kurvor samtidigt,
- * i stället för en linje per gren.
+ * ── Träningslager (2026-08-16, uttrycklig begäran) ────────────────────────
+ * Valfria kurvor (Formkurva/EF, VO2max, LT2 m.fl.) för att visuellt jämföra
+ * "vad hände i träningen" med "vad hände i tävling" på samma tidsaxel.
+ * Samma "andel av eget bästa"-princip återanvänds — men här är 100 % alltid
+ * DET BÄSTA UPPMÄTTA VÄRDET (`higherIsBetter` avgör om bäst är max eller
+ * min), så en tränings- och en tävlingskurva båda närmar sig samma 100 %-
+ * linje när formen är som bäst, om än från varsitt håll (tävlingstiden
+ * uppifrån, träningsmåttet underifrån). Ren visuell jämförelse, ingen
+ * statistisk korrelation räknas — det är upp till ögat, se motiveringen i
+ * konversationen (för få tävlingar per säsong för att en riktig
+ * korrelationskoefficient skulle vara meningsfull).
  * ------------------------------------------------------------------------ */
 
 export type RaceProgressionVenue = "indoor" | "outdoor" | null;
@@ -53,6 +54,23 @@ export type RaceProgressionSeries = {
    * oavsett vilka andra grenar som råkar vara valda samtidigt. */
   color: string;
   points: RaceProgressionPoint[];
+};
+
+export type TrainingSeriesPoint = { date: string; value: number };
+
+export type TrainingSeries = {
+  id: string;
+  label: string;
+  /** För tooltip-texten, t.ex. "m/slag", "VO2max", "slag/min". */
+  unit: string;
+  color: string;
+  points: TrainingSeriesPoint[];
+  /** Styr bara vilket värde som räknas som "bäst" (100 %) och tooltip-
+   * fraseringen — påverkar aldrig var linjen faktiskt ritas. */
+  higherIsBetter: boolean;
+  /** Visas i stället för en kurva när lagret har för få punkter (t.ex. LT2
+   * med bara en sparad mätning) — ärligare än att låtsas en trend finns. */
+  insufficientDataNote?: string;
 };
 
 const WIDTH = 800;
@@ -117,14 +135,51 @@ type PlottedPoint = RaceProgressionPoint & {
   isPb: boolean;
 };
 
+type PlottedTrainingPoint = TrainingSeriesPoint & {
+  seriesId: string;
+  label: string;
+  unit: string;
+  color: string;
+  pct: number;
+};
+
+/** "Andel av eget bästa" för ett träningslager — 100 % är alltid det bästa
+ * uppmätta värdet, `higherIsBetter` avgör bara om bäst är max eller min. */
+function toTrainingPct(series: TrainingSeries): PlottedTrainingPoint[] {
+  if (series.points.length === 0) return [];
+  const best = series.higherIsBetter
+    ? Math.max(...series.points.map((p) => p.value))
+    : Math.min(...series.points.map((p) => p.value));
+  if (best === 0) return [];
+  return series.points.map((p) => ({
+    ...p,
+    seriesId: series.id,
+    label: series.label,
+    unit: series.unit,
+    color: series.color,
+    pct: series.higherIsBetter ? (p.value / best) * 100 : (best / p.value) * 100,
+  }));
+}
+
 export function RaceProgressionChart({
   series,
+  trainingSeries = [],
   emptyLabel = "Inga lopp i den valda grenen med det här filtret.",
 }: {
   series: RaceProgressionSeries[];
+  /** Valfria träningskurvor (Formkurva/EF, VO2max, LT2, ...) — växlas på/av
+   * via kryssrutorna under grafen, avstängda som standard utom den första. */
+  trainingSeries?: TrainingSeries[];
   emptyLabel?: string;
 }) {
-  const [hovered, setHovered] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<
+    | { kind: "race"; id: string }
+    | { kind: "training"; seriesId: string; date: string }
+    | null
+  >(null);
+  const [visibleTraining, setVisibleTraining] = useState<Set<string>>(
+    () => new Set(trainingSeries[0] ? [trainingSeries[0].id] : []),
+  );
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const allPoints = useMemo(() => {
@@ -145,22 +200,37 @@ export function RaceProgressionChart({
     return out.sort((a, b) => dayMs(a.date) - dayMs(b.date));
   }, [series]);
 
+  const activeTrainingSeries = trainingSeries.filter((s) => visibleTraining.has(s.id));
+  const trainingPctBySeriesId = useMemo(() => {
+    const map = new Map<string, PlottedTrainingPoint[]>();
+    for (const s of trainingSeries) {
+      if (!visibleTraining.has(s.id)) continue;
+      map.set(s.id, toTrainingPct(s).sort((a, b) => dayMs(a.date) - dayMs(b.date)));
+    }
+    return map;
+  }, [trainingSeries, visibleTraining]);
+
   if (allPoints.length === 0) {
     return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
   }
 
   /* ------------------------------- skalor -------------------------------- */
 
-  const rawFromMs = dayMs(allPoints[0].date);
-  const rawToMs = Math.max(dayMs(allPoints[allPoints.length - 1].date), rawFromMs + DAY_MS);
+  const allTrainingPoints = [...trainingPctBySeriesId.values()].flat();
+  const allDates = [
+    ...allPoints.map((p) => p.date),
+    ...allTrainingPoints.map((p) => p.date),
+  ];
+  const rawFromMs = Math.min(...allDates.map(dayMs));
+  const rawToMs = Math.max(Math.max(...allDates.map(dayMs)), rawFromMs + DAY_MS);
   const span = rawToMs - rawFromMs;
-  // Padding så att första/sista loppet inte hamnar exakt på plotkanten.
+  // Padding så att första/sista punkten inte hamnar exakt på plotkanten.
   const xPad = Math.max(span * 0.06, 20 * DAY_MS);
   const fromMs = rawFromMs - xPad;
   const toMs = rawToMs + xPad;
   const xFor = (date: string) => PAD_LEFT + ((dayMs(date) - fromMs) / (toMs - fromMs)) * PLOT_W;
 
-  const pctValues = allPoints.map((p) => p.pctOfPb);
+  const pctValues = [...allPoints.map((p) => p.pctOfPb), ...allTrainingPoints.map((p) => p.pct)];
   const rawMin = Math.min(100, ...pctValues);
   const rawMax = Math.max(...pctValues);
   const pad = Math.max((rawMax - rawMin) * 0.15, 1);
@@ -170,11 +240,18 @@ export function RaceProgressionChart({
 
   const yTicks = Array.from({ length: 5 }, (_, i) => yMin + ((yMax - yMin) / 4) * i);
 
-  const hoveredPoint = allPoints.find((p) => p.id === hovered) ?? null;
+  const hoveredRacePoint =
+    hovered?.kind === "race" ? (allPoints.find((p) => p.id === hovered.id) ?? null) : null;
+  const hoveredTrainingPoint =
+    hovered?.kind === "training"
+      ? ((trainingPctBySeriesId.get(hovered.seriesId) ?? []).find(
+          (p) => p.date === hovered.date,
+        ) ?? null)
+      : null;
 
-  /** Samma "hela plotytan är träffyta"-mönster som EfficiencyChart — med
-   * ett fåtal punkter utspridda över flera år är en prick i sig en omöjlig
-   * träffyta. */
+  /** Samma "hela plotytan är träffyta"-mönster som EfficiencyChart — med ett
+   * fåtal punkter utspridda över flera år är en prick i sig en omöjlig
+   * träffyta. Söker bland både tävlings- och synliga träningspunkter. */
   const handlePointer = (event: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
@@ -184,7 +261,7 @@ export function RaceProgressionChart({
     const x = (event.clientX - rect.left) / scale;
     const y = (event.clientY - rect.top) / scale;
 
-    let best: PlottedPoint | null = null;
+    let best: typeof hovered = null;
     let bestDistance = Infinity;
     for (const p of allPoints) {
       const dx = xFor(p.date) - x;
@@ -192,10 +269,21 @@ export function RaceProgressionChart({
       const distance = dx * dx + dy * dy;
       if (distance < bestDistance) {
         bestDistance = distance;
-        best = p;
+        best = { kind: "race", id: p.id };
       }
     }
-    setHovered(best && bestDistance <= 50 * 50 ? best.id : null);
+    for (const points of trainingPctBySeriesId.values()) {
+      for (const p of points) {
+        const dx = xFor(p.date) - x;
+        const dy = yFor(p.pct) - y;
+        const distance = dx * dx + dy * dy;
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = { kind: "training", seriesId: p.seriesId, date: p.date };
+        }
+      }
+    }
+    setHovered(bestDistance <= 50 * 50 ? best : null);
   };
 
   return (
@@ -205,7 +293,7 @@ export function RaceProgressionChart({
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-auto w-full"
         role="img"
-        aria-label="Resultat per lopp över tid för de valda grenarna, som andel av respektive grens personbästa. Lägre är bättre."
+        aria-label="Resultat per lopp över tid för de valda grenarna, som andel av respektive grens personbästa, med valfria träningskurvor. Lägre tävlingsresultat är bättre; för träningskurvorna är närmare 100 % alltid bäst uppmätta värde."
         onPointerMove={handlePointer}
         onPointerLeave={() => setHovered(null)}
       >
@@ -237,7 +325,7 @@ export function RaceProgressionChart({
           className="fill-zinc-500 dark:fill-zinc-400"
           style={{ fontSize: 10 }}
         >
-          Andel av personbästa — lägre är bättre
+          Andel av eget personbästa — tävling: lägre bättre, träning: närmare 100 % bättre
         </text>
 
         {/* --- personbästa: en hjälplinje för alla kurvor, alltid vid 100 % --- */}
@@ -274,8 +362,49 @@ export function RaceProgressionChart({
           );
         })}
 
+        {/* --- träningslager: streckad linje, skild stil från tävlingskurvorna --- */}
+        {[...trainingPctBySeriesId.entries()].map(([seriesId, points]) => {
+          if (points.length < 2) return null;
+          const path = points
+            .map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(p.date)} ${yFor(p.pct)}`)
+            .join(" ");
+          return (
+            <path
+              key={seriesId}
+              d={path}
+              fill="none"
+              strokeWidth={1.75}
+              strokeDasharray="6 4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ stroke: points[0].color }}
+              opacity={0.7}
+            />
+          );
+        })}
+
+        {[...trainingPctBySeriesId.values()].flat().map((p) => {
+          const isHovered = hovered?.kind === "training" && hovered.seriesId === p.seriesId && hovered.date === p.date;
+          const cx = xFor(p.date);
+          const cy = yFor(p.pct);
+          const r = isHovered ? 4.5 : 3;
+          return (
+            <rect
+              key={`${p.seriesId}-${p.date}`}
+              x={cx - r}
+              y={cy - r}
+              width={r * 2}
+              height={r * 2}
+              style={{ fill: p.color }}
+              className="stroke-white dark:stroke-zinc-950"
+              strokeWidth={1.5}
+              paintOrder="stroke"
+            />
+          );
+        })}
+
         {allPoints.map((p) => {
-          const isHovered = p.id === hovered;
+          const isHovered = hovered?.kind === "race" && hovered.id === p.id;
           const isIndoor = p.venue === "indoor";
           const cx = xFor(p.date);
           const cy = yFor(p.pctOfPb);
@@ -305,7 +434,7 @@ export function RaceProgressionChart({
                 className={isIndoor ? "" : "stroke-white dark:stroke-zinc-950"}
                 paintOrder="stroke"
                 tabIndex={0}
-                onFocus={() => setHovered(p.id)}
+                onFocus={() => setHovered({ kind: "race", id: p.id })}
                 onBlur={() => setHovered(null)}
               >
                 <title>{`${p.seriesEvent} — ${formatShortDate(p.date)} — ${p.competitionName}: ${p.resultLabel} (${venueLabel(p.venue)})${p.isPb ? " — personbästa" : ""}`}</title>
@@ -361,24 +490,100 @@ export function RaceProgressionChart({
         </span>
       </div>
 
-      {hoveredPoint && (
+      {/* --- Träningslager: kryssrutor, av som standard utom den första --- */}
+      {trainingSeries.length > 0 && (
+        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+          <legend className="px-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            Träningskurvor (streckade)
+          </legend>
+          {trainingSeries.map((s) => {
+            const on = visibleTraining.has(s.id);
+            const tooFewPoints = s.points.length < 2 && s.insufficientDataNote;
+            return (
+              <label key={s.id} className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() =>
+                    setVisibleTraining((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(s.id)) next.delete(s.id);
+                      else next.add(s.id);
+                      return next;
+                    })
+                  }
+                />
+                <span
+                  className="h-2.5 w-2.5 shrink-0"
+                  style={{ backgroundColor: s.color }}
+                  aria-hidden="true"
+                />
+                {s.label}
+                {on && tooFewPoints && (
+                  <span className="text-xs text-zinc-400 dark:text-zinc-600">
+                    ({s.insufficientDataNote})
+                  </span>
+                )}
+              </label>
+            );
+          })}
+          {activeTrainingSeries.length > 0 &&
+            renderSparseDataNote(activeTrainingSeries, trainingPctBySeriesId)}
+        </fieldset>
+      )}
+
+      {(hoveredRacePoint || hoveredTrainingPoint) && (
         <div className="flex flex-col gap-1 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-          <div className="font-medium text-zinc-900 dark:text-zinc-100">
-            {hoveredPoint.seriesEvent} — {formatShortDate(hoveredPoint.date)} —{" "}
-            {hoveredPoint.competitionName}
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
-            <span className="tabular-nums">
-              {hoveredPoint.resultLabel} ({formatRaceTime(hoveredPoint.resultSeconds)})
-            </span>
-            <span>{venueLabel(hoveredPoint.venue)}</span>
-            <span className="tabular-nums">{hoveredPoint.pctOfPb.toFixed(1)}% av PB</span>
-            {hoveredPoint.isPb && (
-              <span className="font-medium text-zinc-900 dark:text-zinc-100">Personbästa</span>
-            )}
-          </div>
+          {hoveredRacePoint && (
+            <>
+              <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                {hoveredRacePoint.seriesEvent} — {formatShortDate(hoveredRacePoint.date)} —{" "}
+                {hoveredRacePoint.competitionName}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+                <span className="tabular-nums">
+                  {hoveredRacePoint.resultLabel} ({formatRaceTime(hoveredRacePoint.resultSeconds)})
+                </span>
+                <span>{venueLabel(hoveredRacePoint.venue)}</span>
+                <span className="tabular-nums">{hoveredRacePoint.pctOfPb.toFixed(1)}% av PB</span>
+                {hoveredRacePoint.isPb && (
+                  <span className="font-medium text-zinc-900 dark:text-zinc-100">Personbästa</span>
+                )}
+              </div>
+            </>
+          )}
+          {hoveredTrainingPoint && (
+            <>
+              <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                {hoveredTrainingPoint.label} — {formatShortDate(hoveredTrainingPoint.date)}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+                <span className="tabular-nums">
+                  {hoveredTrainingPoint.value.toFixed(2)} {hoveredTrainingPoint.unit}
+                </span>
+                <span className="tabular-nums">
+                  {hoveredTrainingPoint.pct.toFixed(1)}% av bästa uppmätta
+                </span>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+/** Kort not under kryssrutorna om något aktivt lager saknar riktig historik
+ * — ärligare än att bara rita en enda prick utan förklaring. */
+function renderSparseDataNote(
+  active: TrainingSeries[],
+  bySeriesId: Map<string, PlottedTrainingPoint[]>,
+) {
+  const sparse = active.filter((s) => (bySeriesId.get(s.id) ?? []).length < 2 && s.insufficientDataNote);
+  if (sparse.length === 0) return null;
+  return (
+    <span className="w-full text-xs text-zinc-400 dark:text-zinc-600">
+      {sparse.map((s) => s.insufficientDataNote).join(" ")}
+    </span>
   );
 }
