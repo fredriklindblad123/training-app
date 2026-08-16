@@ -284,6 +284,13 @@ export default async function TavlingsresultatPage({
      * flyttades hit från /sasongen 2026-08-16. */
     tavlingsAr?: string;
     tavlingsBana?: string;
+    /** Vilken tävling som just nu visar redigerbara resultatfält i stället
+     * för ren text — en lista är annars antingen "allt redigerbart hela
+     * tiden" (rörigt, kräver att man scannar igenom formulär för att bara
+     * läsa ett resultat) eller "inget redigerbart" (kräver en helt egen
+     * sida). En knapp per tävling, samma URL-param-mönster som resten av
+     * sidans filter. */
+    redigeraTavling?: string;
     /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
      * mönster som /sasongen, se lib/auth-scope.ts. */
     athlete?: string;
@@ -296,6 +303,7 @@ export default async function TavlingsresultatPage({
     raceB: raceBParam,
     tavlingsAr: tavlingsArParam,
     tavlingsBana: tavlingsBanaParam,
+    redigeraTavling: redigeraTavlingParam,
     athlete: athleteParam,
   } = await searchParams;
 
@@ -357,6 +365,17 @@ export default async function TavlingsresultatPage({
     params.set("tavlingsAr", overrides.tavlingsAr ?? tavlingsAr);
     params.set("tavlingsBana", overrides.tavlingsBana ?? tavlingsBana);
     if (athleteParam) params.set("athlete", athleteParam);
+    return `/tavlingsresultat?${params.toString()}#tavlingar`;
+  }
+
+  /** Slår av/på redigerbara resultatfält för en enskild tävling — `id` null
+   * stänger av redigeringen igen ("Klar"). Behåller år-/bana-filtret. */
+  function editCompetitionHref(id: string | null): string {
+    const params = new URLSearchParams();
+    params.set("tavlingsAr", tavlingsAr);
+    params.set("tavlingsBana", tavlingsBana);
+    if (athleteParam) params.set("athlete", athleteParam);
+    if (id) params.set("redigeraTavling", id);
     return `/tavlingsresultat?${params.toString()}#tavlingar`;
   }
 
@@ -428,11 +447,8 @@ export default async function TavlingsresultatPage({
     banaParam === "inne" || banaParam === "ute" ? banaParam : "alla";
   const banaVenue: SeasonKind | null =
     banaFilter === "inne" ? "indoor" : banaFilter === "ute" ? "outdoor" : null;
-  const bestResultLabel =
-    banaFilter === "inne" ? "Bästa inomhus" : banaFilter === "ute" ? "Bästa utomhus" : "Personbästa";
 
-  // En rad-lista per vald gren, bana-filtrerad — delas mellan grafens kurvor
-  // och detaljtabellen under, så de aldrig kan visa olika urval.
+  // En rad-lista per vald gren, bana-filtrerad — underlaget för grafens kurvor.
   const rowsByEvent = new Map<string, EventResultRow[]>();
   for (const event of selectedEvents) {
     const rows = eventResults
@@ -530,17 +546,6 @@ export default async function TavlingsresultatPage({
           : undefined,
     },
   ].filter((s) => s.points.length > 0);
-
-  // Detaljtabellen: alla valda grenars rader i en enda kronologisk lista,
-  // med grenen som egen kolumn — personbästa markeras per gren för sig
-  // (samma bana-filtrerade urval som grafens kurva för den grenen).
-  const detailRows = selectedEvents
-    .flatMap((event) => {
-      const rows = rowsByEvent.get(event) ?? [];
-      const pb = rows.length > 0 ? Math.min(...rows.map((r) => r.resultSeconds)) : null;
-      return rows.map((r) => ({ ...r, isPb: r.resultSeconds === pb }));
-    })
-    .sort((a, b) => (a.competitionDate < b.competitionDate ? -1 : a.competitionDate > b.competitionDate ? 1 : 0));
 
   // Upptrappningsjämförelsens <select>-fält innehåller lopp i någon av de
   // valda grenarna — det är så "jämför upptrappningen" blir konkret utan
@@ -720,59 +725,10 @@ export default async function TavlingsresultatPage({
               emptyLabel="Inga lopp i de valda grenarna med det valda banfiltret."
             />
 
-            {/* Detaljtabell — allt som är valt just nu, en rad per lopp,
-                grenen som egen kolumn, personbästa markerad per gren. */}
-            {detailRows.length > 0 && (
-              <div className="w-full max-w-full overflow-x-auto">
-                <table className="w-full min-w-max text-left text-sm">
-                  <thead>
-                    <tr className="text-xs text-zinc-500 dark:text-zinc-400">
-                      <th scope="col" className="py-1 pr-4 font-normal">
-                        Datum
-                      </th>
-                      <th scope="col" className="py-1 pr-4 font-normal">
-                        Gren
-                      </th>
-                      <th scope="col" className="py-1 pr-4 font-normal">
-                        Tävling
-                      </th>
-                      <th scope="col" className="py-1 pr-4 font-normal">
-                        Bana
-                      </th>
-                      <th scope="col" className="py-1 font-normal">
-                        Resultat
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
-                    {detailRows.map((r) => (
-                      <tr key={r.eventRowId} className={r.isPb ? "bg-zinc-50 dark:bg-zinc-900" : undefined}>
-                        <td className="py-1.5 pr-4 tabular-nums">{r.competitionDate}</td>
-                        <td className="py-1.5 pr-4">
-                          <span className="inline-flex items-center gap-1.5">
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: eventColor(r.event) }}
-                            />
-                            {r.event}
-                          </span>
-                        </td>
-                        <td className="py-1.5 pr-4">{r.competitionName}</td>
-                        <td className="py-1.5 pr-4">{r.venue ? SEASON_LABELS[r.venue] : "–"}</td>
-                        <td className="py-1.5 tabular-nums">
-                          {r.resultLabel}
-                          {r.isPb && (
-                            <span className="ml-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                              {bestResultLabel}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {/* Ingen egen detaljtabell här längre — samma resultat listas
+                redan (med rätt värden, oavsett grenval) i Tävlingar-listan
+                nedan, det fanns ingen anledning till två listor med samma
+                information på samma sida. */}
 
             {/* Upptrappningsjämförelsen — samma tabellstruktur som
                 blockjämförelsen på /sasongen, men bara lopp i någon av de
@@ -969,83 +925,113 @@ export default async function TavlingsresultatPage({
 
         {managedCompetitions.length > 0 && (
           <div className="flex flex-col gap-2">
-            {managedCompetitions.map((c) => (
-              <div
-                key={c.id}
-                className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                        c.priority === "A"
-                          ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
-                          : c.priority === "B"
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                      }`}
-                    >
-                      {c.priority}
-                    </span>
-                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
-                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {c.competition_date}
-                      {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
-                      {c.location ? ` · ${c.location}` : ""}
-                    </span>
-                  </div>
-                  <form action={deleteCompetition}>
-                    <input type="hidden" name="id" value={c.id} />
-                    <button
-                      type="submit"
-                      className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                    >
-                      Ta bort
-                    </button>
-                  </form>
-                </div>
-
-                {c.competition_events.length > 0 && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    {c.competition_events
-                      .slice()
-                      .sort((a, b) => a.event.localeCompare(b.event))
-                      .map((e) => (
-                        <form
-                          key={e.id}
-                          action={saveEventResult}
-                          className="flex flex-wrap items-end gap-2 text-sm"
+            {managedCompetitions.map((c) => {
+              const editing = c.id === redigeraTavlingParam;
+              return (
+                <div
+                  key={c.id}
+                  className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                          c.priority === "A"
+                            ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                            : c.priority === "B"
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                              : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                        }`}
+                      >
+                        {c.priority}
+                      </span>
+                      <span className="font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        {c.competition_date}
+                        {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
+                        {c.location ? ` · ${c.location}` : ""}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {c.competition_events.length > 0 && (
+                        <Link
+                          href={editCompetitionHref(editing ? null : c.id)}
+                          className="text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
                         >
-                          <input type="hidden" name="event_id" value={e.id} />
-                          <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
-                            {e.event}
-                          </span>
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            mål {e.target_result ?? "—"}
-                          </span>
-                          <input
-                            name="actual_result"
-                            defaultValue={e.actual_result ?? ""}
-                            placeholder="resultat"
-                            className={`${input} w-28`}
-                          />
-                          <input
-                            name="placement"
-                            type="number"
-                            min="1"
-                            defaultValue={e.placement ?? ""}
-                            placeholder="plats"
-                            className={`${input} w-20`}
-                          />
-                          <button type="submit" className={ghostBtn}>
-                            Spara
-                          </button>
-                        </form>
-                      ))}
+                          {editing ? "Klar" : "Redigera"}
+                        </Link>
+                      )}
+                      <form action={deleteCompetition}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <button
+                          type="submit"
+                          className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                        >
+                          Ta bort
+                        </button>
+                      </form>
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {c.competition_events.length > 0 && (
+                    <div className="mt-3 flex flex-col gap-2">
+                      {c.competition_events
+                        .slice()
+                        .sort((a, b) => a.event.localeCompare(b.event))
+                        .map((e) =>
+                          editing ? (
+                            <form
+                              key={e.id}
+                              action={saveEventResult}
+                              className="flex flex-wrap items-end gap-2 text-sm"
+                            >
+                              <input type="hidden" name="event_id" value={e.id} />
+                              <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
+                                {e.event}
+                              </span>
+                              <span className="text-zinc-500 dark:text-zinc-400">
+                                mål {e.target_result ?? "—"}
+                              </span>
+                              <input
+                                name="actual_result"
+                                defaultValue={e.actual_result ?? ""}
+                                placeholder="resultat"
+                                className={`${input} w-28`}
+                              />
+                              <input
+                                name="placement"
+                                type="number"
+                                min="1"
+                                defaultValue={e.placement ?? ""}
+                                placeholder="plats"
+                                className={`${input} w-20`}
+                              />
+                              <button type="submit" className={ghostBtn}>
+                                Spara
+                              </button>
+                            </form>
+                          ) : (
+                            <div key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
+                              <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
+                                {e.event}
+                              </span>
+                              <span className="text-zinc-600 dark:text-zinc-400">
+                                {e.actual_result ?? "inget resultat inlagt"}
+                                {e.placement != null ? ` · ${e.placement}:a plats` : ""}
+                              </span>
+                              {e.target_result && (
+                                <span className="text-xs text-zinc-400 dark:text-zinc-600">
+                                  mål {e.target_result}
+                                </span>
+                              )}
+                            </div>
+                          ),
+                        )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
