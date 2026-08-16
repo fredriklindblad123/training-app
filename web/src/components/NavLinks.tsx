@@ -17,7 +17,7 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/calendar", label: "Träningskalender" },
   { href: "/trender", label: "Trender" },
-  { href: "/sasongen", label: "Säsongen" },
+  { href: "/sasongen", label: "Säsongsplanering" },
   { href: "/flerarsplan", label: "Flerårsplan" },
   { href: "/tavlingsresultat", label: "Tävlingsresultat" },
   { href: "/settings", label: "Inställningar" },

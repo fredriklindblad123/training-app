@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   getScopedProfile,
@@ -396,95 +395,6 @@ export async function deleteBlock(formData: FormData) {
   const id = str(formData, "id");
   if (!auth || !id) return;
   await auth.supabase.from("season_blocks").delete().eq("id", id);
-  refresh();
-}
-
-// --- Tävlingar -------------------------------------------------------------
-
-export async function createCompetition(formData: FormData) {
-  const supabase = await createClient();
-  const userId = await resolvedAthleteId(supabase, formData);
-  if (!userId) return;
-
-  const name = str(formData, "name");
-  const date = str(formData, "competition_date");
-  if (!name || !date) return;
-  const venue = str(formData, "venue");
-
-  const { data: competition } = await supabase
-    .from("competitions")
-    .insert({
-      user_id: userId,
-      name,
-      competition_date: date,
-      location: str(formData, "location"),
-      venue,
-      priority: str(formData, "priority") ?? "C",
-      notes: str(formData, "notes"),
-    })
-    .select("id")
-    .single();
-
-  // Grenarna kommer som en kommaseparerad rad ("1500m, 800m") för att hålla
-  // formuläret till ett fält — de flesta tävlingar har en eller två grenar.
-  const eventsRaw = str(formData, "events");
-  if (competition && eventsRaw) {
-    const events = eventsRaw
-      .split(",")
-      .map((e) => e.trim())
-      .filter(Boolean);
-    if (events.length > 0) {
-      await supabase.from("competition_events").insert(
-        events.map((event, i) => ({
-          competition_id: competition.id,
-          event,
-          target_result: i === 0 ? str(formData, "target_result") : null,
-          sort_order: i,
-        })),
-      );
-    }
-  }
-
-  refresh();
-
-  // Listan på /planering är filtrerad på år/bana (se planering/page.tsx) —
-  // hamnar den nya tävlingen utanför det filtret man just stod i skulle den
-  // se ut att ha försvunnit. Formuläret skickar med det aktiva filtret i två
-  // dolda fält; bara om det filtret faktiskt döljer den nya raden navigerar
-  // vi om, till precis det år/bana som visar den. I alla andra fall räcker
-  // revalidatePath ovan — ingen navigering behövs.
-  const currentYear = str(formData, "current_tavlingsAr");
-  const currentBana = str(formData, "current_tavlingsBana");
-  const createdYear = date.slice(0, 4);
-  const banaForCreated = venue === "indoor" ? "inne" : venue === "outdoor" ? "ute" : "alla";
-
-  const yearHidesIt = currentYear != null && currentYear !== "alla" && currentYear !== createdYear;
-  const banaHidesIt = currentBana != null && currentBana !== "alla" && currentBana !== banaForCreated;
-
-  if (yearHidesIt || banaHidesIt) {
-    redirect(`/sasongen?tavlingsAr=${createdYear}&tavlingsBana=${banaForCreated}#tavlingar`);
-  }
-}
-
-export async function deleteCompetition(formData: FormData) {
-  const auth = await requireUser();
-  const id = str(formData, "id");
-  if (!auth || !id) return;
-  await auth.supabase.from("competitions").delete().eq("id", id);
-  refresh();
-}
-
-export async function saveEventResult(formData: FormData) {
-  const auth = await requireUser();
-  const id = str(formData, "event_id");
-  if (!auth || !id) return;
-  await auth.supabase
-    .from("competition_events")
-    .update({
-      actual_result: str(formData, "actual_result"),
-      placement: num(formData, "placement"),
-    })
-    .eq("id", id);
   refresh();
 }
 

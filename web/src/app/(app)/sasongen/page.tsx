@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   canEditPlanning,
@@ -17,15 +16,11 @@ import {
   addDays as planAddDays,
   AVAILABILITY_KINDS,
   AVAILABILITY_LABELS,
-  COMMON_EVENTS,
-  competitionYearCounts,
-  defaultCompetitionYear,
   PERIOD_LABELS,
   PERIOD_TYPES,
   PHASE_INTENT,
   PHASE_LABELS,
   PHASE_TYPES,
-  PRIORITY_LABELS,
   QUALITY_WORKOUT_TYPES,
   SEASON_LABELS,
   SLOT_LABELS,
@@ -46,15 +41,12 @@ import {
   addTemplateRepGroup,
   createAvailabilityPeriod,
   createBlock,
-  createCompetition,
   createTemplate,
   deleteAvailabilityPeriod,
   deleteBlock,
-  deleteCompetition,
   deleteTemplate,
   deleteTemplateItem,
   deleteTemplateRepGroup,
-  saveEventResult,
   updateBlock,
   updateTemplateRepGroup,
 } from "./actions";
@@ -576,8 +568,6 @@ export default async function PlaneringPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    tavlingsAr?: string;
-    tavlingsBana?: string;
     /** L5: loopens utgångar landar här. /trender skickar startdatum för
      * nästa block, /veckan skickar veckan som ska planeras — så man möter ett
      * förifyllt formulär i stället för sidans topp och en tom ruta. */
@@ -595,8 +585,6 @@ export default async function PlaneringPage({
   const today = toDateKey(new Date());
   const {
     nyttBlockFran: nyttBlockFranParam,
-    tavlingsAr: tavlingsArParam,
-    tavlingsBana: tavlingsBanaParam,
     compareA: compareAParam,
     compareB: compareBParam,
     athlete: athleteParam,
@@ -627,7 +615,7 @@ export default async function PlaneringPage({
     { data: plannedCounts },
     { data: blockTemplateLinks },
     { data: availabilityPeriods },
-    { data: competitionDateRows },
+    { data: timelineCompetitionRows },
     { data: nextACompetition },
     { data: blockMembership },
   ] = await Promise.all([
@@ -663,18 +651,19 @@ export default async function PlaneringPage({
     // nedan faller tillbaka till "inga perioder" precis som övriga frågor
     // på den här sidan gör för sina egna eventuellt okörda tabeller.
     supabase.from("availability_periods").select("*").eq("user_id", scopedUserId).order("start_date"),
-    // Smal fråga för årsväljaren: bara datumet, inte hela raden med
-    // competition_events(*) nästlat — historiken (flera säsongers
-    // tävlingar) ska kunna byggas till en väljare utan att dra in allt.
+    // Bara till för tidslinjens markörer (SeasonTimeline) — att lägga
+    // till/redigera/logga resultat för en tävling flyttade till
+    // /tavlingsresultat 2026-08-16 (retrospektivt, inte säsongsplanering),
+    // så den här sidan behöver bara den smala raden för att rita ut var
+    // tävlingarna hamnar mot blocken, ingen filtrering.
     supabase
       .from("competitions")
-      .select("competition_date")
+      .select("id, name, competition_date, priority, venue")
       .eq("user_id", scopedUserId)
       .order("competition_date"),
-    // "Nästa A-tävling" i läget-just-nu-korten ska visa sanningen oavsett
-    // vilket år/bana som råkar vara valt i tävlingslistan längre ner —
-    // därför en egen liten fråga i stället för att söka i competitionList
-    // (som är filtrerad). Träffar aldrig fler än en rad.
+    // "Nästa A-tävling" i läget-just-nu-korten — egen liten fråga (bara
+    // namn+datum, inte hela raden) i stället för att leta i
+    // timelineCompetitionRows. Träffar aldrig fler än en rad.
     supabase
       .from("competitions")
       .select("name, competition_date")
@@ -699,54 +688,11 @@ export default async function PlaneringPage({
     athleteIdsByBlockId.set(row.block_id as string, set);
   }
 
-  const { years: competitionYears, countsByYear: competitionCountsByYear } =
-    competitionYearCounts((competitionDateRows ?? []).map((r) => r.competition_date as string));
-  const currentYear = today.slice(0, 4);
-  const defaultYear = defaultCompetitionYear(currentYear, competitionYears, competitionCountsByYear);
-  // "Alla år" är ett explicit val (query-param), annars gäller förvalet ovan.
-  const tavlingsAr = tavlingsArParam ?? defaultYear;
-  const tavlingsBana: "alla" | "inne" | "ute" =
-    tavlingsBanaParam === "inne" || tavlingsBanaParam === "ute" ? tavlingsBanaParam : "alla";
-  const venueFilter = tavlingsBana === "inne" ? "indoor" : tavlingsBana === "ute" ? "outdoor" : null;
-
-  // Huvudfrågan (med competition_events nästlat) hämtar bara det valda
-  // årets tävlingar — sidan växer med ett år per år i takt med säsongerna,
-  // och /planering har redan flera tunga frågor ovan.
-  let competitionsQuery = supabase
-    .from("competitions")
-    .select("*, competition_events(*)")
-    .eq("user_id", scopedUserId)
-    .order("competition_date");
-  if (tavlingsAr !== "alla") {
-    competitionsQuery = competitionsQuery
-      .gte("competition_date", `${tavlingsAr}-01-01`)
-      .lt("competition_date", `${Number(tavlingsAr) + 1}-01-01`);
-  }
-  if (venueFilter) {
-    competitionsQuery = competitionsQuery.eq("venue", venueFilter);
-  }
-  const { data: competitions } = await competitionsQuery;
-
-  /** Bygger en /planering-länk som behåller både årsfiltret och bana-filtret
-   * — bara den del som skickas in i `overrides` byts ut. Samma mönster som
-   * volumeHref i trends/page.tsx (läst för formen, inte kopierad rakt av):
-   * utan den skulle t.ex. bana-växlaren nollställa årsvalet varje gång man
-   * klickade. */
-  function competitionHref(overrides: { tavlingsAr?: string; tavlingsBana?: string }): string {
-    const params = new URLSearchParams();
-    params.set("tavlingsAr", overrides.tavlingsAr ?? tavlingsAr);
-    params.set("tavlingsBana", overrides.tavlingsBana ?? tavlingsBana);
-    if (athleteParam) params.set("athlete", athleteParam);
-    return `/sasongen?${params.toString()}#tavlingar`;
-  }
-
-  /** Byter vilken löpare en coach tittar på, behåller övriga filter/val
-   * oförändrade. No-op-länk (samma URL) för en löpare, som aldrig ser
-   * väljaren över huvud taget. */
+  /** Byter vilken löpare en coach tittar på, behåller övriga val oförändrade.
+   * No-op-länk (samma URL) för en löpare, som aldrig ser väljaren över
+   * huvud taget. */
   function athleteHref(id: string): string {
     const params = new URLSearchParams();
-    params.set("tavlingsAr", tavlingsAr);
-    params.set("tavlingsBana", tavlingsBana);
     params.set("athlete", id);
     return `/sasongen?${params.toString()}`;
   }
@@ -754,17 +700,7 @@ export default async function PlaneringPage({
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
   // fokustexten, därav den utökade typen här.
   const blockList = (blocks ?? []) as (TimelineBlock & { focus: string | null })[];
-  const competitionList = (competitions ?? []) as (TimelineCompetition & {
-    location: string | null;
-    notes: string | null;
-    competition_events: {
-      id: string;
-      event: string;
-      target_result: string | null;
-      actual_result: string | null;
-      placement: number | null;
-    }[];
-  })[];
+  const competitionList = (timelineCompetitionRows ?? []) as TimelineCompetition[];
 
   const availabilityList = (availabilityPeriods ?? []) as {
     id: string;
@@ -880,7 +816,7 @@ export default async function PlaneringPage({
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Planering</h1>
+        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Säsongsplanering</h1>
         <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
           kommer. En veckomall skapas en gång och rullas sedan ut över hela blocket — du
@@ -1487,221 +1423,6 @@ export default async function PlaneringPage({
           )}
         </section>
       )}
-
-
-      {/* ---------------- Tävlingar ---------------- */}
-      <section id="tavlingar" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
-        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Prioriteten styr hur planeringen toppar. A är säsongens huvudmål och får en
-          nedtrappning före sig; C är träningstävling och planeras rakt igenom.
-        </p>
-
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          {/* Årsväljare. Byggd ur datan (competitionYears), inte en hårdkodad
-           * lista — annars slutar den fungera så fort ett nytt år börjar
-           * tävlas i. "Alla år" ligger sist så historiken alltid går att nå,
-           * men aldrig är förvalet. */}
-          <div className="flex flex-wrap gap-1 text-sm" role="group" aria-label="Tävlingsår">
-            {competitionYears.map((year) => (
-              <Link
-                key={year}
-                href={competitionHref({ tavlingsAr: year })}
-                aria-current={tavlingsAr === year ? "page" : undefined}
-                className={`rounded px-3 py-1 ${
-                  tavlingsAr === year
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                }`}
-              >
-                {year} ({competitionCountsByYear.get(year)})
-              </Link>
-            ))}
-            <Link
-              href={competitionHref({ tavlingsAr: "alla" })}
-              aria-current={tavlingsAr === "alla" ? "page" : undefined}
-              className={`rounded px-3 py-1 ${
-                tavlingsAr === "alla"
-                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                  : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              }`}
-            >
-              Alla år ({competitionDateRows?.length ?? 0})
-            </Link>
-          </div>
-
-          <div className="flex gap-1 text-sm" role="group" aria-label="Inne eller ute">
-            {(
-              [
-                { key: "alla", label: "Alla banor" },
-                { key: "inne", label: SEASON_LABELS.indoor },
-                { key: "ute", label: SEASON_LABELS.outdoor },
-              ] as const
-            ).map((opt) => (
-              <Link
-                key={opt.key}
-                href={competitionHref({ tavlingsBana: opt.key })}
-                aria-current={tavlingsBana === opt.key ? "page" : undefined}
-                className={`rounded px-3 py-1 ${
-                  tavlingsBana === opt.key
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                }`}
-              >
-                {opt.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {competitionList.length === 0 && (
-          <p className="text-sm text-zinc-400 dark:text-zinc-600">
-            Inga tävlingar {tavlingsAr === "alla" ? "" : `${tavlingsAr} `}
-            {tavlingsBana !== "alla" ? `(${tavlingsBana === "inne" ? "inomhus" : "utomhus"}) ` : ""}
-            än.
-          </p>
-        )}
-
-        {competitionList.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {competitionList.map((c) => (
-              <div
-                key={c.id}
-                className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                        c.priority === "A"
-                          ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
-                          : c.priority === "B"
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                      }`}
-                    >
-                      {c.priority}
-                    </span>
-                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
-                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {c.competition_date}
-                      {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
-                      {c.location ? ` · ${c.location}` : ""}
-                    </span>
-                  </div>
-                  <form action={deleteCompetition}>
-                    <input type="hidden" name="id" value={c.id} />
-                    <button
-                      type="submit"
-                      className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                    >
-                      Ta bort
-                    </button>
-                  </form>
-                </div>
-
-                {c.competition_events.length > 0 && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    {c.competition_events
-                      .slice()
-                      .sort((a, b) => a.event.localeCompare(b.event))
-                      .map((e) => (
-                        <form
-                          key={e.id}
-                          action={saveEventResult}
-                          className="flex flex-wrap items-end gap-2 text-sm"
-                        >
-                          <input type="hidden" name="event_id" value={e.id} />
-                          <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
-                            {e.event}
-                          </span>
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            mål {e.target_result ?? "—"}
-                          </span>
-                          <input
-                            name="actual_result"
-                            defaultValue={e.actual_result ?? ""}
-                            placeholder="resultat"
-                            className={`${input} w-28`}
-                          />
-                          <input
-                            name="placement"
-                            type="number"
-                            min="1"
-                            defaultValue={e.placement ?? ""}
-                            placeholder="plats"
-                            className={`${input} w-20`}
-                          />
-                          <button type="submit" className={ghostBtn}>
-                            Spara
-                          </button>
-                        </form>
-                      ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Lägg till tävling
-          </summary>
-          <form action={createCompetition} className="mt-3 flex flex-wrap items-end gap-3">
-            {/* Så att createCompetition kan avgöra om det aktiva filtret
-             * skulle dölja den nyskapade tävlingen och navigera om till rätt
-             * år/bana i så fall — se motiveringen i actions.ts. */}
-            <input type="hidden" name="current_tavlingsAr" value={tavlingsAr} />
-            <input type="hidden" name="current_tavlingsBana" value={tavlingsBana} />
-            <input type="hidden" name="athlete" value={scopedUserId} />
-            <Field label="Namn">
-              <input name="name" required placeholder="Inomhus-SM" className={input} />
-            </Field>
-            <Field label="Datum">
-              <input type="date" name="competition_date" required className={input} />
-            </Field>
-            <Field label="Plats">
-              <input name="location" placeholder="Göteborg" className={input} />
-            </Field>
-            <Field label="Inne/ute">
-              <select name="venue" className={input} defaultValue="">
-                <option value="">—</option>
-                <option value="indoor">{SEASON_LABELS.indoor}</option>
-                <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-              </select>
-            </Field>
-            <Field label="Prioritet">
-              <select name="priority" className={input} defaultValue="C">
-                {(["A", "B", "C"] as const).map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_LABELS[p]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Grenar (komma mellan)">
-              <input
-                name="events"
-                list="common-events"
-                placeholder="1500m, 800m"
-                className={input}
-              />
-              <datalist id="common-events">
-                {COMMON_EVENTS.map((e) => (
-                  <option key={e} value={e} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label="Måltid (första grenen)">
-              <input name="target_result" placeholder="4:35.00" className={input} />
-            </Field>
-            <button type="submit" className={primaryBtn}>
-              Lägg till
-            </button>
-          </form>
-        </details>
-      </section>
 
       {/* ---------------- Tillgänglighet (K7) ---------------- */}
       <section className="flex flex-col gap-3">
