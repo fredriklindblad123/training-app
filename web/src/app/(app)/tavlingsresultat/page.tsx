@@ -632,220 +632,6 @@ export default async function TavlingsresultatPage({
         />
       )}
 
-      {/* ---------------- Tävlingar ---------------- */}
-      <section id="tavlingar" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
-        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Prioriteten styr hur planeringen toppar. A är säsongens huvudmål och får en
-          nedtrappning före sig; C är träningstävling och planeras rakt igenom.
-        </p>
-
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          {/* Årsväljare. Byggd ur datan (competitionYears), inte en hårdkodad
-           * lista — annars slutar den fungera så fort ett nytt år börjar
-           * tävlas i. "Alla år" ligger sist så historiken alltid går att nå,
-           * men aldrig är förvalet. */}
-          <div className="flex flex-wrap gap-1 text-sm" role="group" aria-label="Tävlingsår">
-            {competitionYears.map((year) => (
-              <Link
-                key={year}
-                href={competitionHref({ tavlingsAr: year })}
-                aria-current={tavlingsAr === year ? "page" : undefined}
-                className={`rounded px-3 py-1 ${
-                  tavlingsAr === year
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                }`}
-              >
-                {year} ({competitionCountsByYear.get(year)})
-              </Link>
-            ))}
-            <Link
-              href={competitionHref({ tavlingsAr: "alla" })}
-              aria-current={tavlingsAr === "alla" ? "page" : undefined}
-              className={`rounded px-3 py-1 ${
-                tavlingsAr === "alla"
-                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                  : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-              }`}
-            >
-              Alla år ({allCompetitions.length})
-            </Link>
-          </div>
-
-          <div className="flex gap-1 text-sm" role="group" aria-label="Inne eller ute">
-            {(
-              [
-                { key: "alla", label: "Alla banor" },
-                { key: "inne", label: SEASON_LABELS.indoor },
-                { key: "ute", label: SEASON_LABELS.outdoor },
-              ] as const
-            ).map((opt) => (
-              <Link
-                key={opt.key}
-                href={competitionHref({ tavlingsBana: opt.key })}
-                aria-current={tavlingsBana === opt.key ? "page" : undefined}
-                className={`rounded px-3 py-1 ${
-                  tavlingsBana === opt.key
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-                }`}
-              >
-                {opt.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {managedCompetitions.length === 0 && (
-          <p className="text-sm text-zinc-400 dark:text-zinc-600">
-            Inga tävlingar {tavlingsAr === "alla" ? "" : `${tavlingsAr} `}
-            {tavlingsBana !== "alla" ? `(${tavlingsBana === "inne" ? "inomhus" : "utomhus"}) ` : ""}
-            än.
-          </p>
-        )}
-
-        {managedCompetitions.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {managedCompetitions.map((c) => (
-              <div
-                key={c.id}
-                className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <div className="flex items-baseline gap-2">
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                        c.priority === "A"
-                          ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
-                          : c.priority === "B"
-                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                      }`}
-                    >
-                      {c.priority}
-                    </span>
-                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
-                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {c.competition_date}
-                      {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
-                      {c.location ? ` · ${c.location}` : ""}
-                    </span>
-                  </div>
-                  <form action={deleteCompetition}>
-                    <input type="hidden" name="id" value={c.id} />
-                    <button
-                      type="submit"
-                      className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                    >
-                      Ta bort
-                    </button>
-                  </form>
-                </div>
-
-                {c.competition_events.length > 0 && (
-                  <div className="mt-3 flex flex-col gap-2">
-                    {c.competition_events
-                      .slice()
-                      .sort((a, b) => a.event.localeCompare(b.event))
-                      .map((e) => (
-                        <form
-                          key={e.id}
-                          action={saveEventResult}
-                          className="flex flex-wrap items-end gap-2 text-sm"
-                        >
-                          <input type="hidden" name="event_id" value={e.id} />
-                          <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
-                            {e.event}
-                          </span>
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            mål {e.target_result ?? "—"}
-                          </span>
-                          <input
-                            name="actual_result"
-                            defaultValue={e.actual_result ?? ""}
-                            placeholder="resultat"
-                            className={`${input} w-28`}
-                          />
-                          <input
-                            name="placement"
-                            type="number"
-                            min="1"
-                            defaultValue={e.placement ?? ""}
-                            placeholder="plats"
-                            className={`${input} w-20`}
-                          />
-                          <button type="submit" className={ghostBtn}>
-                            Spara
-                          </button>
-                        </form>
-                      ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Lägg till tävling
-          </summary>
-          <form action={createCompetition} className="mt-3 flex flex-wrap items-end gap-3">
-            {/* Så att createCompetition kan avgöra om det aktiva filtret
-             * skulle dölja den nyskapade tävlingen och navigera om till rätt
-             * år/bana i så fall — se motiveringen i actions.ts. */}
-            <input type="hidden" name="current_tavlingsAr" value={tavlingsAr} />
-            <input type="hidden" name="current_tavlingsBana" value={tavlingsBana} />
-            <input type="hidden" name="athlete" value={scopedUserId} />
-            <Field label="Namn">
-              <input name="name" required placeholder="Inomhus-SM" className={input} />
-            </Field>
-            <Field label="Datum">
-              <input type="date" name="competition_date" required className={input} />
-            </Field>
-            <Field label="Plats">
-              <input name="location" placeholder="Göteborg" className={input} />
-            </Field>
-            <Field label="Inne/ute">
-              <select name="venue" className={input} defaultValue="">
-                <option value="">—</option>
-                <option value="indoor">{SEASON_LABELS.indoor}</option>
-                <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-              </select>
-            </Field>
-            <Field label="Prioritet">
-              <select name="priority" className={input} defaultValue="C">
-                {(["A", "B", "C"] as const).map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_LABELS[p]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Grenar (komma mellan)">
-              <input
-                name="events"
-                list="common-events"
-                placeholder="1500m, 800m"
-                className={input}
-              />
-              <datalist id="common-events">
-                {COMMON_EVENTS.map((e) => (
-                  <option key={e} value={e} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label="Måltid (första grenen)">
-              <input name="target_result" placeholder="4:35.00" className={input} />
-            </Field>
-            <button type="submit" className={primaryBtn}>
-              Lägg till
-            </button>
-          </form>
-        </details>
-      </section>
-
       <section className="flex flex-col gap-4">
         <div>
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Grenutveckling</h2>
@@ -867,7 +653,7 @@ export default async function TavlingsresultatPage({
             <a href="#tavlingar" className="underline">
               Tävlingar
             </a>{" "}
-            ovan.
+            nedan.
           </p>
         ) : eventOptions.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
@@ -876,7 +662,7 @@ export default async function TavlingsresultatPage({
             <a href="#tavlingar" className="underline">
               Tävlingar
             </a>{" "}
-            ovan.
+            nedan.
           </p>
         ) : (
           <>
@@ -1106,6 +892,220 @@ export default async function TavlingsresultatPage({
             )}
           </>
         )}
+      </section>
+
+      {/* ---------------- Tävlingar ---------------- */}
+      <section id="tavlingar" className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
+        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+          Prioriteten styr hur planeringen toppar. A är säsongens huvudmål och får en
+          nedtrappning före sig; C är träningstävling och planeras rakt igenom.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {/* Årsväljare. Byggd ur datan (competitionYears), inte en hårdkodad
+           * lista — annars slutar den fungera så fort ett nytt år börjar
+           * tävlas i. "Alla år" ligger sist så historiken alltid går att nå,
+           * men aldrig är förvalet. */}
+          <div className="flex flex-wrap gap-1 text-sm" role="group" aria-label="Tävlingsår">
+            {competitionYears.map((year) => (
+              <Link
+                key={year}
+                href={competitionHref({ tavlingsAr: year })}
+                aria-current={tavlingsAr === year ? "page" : undefined}
+                className={`rounded px-3 py-1 ${
+                  tavlingsAr === year
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                }`}
+              >
+                {year} ({competitionCountsByYear.get(year)})
+              </Link>
+            ))}
+            <Link
+              href={competitionHref({ tavlingsAr: "alla" })}
+              aria-current={tavlingsAr === "alla" ? "page" : undefined}
+              className={`rounded px-3 py-1 ${
+                tavlingsAr === "alla"
+                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              }`}
+            >
+              Alla år ({allCompetitions.length})
+            </Link>
+          </div>
+
+          <div className="flex gap-1 text-sm" role="group" aria-label="Inne eller ute">
+            {(
+              [
+                { key: "alla", label: "Alla banor" },
+                { key: "inne", label: SEASON_LABELS.indoor },
+                { key: "ute", label: SEASON_LABELS.outdoor },
+              ] as const
+            ).map((opt) => (
+              <Link
+                key={opt.key}
+                href={competitionHref({ tavlingsBana: opt.key })}
+                aria-current={tavlingsBana === opt.key ? "page" : undefined}
+                className={`rounded px-3 py-1 ${
+                  tavlingsBana === opt.key
+                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                }`}
+              >
+                {opt.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {managedCompetitions.length === 0 && (
+          <p className="text-sm text-zinc-400 dark:text-zinc-600">
+            Inga tävlingar {tavlingsAr === "alla" ? "" : `${tavlingsAr} `}
+            {tavlingsBana !== "alla" ? `(${tavlingsBana === "inne" ? "inomhus" : "utomhus"}) ` : ""}
+            än.
+          </p>
+        )}
+
+        {managedCompetitions.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {managedCompetitions.map((c) => (
+              <div
+                key={c.id}
+                className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                        c.priority === "A"
+                          ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                          : c.priority === "B"
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                            : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                      }`}
+                    >
+                      {c.priority}
+                    </span>
+                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
+                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                      {c.competition_date}
+                      {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
+                      {c.location ? ` · ${c.location}` : ""}
+                    </span>
+                  </div>
+                  <form action={deleteCompetition}>
+                    <input type="hidden" name="id" value={c.id} />
+                    <button
+                      type="submit"
+                      className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                    >
+                      Ta bort
+                    </button>
+                  </form>
+                </div>
+
+                {c.competition_events.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {c.competition_events
+                      .slice()
+                      .sort((a, b) => a.event.localeCompare(b.event))
+                      .map((e) => (
+                        <form
+                          key={e.id}
+                          action={saveEventResult}
+                          className="flex flex-wrap items-end gap-2 text-sm"
+                        >
+                          <input type="hidden" name="event_id" value={e.id} />
+                          <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
+                            {e.event}
+                          </span>
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            mål {e.target_result ?? "—"}
+                          </span>
+                          <input
+                            name="actual_result"
+                            defaultValue={e.actual_result ?? ""}
+                            placeholder="resultat"
+                            className={`${input} w-28`}
+                          />
+                          <input
+                            name="placement"
+                            type="number"
+                            min="1"
+                            defaultValue={e.placement ?? ""}
+                            placeholder="plats"
+                            className={`${input} w-20`}
+                          />
+                          <button type="submit" className={ghostBtn}>
+                            Spara
+                          </button>
+                        </form>
+                      ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
+            Lägg till tävling
+          </summary>
+          <form action={createCompetition} className="mt-3 flex flex-wrap items-end gap-3">
+            {/* Så att createCompetition kan avgöra om det aktiva filtret
+             * skulle dölja den nyskapade tävlingen och navigera om till rätt
+             * år/bana i så fall — se motiveringen i actions.ts. */}
+            <input type="hidden" name="current_tavlingsAr" value={tavlingsAr} />
+            <input type="hidden" name="current_tavlingsBana" value={tavlingsBana} />
+            <input type="hidden" name="athlete" value={scopedUserId} />
+            <Field label="Namn">
+              <input name="name" required placeholder="Inomhus-SM" className={input} />
+            </Field>
+            <Field label="Datum">
+              <input type="date" name="competition_date" required className={input} />
+            </Field>
+            <Field label="Plats">
+              <input name="location" placeholder="Göteborg" className={input} />
+            </Field>
+            <Field label="Inne/ute">
+              <select name="venue" className={input} defaultValue="">
+                <option value="">—</option>
+                <option value="indoor">{SEASON_LABELS.indoor}</option>
+                <option value="outdoor">{SEASON_LABELS.outdoor}</option>
+              </select>
+            </Field>
+            <Field label="Prioritet">
+              <select name="priority" className={input} defaultValue="C">
+                {(["A", "B", "C"] as const).map((p) => (
+                  <option key={p} value={p}>
+                    {PRIORITY_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Grenar (komma mellan)">
+              <input
+                name="events"
+                list="common-events"
+                placeholder="1500m, 800m"
+                className={input}
+              />
+              <datalist id="common-events">
+                {COMMON_EVENTS.map((e) => (
+                  <option key={e} value={e} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="Måltid (första grenen)">
+              <input name="target_result" placeholder="4:35.00" className={input} />
+            </Field>
+            <button type="submit" className={primaryBtn}>
+              Lägg till
+            </button>
+          </form>
+        </details>
       </section>
     </div>
   );
