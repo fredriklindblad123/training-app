@@ -1,10 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { generateFromTemplate, type RepGroupInput, type TemplateItem } from "@/lib/planning";
 
-/* Rollout-motorn som håller veckomallar och kalenderns planned_workouts
- * synkade — flyttad hit från sasongen/actions.ts 2026-08-16 så att både
- * /arsplan (blockskapande) och /detaljplan (mallredigering) kan anropa
- * exakt samma idempotenta logik utan att den kopieras och driftar isär. */
+/* Rollout-motorn som håller ett blocks veckomönster och kalenderns
+ * planned_workouts synkade — flyttad hit från sasongen/actions.ts
+ * 2026-08-16, förenklad 2026-08-17 när "mall" (week_templates) togs bort
+ * som eget återanvändbart objekt: ett block äger sitt eget veckomönster
+ * direkt via week_template_items.block_id, ingen (ägare, fas)-matchning
+ * mot andra block längre. */
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 export type BlockRange = { id: string; start_date: string; end_date: string };
@@ -23,18 +25,17 @@ export async function athletesForBlock(
 }
 
 /**
- * Rullar ut en mall i ett block automatiskt. Ersätter det tidigare manuella
- * "Rulla ut"-steget: så fort ett block finns för en blocktyp, eller ett pass
- * läggs till i en mall för den typen, ska det synas i kalendern direkt.
+ * Rullar ut ett blocks eget veckomönster för EN löpare. Ersätter det
+ * tidigare manuella "Rulla ut"-steget: så fort ett block finns, eller ett
+ * pass läggs till i dess mönster, ska det synas i kalendern direkt.
  *
  * Hoppar över dagar som redan har ett planerat pass i samma slot, så att
  * körningen aldrig skriver över något som lagts in för hand och kan köras om
  * (t ex efter att ett blocks datum ändrats) utan att skapa dubbletter.
  */
-export async function syncTemplateIntoBlock(
+async function syncItemsIntoBlock(
   supabase: SupabaseServerClient,
   userId: string,
-  templateId: string,
   block: BlockRange,
 ) {
   // template_rep_groups hämtas nästlat (K1) så att repgrupperna följer med
@@ -48,7 +49,7 @@ export async function syncTemplateIntoBlock(
       "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, " +
         "template_rep_groups(sort_order, reps, distance_meters, duration_seconds, target_pace_seconds_per_km, target_hr_low, target_hr_high, recovery_seconds, recovery_kind, note)",
     )
-    .eq("template_id", templateId);
+    .eq("block_id", block.id);
   if (!items || items.length === 0) return;
 
   const { data: existing } = await supabase
@@ -76,7 +77,6 @@ export async function syncTemplateIntoBlock(
 
   const rows = generateFromTemplate({
     userId,
-    templateId,
     blockId: block.id,
     items: templateItems,
     from: block.start_date,
@@ -107,7 +107,6 @@ export async function syncTemplateIntoBlock(
       target_duration_seconds: w.target_duration_seconds,
       training_factor: w.training_factor,
       block_id: w.block_id,
-      template_id: w.template_id,
       status: w.status,
     }));
     const { data: inserted } = await supabase
@@ -138,54 +137,14 @@ export async function syncTemplateIntoBlock(
   }
 }
 
-/** Synkar alla mallar för ett blocks ägare+fas in i blocket, för VARJE
- * löpare blocket gäller för — anropas när ett block skapas eller ändras
- * (nytt datumintervall, ny fas, eller nya löpare). `ownerId` är vem som äger
- * blocket och mallarna (coachen för ett delat block, löparen själv för ett
- * självcoachat) — INTE nödvändigtvis samma person passen skrivs in på. Det
- * är season_block_athletes (athletesForBlock) som avgör vilka löpares
+/** Synkar ett blocks eget veckomönster för VARJE löpare blocket gäller för
+ * — anropas när blocket skapas eller ändras (nytt datumintervall, nya
+ * löpare) och när ett pass läggs till/tas bort i mönstret. Det är
+ * season_block_athletes (athletesForBlock) som avgör vilka löpares
  * kalendrar som faktiskt får passen. */
-export async function syncBlockWithTemplates(
-  supabase: SupabaseServerClient,
-  ownerId: string,
-  block: BlockRange & { phase: string },
-) {
-  const { data: templates } = await supabase
-    .from("week_templates")
-    .select("id")
-    .eq("user_id", ownerId)
-    .eq("phase", block.phase);
-  if (!templates || templates.length === 0) return;
-
+export async function syncBlockPattern(supabase: SupabaseServerClient, block: BlockRange) {
   const athleteIds = await athletesForBlock(supabase, block.id);
-  for (const t of templates) {
-    for (const athleteId of athleteIds) {
-      await syncTemplateIntoBlock(supabase, athleteId, t.id as string, block);
-    }
-  }
-}
-
-/** Synkar en mall in i alla befintliga block av dess fas, för varje löpare
- * respektive block gäller för — anropas när ett pass läggs till i mallen.
- * Härleder ägaren ur mallen själv (inte klienten) — mallen finns redan och
- * RLS avgör om anroparen får nå den. */
-export async function syncTemplateAcrossBlocks(supabase: SupabaseServerClient, templateId: string) {
-  const { data: template } = await supabase
-    .from("week_templates")
-    .select("user_id, phase")
-    .eq("id", templateId)
-    .maybeSingle();
-  if (!template?.phase) return;
-
-  const { data: blocks } = await supabase
-    .from("season_blocks")
-    .select("id, start_date, end_date")
-    .eq("user_id", template.user_id)
-    .eq("phase", template.phase);
-  for (const b of (blocks ?? []) as BlockRange[]) {
-    const athleteIds = await athletesForBlock(supabase, b.id);
-    for (const athleteId of athleteIds) {
-      await syncTemplateIntoBlock(supabase, athleteId, templateId, b);
-    }
+  for (const athleteId of athleteIds) {
+    await syncItemsIntoBlock(supabase, athleteId, block);
   }
 }

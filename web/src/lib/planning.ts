@@ -366,28 +366,26 @@ export type GeneratedWorkout = {
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
   training_factor: string | null;
-  block_id: string | null;
-  template_id: string;
+  block_id: string;
   status: "planned";
   /** Repgrupperna som ska kopieras in på det nya planerade passet. Kan inte
    * skickas med i samma insert som passet självt — planned_rep_groups pekar
    * på passets id, som inte finns förrän insert-raden kommit tillbaka. Se
-   * syncTemplateIntoBlock i planering/actions.ts för hur det löses. */
+   * syncItemsIntoBlock i lib/template-sync.ts för hur det löses. */
   rep_groups: RepGroupInput[];
 };
 
 /**
- * Rullar ut en veckomall över ett datumintervall.
+ * Rullar ut ett blocks veckomönster över dess datumintervall.
  *
- * Genererar ett pass per mallrad och vecka. `existingKeys` är nycklar
+ * Genererar ett pass per mönsterrad och vecka. `existingKeys` är nycklar
  * (`datum|slot`) som redan har ett planerat pass — de hoppas över, så att en
  * utrullning aldrig skriver över något man lagt in för hand. Det är också
- * det som gör att samma mall kan rullas ut igen efter att intervallet
+ * det som gör att mönstret kan rullas ut igen efter att intervallet
  * förlängts, utan dubbletter.
  */
 export function generateFromTemplate({
   userId,
-  templateId,
   blockId,
   items,
   from,
@@ -395,8 +393,7 @@ export function generateFromTemplate({
   existingKeys,
 }: {
   userId: string;
-  templateId: string;
-  blockId: string | null;
+  blockId: string;
   items: TemplateItem[];
   from: string;
   to: string;
@@ -427,7 +424,6 @@ export function generateFromTemplate({
         target_duration_seconds: item.target_duration_seconds,
         training_factor: item.training_factor ?? null,
         block_id: blockId,
-        template_id: templateId,
         status: "planned",
         // Fallgrop 3 i K1: missas den här kopian blir mallarna tomma skal
         // och tränaren skriver om kvalitetspassen varje vecka. Nytt

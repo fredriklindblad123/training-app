@@ -1,12 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import {
-  canEditPlanning,
-  getScopedProfile,
-  planningOwnerId,
-  resolveScopedUserId,
-  viewableAthletes,
-} from "@/lib/auth-scope";
+import { canEditPlanning, getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   SeasonTimeline,
@@ -122,7 +116,6 @@ function AthleteTargetFields({
  * varför. */
 function ReadOnlyBlockSummary({
   block,
-  templateNames,
 }: {
   block: {
     focus: string | null;
@@ -132,7 +125,6 @@ function ReadOnlyBlockSummary({
     hours_count: number | null;
     has_test: boolean;
   };
-  templateNames: string[];
 }) {
   const bits = [
     block.sessions_count != null ? `${block.sessions_count} pass/vecka` : null,
@@ -145,7 +137,6 @@ function ReadOnlyBlockSummary({
     <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
       {block.focus && <p>{block.focus}</p>}
       <p>{bits.length > 0 ? bits.join(" · ") : "Ingen standardvecka ifylld ännu."}</p>
-      {templateNames.length > 0 && <p>Veckomallar: {templateNames.join(", ")}</p>}
     </div>
   );
 }
@@ -555,11 +546,8 @@ export default async function ArsplanPage({
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null; // Layouten redirectar redan utan inloggning.
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
-  // Vem som äger block/mallar (coachen för delad planering, löparen själv
-  // annars) — inte nödvändigtvis samma som scopedUserId, se planningOwnerId.
   // canEdit styr om redigeringsformulären visas alls (RLS är den faktiska
   // spärren, se migration 20260816100000).
-  const owner = planningOwnerId(scoped);
   const canEdit = canEditPlanning(scoped);
 
   // Block är kopplade till löpare via season_block_athletes, inte user_id
@@ -573,9 +561,7 @@ export default async function ArsplanPage({
 
   const [
     { data: blocks },
-    { data: templates },
     { data: plannedCounts },
-    { data: blockTemplateLinks },
     { data: availabilityPeriods },
     { data: timelineCompetitionRows },
     { data: nextACompetition },
@@ -584,24 +570,11 @@ export default async function ArsplanPage({
     blockIds.length > 0
       ? supabase.from("season_blocks").select("*").in("id", blockIds).order("start_date")
       : Promise.resolve({ data: [] as never[] }),
-    // Bara namn+fas här — dag-för-dag-innehållet redigeras på /detaljplan.
-    // Mallar ägs av samma person som blocken (owner), inte nödvändigtvis den
-    // löpare som råkar vara vald i växlaren — se planningOwnerId.
-    supabase.from("week_templates").select("id, name, phase").eq("user_id", owner),
     supabase
       .from("planned_workouts")
       .select("scheduled_date")
       .eq("user_id", scopedUserId)
       .gte("scheduled_date", today),
-    // Vilka mallar som redan rullats ut i vilket block — härlett ur de
-    // planerade passens egna block_id/template_id, eftersom det inte finns
-    // någon separat koppling lagrad någon annanstans (se applyTemplate).
-    supabase
-      .from("planned_workouts")
-      .select("block_id, template_id")
-      .eq("user_id", scopedUserId)
-      .not("block_id", "is", null)
-      .not("template_id", "is", null),
     // K7: migrationen är inte körd (se AGENTS/uppdraget) — en saknad tabell
     // ger bara { data: null, error }, aldrig ett kastat fel, och `?? []`
     // nedan faller tillbaka till "inga perioder" precis som övriga frågor
@@ -671,15 +644,6 @@ export default async function ArsplanPage({
 
   const nextA = nextACompetition;
   const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
-
-  const templateNameById = new Map((templates ?? []).map((t) => [t.id as string, t.name as string]));
-  const templateIdsByBlock = new Map<string, Set<string>>();
-  for (const row of blockTemplateLinks ?? []) {
-    const blockId = row.block_id as string;
-    const set = templateIdsByBlock.get(blockId) ?? new Set<string>();
-    set.add(row.template_id as string);
-    templateIdsByBlock.set(blockId, set);
-  }
 
   // --- Årsplan-rutnät (speglar Excel-mallens Årsplan-flik) -----------------
   // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
@@ -1042,24 +1006,14 @@ export default async function ArsplanPage({
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
         <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Klicka på ett block för att redigera det. Veckomallarnas dag-för-dag-innehåll
-          hanteras på <Link href="/detaljplan" className="underline">Detaljplan</Link> — ett
-          pass som läggs till där dyker automatiskt upp i kalendern för varje block av samma fas.
+          Klicka på ett block för att redigera det. Blockets eget dag-för-dag-veckomönster
+          fylls i på <Link href="/detaljplan" className="underline">Detaljplan</Link> — ett
+          pass som läggs till där dyker automatiskt upp i kalendern.
         </p>
 
         {blockList.length > 0 && (
           <div className="flex flex-col gap-2">
             {blockList.map((b) => {
-              const linkedNames = [...(templateIdsByBlock.get(b.id) ?? [])]
-                .map((id) => templateNameById.get(id))
-                .filter((n): n is string => n != null);
-              // Mallar hör till en fas, inte till ett specifikt block — samma
-              // mall kan återanvändas av flera block av samma fas över
-              // säsonger. Bara namnen listas här, se /detaljplan för innehåll.
-              const matchingTemplateNames = (templates ?? [])
-                .filter((t) => t.phase === b.phase)
-                .map((t) => t.name as string);
-
               return (
                 <details
                   key={b.id}
@@ -1071,7 +1025,6 @@ export default async function ArsplanPage({
                       {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
                       {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""} · {b.start_date} –{" "}
                       {b.end_date} · {weeksBetween(b.start_date, b.end_date)} veckor
-                      {linkedNames.length > 0 ? ` · ${linkedNames.join(", ")}` : ""}
                     </span>
                   </summary>
 
@@ -1149,21 +1102,12 @@ export default async function ArsplanPage({
                     </form>
 
                     <div className="border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                      {matchingTemplateNames.length > 0 ? (
-                        <p>
-                          Veckomallar: {matchingTemplateNames.join(", ")} ·{" "}
-                          <Link href="/detaljplan" className="underline">
-                            Redigera i Detaljplan →
-                          </Link>
-                        </p>
-                      ) : (
-                        <p>
-                          Ingen veckomall för {PHASE_LABELS[b.phase]} än ·{" "}
-                          <Link href="/detaljplan" className="underline">
-                            Skapa en i Detaljplan →
-                          </Link>
-                        </p>
-                      )}
+                      <p>
+                        Veckomönster:{" "}
+                        <Link href="/detaljplan" className="underline">
+                          Redigera i Detaljplan →
+                        </Link>
+                      </p>
                     </div>
 
                     <form action={deleteBlock}>
@@ -1177,7 +1121,7 @@ export default async function ArsplanPage({
                     </form>
                   </div>
                   ) : (
-                    <ReadOnlyBlockSummary block={b} templateNames={matchingTemplateNames} />
+                    <ReadOnlyBlockSummary block={b} />
                   )}
                 </details>
               );

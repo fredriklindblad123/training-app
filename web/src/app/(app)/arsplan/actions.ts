@@ -9,7 +9,7 @@ import {
   type ScopedProfile,
 } from "@/lib/auth-scope";
 import { type AvailabilityKind, type PeriodType, type PhaseType } from "@/lib/planning";
-import { syncBlockWithTemplates } from "@/lib/template-sync";
+import { syncBlockPattern } from "@/lib/template-sync";
 
 /* Block och tillgänglighet (K7) — flyttat hit ur sasongen/actions.ts
  * 2026-08-17. Veckomallarnas dag-för-dag-innehåll (skapa/redigera mall,
@@ -136,7 +136,7 @@ export async function createBlock(formData: FormData) {
     .from("season_block_athletes")
     .insert(athleteIds.map((athlete_id) => ({ block_id: block.id, athlete_id })));
 
-  await syncBlockWithTemplates(supabase, scoped.userId, block);
+  await syncBlockPattern(supabase, block);
 
   refresh();
 }
@@ -155,8 +155,8 @@ export async function updateBlock(formData: FormData) {
   if (!name || !start || !end || !period || !phase) return;
   if (end < start) return;
 
-  // Ägaren härleds ur den uppdaterade raden (RLS avgör om anroparen fick
-  // uppdatera den alls) — inte ur klienten.
+  // RLS avgör om anroparen fick uppdatera raden alls — `block` är null (och
+  // vi avbryter) om inte.
   const { data: block } = await supabase
     .from("season_blocks")
     .update({
@@ -170,7 +170,7 @@ export async function updateBlock(formData: FormData) {
       ...standardWeekFieldsFromForm(formData),
     })
     .eq("id", id)
-    .select("user_id")
+    .select("id")
     .single();
   if (!block) return;
 
@@ -189,12 +189,7 @@ export async function updateBlock(formData: FormData) {
 
   // T ex ett förlängt slutdatum ska direkt ge fler pass i kalendern, utan
   // ett separat "rulla ut igen"-steg.
-  await syncBlockWithTemplates(supabase, block.user_id as string, {
-    id,
-    start_date: start,
-    end_date: end,
-    phase,
-  });
+  await syncBlockPattern(supabase, { id, start_date: start, end_date: end });
 
   refresh();
 }
