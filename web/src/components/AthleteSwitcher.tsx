@@ -2,9 +2,9 @@ import Link from "next/link";
 
 /* Löparväljare, samma knapprads-stil som redan fanns inline i /sasongen och
  * /flerarsplan — utbruten hit så att de coach-medvetna sidorna (dashboard,
- * kalender, trender, tävlingsresultat, sasongen) inte behöver upprepa samma
- * markup. `buildHref` låter varje sida bestämma exakt hur länken ser ut
- * (vilka egna filter/parametrar som ska bevaras).
+ * kalender, trender, tävlingsresultat, /arsplan, /detaljplan) inte behöver
+ * upprepa samma markup. `buildHref` låter varje sida bestämma exakt hur
+ * länken ser ut (vilka egna filter/parametrar som ska bevaras).
  *
  * 2026-08-16 (uttrycklig begäran): en coach som också tränar själv utan egen
  * tränare (Fredrik) behöver kunna växla till SIN EGEN vy också, inte bara

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   canEditPlanning,
@@ -21,40 +22,21 @@ import {
   PHASE_INTENT,
   PHASE_LABELS,
   PHASE_TYPES,
-  QUALITY_WORKOUT_TYPES,
   SEASON_LABELS,
-  SLOT_LABELS,
-  WEEKDAY_LABELS,
-  WORKOUT_LABELS,
-  WORKOUT_TYPES,
   toDateKey,
   weeksBetween,
   type AvailabilityKind,
   type PeriodType,
   type PhaseType,
-  type WorkoutType,
 } from "@/lib/planning";
-import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
-import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
 import {
-  addTemplateItem,
-  addTemplateRepGroup,
   createAvailabilityPeriod,
   createBlock,
-  createTemplate,
   deleteAvailabilityPeriod,
   deleteBlock,
-  deleteTemplate,
-  deleteTemplateItem,
-  deleteTemplateRepGroup,
   updateBlock,
-  updateTemplateRepGroup,
 } from "./actions";
-import {
-  TRAINING_FACTORS,
-  TRAINING_FACTOR_GROUP_LABELS,
-  type TrainingFactorGroup,
-} from "@/lib/training-factors";
+import { TRAINING_FACTORS, TRAINING_FACTOR_GROUP_LABELS, type TrainingFactorGroup } from "@/lib/training-factors";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -80,13 +62,20 @@ import {
   type InterruptionPeriod,
   type InterruptionPrecursor,
 } from "@/lib/interruption-timeline";
+import { buildArsplanWeeks, computeMergeRuns, type ArsplanCompetitionInput } from "@/lib/arsplan-grid";
+import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
+
+/* Årsplan: säsongens block, standardvecka och ett rutnät som speglar
+ * Excel-mallens Årsplan-flik (en kolumn per vecka) — flyttad hit ur
+ * /sasongen 2026-08-17. Veckomallarnas dag-för-dag-innehåll (tidigare
+ * nästlat under varje block) flyttades samtidigt till /detaljplan, som
+ * speglar mallens Detaljplan-flik — se motiveringen i lib/template-sync.ts
+ * och lib/arsplan-grid.ts. */
 
 const input =
   "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const primaryBtn =
   "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
-const ghostBtn =
-  "w-fit rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -161,18 +150,14 @@ function ReadOnlyBlockSummary({
   );
 }
 
-/** Standardveckan för ett block — samma Årsplan-parametrar som tidigare
- * fylldes i en gång per vecka (season_week_plans, se
- * supabase/migrations/20260815100000_block_period_redesign.sql) gäller nu
- * för varje kalendervecka inom blockets datumintervall. Delad mellan
- * redigerings- och skapa-formulären nedan, så fältlistan aldrig kan glida
- * isär mellan dem. */
-/** Blockets aggregatsiffror (Årsplan: pass/dagar/tävlingsstarter/timmar/
- * test per vecka) — bara de här, INTE träningsfaktorerna (Snabbhet/
- * Uthållighet/...). Rättat 2026-08-16: den detaljnivån hör hemma per pass,
- * inte som en klumpsumma för blocket — se Träningsfaktor-fältet på "Lägg
- * till pass" i veckomallen nedan, och training_factor på
- * week_template_items/planned_workouts. */
+/** Standardveckan för ett block — Årsplan-parametrarna (pass/dagar/
+ * tävlingsstarter/timmar/test) gäller för varje kalendervecka inom blockets
+ * datumintervall, och används som förval i rutnätet nedan tills Detaljplan
+ * har fyllts i (se `usedFallback` i lib/arsplan-grid.ts). Delad mellan
+ * redigerings- och skapa-formulären, så fältlistan aldrig kan glida isär
+ * mellan dem. INTE träningsfaktorerna (Snabbhet/Uthållighet/...) — den
+ * detaljnivån hör hemma per pass i Detaljplan, inte som en klumpsumma för
+ * blocket. */
 function StandardWeekFields({
   block,
 }: {
@@ -187,7 +172,7 @@ function StandardWeekFields({
   return (
     <div className="flex flex-col gap-3 rounded border border-zinc-100 p-3 dark:border-zinc-800">
       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-        Standardvecka — gäller varje vecka i blocket
+        Standardvecka — förval i Årsplan-rutnätet tills Detaljplan fyllts i
       </div>
       <div className="flex flex-wrap gap-3">
         <Field label="Pass">
@@ -229,29 +214,6 @@ function StandardWeekFields({
         </label>
       </div>
     </div>
-  );
-}
-
-/** Träningsfaktor-väljare för ett enskilt pass (Årsplan-raden passet räknas
- * mot, t.ex. "Tröskel" eller "Maximal" snabbhet) — grupperad precis som
- * Årsplan-fliken. Fritt att lämna tom; inte alla pass (vila, ett obestämt
- * lugnt pass) hör till en specifik faktor. */
-function TrainingFactorSelect({ defaultValue }: { defaultValue?: string | null }) {
-  return (
-    <Field label="Träningsfaktor">
-      <select name="training_factor" defaultValue={defaultValue ?? ""} className={input}>
-        <option value="">— Ingen —</option>
-        {(Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[]).map((group) => (
-          <optgroup key={group} label={TRAINING_FACTOR_GROUP_LABELS[group]}>
-            {TRAINING_FACTORS.filter((f) => f.group === group).map((f) => (
-              <option key={f.key} value={f.key}>
-                {f.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-    </Field>
   );
 }
 
@@ -564,7 +526,7 @@ function formatPeriodRange(period: InterruptionPeriod): string {
   return fromMonth === toMonth ? `${fromLabel.split(" ")[0]}–${toLabel}` : `${fromLabel} – ${toLabel}`;
 }
 
-export default async function PlaneringPage({
+export default async function ArsplanPage({
   searchParams,
 }: {
   searchParams: Promise<{
@@ -622,16 +584,10 @@ export default async function PlaneringPage({
     blockIds.length > 0
       ? supabase.from("season_blocks").select("*").in("id", blockIds).order("start_date")
       : Promise.resolve({ data: [] as never[] }),
-    // template_rep_groups(*) hämtas nästlat två led ner (K1) — en saknad
-    // tabell (migrationen inte körd) ger bara undefined per mallrad, aldrig
-    // ett kastat fel. Alla ställen nedan som läser det gör det via `?? []`.
+    // Bara namn+fas här — dag-för-dag-innehållet redigeras på /detaljplan.
     // Mallar ägs av samma person som blocken (owner), inte nödvändigtvis den
     // löpare som råkar vara vald i växlaren — se planningOwnerId.
-    supabase
-      .from("week_templates")
-      .select("*, week_template_items(*, template_rep_groups(*))")
-      .eq("user_id", owner)
-      .order("created_at"),
+    supabase.from("week_templates").select("id, name, phase").eq("user_id", owner),
     supabase
       .from("planned_workouts")
       .select("scheduled_date")
@@ -651,14 +607,14 @@ export default async function PlaneringPage({
     // nedan faller tillbaka till "inga perioder" precis som övriga frågor
     // på den här sidan gör för sina egna eventuellt okörda tabeller.
     supabase.from("availability_periods").select("*").eq("user_id", scopedUserId).order("start_date"),
-    // Bara till för tidslinjens markörer (SeasonTimeline) — att lägga
-    // till/redigera/logga resultat för en tävling flyttade till
-    // /tavlingsresultat 2026-08-16 (retrospektivt, inte säsongsplanering),
-    // så den här sidan behöver bara den smala raden för att rita ut var
-    // tävlingarna hamnar mot blocken, ingen filtrering.
+    // Till tidslinjens markörer (SeasonTimeline) OCH Årsplan-rutnätets
+    // tävlingsrad — competition_events(event) hämtas med här så rutnätet
+    // slipper en egen fråga. Att lägga till/redigera/logga resultat för en
+    // tävling flyttade till /tavlingsresultat 2026-08-16 (retrospektivt,
+    // inte säsongsplanering).
     supabase
       .from("competitions")
-      .select("id, name, competition_date, priority, venue")
+      .select("id, name, competition_date, priority, venue, competition_events(event)")
       .eq("user_id", scopedUserId)
       .order("competition_date"),
     // "Nästa A-tävling" i läget-just-nu-korten — egen liten fråga (bara
@@ -694,13 +650,16 @@ export default async function PlaneringPage({
   function athleteHref(id: string): string {
     const params = new URLSearchParams();
     params.set("athlete", id);
-    return `/sasongen?${params.toString()}`;
+    return `/arsplan?${params.toString()}`;
   }
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
-  // fokustexten, därav den utökade typen här.
+  // fokustexten, därav den utökade typen här. Samma form täcker också
+  // ArsplanBlockInput (lib/arsplan-grid.ts) rakt av.
   const blockList = (blocks ?? []) as (TimelineBlock & { focus: string | null })[];
-  const competitionList = (timelineCompetitionRows ?? []) as TimelineCompetition[];
+  const competitionList = (timelineCompetitionRows ?? []) as (TimelineCompetition & {
+    competition_events: { event: string }[];
+  })[];
 
   const availabilityList = (availabilityPeriods ?? []) as {
     id: string;
@@ -721,6 +680,58 @@ export default async function PlaneringPage({
     set.add(row.template_id as string);
     templateIdsByBlock.set(blockId, set);
   }
+
+  // --- Årsplan-rutnät (speglar Excel-mallens Årsplan-flik) -----------------
+  // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
+  // använder, se lib/arsplan-grid.ts — de kan aldrig visa olika siffror för
+  // samma data. Bara planned_workouts/competitions i blockens datumspann
+  // behövs, inte hela historiken.
+  const gridMinDate = blockList.reduce((m, b) => (b.start_date < m ? b.start_date : m), blockList[0]?.start_date ?? "");
+  const gridMaxDate = blockList.reduce((m, b) => (b.end_date > m ? b.end_date : m), blockList[0]?.end_date ?? "");
+
+  const [{ data: gridWorkoutRows }, { data: gridActivityRows }] =
+    blockList.length === 0
+      ? [{ data: [] }, { data: [] }]
+      : await Promise.all([
+          supabase
+            .from("planned_workouts")
+            .select("id, scheduled_date, slot, workout_type, title, target_distance_meters, target_duration_seconds, training_factor")
+            .eq("user_id", scopedUserId)
+            .gte("scheduled_date", gridMinDate)
+            .lte("scheduled_date", gridMaxDate),
+          supabase
+            .from("activities")
+            .select(SESSION_ACTIVITY_COLUMNS)
+            .eq("user_id", scopedUserId)
+            .gte("start_time", gridMinDate)
+            .order("start_time"),
+        ]);
+
+  const gridPlannedWorkouts = (gridWorkoutRows ?? []) as (PlannedWorkout & { training_factor: string | null })[];
+  const arsplanWeeks = buildArsplanWeeks(
+    blockList,
+    gridPlannedWorkouts,
+    (competitionList ?? []) as ArsplanCompetitionInput[],
+  );
+
+  // Utfall per vecka (mervärdet jämfört med Excel: planen syns bredvid vad
+  // som faktiskt genomfördes, utan att man behöver jämföra två dokument).
+  // matchPlanToSessions/summarizeCompliance är samma rena funktioner
+  // kalenderns dag/veckovy och /trender redan använder, se lib/plan-matching.ts.
+  const gridSessions = groupActivitiesIntoSessions(
+    (gridActivityRows ?? []) as unknown as SessionActivity[],
+  );
+  const gridMatches = matchPlanToSessions(gridPlannedWorkouts, gridSessions);
+  const matchesByWeek = new Map<string, typeof gridMatches>();
+  for (const m of gridMatches) {
+    const date = m.planned?.scheduled_date ?? m.session?.date;
+    if (!date) continue;
+    const wk = isoWeekStart(date);
+    matchesByWeek.set(wk, [...(matchesByWeek.get(wk) ?? []), m]);
+  }
+  const complianceByWeek = new Map(
+    [...matchesByWeek.entries()].map(([wk, matches]) => [wk, summarizeCompliance(matches)]),
+  );
 
   // --- K6: avbrottstidslinjen (docs/tranarperspektiv.md), flyttad hit från
   // /blocket (docs/tranarloopen.md 3.1) ---------------------------------------
@@ -816,11 +827,14 @@ export default async function PlaneringPage({
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Säsongsplanering</h1>
+        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Årsplan</h1>
         <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
-          kommer. En veckomall skapas en gång och rullas sedan ut över hela blocket — du
-          fyller aldrig i samma vecka två gånger.
+          kommer. Dag-för-dag-innehållet i varje veckomall redigeras på{" "}
+          <Link href="/detaljplan" className="underline">
+            Detaljplan
+          </Link>
+          .
         </p>
       </div>
 
@@ -870,23 +884,167 @@ export default async function PlaneringPage({
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Säsongsöversikt</h2>
-        {/* Tar samma årsfilter som tävlingslistan (competitionList är redan
-         * begränsad till tavlingsAr/tavlingsBana ovan) — med hela historiken
-         * (2019–2024 importerad) ritad i ett band blir markörerna för många
-         * för att gå att läsa, precis som listan. Blocken (blockList) filtreras
-         * inte: banden är redan få och kortlivade (en säsong i taget), så de
-         * blir aldrig oöverskådliga på samma sätt. Väljer man "Alla år" är
-         * det ett medvetet val att se allt, inklusive en tätare tidslinje. */}
         <SeasonTimeline blocks={blockList} competitions={competitionList} />
       </section>
 
+      {/* ---------------- Årsplan-rutnät ---------------- */}
+      {arsplanWeeks.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Årsplan</h2>
+            <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+              En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
+              räknas live ur faktiskt utrullade pass när Detaljplan är ifylld för veckan
+              (nedtonat = fortfarande bara standardveckans förval). Utfall visar hur många av
+              veckans planerade pass som faktiskt genomfördes.
+            </p>
+          </div>
+          <div className="w-full max-w-full overflow-x-auto">
+            <table className="w-max min-w-full text-left text-xs">
+              <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                <tr className="font-medium text-zinc-900 dark:text-zinc-100">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium dark:bg-zinc-950">
+                    Vecka #
+                  </th>
+                  {arsplanWeeks.map((w) => (
+                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
+                      {w.isoWeekNumber}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="text-zinc-500 dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal dark:bg-zinc-950">
+                    Månad
+                  </th>
+                  {arsplanWeeks.map((w) => (
+                    <td key={w.weekStart} className="py-1 pr-3">
+                      {w.monthLabel}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                    Period / fas
+                  </th>
+                  {(() => {
+                    const runs = computeMergeRuns(arsplanWeeks);
+                    const runByStart = new Map(runs.map((r) => [r.startIndex, r]));
+                    const covered = new Set<number>();
+                    for (const r of runs) for (let i = r.startIndex; i < r.startIndex + r.length; i++) covered.add(i);
+                    return arsplanWeeks.map((w, i) => {
+                      if (covered.has(i) && !runByStart.has(i)) return null;
+                      const run = runByStart.get(i);
+                      return (
+                        <td
+                          key={w.weekStart}
+                          colSpan={run?.length ?? 1}
+                          className="py-1 pr-3 text-zinc-600 dark:text-zinc-400"
+                        >
+                          {w.block ? `${PERIOD_LABELS[w.block.period]} · ${PHASE_LABELS[w.block.phase]}` : "–"}
+                        </td>
+                      );
+                    });
+                  })()}
+                </tr>
+                <tr>
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                    Pass
+                  </th>
+                  {arsplanWeeks.map((w) => (
+                    <td key={w.weekStart} className={`py-1 pr-3 tabular-nums ${w.usedFallback ? "text-zinc-400 italic dark:text-zinc-600" : ""}`}>
+                      {w.sessionsCount || "–"}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                    Dagar
+                  </th>
+                  {arsplanWeeks.map((w) => (
+                    <td key={w.weekStart} className={`py-1 pr-3 tabular-nums ${w.usedFallback ? "text-zinc-400 italic dark:text-zinc-600" : ""}`}>
+                      {w.daysCount || "–"}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                    Timmar
+                  </th>
+                  {arsplanWeeks.map((w) => (
+                    <td key={w.weekStart} className={`py-1 pr-3 tabular-nums ${w.usedFallback ? "text-zinc-400 italic dark:text-zinc-600" : ""}`}>
+                      {w.hoursCount ? (Math.round(w.hoursCount * 10) / 10) : "–"}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                    Tävlingsstarter
+                  </th>
+                  {arsplanWeeks.map((w) => (
+                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
+                      {w.startsCount || "–"}
+                    </td>
+                  ))}
+                </tr>
+                <tr className="font-medium text-zinc-900 dark:text-zinc-100">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium dark:bg-zinc-950">
+                    Utfall
+                  </th>
+                  {arsplanWeeks.map((w) => {
+                    const c = complianceByWeek.get(w.weekStart);
+                    return (
+                      <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
+                        {c && c.plannedCount > 0 ? `${c.completedCount}/${c.plannedCount}` : "–"}
+                      </td>
+                    );
+                  })}
+                </tr>
+                {(() => {
+                  let lastGroup: TrainingFactorGroup | null = null;
+                  return TRAINING_FACTORS.flatMap((factor) => {
+                    const rows = [];
+                    if (factor.group !== lastGroup) {
+                      rows.push(
+                        <tr key={`group-${factor.group}`}>
+                          <th
+                            scope="row"
+                            colSpan={arsplanWeeks.length + 1}
+                            className="sticky left-0 bg-white py-1 text-left font-medium italic text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400"
+                          >
+                            {TRAINING_FACTOR_GROUP_LABELS[factor.group]}
+                          </th>
+                        </tr>,
+                      );
+                      lastGroup = factor.group;
+                    }
+                    rows.push(
+                      <tr key={factor.key}>
+                        <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                          {factor.label}
+                        </th>
+                        {arsplanWeeks.map((w) => (
+                          <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
+                            {w.factorCounts[factor.key] ?? ""}
+                          </td>
+                        ))}
+                      </tr>,
+                    );
+                    return rows;
+                  });
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
         <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Klicka på ett block för att redigera det eller hantera dess veckomallar. Ett pass som
-          läggs till i en mall dyker automatiskt upp i kalendern för varje block av den typen.
+          Klicka på ett block för att redigera det. Veckomallarnas dag-för-dag-innehåll
+          hanteras på <Link href="/detaljplan" className="underline">Detaljplan</Link> — ett
+          pass som läggs till där dyker automatiskt upp i kalendern för varje block av samma fas.
         </p>
 
         {blockList.length > 0 && (
@@ -895,14 +1053,12 @@ export default async function PlaneringPage({
               const linkedNames = [...(templateIdsByBlock.get(b.id) ?? [])]
                 .map((id) => templateNameById.get(id))
                 .filter((n): n is string => n != null);
-              // Mallar hör till en blocktyp (t ex "grund"), inte till ett
-              // specifikt block — samma mall kan alltså återanvändas av flera
-              // block av samma typ över säsonger. Det är därför den visas
-              // här i stället för i en egen lista: den hör hemma där den
-              // faktiskt används.
-              const matchingTemplates = (templates ?? []).filter(
-                (t) => t.phase === b.phase,
-              );
+              // Mallar hör till en fas, inte till ett specifikt block — samma
+              // mall kan återanvändas av flera block av samma fas över
+              // säsonger. Bara namnen listas här, se /detaljplan för innehåll.
+              const matchingTemplateNames = (templates ?? [])
+                .filter((t) => t.phase === b.phase)
+                .map((t) => t.name as string);
 
               return (
                 <details
@@ -992,245 +1148,22 @@ export default async function PlaneringPage({
                       </button>
                     </form>
 
-                    <div className="border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                      <div className="mb-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                        Veckomallar för {PHASE_LABELS[b.phase]}
-                      </div>
-
-                      {matchingTemplates.length === 0 && (
-                        <p className="text-sm text-zinc-400 dark:text-zinc-600">
-                          Ingen mall för den här blocktypen än.
+                    <div className="border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                      {matchingTemplateNames.length > 0 ? (
+                        <p>
+                          Veckomallar: {matchingTemplateNames.join(", ")} ·{" "}
+                          <Link href="/detaljplan" className="underline">
+                            Redigera i Detaljplan →
+                          </Link>
+                        </p>
+                      ) : (
+                        <p>
+                          Ingen veckomall för {PHASE_LABELS[b.phase]} än ·{" "}
+                          <Link href="/detaljplan" className="underline">
+                            Skapa en i Detaljplan →
+                          </Link>
                         </p>
                       )}
-
-                      <div className="flex flex-col gap-2">
-                        {matchingTemplates.map((t) => {
-                          const items = (t.week_template_items ?? []) as {
-                            id: string;
-                            weekday: number;
-                            slot: number;
-                            workout_type: string;
-                            title: string | null;
-                            description: string | null;
-                            training_factor: string | null;
-                            template_rep_groups?: RepGroupRow[] | null;
-                          }[];
-                          const isLinked = linkedNames.includes(t.name as string);
-                          // K1: repgrupps-redigeraren visas bara för
-                          // kvalitetstyper som standard (fallgrop 1), men
-                          // aldrig hårt blockerad — redan inlagda grupper
-                          // (t.ex. efter ett typbyte) visas oavsett.
-                          const repEditableItems = items.filter(
-                            (it) =>
-                              QUALITY_WORKOUT_TYPES.includes(it.workout_type as WorkoutType) ||
-                              (it.template_rep_groups ?? []).length > 0,
-                          );
-                          return (
-                            <details
-                              key={t.id}
-                              className="rounded border border-zinc-200 p-3 dark:border-zinc-800"
-                            >
-                              <summary className="cursor-pointer">
-                                <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                                  {t.name}
-                                </span>
-                                <span className="ml-2 text-sm text-zinc-500 dark:text-zinc-400">
-                                  {items.length} pass/vecka
-                                  {isLinked ? " · utrullad i det här blocket" : ""}
-                                </span>
-                              </summary>
-
-                              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-7">
-                                {WEEKDAY_LABELS.map((label, wi) => {
-                                  const day = items
-                                    .filter((it) => it.weekday === wi + 1)
-                                    .sort((a, b2) => a.slot - b2.slot);
-                                  return (
-                                    <div key={label} className="flex flex-col gap-1">
-                                      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                                        {label.slice(0, 3)}
-                                      </div>
-                                      {day.length === 0 && (
-                                        <div className="text-xs text-zinc-300 dark:text-zinc-700">
-                                          —
-                                        </div>
-                                      )}
-                                      {day.map((it) => (
-                                        <div
-                                          key={it.id}
-                                          className="rounded bg-zinc-100 px-1.5 py-1 text-xs dark:bg-zinc-800"
-                                        >
-                                          <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                                            {WORKOUT_LABELS[
-                                              it.workout_type as keyof typeof WORKOUT_LABELS
-                                            ] ?? it.workout_type}
-                                          </div>
-                                          {it.title && (
-                                            <div className="text-zinc-600 dark:text-zinc-400">
-                                              {it.title}
-                                            </div>
-                                          )}
-                                          {it.training_factor && (
-                                            <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
-                                              {TRAINING_FACTORS.find((f) => f.key === it.training_factor)
-                                                ?.label ?? it.training_factor}
-                                            </div>
-                                          )}
-                                          {(() => {
-                                            // Samma nyckelformat som utfallets
-                                            // buildSessionSignature — se
-                                            // lib/session-signature.ts.
-                                            const sigLabel = plannedSignatureLabel(
-                                              (it.template_rep_groups ?? []).map(
-                                                (g): PlannedRepGroup => ({
-                                                  reps: g.reps,
-                                                  distanceMeters: g.distance_meters,
-                                                  durationSeconds: g.duration_seconds,
-                                                  sortOrder: g.sort_order,
-                                                }),
-                                              ),
-                                            );
-                                            return (
-                                              sigLabel && (
-                                                <div className="text-zinc-600 dark:text-zinc-400">
-                                                  {sigLabel}
-                                                </div>
-                                              )
-                                            );
-                                          })()}
-                                          {it.slot > 1 && (
-                                            <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
-                                              {SLOT_LABELS[it.slot]}
-                                            </div>
-                                          )}
-                                          <form action={deleteTemplateItem}>
-                                            <input type="hidden" name="id" value={it.id} />
-                                            <button
-                                              type="submit"
-                                              className="mt-0.5 text-[10px] text-zinc-400 hover:text-red-600"
-                                            >
-                                              ta bort
-                                            </button>
-                                          </form>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-
-                              {repEditableItems.length > 0 && (
-                                <div className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                                  <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                                    Repgrupper — samma struktur som ett enskilt planerat pass
-                                    (K1), så mallen bär med sig &ldquo;5×1000 m&rdquo; i stället
-                                    för bara en rubrik.
-                                  </div>
-                                  {/* Ligger utanför veckorutnätet ovan med flit: rutnätets
-                                   * kolumner är för smala för repgrupps-radens många fält, och
-                                   * en tränare redigerar ett pass i taget här ändå. */}
-                                  {repEditableItems.map((it) => (
-                                    <div key={it.id}>
-                                      <div className="mb-1 text-xs text-zinc-500 dark:text-zinc-400">
-                                        {WEEKDAY_LABELS[it.weekday - 1]} ·{" "}
-                                        {WORKOUT_LABELS[
-                                          it.workout_type as keyof typeof WORKOUT_LABELS
-                                        ] ?? it.workout_type}
-                                        {it.title ? ` · ${it.title}` : ""}
-                                      </div>
-                                      <RepGroupEditor
-                                        groups={it.template_rep_groups ?? []}
-                                        parentIdField="template_item_id"
-                                        parentId={it.id}
-                                        addAction={addTemplateRepGroup}
-                                        updateAction={updateTemplateRepGroup}
-                                        deleteAction={deleteTemplateRepGroup}
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              <form
-                                action={addTemplateItem}
-                                className="mt-4 flex flex-wrap items-end gap-2"
-                              >
-                                <input type="hidden" name="template_id" value={t.id} />
-                                <Field label="Dag">
-                                  <select name="weekday" className={input} defaultValue="1">
-                                    {WEEKDAY_LABELS.map((d, wi) => (
-                                      <option key={d} value={wi + 1}>
-                                        {d}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </Field>
-                                <Field label="Pass">
-                                  <select name="slot" className={input} defaultValue="1">
-                                    {[1, 2, 3].map((s) => (
-                                      <option key={s} value={s}>
-                                        {SLOT_LABELS[s]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </Field>
-                                <Field label="Typ">
-                                  <select name="workout_type" className={input} defaultValue="easy">
-                                    {WORKOUT_TYPES.map((w) => (
-                                      <option key={w} value={w}>
-                                        {WORKOUT_LABELS[w]}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </Field>
-                                <Field label="Rubrik">
-                                  <input name="title" placeholder="10x400m" className={input} />
-                                </Field>
-                                <Field label="Minuter">
-                                  <input
-                                    name="target_duration_minutes"
-                                    type="number"
-                                    min="0"
-                                    className={`${input} w-24`}
-                                  />
-                                </Field>
-                                <TrainingFactorSelect />
-                                <button type="submit" className={ghostBtn}>
-                                  Lägg till pass
-                                </button>
-                              </form>
-
-                              <form action={deleteTemplate} className="mt-3">
-                                <input type="hidden" name="id" value={t.id} />
-                                <button
-                                  type="submit"
-                                  className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                                >
-                                  Ta bort hela mallen
-                                </button>
-                              </form>
-                            </details>
-                          );
-                        })}
-                      </div>
-
-                      <form
-                        action={createTemplate}
-                        className="mt-3 flex flex-wrap items-end gap-3"
-                      >
-                        <input type="hidden" name="phase" value={b.phase} />
-                        <Field label="Ny mall för den här fasen">
-                          <input
-                            name="name"
-                            required
-                            placeholder="Grundvecka med dubbeltröskel"
-                            className={input}
-                          />
-                        </Field>
-                        <button type="submit" className={ghostBtn}>
-                          Skapa mall
-                        </button>
-                      </form>
                     </div>
 
                     <form action={deleteBlock}>
@@ -1244,7 +1177,7 @@ export default async function PlaneringPage({
                     </form>
                   </div>
                   ) : (
-                    <ReadOnlyBlockSummary block={b} templateNames={matchingTemplates.map((t) => t.name as string)} />
+                    <ReadOnlyBlockSummary block={b} templateNames={matchingTemplateNames} />
                   )}
                 </details>
               );
@@ -1344,7 +1277,7 @@ export default async function PlaneringPage({
             </p>
           </div>
 
-          <form action="/sasongen" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+          <form action="/arsplan" method="get" className="flex flex-wrap items-end gap-3 text-sm">
             {athleteParam && <input type="hidden" name="athlete" value={athleteParam} />}
             <label className="flex flex-col gap-1">
               <span className="text-zinc-600 dark:text-zinc-400">Block A</span>

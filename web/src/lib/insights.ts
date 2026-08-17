@@ -197,7 +197,7 @@ export function buildInsights(input: InsightInput): Insight[] {
       headline: `Din längsta period utan avbrott hittills — ${input.continuity.currentWeeksWithoutInterruption} veckor.`,
       detail:
         "Sammanhängande veckor utan sjuk- eller skadedag. Det är den siffra som ligger närmast det uthållig träning faktiskt kräver.",
-      href: "/sasongen",
+      href: "/arsplan",
       tone: "positiv",
       priority: 1,
     });
@@ -248,7 +248,7 @@ export function buildInsights(input: InsightInput): Insight[] {
       phase: "sasong",
       headline: `Nytt personbästa på ${pb.event}: ${pb.result}.`,
       detail: `Satt ${pb.date}.`,
-      href: "/sasongen",
+      href: "/tavlingsresultat",
       tone: "positiv",
       priority: 0,
     });

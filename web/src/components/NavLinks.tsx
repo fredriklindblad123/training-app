@@ -9,7 +9,7 @@ import { usePathname, useSearchParams } from "next/navigation";
  * — layouten själv får aldrig searchParams (bara page.tsx gör det i App
  * Router), så det kräver antingen en klientkomponent eller en cookie. Detta
  * är det enklaste alternativet: samma URL-param-drivna mönster som redan
- * finns i /sasongen, bara återanvänt av menyn också. Sidor utan
+ * finns i /arsplan, bara återanvänt av menyn också. Sidor utan
  * löparväljare (en vanlig löpare, eller ingen coach) berörs inte — utan
  * `athlete` i URL:en blir länkarna identiska med innan. */
 
@@ -17,7 +17,8 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/calendar", label: "Träningskalender" },
   { href: "/trender", label: "Trender" },
-  { href: "/sasongen", label: "Säsongsplanering" },
+  { href: "/arsplan", label: "Årsplan" },
+  { href: "/detaljplan", label: "Detaljplan" },
   { href: "/flerarsplan", label: "Flerårsplan" },
   { href: "/tavlingsresultat", label: "Tävlingsresultat" },
   { href: "/settings", label: "Inställningar" },

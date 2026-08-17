@@ -187,8 +187,8 @@ export function IntensityChart({
             &rdquo;zon 4&rdquo;. Fyll i tröskelpuls så blir den här sektionen meningsfull. Ett
             kalibrerat LT2 gör siffrorna jämförbara mot din egen fysiologi i stället för
             klockans gissning — lägg in ett{" "}
-            <Link href="/sasongen" className="underline hover:text-zinc-950 dark:hover:text-zinc-50">
-              tröskeltest under Planering
+            <Link href="/detaljplan" className="underline hover:text-zinc-950 dark:hover:text-zinc-50">
+              tröskeltest under Detaljplan
             </Link>{" "}
             för att komma igång.
           </p>

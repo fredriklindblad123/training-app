@@ -8,9 +8,10 @@ import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 /* Tävlingar: lägga till, prioritera och logga resultat — flyttat hit från
  * /sasongen 2026-08-16 (uttrycklig begäran). Att logga ETT RESULTAT efter
  * ett lopp är retrospektivt, inte säsongsplanering, och hörde inte hemma på
- * en framåtblickande sida. /sasongen behåller bara en läsande
- * "Nästa A-tävling"-rad och tävlingsmarkörer i tidslinjen — all redigering
- * (den här filen) hör nu ihop med analysen av samma data på den här sidan. */
+ * en framåtblickande sida. /arsplan (tidigare /sasongen) behåller bara en
+ * läsande "Nästa A-tävling"-rad, Årsplan-rutnätets tävlingsrad och
+ * tävlingsmarkörer i tidslinjen — all redigering (den här filen) hör nu
+ * ihop med analysen av samma data på den här sidan. */
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -29,7 +30,7 @@ function num(form: FormData, key: string): number | null {
 
 function refresh() {
   revalidatePath("/tavlingsresultat");
-  revalidatePath("/sasongen");
+  revalidatePath("/arsplan");
 }
 
 /** Bara "är någon inloggad" — RLS avgör om raden faktiskt går att nå. Samma

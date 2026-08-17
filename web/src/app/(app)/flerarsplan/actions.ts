@@ -42,8 +42,8 @@ async function resolvedAthleteId(
 }
 
 /** "800m: 2.20, 1500m: 4.40" -> [{event, target}]. Samma fritextprincip som
- * createCompetitions kommaseparerade grenfält i /sasongen — ett fält att
- * fylla i är enklare än flera rader inputs för något som sällan ändras. */
+ * createCompetitions kommaseparerade grenfält i /tavlingsresultat — ett fält
+ * att fylla i är enklare än flera rader inputs för något som sällan ändras. */
 function parseResultTargets(raw: string | null): { event: string; target: string }[] {
   if (!raw) return [];
   return raw

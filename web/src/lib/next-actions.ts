@@ -147,7 +147,7 @@ export function nextActions(input: NextActionInput): NextAction[] {
       phase: "sasong",
       title: "Ordinera ett tröskeltest",
       why: "Med en dryg månads träningsdata går det att sätta en riktig tröskel att lägga passen mot.",
-      href: "/sasongen",
+      href: "/detaljplan",
       priority: 6,
     });
   }
