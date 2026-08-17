@@ -2,10 +2,15 @@ import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
-import { TRAINING_FACTORS, TRAINING_FACTOR_GROUP_LABELS, type TrainingFactorGroup } from "@/lib/training-factors";
-import { blockForDate, PERIOD_LABELS, PHASE_LABELS, type PeriodType, type PhaseType } from "@/lib/planning";
-import { buildWeekSeriesForRange } from "@/lib/week-series";
-import { isoWeekStart } from "@/lib/stats-utils";
+import { TRAINING_FACTOR_GROUP_LABELS, TRAINING_FACTORS } from "@/lib/training-factors";
+import { PERIOD_LABELS, PHASE_LABELS } from "@/lib/planning";
+import {
+  buildArsplanWeeks,
+  computeMergeRuns,
+  type ArsplanBlockInput,
+  type ArsplanCompetitionInput,
+  type ArsplanPlannedWorkoutInput,
+} from "@/lib/arsplan-grid";
 
 /* Excel-export: Flerårsplan + Årsplan, de två flikarna Daniel (coach)
  * faktiskt ska skicka in till Svensk Friidrott — se konversationen. Målgrupp,
@@ -13,23 +18,17 @@ import { isoWeekStart } from "@/lib/stats-utils";
  * bekräftad med användaren). Radetiketterna speglar originalmallens rubriker
  * men det här är en ny arbetsbok, inte en ifylld kopia av källfilen.
  *
- * Årsplan-fliken byggs numera ur season_blocks (period/fas/standardvecka per
- * block, se supabase/migrations/20260815100000_block_period_redesign.sql)
- * i stället för en rad per vecka — samma standardvecka projiceras över varje
- * kalendervecka i blockets datumintervall. Period- och fasraderna slås ihop
- * med sammanslagna celler över de veckor blocket täcker, precis som
- * originalmallens Period-rad faktiskt är uppbyggd (en sammanslagen cell per
- * period, inte upprepad text) — övriga rader (pass/dagar/timmar/faktorer)
- * skrivs som upprepat värde per vecka, också det likt originalet.
+ * Årsplan-fliken byggs sedan 2026-08-17 ur lib/arsplan-grid.ts — samma
+ * datamodul som /arsplan-sidans in-app-rutnät använder, så Excel-filen och
+ * appvyn aldrig kan visa olika siffror för samma data. Antal pass/dagar/
+ * timmar räknas live ur faktiskt utrullade planned_workouts när sådana
+ * finns för veckan (annars block.sessions_count m.fl. som förval, se
+ * `usedFallback` i arsplan-grid.ts) — tidigare upprepade den här filen bara
+ * blockets statiska fält per vecka oavsett vad som faktiskt låg i kalendern.
  *
  * exceljs kräver Node-API:er (Buffer m.m.) — måste köra i Node-runtimen,
  * inte Edge. */
 export const runtime = "nodejs";
-
-const MONTHS_SHORT = [
-  "jan", "feb", "mar", "apr", "maj", "jun",
-  "jul", "aug", "sep", "okt", "nov", "dec",
-];
 
 type MultiYearPlanRow = {
   year_label: string;
@@ -45,33 +44,6 @@ type MultiYearPlanRow = {
   result_targets: { event: string; target: string }[];
   evaluations: string | null;
 };
-
-type SeasonBlockRow = {
-  id: string;
-  start_date: string;
-  end_date: string;
-  period: PeriodType;
-  phase: PhaseType;
-  sessions_count: number | null;
-  days_count: number | null;
-  starts_count: number | null;
-  hours_count: number | null;
-  has_test: boolean;
-};
-
-function isoWeekNumber(dateKey: string): number {
-  const d = new Date(`${dateKey}T00:00:00Z`);
-  const dayNum = (d.getUTCDay() + 6) % 7;
-  d.setUTCDate(d.getUTCDate() - dayNum + 3);
-  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
-  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
-  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
-  return 1 + Math.round((d.getTime() - firstThursday.getTime()) / (7 * 86_400_000));
-}
-
-function monthLabel(dateKey: string): string {
-  return MONTHS_SHORT[Number(dateKey.slice(5, 7)) - 1];
-}
 
 function buildFlerarsplanSheet(workbook: ExcelJS.Workbook, years: MultiYearPlanRow[]) {
   const sheet = workbook.addWorksheet("Flerårsplan");
@@ -118,100 +90,55 @@ function buildFlerarsplanSheet(workbook: ExcelJS.Workbook, years: MultiYearPlanR
   for (let i = 2; i <= header.length; i++) sheet.getColumn(i).width = 18;
 }
 
-/** Slår ihop cellerna i en rad över varje sammanhängande körd veckor som
- * tillhör samma block (jämfört på block-id) — precis som originalmallens
- * Period-rad är en sammanslagen cell per period, inte samma text upprepad i
- * varje veckokolumn. `weekIndex` är 0-baserat; kolumn 1 är radetiketten, så
- * vecka 0 hamnar i kolumn 2. */
-function mergeConsecutiveBlockRuns(
-  sheet: ExcelJS.Worksheet,
-  rowNumber: number,
-  blockPerWeek: (SeasonBlockRow | null)[],
-) {
-  let runStart = 0;
-  for (let i = 1; i <= blockPerWeek.length; i++) {
-    const continuesRun = i < blockPerWeek.length && blockPerWeek[i]?.id === blockPerWeek[runStart]?.id;
-    if (!continuesRun) {
-      if (blockPerWeek[runStart] && i - runStart > 1) {
-        sheet.mergeCells(rowNumber, runStart + 2, rowNumber, i + 1);
-      }
-      runStart = i;
-    }
-  }
-}
-
-async function buildArsplanSheet(
+function buildArsplanSheet(
   workbook: ExcelJS.Workbook,
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  scopedUserId: string,
-  blocks: SeasonBlockRow[],
+  blocks: ArsplanBlockInput[],
+  plannedWorkouts: ArsplanPlannedWorkoutInput[],
+  competitions: ArsplanCompetitionInput[],
 ) {
   const sheet = workbook.addWorksheet("Årsplan");
-  const sortedBlocks = [...blocks].sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+  const weeks = buildArsplanWeeks(blocks, plannedWorkouts, competitions);
 
-  if (sortedBlocks.length === 0) {
+  if (weeks.length === 0) {
     sheet.addRow(["Vecka #"]).font = { bold: true };
     sheet.getColumn(1).width = 32;
     return;
   }
 
-  // Veckorna som faktiskt har blockdata — spannet från det tidigaste
-  // blockets start till det senaste blockets slut, inte ett kalenderår.
-  const minDate = sortedBlocks.reduce((m, b) => (b.start_date < m ? b.start_date : m), sortedBlocks[0].start_date);
-  const maxDate = sortedBlocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), sortedBlocks[0].end_date);
-  const weeks = buildWeekSeriesForRange(minDate, maxDate);
-  const blockPerWeek = weeks.map((w) => blockForDate(sortedBlocks, w));
-
-  sheet.addRow(["Vecka #", ...weeks.map((w) => isoWeekNumber(w))]).font = { bold: true };
-  sheet.addRow(["Datum", ...weeks]);
-  sheet.addRow(["Månad", ...weeks.map((w) => monthLabel(w))]);
+  sheet.addRow(["Vecka #", ...weeks.map((w) => w.isoWeekNumber)]).font = { bold: true };
+  sheet.addRow(["Datum", ...weeks.map((w) => w.weekStart)]);
+  sheet.addRow(["Månad", ...weeks.map((w) => w.monthLabel)]);
 
   const periodRow = sheet.addRow([
     "Period",
-    ...blockPerWeek.map((b) => (b ? PERIOD_LABELS[b.period] : "")),
+    ...weeks.map((w) => (w.block ? PERIOD_LABELS[w.block.period] : "")),
   ]);
-  const phaseRow = sheet.addRow(["", ...blockPerWeek.map((b) => (b ? PHASE_LABELS[b.phase] : ""))]);
-  mergeConsecutiveBlockRuns(sheet, periodRow.number, blockPerWeek);
-  mergeConsecutiveBlockRuns(sheet, phaseRow.number, blockPerWeek);
-
-  sheet.addRow(["Antal pass", ...blockPerWeek.map((b) => b?.sessions_count ?? "")]);
-  sheet.addRow(["Antal dagar", ...blockPerWeek.map((b) => b?.days_count ?? "")]);
-  sheet.addRow(["Antal tävlingsstarter", ...blockPerWeek.map((b) => b?.starts_count ?? "")]);
-  sheet.addRow(["Antal timmar", ...blockPerWeek.map((b) => b?.hours_count ?? "")]);
-  sheet.addRow(["Tester", ...blockPerWeek.map((b) => (b?.has_test ? "x" : ""))]);
-
-  // Träningsfaktorerna (Snabbhet/Uthållighet/...) härleds ur faktiskt
-  // taggade pass, inte ur ett fält på blocket — rättat 2026-08-16:
-  // planeringen sker per pass (se training_factor på week_template_items/
-  // planned_workouts), inte som en klumpsumma för hela blocket. Varje rad
-  // visar hur många pass den veckan som är taggade med den faktorn.
-  const { data: taggedWorkouts } = await supabase
-    .from("planned_workouts")
-    .select("scheduled_date, training_factor")
-    .eq("user_id", scopedUserId)
-    .gte("scheduled_date", minDate)
-    .lte("scheduled_date", maxDate)
-    .not("training_factor", "is", null);
-
-  const factorCountsByWeek = new Map<string, Map<string, number>>();
-  for (const w of taggedWorkouts ?? []) {
-    const wk = isoWeekStart(w.scheduled_date as string);
-    const byFactor = factorCountsByWeek.get(wk) ?? new Map<string, number>();
-    const key = w.training_factor as string;
-    byFactor.set(key, (byFactor.get(key) ?? 0) + 1);
-    factorCountsByWeek.set(wk, byFactor);
+  const phaseRow = sheet.addRow(["", ...weeks.map((w) => (w.block ? PHASE_LABELS[w.block.phase] : ""))]);
+  // Sammanslagna celler över varje sammanhängande körd veckor som tillhör
+  // samma block, precis som originalmallens Period-rad är en sammanslagen
+  // cell per period, inte samma text upprepad i varje veckokolumn.
+  for (const run of computeMergeRuns(weeks)) {
+    if (run.length <= 1) continue;
+    sheet.mergeCells(periodRow.number, run.startIndex + 2, periodRow.number, run.startIndex + run.length + 1);
+    sheet.mergeCells(phaseRow.number, run.startIndex + 2, phaseRow.number, run.startIndex + run.length + 1);
   }
 
-  let lastGroup: TrainingFactorGroup | null = null;
+  sheet.addRow(["Antal pass", ...weeks.map((w) => w.sessionsCount)]);
+  sheet.addRow(["Antal dagar", ...weeks.map((w) => w.daysCount)]);
+  sheet.addRow(["Antal tävlingsstarter", ...weeks.map((w) => w.startsCount)]);
+  sheet.addRow(["Antal timmar", ...weeks.map((w) => Math.round(w.hoursCount * 10) / 10)]);
+  sheet.addRow(["Tester", ...weeks.map((w) => (w.block?.has_test ? "x" : ""))]);
+
+  // Träningsfaktorerna (Snabbhet/Uthållighet/...) härleds ur faktiskt taggade
+  // pass, inte ur ett fält på blocket — se training_factor på
+  // week_template_items/planned_workouts.
+  let lastGroup: string | null = null;
   for (const factor of TRAINING_FACTORS) {
     if (factor.group !== lastGroup) {
       sheet.addRow([TRAINING_FACTOR_GROUP_LABELS[factor.group]]).font = { italic: true };
       lastGroup = factor.group;
     }
-    sheet.addRow([
-      factor.label,
-      ...weeks.map((wk) => factorCountsByWeek.get(wk)?.get(factor.key) ?? ""),
-    ]);
+    sheet.addRow([factor.label, ...weeks.map((w) => w.factorCounts[factor.key] ?? "")]);
   }
 
   sheet.getColumn(1).width = 32;
@@ -241,12 +168,43 @@ export async function GET(request: Request) {
       .order("start_date"),
   ]);
 
+  const blocks = (blockRows ?? []) as ArsplanBlockInput[];
+
+  // planned_workouts/competitions behövs bara för blockens eget datumspann
+  // (samma spann buildArsplanWeeks räknar fram) — frågas parallellt, tomt
+  // om inga block finns alls.
+  const minDate = blocks.reduce((m, b) => (b.start_date < m ? b.start_date : m), blocks[0]?.start_date ?? "");
+  const maxDate = blocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), blocks[0]?.end_date ?? "");
+
+  const [{ data: workoutRows }, { data: competitionRows }] =
+    blocks.length === 0
+      ? [{ data: [] }, { data: [] }]
+      : await Promise.all([
+          supabase
+            .from("planned_workouts")
+            .select("scheduled_date, training_factor, target_duration_seconds")
+            .eq("user_id", scopedUserId)
+            .gte("scheduled_date", minDate)
+            .lte("scheduled_date", maxDate),
+          supabase
+            .from("competitions")
+            .select("competition_date, name, competition_events(event)")
+            .eq("user_id", scopedUserId)
+            .gte("competition_date", minDate)
+            .lte("competition_date", maxDate),
+        ]);
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Träningsappen";
   workbook.created = new Date();
 
   buildFlerarsplanSheet(workbook, (yearRows ?? []) as MultiYearPlanRow[]);
-  await buildArsplanSheet(workbook, supabase, scopedUserId, (blockRows ?? []) as SeasonBlockRow[]);
+  buildArsplanSheet(
+    workbook,
+    blocks,
+    (workoutRows ?? []) as ArsplanPlannedWorkoutInput[],
+    (competitionRows ?? []) as ArsplanCompetitionInput[],
+  );
 
   const buffer = await workbook.xlsx.writeBuffer();
 
