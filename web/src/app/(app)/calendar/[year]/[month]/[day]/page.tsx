@@ -22,7 +22,6 @@ import {
   isValidDay,
 } from "@/lib/calendar-utils";
 import {
-  addPlannedWorkout,
   saveManualActivity,
   deleteManualActivity,
   saveDiaryEntry,
@@ -101,21 +100,10 @@ export default async function DayPage({
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
   const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 
-  // Det/de block vars datumintervall täcker den här dagen OCH gäller för
-  // scopedUserId — block är kopplade till löpare via season_block_athletes,
-  // inte user_id (samma block kan gälla flera löpare), se migration
-  // 20260816100000.
-  const { data: blockAthleteRows } = await supabase
-    .from("season_block_athletes")
-    .select("block_id")
-    .eq("athlete_id", scopedUserId);
-  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
-
   const [
     { data: activities },
     { data: diaryEntry },
     { data: plannedWorkouts },
-    { data: activeBlocks },
     { data: dailyMetrics },
     { data: profile },
   ] = await Promise.all([
@@ -148,17 +136,6 @@ export default async function DayPage({
         .eq("user_id", scopedUserId)
         .eq("scheduled_date", dateStr)
         .order("slot", { ascending: true }),
-      // Styr både vilket block ett nytt manuellt pass ska höra till, och om
-      // det ens går att lägga in ett (inget block = ingenstans att lägga
-      // passet).
-      blockIds.length > 0
-        ? supabase
-            .from("season_blocks")
-            .select("id, name")
-            .in("id", blockIds)
-            .lte("start_date", dateStr)
-            .gte("end_date", dateStr)
-        : Promise.resolve({ data: [] as never[] }),
       supabase
         .from("daily_metrics")
         .select("*")
@@ -173,8 +150,6 @@ export default async function DayPage({
         .eq("id", scopedUserId)
         .maybeSingle(),
     ]);
-
-  const activeBlock = (activeBlocks ?? [])[0] ?? null;
 
   // Formuläret nedan redigerar dagens första planerade pass; jämförelsen
   // ovanför visar alla.
@@ -365,16 +340,12 @@ export default async function DayPage({
         }
       >
         <PlannedSessions
-          dateStr={dateStr}
           planned={(plannedWorkouts ?? []) as PlannedRow[]}
-          activeBlock={activeBlock}
-          createAction={addPlannedWorkout}
           updateAction={updatePlannedWorkout}
           deleteAction={deletePlannedWorkout}
           addRepGroupAction={addPlannedRepGroup}
           updateRepGroupAction={updatePlannedRepGroup}
           deleteRepGroupAction={deletePlannedRepGroup}
-          athleteId={scopedUserId}
         />
       </DaySection>
 

@@ -292,39 +292,9 @@ export async function deleteManualActivity(formData: FormData) {
 }
 
 // --- Planerade pass --------------------------------------------------------
-// De flesta pass skapas via veckomallar på /planering, men ett enskilt extra
-// pass (t ex ett läger-tillfälle som inte hör till mallen) går att lägga in
-// direkt här. Det kräver ett aktivt block för dagen — block_id sätts alltid
-// av sidan, aldrig av formuläret, så ett pass aldrig kan hamna utan block.
-
-export async function addPlannedWorkout(formData: FormData) {
-  const supabase = await createClient();
-  const athleteId = await resolvedAthleteId(supabase, formData);
-  if (!athleteId) return;
-
-  const scheduledDate = formData.get("scheduled_date") as string;
-  const blockId = formData.get("block_id") as string;
-  const workoutType = formData.get("workout_type") as string;
-  if (!scheduledDate || !blockId || !workoutType) return;
-
-  const distanceRaw = formData.get("target_distance_km") as string;
-  const durationRaw = formData.get("target_duration_min") as string;
-
-  await supabase.from("planned_workouts").insert({
-    user_id: athleteId,
-    scheduled_date: scheduledDate,
-    slot: Number(formData.get("slot")) || 1,
-    workout_type: workoutType,
-    title: ((formData.get("title") as string) || "").trim() || null,
-    description: descriptionFor(workoutType, (formData.get("description") as string) || ""),
-    target_distance_meters: distanceRaw ? Number(distanceRaw) * 1000 : null,
-    target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
-    training_factor: (formData.get("training_factor") as string) || null,
-    block_id: blockId,
-  });
-
-  revalidatePath("/calendar", "layout");
-}
+// Alla pass skapas i /detaljplan (veckomallar) sedan 2026-08-17 — kalendern
+// är medvetet inte längre en plats att lägga upp NYA pass på. Redigering av
+// redan utrullade pass sker fortfarande här, se updatePlannedWorkout nedan.
 
 // K8 (docs/tranarperspektiv.md): spara ett LT2-förslag från ett genomfört
 // tröskeltest. Föreslås av lib/threshold-test.ts och skrivs bara hit när

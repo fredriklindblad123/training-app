@@ -15,13 +15,13 @@ import { formatDuration, formatKm } from "@/lib/format";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
 
-/* Planerade pass för en dag.
+/* Planerade pass för en dag — en ren översiktsvy av planerat vs. genomfört.
  *
- * De flesta pass skapas via veckomallar på /planering. Ett enskilt extra
- * pass går att lägga till härifrån, men bara i det block som är aktivt för
- * dagen — utan ett block finns ingenstans att lägga passet, så formuläret
- * visas inte alls då (se addAction i actions.ts: block_id sätts av sidan,
- * aldrig av ett formulärfält, så ett pass aldrig kan hamna utan block). */
+ * Alla pass skapas i /detaljplan (veckomallar, en fas i taget) — kalendern
+ * är sedan 2026-08-17 medvetet inte längre en plats att lägga upp NYA pass
+ * på, varken för coach eller adept (uttrycklig begäran). Ett redan
+ * utrullat pass går fortfarande att justera i efterhand härifrån (formuläret
+ * nedan), t.ex. om dagens tempo behöver ändras sist på morgonen. */
 
 export type PlannedRow = {
   id: string;
@@ -76,31 +76,20 @@ function TrainingFactorField({ defaultValue }: { defaultValue?: string | null })
 }
 
 export function PlannedSessions({
-  dateStr,
   planned,
-  activeBlock,
-  createAction,
   updateAction,
   deleteAction,
   addRepGroupAction,
   updateRepGroupAction,
   deleteRepGroupAction,
-  athleteId,
 }: {
-  dateStr: string;
   planned: PlannedRow[];
-  /** Blocket vars datumintervall täcker `dateStr`, om något. */
-  activeBlock: { id: string; name: string } | null;
-  createAction: (formData: FormData) => void;
   updateAction: (formData: FormData) => void;
   deleteAction: (formData: FormData) => void;
   /** K1: repgrupper på ett enskilt planerat pass. */
   addRepGroupAction: (formData: FormData) => void;
   updateRepGroupAction: (formData: FormData) => void;
   deleteRepGroupAction: (formData: FormData) => void;
-  /** Fas 0-uppföljning: vilken löpare ett för hand tillagt pass ska skrivas
-   * på — se resolvedAthleteId i actions.ts. */
-  athleteId: string;
 }) {
   const sorted = [...planned].sort((a, b) => (a.slot ?? 1) - (b.slot ?? 1));
 
@@ -290,82 +279,6 @@ export function PlannedSessions({
         </details>
         );
       })}
-
-      {activeBlock ? (
-        <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Lägg till ett enskilt pass i {activeBlock.name}
-          </summary>
-          <form action={createAction} className="mt-3 flex flex-wrap items-end gap-3">
-            <input type="hidden" name="scheduled_date" value={dateStr} />
-            <input type="hidden" name="block_id" value={activeBlock.id} />
-            <input type="hidden" name="athlete" value={athleteId} />
-            <label className="flex flex-col gap-1 text-sm">
-              Typ
-              <select name="workout_type" defaultValue="easy" className={inputClass}>
-                {WORKOUT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {label(t)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Pass
-              <select
-                name="slot"
-                defaultValue={String((sorted.at(-1)?.slot ?? 0) + 1)}
-                className={inputClass}
-              >
-                {[1, 2, 3].map((s) => (
-                  <option key={s} value={s}>
-                    {SLOT_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Rubrik
-              <input name="title" placeholder="10x400m" className={inputClass} />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Mål-distans (km)
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                name="target_distance_km"
-                className={`${inputClass} w-28`}
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              Mål-tid (min)
-              <input
-                type="number"
-                min="0"
-                name="target_duration_min"
-                className={`${inputClass} w-28`}
-              />
-            </label>
-            <label className="flex w-full flex-col gap-1 text-sm">
-              Beskrivning
-              <textarea name="description" rows={2} className={inputClass} />
-            </label>
-            <TrainingFactorField />
-            <button
-              type="submit"
-              className="w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
-            >
-              Lägg till
-            </button>
-          </form>
-        </details>
-      ) : (
-        <p className="text-xs text-zinc-400 dark:text-zinc-600">
-          Inget aktivt block den här dagen — lägg upp ett block på Planering för att kunna lägga
-          in ett enskilt pass.
-        </p>
-      )}
     </div>
   );
 }
