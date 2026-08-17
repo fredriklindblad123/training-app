@@ -149,6 +149,18 @@ export default async function DetaljplanPage({
 
   const linkedTemplateIds = new Set((blockTemplateLinks ?? []).map((r) => r.template_id as string));
 
+  // Visa bara faser som faktiskt är i bruk — ett block finns för fasen,
+  // eller en mall finns redan (även om blocket som skapade den senare togs
+  // bort). En lista med alla sex faser, mest tomma, gjorde det svårt att se
+  // vad man faktiskt skulle göra (uttrycklig begäran) — arbetsflödet är
+  // Flerårsplan → Årsplan (skapar block) → Detaljplan (fyller i den fasen),
+  // så Detaljplan ska spegla vad som redan finns i Årsplan, inte hela
+  // taxonomin i förväg.
+  const relevantPhases = PHASE_TYPES.filter(
+    (phase) =>
+      blockList.some((b) => b.phase === phase) || templateList.some((t) => t.phase === phase),
+  );
+
   function athleteHref(id: string): string {
     const params = new URLSearchParams();
     params.set("athlete", id);
@@ -180,8 +192,18 @@ export default async function DetaljplanPage({
         />
       )}
 
+      {relevantPhases.length === 0 && (
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          Inga block skapade ännu. Lägg upp ett block för säsongens första fas på{" "}
+          <Link href="/arsplan" className="underline">
+            Årsplan
+          </Link>{" "}
+          — fasen dyker upp här automatiskt så fort ett block finns för den.
+        </p>
+      )}
+
       <div className="flex flex-col gap-3">
-        {PHASE_TYPES.map((phase) => {
+        {relevantPhases.map((phase) => {
           const phaseBlocks = blockList.filter((b) => b.phase === phase);
           const phaseTemplates = templateList.filter((t) => t.phase === phase);
 
@@ -189,7 +211,7 @@ export default async function DetaljplanPage({
             <details
               key={phase}
               className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
-              open={phaseTemplates.length > 0}
+              open
             >
               <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="font-medium text-zinc-900 dark:text-zinc-100">
