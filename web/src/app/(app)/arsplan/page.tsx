@@ -1262,7 +1262,8 @@ export default async function ArsplanPage({
               En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
               räknas live ur faktiskt utrullade pass när Detaljplan är ifylld för veckan
               (nedtonat = fortfarande bara standardveckans förval). Utfall visar hur många av
-              veckans planerade pass som faktiskt genomfördes.
+              veckans planerade pass som faktiskt genomfördes — eller, om inget är planerat än,
+              hur många genomförda pass som ändå loggats den veckan (&quot;oplanerat&quot;).
             </p>
           </div>
           <div className="w-full max-w-full overflow-x-auto">
@@ -1358,9 +1359,20 @@ export default async function ArsplanPage({
                   </th>
                   {arsplanWeeks.map((w) => {
                     const c = complianceByWeek.get(w.weekStart);
+                    // En vecka utan plan i Detaljplan ska ändå visa att
+                    // löparen faktiskt tränat, i stället för att bara tystna
+                    // tills mönstret hunnit fyllas i — det är poängen med
+                    // att ha utfall i appen alls (uttrycklig begäran
+                    // 2026-08-18: vyn ska spegla verkligheten kontinuerligt).
+                    const label =
+                      c && c.plannedCount > 0
+                        ? `${c.completedCount}/${c.plannedCount}`
+                        : c && c.unplanned.length > 0
+                          ? `${c.unplanned.length} (oplanerat)`
+                          : "–";
                     return (
                       <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                        {c && c.plannedCount > 0 ? `${c.completedCount}/${c.plannedCount}` : "–"}
+                        {label}
                       </td>
                     );
                   })}
