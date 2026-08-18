@@ -29,14 +29,16 @@ export const TRAINING_FACTOR_GROUP_LABELS: Record<TrainingFactorGroup, string> =
   rorlighet: "Rörlighet",
 };
 
-/** Undergrupp inom en TrainingFactorGroup — bara "uthallighet" har en i
- * dagens taxonomi (den aeroba klustret Distans/Tröskel/Intervall/Backe/
- * Tempo, som i originalmallen står under en egen fetstilt "Aerob"-rubrik
- * skild från de anaeroba/snabbhetsuthållighets-posterna ovanför). Valfri —
- * de flesta faktorer hör direkt till sin grupp utan mellanled. */
-export type TrainingFactorSubgroup = "aerob";
+/** Undergrupp inom en TrainingFactorGroup — bara "uthallighet" har dem i
+ * dagens taxonomi: två fetstilta underrubriker i originalmallen, "Anaerob
+ * alaktisk & laktisk" och "Aerob", som INTE själva är ifyllbara rader (till
+ * skillnad från vad appen felaktigt gjorde tidigare) utan bara grupperar de
+ * faktiska raderna under sig — rättat 2026-08-19 efter Excel-bilden. Valfri
+ * — de flesta faktorer hör direkt till sin grupp utan mellanled. */
+export type TrainingFactorSubgroup = "anaerob" | "aerob";
 
 export const TRAINING_FACTOR_SUBGROUP_LABELS: Record<TrainingFactorSubgroup, string> = {
+  anaerob: "Anaerob alaktisk & laktisk",
   aerob: "Aerob",
 };
 
@@ -52,13 +54,18 @@ export const TRAINING_FACTORS: readonly TrainingFactor[] = [
   { key: "speed_acceleration", label: "Acceleration", group: "snabbhet" },
   { key: "speed_frekvens", label: "Frekvens", group: "snabbhet" },
 
-  { key: "endurance_anaerob", label: "Anaerob alaktisk & laktisk", group: "uthallighet" },
-  { key: "endurance_sprint", label: "Sprintuthållighet (95%)", group: "uthallighet" },
-  { key: "endurance_snabbhet", label: "Snabbhetsuthållighet (90-95%)", group: "uthallighet" },
+  { key: "endurance_sprint", label: "Sprintuthållighet (95%)", group: "uthallighet", subgroup: "anaerob" },
+  {
+    key: "endurance_snabbhet",
+    label: "Snabbhetsuthållighet (90-95%)",
+    group: "uthallighet",
+    subgroup: "anaerob",
+  },
   {
     key: "endurance_forberedande",
     label: "Förberedande snabbhetsuthållighet (80-85%)",
     group: "uthallighet",
+    subgroup: "anaerob",
   },
   { key: "endurance_aerob_distans", label: "Distans", group: "uthallighet", subgroup: "aerob" },
   { key: "endurance_aerob_troskel", label: "Tröskel", group: "uthallighet", subgroup: "aerob" },
@@ -79,3 +86,12 @@ export const TRAINING_FACTORS: readonly TrainingFactor[] = [
 ] as const;
 
 export type TrainingFactorValues = Record<string, string>;
+
+/** Vilken träningsfaktor-GRUPP en satt `training_factor`-nyckel tillhör —
+ * `null` för ett pass utan satt faktor. Delad mellan Detaljplans rutnät
+ * (radgruppering) och andra ställen som behöver samma uppslag, så det bara
+ * finns på ett ställe. */
+export function factorGroupOf(key: string | null): TrainingFactorGroup | null {
+  if (!key) return null;
+  return TRAINING_FACTORS.find((f) => f.key === key)?.group ?? null;
+}

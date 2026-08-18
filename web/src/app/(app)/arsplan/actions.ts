@@ -29,26 +29,37 @@ function refresh() {
   revalidatePath("/calendar", "layout");
 }
 
-/** Blockets startmönster: vilken passtyp (om någon) för var och en av de 7
- * veckodagarna — fälten `weekday_1_type`..`weekday_7_type` från
- * DayPatternFields (page.tsx). Skapar week_template_items-rader direkt vid
- * blockskapande, så man slipper hoppa till Detaljplan bara för att komma
- * igång. Bara grundtypen sätts här (dag + passtyp, alltid slot 1) — rubrik,
- * mål-tid/distans, repgrupper och träningsfaktor per pass fylls i sedan på
- * Detaljplan, se motiveringen i page.tsx (uttrycklig begäran 2026-08-18,
- * ersätter det tidigare försöket med manuella standardvecka-siffror och
- * fritext-prioriteringar som båda visade sig fel — själva mönstret, inte en
- * sammanfattning av det, är vad som faktiskt behövs vid skapandet). */
+/** Blockets startmönster: vilken passtyp och träningsfaktor (om någon) för
+ * var och en av de 7 veckodagarna — fälten `weekday_1_type`/`weekday_1_
+ * factor`..`weekday_7_type`/`weekday_7_factor` från DayPatternFields
+ * (page.tsx). Skapar week_template_items-rader direkt vid blockskapande, så
+ * man slipper hoppa till Detaljplan bara för att komma igång. Rubrik,
+ * mål-tid/distans och repgrupper per pass fylls i sedan på Detaljplan —
+ * bara träningsfaktorn tas med redan här (uttrycklig begäran 2026-08-19:
+ * passen i blocket ska följa Excel-mallens faktor-taxonomi direkt i stället
+ * för att riskera att aldrig taggas alls, se motiveringen i page.tsx). */
 async function createDayPatternItems(
   supabase: SupabaseServerClient,
   blockId: string,
   formData: FormData,
 ) {
-  const rows: { block_id: string; weekday: number; slot: number; workout_type: string }[] = [];
+  const rows: {
+    block_id: string;
+    weekday: number;
+    slot: number;
+    workout_type: string;
+    training_factor: string | null;
+  }[] = [];
   for (let weekday = 1; weekday <= 7; weekday++) {
     const workoutType = str(formData, `weekday_${weekday}_type`);
     if (!workoutType) continue;
-    rows.push({ block_id: blockId, weekday, slot: 1, workout_type: workoutType });
+    rows.push({
+      block_id: blockId,
+      weekday,
+      slot: 1,
+      workout_type: workoutType,
+      training_factor: str(formData, `weekday_${weekday}_factor`),
+    });
   }
   if (rows.length > 0) {
     await supabase.from("week_template_items").insert(rows);

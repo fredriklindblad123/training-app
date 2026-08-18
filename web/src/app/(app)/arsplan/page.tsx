@@ -39,6 +39,7 @@ import {
   deleteBlock,
   updateBlock,
 } from "./actions";
+import { TrainingFactorSelect } from "@/components/TrainingFactorSelect";
 import {
   TRAINING_FACTORS,
   TRAINING_FACTOR_GROUP_LABELS,
@@ -148,16 +149,24 @@ function ReadOnlyBlockSummary({ block }: { block: { focus: string | null } }) {
  * INTE meningen att upprepa den detaljnivån i det här formuläret. Bara i
  * skapa-formuläret, inte i BlockCards redigeringsform — att ändra mönstret
  * i efterhand är Detaljplans jobb. */
+/** Veckomönster vid blockskapande — typ av pass OCH träningsfaktor per dag,
+ * ihop, i stället för att skjuta faktorn på framtiden — uttrycklig begäran
+ * 2026-08-19: passen i blocket ska följa Excel-mallens faktor-taxonomi
+ * direkt, inte bara passtypen. Träningsfaktor-listan (samma grupperade
+ * `<select>` som Detaljplans "Lägg till pass") är fri att lämna tom, precis
+ * som där — bara rubrik, tid/distans och repgrupper fylls i senare på
+ * Detaljplan. */
 function DayPatternFields() {
   return (
     <div className="flex flex-col gap-2 rounded border border-zinc-100 p-3 dark:border-zinc-800">
       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-        Veckomönster — vilken typ av pass på vilken dag. Rubrik, tid/distans, repgrupper och
-        träningsfaktor fylls i sedan på Detaljplan.
+        Veckomönster — typ av pass och träningsfaktor per dag. Rubrik, tid/distans och repgrupper
+        fylls i sedan på Detaljplan.
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {WEEKDAY_LABELS.map((label, wi) => (
-          <Field key={label} label={label}>
+          <div key={label} className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-600 dark:text-zinc-400">{label}</span>
             <select name={`weekday_${wi + 1}_type`} defaultValue="" className={input}>
               <option value="">— Inget —</option>
               {WORKOUT_TYPES.map((w) => (
@@ -166,7 +175,8 @@ function DayPatternFields() {
                 </option>
               ))}
             </select>
-          </Field>
+            <TrainingFactorSelect name={`weekday_${wi + 1}_factor`} label={null} />
+          </div>
         ))}
       </div>
     </div>

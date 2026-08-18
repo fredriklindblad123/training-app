@@ -24,6 +24,7 @@ import {
 } from "@/lib/planning";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
+import { TrainingFactorSelect } from "@/components/TrainingFactorSelect";
 import {
   addManualPass,
   addTemplateItem,
@@ -35,17 +36,9 @@ import {
 import {
   TRAINING_FACTORS,
   TRAINING_FACTOR_GROUP_LABELS,
+  factorGroupOf,
   type TrainingFactorGroup,
 } from "@/lib/training-factors";
-
-/** Vilken träningsfaktor-GRUPP ett pass tillhör, för att kunna gruppera
- * rutnätet radvis (Excel-mallens Detaljplan-flik har en rad per faktor,
- * grupperad likadant) — `null` för pass utan satt träningsfaktor, samlas i
- * en egen sista rad ("Ej kopplat") i stället för att falla bort tyst. */
-function factorGroupOf(key: string | null): TrainingFactorGroup | null {
-  if (!key) return null;
-  return TRAINING_FACTORS.find((f) => f.key === key)?.group ?? null;
-}
 
 /* Detaljplan: varje blocks eget dag-för-dag-veckomönster, en fas i taget —
  * speglar Excel-mallens Detaljplan-flik. Flyttad hit ur /sasongen
@@ -68,29 +61,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-zinc-600 dark:text-zinc-400">{label}</span>
       {children}
     </label>
-  );
-}
-
-/** Träningsfaktor-väljare för ett enskilt pass (Årsplan-raden passet räknas
- * mot, t.ex. "Tröskel" eller "Maximal" snabbhet) — grupperad precis som
- * Årsplan-fliken. Fritt att lämna tom; inte alla pass (vila, ett obestämt
- * lugnt pass) hör till en specifik faktor. */
-function TrainingFactorSelect({ defaultValue }: { defaultValue?: string | null }) {
-  return (
-    <Field label="Träningsfaktor">
-      <select name="training_factor" defaultValue={defaultValue ?? ""} className={input}>
-        <option value="">— Ingen —</option>
-        {(Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[]).map((group) => (
-          <optgroup key={group} label={TRAINING_FACTOR_GROUP_LABELS[group]}>
-            {TRAINING_FACTORS.filter((f) => f.group === group).map((f) => (
-              <option key={f.key} value={f.key}>
-                {f.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-    </Field>
   );
 }
 
