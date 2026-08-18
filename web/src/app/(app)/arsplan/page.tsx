@@ -25,6 +25,9 @@ import {
   SEASON_LABELS,
   toDateKey,
   weeksBetween,
+  WEEKDAY_LABELS,
+  WORKOUT_LABELS,
+  WORKOUT_TYPES,
   type AvailabilityKind,
   type PeriodType,
   type PhaseType,
@@ -120,145 +123,43 @@ function AthleteTargetFields({
  * redigeringsformuläret visar, men utan formulär/knappar. Planeringen ägs av
  * coachen (se canEditPlanning); löparen ska ändå se vad som väntar och
  * varför. */
-function ReadOnlyBlockSummary({
-  block,
-}: {
-  block: {
-    focus: string | null;
-    sessions_count: number | null;
-    days_count: number | null;
-    starts_count: number | null;
-    hours_count: number | null;
-    has_test: boolean;
-    factor_notes: Record<string, string> | null;
-  };
-}) {
-  const bits = [
-    block.sessions_count != null ? `${block.sessions_count} pass/vecka` : null,
-    block.days_count != null ? `${block.days_count} dagar` : null,
-    block.starts_count != null ? `${block.starts_count} tävlingsstarter` : null,
-    block.hours_count != null ? `${block.hours_count} timmar` : null,
-    block.has_test ? "test" : null,
-  ].filter(Boolean);
-  const factorNoteEntries = Object.entries(block.factor_notes ?? {}).filter(([, v]) => v);
+function ReadOnlyBlockSummary({ block }: { block: { focus: string | null } }) {
+  if (!block.focus) return null;
   return (
     <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-      {block.focus && <p>{block.focus}</p>}
-      <p>{bits.length > 0 ? bits.join(" · ") : "Ingen standardvecka ifylld ännu."}</p>
-      {factorNoteEntries.length > 0 && (
-        <dl className="flex flex-col gap-1">
-          {factorNoteEntries.map(([group, note]) => (
-            <div key={group}>
-              <dt className="inline font-medium text-zinc-700 dark:text-zinc-300">
-                {TRAINING_FACTOR_GROUP_LABELS[group as TrainingFactorGroup] ?? group}:{" "}
-              </dt>
-              <dd className="inline">{note}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      <p>{block.focus}</p>
     </div>
   );
 }
 
-/** Standardveckan för ett block — Årsplan-parametrarna (pass/dagar/
- * tävlingsstarter/timmar/test) gäller för varje kalendervecka inom blockets
- * datumintervall, och används som förval i rutnätet nedan tills Detaljplan
- * har fyllts i (se `usedFallback` i lib/arsplan-grid.ts). Delad mellan
- * redigerings- och skapa-formulären, så fältlistan aldrig kan glida isär
- * mellan dem. INTE träningsfaktorerna (Snabbhet/Uthållighet/...) — den
- * detaljnivån hör hemma per pass i Detaljplan, inte som en klumpsumma för
- * blocket. */
-function StandardWeekFields({
-  block,
-}: {
-  block?: {
-    sessions_count: number | null;
-    days_count: number | null;
-    starts_count: number | null;
-    hours_count: number | null;
-    has_test: boolean;
-  };
-}) {
+/** Blockets startmönster: vilken passtyp (om någon) för var och en av de 7
+ * veckodagarna — bara vid blockskapande (uttrycklig begäran 2026-08-18,
+ * ersätter både de manuella standardvecka-siffrorna och fritext-
+ * prioriteringen som båda visade sig fel). Skapar week_template_items direkt
+ * så man kommer igång utan att först behöva hoppa till Detaljplan — men bara
+ * grundtypen sätts här (dag + typ, alltid slot 1); rubrik, mål-tid/distans,
+ * repgrupper och träningsfaktor per pass fylls i sedan på Detaljplan, det är
+ * INTE meningen att upprepa den detaljnivån i det här formuläret. Bara i
+ * skapa-formuläret, inte i BlockCards redigeringsform — att ändra mönstret
+ * i efterhand är Detaljplans jobb. */
+function DayPatternFields() {
   return (
-    <div className="flex flex-col gap-3 rounded border border-zinc-100 p-3 dark:border-zinc-800">
+    <div className="flex flex-col gap-2 rounded border border-zinc-100 p-3 dark:border-zinc-800">
       <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-        Standardvecka — förval i Årsplan-rutnätet tills Detaljplan fyllts i
+        Veckomönster — vilken typ av pass på vilken dag. Rubrik, tid/distans, repgrupper och
+        träningsfaktor fylls i sedan på Detaljplan.
       </div>
-      <div className="flex flex-wrap gap-3">
-        <Field label="Pass">
-          <input
-            type="number"
-            name="sessions_count"
-            defaultValue={block?.sessions_count ?? ""}
-            className={`${input} w-20`}
-          />
-        </Field>
-        <Field label="Dagar">
-          <input
-            type="number"
-            name="days_count"
-            defaultValue={block?.days_count ?? ""}
-            className={`${input} w-20`}
-          />
-        </Field>
-        <Field label="Tävlingsstarter">
-          <input
-            type="number"
-            name="starts_count"
-            defaultValue={block?.starts_count ?? ""}
-            className={`${input} w-20`}
-          />
-        </Field>
-        <Field label="Timmar">
-          <input
-            type="number"
-            step="0.5"
-            name="hours_count"
-            defaultValue={block?.hours_count ?? ""}
-            className={`${input} w-20`}
-          />
-        </Field>
-        <label className="flex items-center gap-1.5 self-end pb-1.5 text-sm">
-          <input type="checkbox" name="has_test" defaultChecked={block?.has_test ?? false} />
-          Test
-        </label>
-      </div>
-    </div>
-  );
-}
-
-/** Fri text per träningsfaktor-grupp — coachens avsedda prioritering för
- * blocket, t.ex. "3 pass/vecka distans (30–60 min), 1 tröskel, 2
- * intervall" för Uthållighet. Speglar Excel-mallens Årsplan-flik, där en
- * sammanslagen cell över blockets veckor beskriver samma sak per
- * faktorgrupp (uttrycklig begäran 2026-08-18). Fri text som coachen
- * skriver själv — INTE kopplad till de faktiska pass-taggarna i
- * Detaljplan/Årsplan-rutnätet, det är en avsikt, inte en räkning (se
- * migration 20260818100000_block_factor_notes.sql för varför den
- * distinktionen spelar roll: ett tidigare block-nivå-fält med samma namn
- * togs bort 2026-08-16 just för att det blandades ihop med en räkning). */
-function TrainingFactorNotesFields({
-  notes,
-}: {
-  notes?: Record<string, string> | null;
-}) {
-  const groups = Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[];
-  return (
-    <div className="flex flex-col gap-3 rounded border border-zinc-100 p-3 dark:border-zinc-800">
-      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-        Prioritering per träningsfaktor — fri text, t.ex. &quot;3 pass/vecka distans (30–60
-        min), 1 tröskel, 2 intervall&quot;
-      </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {groups.map((group) => (
-          <Field key={group} label={TRAINING_FACTOR_GROUP_LABELS[group]}>
-            <textarea
-              name={`factor_note_${group}`}
-              rows={2}
-              defaultValue={notes?.[group] ?? ""}
-              className={input}
-            />
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+        {WEEKDAY_LABELS.map((label, wi) => (
+          <Field key={label} label={label}>
+            <select name={`weekday_${wi + 1}_type`} defaultValue="" className={input}>
+              <option value="">— Inget —</option>
+              {WORKOUT_TYPES.map((w) => (
+                <option key={w} value={w}>
+                  {WORKOUT_LABELS[w]}
+                </option>
+              ))}
+            </select>
           </Field>
         ))}
       </div>
@@ -266,15 +167,9 @@ function TrainingFactorNotesFields({
   );
 }
 
-/** Blocktypen BlockCard/ReadOnlyBlockSummary/blocklistorna delar — TimelineBlock
- * (SeasonTimeline.tsx) plus fälten bara redigeringskortet behöver. */
-type BlockCardBlock = TimelineBlock & {
-  focus: string | null;
-  /** Fri text per träningsfaktor-grupp, se migration
-   * 20260818100000_block_factor_notes.sql — INTE en räkning mot Detaljplans
-   * pass-taggar, bara coachens egna ord om vad blocket ska prioritera. */
-  factor_notes: Record<string, string> | null;
-};
+/** Blocktypen BlockCard/ReadOnlyBlockSummary/blocklistorna delar —
+ * TimelineBlock (SeasonTimeline.tsx) plus fokus-fältet. */
+type BlockCardBlock = TimelineBlock & { focus: string | null };
 
 /** Ett enskilt blocks redigeringskort — namn/period/fas/säsong/datum/fokus,
  * löpar-kryssrutor, standardvecka, prioritering per träningsfaktor, länk
@@ -368,10 +263,6 @@ function BlockCard({
 
             <AthleteTargetFields athletes={athletes} selectedIds={selectedAthleteIds} />
 
-            <StandardWeekFields block={b} />
-
-            <TrainingFactorNotesFields notes={b.factor_notes} />
-
             <button type="submit" className={`${primaryBtn} self-start`}>
               Spara ändringar
             </button>
@@ -416,11 +307,6 @@ type SeasonBlockRow = {
   start_date: string;
   end_date: string;
   focus: string | null;
-  sessions_count: number | null;
-  days_count: number | null;
-  starts_count: number | null;
-  hours_count: number | null;
-  has_test: boolean;
 };
 
 /** Tävlingsdagar: `competitions`/`competition_events` (idrottarens egna
@@ -922,9 +808,7 @@ async function ArsplanOverview({
 
           <AthleteTargetFields athletes={athletes} selectedIds={new Set()} />
 
-          <StandardWeekFields />
-
-          <TrainingFactorNotesFields />
+          <DayPatternFields />
 
           <button type="submit" className={`${primaryBtn} self-start`}>
             Lägg till
@@ -1326,10 +1210,10 @@ export default async function ArsplanPage({
             <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Årsplan</h2>
             <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
               En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
-              räknas live ur faktiskt utrullade pass när Detaljplan är ifylld för veckan
-              (nedtonat = fortfarande bara standardveckans förval). Utfall visar hur många av
-              veckans planerade pass som faktiskt genomfördes — eller, om inget är planerat än,
-              hur många genomförda pass som ändå loggats den veckan (&quot;oplanerat&quot;).
+              räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
+              visar ett sant noll. Utfall visar hur många av veckans planerade pass som
+              faktiskt genomfördes — eller, om inget är planerat än, hur många genomförda pass
+              som ändå loggats den veckan (&quot;oplanerat&quot;).
             </p>
           </div>
           <div className="w-full max-w-full overflow-x-auto">
@@ -1384,7 +1268,7 @@ export default async function ArsplanPage({
                     Pass
                   </th>
                   {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className={`py-1 pr-3 tabular-nums ${w.usedFallback ? "text-zinc-400 italic dark:text-zinc-600" : ""}`}>
+                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
                       {w.sessionsCount || "–"}
                     </td>
                   ))}
@@ -1394,7 +1278,7 @@ export default async function ArsplanPage({
                     Dagar
                   </th>
                   {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className={`py-1 pr-3 tabular-nums ${w.usedFallback ? "text-zinc-400 italic dark:text-zinc-600" : ""}`}>
+                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
                       {w.daysCount || "–"}
                     </td>
                   ))}
@@ -1404,7 +1288,7 @@ export default async function ArsplanPage({
                     Timmar
                   </th>
                   {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className={`py-1 pr-3 tabular-nums ${w.usedFallback ? "text-zinc-400 italic dark:text-zinc-600" : ""}`}>
+                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
                       {w.hoursCount ? (Math.round(w.hoursCount * 10) / 10) : "–"}
                     </td>
                   ))}
@@ -1565,9 +1449,7 @@ export default async function ArsplanPage({
               </Field>
             </div>
 
-            <StandardWeekFields />
-
-            <TrainingFactorNotesFields />
+            <DayPatternFields />
 
             <button type="submit" className={`${primaryBtn} self-start`}>
               Lägg till

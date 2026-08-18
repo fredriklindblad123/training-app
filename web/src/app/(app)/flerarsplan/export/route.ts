@@ -21,10 +21,9 @@ import {
  * Årsplan-fliken byggs sedan 2026-08-17 ur lib/arsplan-grid.ts — samma
  * datamodul som /arsplan-sidans in-app-rutnät använder, så Excel-filen och
  * appvyn aldrig kan visa olika siffror för samma data. Antal pass/dagar/
- * timmar räknas live ur faktiskt utrullade planned_workouts när sådana
- * finns för veckan (annars block.sessions_count m.fl. som förval, se
- * `usedFallback` i arsplan-grid.ts) — tidigare upprepade den här filen bara
- * blockets statiska fält per vecka oavsett vad som faktiskt låg i kalendern.
+ * timmar räknas alltid live ur faktiskt utrullade planned_workouts (blockets
+ * egna manuella "standardvecka"-fält togs bort 2026-08-18 — uttrycklig
+ * begäran, samma skäl som redan flyttade träningsfaktorer till pass-nivå).
  *
  * exceljs kräver Node-API:er (Buffer m.m.) — måste köra i Node-runtimen,
  * inte Edge. */
@@ -127,7 +126,6 @@ function buildArsplanSheet(
   sheet.addRow(["Antal dagar", ...weeks.map((w) => w.daysCount)]);
   sheet.addRow(["Antal tävlingsstarter", ...weeks.map((w) => w.startsCount)]);
   sheet.addRow(["Antal timmar", ...weeks.map((w) => Math.round(w.hoursCount * 10) / 10)]);
-  sheet.addRow(["Tester", ...weeks.map((w) => (w.block?.has_test ? "x" : ""))]);
 
   // Träningsfaktorerna (Snabbhet/Uthållighet/...) härleds ur faktiskt taggade
   // pass, inte ur ett fält på blocket — se training_factor på
@@ -163,7 +161,7 @@ export async function GET(request: Request) {
       .order("sort_order"),
     supabase
       .from("season_blocks")
-      .select("id, start_date, end_date, period, phase, sessions_count, days_count, starts_count, hours_count, has_test")
+      .select("id, start_date, end_date, period, phase")
       .eq("user_id", scopedUserId)
       .order("start_date"),
   ]);

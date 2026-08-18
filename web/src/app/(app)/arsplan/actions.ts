@@ -10,7 +10,6 @@ import {
 } from "@/lib/auth-scope";
 import { type AvailabilityKind, type PeriodType, type PhaseType } from "@/lib/planning";
 import { syncBlockPattern } from "@/lib/template-sync";
-import { TRAINING_FACTOR_GROUP_LABELS } from "@/lib/training-factors";
 
 /* Block och tillgänglighet (K7) — flyttat hit ur sasongen/actions.ts
  * 2026-08-17. Veckomallarnas dag-för-dag-innehåll (skapa/redigera mall,
@@ -24,49 +23,36 @@ function str(form: FormData, key: string): string | null {
   return s === "" ? null : s;
 }
 
-function num(form: FormData, key: string): number | null {
-  const s = str(form, key);
-  if (s == null) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
 function refresh() {
   revalidatePath("/arsplan");
   revalidatePath("/detaljplan");
   revalidatePath("/calendar", "layout");
 }
 
-/** Standardveckans aggregatsiffror (Årsplan-parametrarna pass/dagar/starter/
- * timmar/test) för ett block — gäller för varje kalendervecka inom blockets
- * datumintervall, se migration 20260815100000_block_period_redesign.sql.
- * Träningsfaktorerna (Snabbhet/Uthållighet/...) hör INTE hemma här — den
- * detaljnivån hör hemma per pass, se training_factor på
- * week_template_items/planned_workouts i stället. Delad mellan createBlock
- * och updateBlock. */
-function standardWeekFieldsFromForm(formData: FormData) {
-  return {
-    sessions_count: num(formData, "sessions_count"),
-    days_count: num(formData, "days_count"),
-    starts_count: num(formData, "starts_count"),
-    hours_count: num(formData, "hours_count"),
-    has_test: formData.get("has_test") === "on",
-  };
-}
-
-/** Fri text per träningsfaktor-grupp — coachens avsedda prioritering för
- * blocket ("3 pass/vecka Distans, 1 Tröskel, 2 Intervall"), inte en räkning
- * mot de faktiska pass-taggarna i Detaljplan. Se migration
- * 20260818100000_block_factor_notes.sql för varför det här INTE är samma
- * sak som det tidigare borttagna block-nivå-fältet training_factors. Tomma
- * fält utelämnas helt ur jsonb-objektet i stället för att sparas som "". */
-function factorNotesFromForm(formData: FormData): Record<string, string> {
-  const notes: Record<string, string> = {};
-  for (const group of Object.keys(TRAINING_FACTOR_GROUP_LABELS)) {
-    const value = str(formData, `factor_note_${group}`);
-    if (value) notes[group] = value;
+/** Blockets startmönster: vilken passtyp (om någon) för var och en av de 7
+ * veckodagarna — fälten `weekday_1_type`..`weekday_7_type` från
+ * DayPatternFields (page.tsx). Skapar week_template_items-rader direkt vid
+ * blockskapande, så man slipper hoppa till Detaljplan bara för att komma
+ * igång. Bara grundtypen sätts här (dag + passtyp, alltid slot 1) — rubrik,
+ * mål-tid/distans, repgrupper och träningsfaktor per pass fylls i sedan på
+ * Detaljplan, se motiveringen i page.tsx (uttrycklig begäran 2026-08-18,
+ * ersätter det tidigare försöket med manuella standardvecka-siffror och
+ * fritext-prioriteringar som båda visade sig fel — själva mönstret, inte en
+ * sammanfattning av det, är vad som faktiskt behövs vid skapandet). */
+async function createDayPatternItems(
+  supabase: SupabaseServerClient,
+  blockId: string,
+  formData: FormData,
+) {
+  const rows: { block_id: string; weekday: number; slot: number; workout_type: string }[] = [];
+  for (let weekday = 1; weekday <= 7; weekday++) {
+    const workoutType = str(formData, `weekday_${weekday}_type`);
+    if (!workoutType) continue;
+    rows.push({ block_id: blockId, weekday, slot: 1, workout_type: workoutType });
   }
-  return notes;
+  if (rows.length > 0) {
+    await supabase.from("week_template_items").insert(rows);
+  }
 }
 
 /** Bara "är någon inloggad" — för actions som opererar på en rad via `id`.
@@ -142,8 +128,6 @@ export async function createBlock(formData: FormData) {
       start_date: start,
       end_date: end,
       focus: str(formData, "focus"),
-      factor_notes: factorNotesFromForm(formData),
-      ...standardWeekFieldsFromForm(formData),
     })
     .select("id, start_date, end_date, phase")
     .single();
@@ -153,6 +137,7 @@ export async function createBlock(formData: FormData) {
     .from("season_block_athletes")
     .insert(athleteIds.map((athlete_id) => ({ block_id: block.id, athlete_id })));
 
+  await createDayPatternItems(supabase, block.id, formData);
   await syncBlockPattern(supabase, block);
 
   refresh();
@@ -184,8 +169,6 @@ export async function updateBlock(formData: FormData) {
       start_date: start,
       end_date: end,
       focus: str(formData, "focus"),
-      factor_notes: factorNotesFromForm(formData),
-      ...standardWeekFieldsFromForm(formData),
     })
     .eq("id", id)
     .select("id")

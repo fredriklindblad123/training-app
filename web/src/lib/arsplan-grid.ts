@@ -6,7 +6,15 @@ import { isoWeekStart } from "@/lib/stats-utils";
  * veckorutnät — en kolumn per vecka, delad mellan /arsplan (in-app-vyn) och
  * Excel-exporten (flerarsplan/export/route.ts) så de aldrig kan visa olika
  * siffror för samma data. Flyttad hit 2026-08-17 ur exportens tidigare
- * ExcelJS-kopplade buildArsplanSheet. */
+ * ExcelJS-kopplade buildArsplanSheet.
+ *
+ * 2026-08-18: blockets manuella "standardvecka"-fält (sessions_count/
+ * days_count/hours_count/has_test/starts_count) togs bort helt — uttrycklig
+ * begäran, samma "verkligheten före en manuellt inskriven siffra"-princip
+ * som redan flyttade träningsfaktorer till pass-nivå. Pass/dagar/timmar
+ * räknas nu alltid live ur faktiskt utrullade planned_workouts, aldrig från
+ * en gissning ifylld i förväg — en vecka utan utrullade pass är ett sant
+ * noll, inte "inte ifyllt ännu". */
 
 const MONTHS_SHORT = [
   "jan", "feb", "mar", "apr", "maj", "jun",
@@ -19,11 +27,6 @@ export type ArsplanBlockInput = {
   end_date: string;
   period: PeriodType;
   phase: PhaseType;
-  sessions_count: number | null;
-  days_count: number | null;
-  starts_count: number | null;
-  hours_count: number | null;
-  has_test: boolean;
 };
 
 export type ArsplanPlannedWorkoutInput = {
@@ -46,16 +49,9 @@ export type ArsplanWeekColumn = {
   sessionsCount: number;
   daysCount: number;
   hoursCount: number;
-  /** Antal tävlingsstarter (en per gren) den veckan — alltid räknat live ur
-   * `competitions`, aldrig från blockets manuella fält: en vecka utan lopp är
-   * ett sant noll, inte "inte inlagt ännu" på samma sätt som pass/dagar/
-   * timmar kan vara innan Detaljplan är ifylld. */
+  /** Antal tävlingsstarter (en per gren) den veckan — räknat live ur
+   * `competitions`, inte kopplat till något block. */
   startsCount: number;
-  /** true = veckan hade inga utrullade pass ännu, siffrorna ovan kommer då
-   * från blockets manuellt ifyllda standardvecka-fält i stället för att
-   * räknas fram live. Renderas nedtonat — "det här är bara planen, inget
-   * utrullat än". */
-  usedFallback: boolean;
   /** training_factor-nyckel → antal taggade pass den veckan. */
   factorCounts: Partial<Record<string, number>>;
   competitionLabels: string[];
@@ -113,15 +109,6 @@ export function buildArsplanWeeks(
     const block = blockForDate(sortedBlocks, weekStart);
     const weekWorkouts = workoutsByWeek.get(weekStart) ?? [];
 
-    const usedFallback = weekWorkouts.length === 0;
-    const sessionsCount = usedFallback ? (block?.sessions_count ?? 0) : weekWorkouts.length;
-    const daysCount = usedFallback
-      ? (block?.days_count ?? 0)
-      : new Set(weekWorkouts.map((w) => w.scheduled_date)).size;
-    const hoursCount = usedFallback
-      ? (block?.hours_count ?? 0)
-      : weekWorkouts.reduce((sum, w) => sum + (w.target_duration_seconds ?? 0), 0) / 3600;
-
     const factorCounts: Partial<Record<string, number>> = {};
     for (const w of weekWorkouts) {
       if (!w.training_factor) continue;
@@ -133,11 +120,10 @@ export function buildArsplanWeeks(
       isoWeekNumber: isoWeekNumber(weekStart),
       monthLabel: monthLabel(weekStart),
       block,
-      sessionsCount,
-      daysCount,
-      hoursCount,
+      sessionsCount: weekWorkouts.length,
+      daysCount: new Set(weekWorkouts.map((w) => w.scheduled_date)).size,
+      hoursCount: weekWorkouts.reduce((sum, w) => sum + (w.target_duration_seconds ?? 0), 0) / 3600,
       startsCount: startsByWeek.get(weekStart) ?? 0,
-      usedFallback,
       factorCounts,
       competitionLabels: competitionsByWeek.get(weekStart) ?? [],
     };

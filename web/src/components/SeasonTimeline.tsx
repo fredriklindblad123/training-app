@@ -24,11 +24,6 @@ export type TimelineBlock = {
   season: SeasonKind | null;
   start_date: string;
   end_date: string;
-  sessions_count: number | null;
-  days_count: number | null;
-  starts_count: number | null;
-  hours_count: number | null;
-  has_test: boolean;
 };
 
 export type TimelineCompetition = {
