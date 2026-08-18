@@ -214,6 +214,131 @@ function StandardWeekFields({
   );
 }
 
+/** Ett enskilt blocks redigeringskort — namn/period/fas/säsong/datum/fokus,
+ * löpar-kryssrutor, standardvecka, länk till Detaljplan, ta bort-knapp.
+ * Delad mellan den enskilda löparens Block-sektion och ArsplanOverview
+ * (Alla-vyns block-lista, uttrycklig begäran 2026-08-18) så de aldrig kan
+ * glida isär — samma block ska gå att redigera precis likadant oavsett
+ * varifrån man kom till det. `athletes`/`selectedAthleteIds` styr
+ * kryssrutorna; skickar man in en tom `athletes`-lista (en självcoachad
+ * löpare, ingen att välja mellan) visar AthleteTargetFields inget alls, se
+ * dess egen guard. */
+function BlockCard({
+  block: b,
+  canEdit,
+  athletes,
+  selectedAthleteIds,
+}: {
+  block: TimelineBlock & { focus: string | null };
+  canEdit: boolean;
+  athletes: { id: string; fullName: string | null }[];
+  selectedAthleteIds: Set<string>;
+}) {
+  return (
+    <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+      <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="font-medium text-zinc-900 dark:text-zinc-100">{b.name}</span>
+        <span className="text-sm text-zinc-500 dark:text-zinc-400">
+          {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
+          {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""} · {b.start_date} – {b.end_date} ·{" "}
+          {weeksBetween(b.start_date, b.end_date)} veckor
+        </span>
+      </summary>
+
+      {canEdit ? (
+        <div className="mt-4 flex flex-col gap-4">
+          <form
+            action={updateBlock}
+            className="flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
+          >
+            <input type="hidden" name="id" value={b.id} />
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Namn">
+                <input name="name" defaultValue={b.name} required className={input} />
+              </Field>
+              <Field label="Period">
+                <select name="period" defaultValue={b.period} className={input}>
+                  {PERIOD_TYPES.map((p) => (
+                    <option key={p} value={p}>
+                      {PERIOD_LABELS[p]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Fas">
+                <select name="phase" defaultValue={b.phase} className={input}>
+                  {PHASE_TYPES.map((p) => (
+                    <option key={p} value={p}>
+                      {PHASE_LABELS[p]}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Säsong">
+                <select name="season" defaultValue={b.season ?? ""} className={input}>
+                  <option value="">Ingen</option>
+                  <option value="indoor">{SEASON_LABELS.indoor}</option>
+                  <option value="outdoor">{SEASON_LABELS.outdoor}</option>
+                </select>
+              </Field>
+              <Field label="Från">
+                <input
+                  type="date"
+                  name="start_date"
+                  defaultValue={b.start_date}
+                  required
+                  className={input}
+                />
+              </Field>
+              <Field label="Till">
+                <input
+                  type="date"
+                  name="end_date"
+                  defaultValue={b.end_date}
+                  required
+                  className={input}
+                />
+              </Field>
+              <Field label="Fokus">
+                <input name="focus" defaultValue={b.focus ?? ""} className={input} />
+              </Field>
+            </div>
+
+            <AthleteTargetFields athletes={athletes} selectedIds={selectedAthleteIds} />
+
+            <StandardWeekFields block={b} />
+
+            <button type="submit" className={`${primaryBtn} self-start`}>
+              Spara ändringar
+            </button>
+          </form>
+
+          <div className="border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+            <p>
+              Veckomönster:{" "}
+              <Link href="/detaljplan" className="underline">
+                Redigera i Detaljplan →
+              </Link>
+            </p>
+          </div>
+
+          <form action={deleteBlock}>
+            <input type="hidden" name="id" value={b.id} />
+            <button
+              type="submit"
+              className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+            >
+              Ta bort block
+            </button>
+          </form>
+        </div>
+      ) : (
+        <ReadOnlyBlockSummary block={b} />
+      )}
+    </details>
+  );
+}
+
 // --- P1.5: blockjämförelse, flyttad hit från /trender --------------------
 // Att jämföra två block hör hemma i planeringen, inte i trendanalysen —
 // samma skäl som K5/K6 redan flyttades hit: "vad gav förra blocket, och hur
@@ -523,13 +648,17 @@ function formatPeriodRange(period: InterruptionPeriod): string {
   return fromMonth === toMonth ? `${fromLabel.split(" ")[0]}–${toLabel}` : `${fromLabel} – ${toLabel}`;
 }
 
-/** "Alla"-läget (uttrycklig begäran 2026-08-18): i stället för att klicka
- * igenom en löpare i taget ser en coach alla sina löpares säsonger sida vid
- * sida — ett kompakt kort per löpare (aktuellt block, nästa A-tävling, en
- * liten säsongstidslinje för innevarande år) som länkar vidare till den
- * löparens fulla Årsplan-vy för att faktiskt redigera. Ersätter hela
- * sidans övriga innehåll (blockformulär, rutnät osv. ger ingen mening att
- * visa för flera löpare samtidigt), inte ett tillägg ovanpå det. */
+/** "Alla"-läget (uttrycklig begäran 2026-08-18, utökad samma dag): i
+ * stället för att klicka igenom en löpare i taget ser en coach alla sina
+ * löpares säsonger under varandra (rad, inte kort — lättare att få en
+ * överblick) med aktuellt block, nästa A-tävling och en liten
+ * säsongstidslinje för innevarande år. Blocklistan därunder är den
+ * ihopslagna, avdubblade listan av samtliga block över hela rostern
+ * (samma block som gäller för flera löpare, t.ex. Nike+Emma tillsammans,
+ * visas bara EN gång, inte per löpare) — redigera/ta bort direkt här,
+ * inget behov av att först öppna en enskild löpares sida. Ersätter hela
+ * sidans övriga innehåll (rutnät osv. ger ingen mening att visa för flera
+ * löpare samtidigt), inte ett tillägg ovanpå det. */
 async function ArsplanOverview({
   supabase,
   scoped,
@@ -542,84 +671,136 @@ async function ArsplanOverview({
   const today = toDateKey(new Date());
   const currentYear = today.slice(0, 4);
   const athletes = viewableAthletes(scoped);
+  const athleteIds = athletes.map((a) => a.id);
 
-  const cards = await Promise.all(
-    athletes.map(async (athlete) => {
-      const { data: blockAthleteRows } = await supabase
-        .from("season_block_athletes")
-        .select("block_id")
-        .eq("athlete_id", athlete.id);
-      const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
+  // Ett enda uppslag av season_block_athletes för hela rostern (i stället
+  // för en fråga per löpare) ger både vilka block varje löpare har OCH
+  // (omvänt) vilka löpare varje block gäller för — den senare är precis
+  // det AthleteTargetFields behöver för att kryssrutorna ska visa rätt
+  // förval när man redigerar ett delat block härifrån.
+  const { data: membershipRows } =
+    athleteIds.length > 0
+      ? await supabase
+          .from("season_block_athletes")
+          .select("block_id, athlete_id")
+          .in("athlete_id", athleteIds)
+      : { data: [] as { block_id: string; athlete_id: string }[] };
 
-      const [{ data: blocks }, { data: nextA }, { data: yearCompetitionRows }] = await Promise.all([
-        blockIds.length > 0
-          ? supabase.from("season_blocks").select("*").in("id", blockIds).order("start_date")
-          : Promise.resolve({ data: [] as never[] }),
-        supabase
-          .from("competitions")
-          .select("name, competition_date")
-          .eq("user_id", athlete.id)
-          .eq("priority", "A")
-          .gte("competition_date", today)
-          .order("competition_date")
-          .limit(1)
-          .maybeSingle(),
-        // Bara innevarande år — samma avgränsning som huvudvyns tidslinje
-        // (se motiveringen vid timelineYearBlocks/timelineYearCompetitions
-        // nedan), annars blir de små korten lika oläsliga som helvyn var.
-        supabase
-          .from("competitions")
-          .select("id, name, competition_date, priority, venue")
-          .eq("user_id", athlete.id)
-          .gte("competition_date", `${currentYear}-01-01`)
-          .lte("competition_date", `${currentYear}-12-31`),
-      ]);
+  const blockIdsByAthlete = new Map<string, string[]>();
+  const athleteIdsByBlockId = new Map<string, Set<string>>();
+  for (const row of membershipRows ?? []) {
+    const blockId = row.block_id as string;
+    const athleteId = row.athlete_id as string;
+    blockIdsByAthlete.set(athleteId, [...(blockIdsByAthlete.get(athleteId) ?? []), blockId]);
+    const set = athleteIdsByBlockId.get(blockId) ?? new Set<string>();
+    set.add(athleteId);
+    athleteIdsByBlockId.set(blockId, set);
+  }
+  const allBlockIds = [...athleteIdsByBlockId.keys()];
 
-      const blockList = (blocks ?? []) as TimelineBlock[];
-      const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
-      const yearBlocks = blockList.filter(
-        (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
-      );
+  const [{ data: allBlocksRaw }, athleteExtras] = await Promise.all([
+    allBlockIds.length > 0
+      ? supabase.from("season_blocks").select("*").in("id", allBlockIds).order("start_date")
+      : Promise.resolve({ data: [] as never[] }),
+    Promise.all(
+      athletes.map(async (athlete) => {
+        const [{ data: nextA }, { data: yearCompetitionRows }] = await Promise.all([
+          supabase
+            .from("competitions")
+            .select("name, competition_date")
+            .eq("user_id", athlete.id)
+            .eq("priority", "A")
+            .gte("competition_date", today)
+            .order("competition_date")
+            .limit(1)
+            .maybeSingle(),
+          // Bara innevarande år — samma avgränsning som huvudvyns tidslinje,
+          // annars blir raderna lika oläsliga som helvyn var.
+          supabase
+            .from("competitions")
+            .select("id, name, competition_date, priority, venue")
+            .eq("user_id", athlete.id)
+            .gte("competition_date", `${currentYear}-01-01`)
+            .lte("competition_date", `${currentYear}-12-31`),
+        ]);
+        return {
+          athlete,
+          nextA,
+          yearCompetitions: (yearCompetitionRows ?? []) as TimelineCompetition[],
+        };
+      }),
+    ),
+  ]);
 
-      return {
-        athlete,
-        activeBlock,
-        nextA,
-        yearBlocks,
-        yearCompetitions: (yearCompetitionRows ?? []) as TimelineCompetition[],
-      };
-    }),
-  );
+  const allBlocks = (allBlocksRaw ?? []) as (TimelineBlock & { focus: string | null })[];
+  const blockById = new Map(allBlocks.map((b) => [b.id, b]));
+  const sortedAllBlocks = [...allBlocks].sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+  const athleteSummaries = athleteExtras.map(({ athlete, nextA, yearCompetitions }) => {
+    const myBlocks = (blockIdsByAthlete.get(athlete.id) ?? [])
+      .map((id) => blockById.get(id))
+      .filter((b): b is TimelineBlock & { focus: string | null } => b != null);
+    const activeBlock = myBlocks.find((b) => b.start_date <= today && b.end_date >= today);
+    const yearBlocks = myBlocks.filter(
+      (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
+    );
+    return { athlete, activeBlock, nextA, yearBlocks, yearCompetitions };
+  });
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
+      <div className="flex flex-col gap-2">
+        {athleteSummaries.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
           <Link
             key={athlete.id}
             href={`/arsplan?athlete=${athlete.id}`}
-            className="flex flex-col gap-3 rounded border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+            className="flex flex-wrap items-center gap-4 rounded border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
           >
-            <div className="font-medium text-zinc-900 dark:text-zinc-100">
+            <div className="w-32 shrink-0 font-medium text-zinc-900 dark:text-zinc-100">
               {athlete.fullName ?? "Namnlös löpare"}
             </div>
-            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="w-52 shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
               {activeBlock ? `${activeBlock.name} · ${PHASE_LABELS[activeBlock.phase]}` : "Inget aktivt block"}
             </div>
-            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="w-56 shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
               Nästa A-tävling:{" "}
               {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
             </div>
-            <SeasonTimeline
-              blocks={yearBlocks}
-              competitions={yearCompetitions}
-              compact
-              rangeStart={`${currentYear}-01-01`}
-              rangeEnd={`${currentYear}-12-31`}
-            />
+            <div className="min-w-[10rem] flex-1">
+              <SeasonTimeline
+                blocks={yearBlocks}
+                competitions={yearCompetitions}
+                compact
+                rangeStart={`${currentYear}-01-01`}
+                rangeEnd={`${currentYear}-12-31`}
+              />
+            </div>
           </Link>
         ))}
       </div>
+
+      {/* Ihopslagen blocklista över hela rostern — redigera/ta bort direkt
+       * här (uttrycklig begäran 2026-08-18), samma BlockCard som den
+       * enskilda löparens Block-sektion använder. Ett delat block (flera
+       * löpare ikryssade) räknas bara en gång, inte en gång per löpare. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
+        {sortedAllBlocks.length === 0 ? (
+          <p className="text-sm text-zinc-400 dark:text-zinc-600">Inga block skapade ännu.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {sortedAllBlocks.map((b) => (
+              <BlockCard
+                key={b.id}
+                block={b}
+                canEdit={canEditPlanning(scoped)}
+                athletes={athletes}
+                selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Blockskapande hör hemma på den aggregerade nivån (uttrycklig
        * begäran 2026-08-18) — löpar-kryssrutorna väljer vem/vilka blocket
@@ -1238,119 +1419,15 @@ export default async function ArsplanPage({
 
         {blockList.length > 0 && (
           <div className="flex flex-col gap-2">
-            {blockList.map((b) => {
-              return (
-                <details
-                  key={b.id}
-                  className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
-                >
-                  <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className="font-medium text-zinc-900 dark:text-zinc-100">{b.name}</span>
-                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                      {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
-                      {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""} · {b.start_date} –{" "}
-                      {b.end_date} · {weeksBetween(b.start_date, b.end_date)} veckor
-                    </span>
-                  </summary>
-
-                  {canEdit ? (
-                  <div className="mt-4 flex flex-col gap-4">
-                    <form
-                      action={updateBlock}
-                      className="flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
-                    >
-                      <input type="hidden" name="id" value={b.id} />
-                      <div className="flex flex-wrap items-end gap-3">
-                        <Field label="Namn">
-                          <input name="name" defaultValue={b.name} required className={input} />
-                        </Field>
-                        <Field label="Period">
-                          <select name="period" defaultValue={b.period} className={input}>
-                            {PERIOD_TYPES.map((p) => (
-                              <option key={p} value={p}>
-                                {PERIOD_LABELS[p]}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                        <Field label="Fas">
-                          <select name="phase" defaultValue={b.phase} className={input}>
-                            {PHASE_TYPES.map((p) => (
-                              <option key={p} value={p}>
-                                {PHASE_LABELS[p]}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                        <Field label="Säsong">
-                          <select name="season" defaultValue={b.season ?? ""} className={input}>
-                            <option value="">Ingen</option>
-                            <option value="indoor">{SEASON_LABELS.indoor}</option>
-                            <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-                          </select>
-                        </Field>
-                        <Field label="Från">
-                          <input
-                            type="date"
-                            name="start_date"
-                            defaultValue={b.start_date}
-                            required
-                            className={input}
-                          />
-                        </Field>
-                        <Field label="Till">
-                          <input
-                            type="date"
-                            name="end_date"
-                            defaultValue={b.end_date}
-                            required
-                            className={input}
-                          />
-                        </Field>
-                        <Field label="Fokus">
-                          <input name="focus" defaultValue={b.focus ?? ""} className={input} />
-                        </Field>
-                      </div>
-
-                      {scoped.role === "coach" && (
-                        <AthleteTargetFields
-                          athletes={viewableAthletes(scoped)}
-                          selectedIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
-                        />
-                      )}
-
-                      <StandardWeekFields block={b} />
-
-                      <button type="submit" className={`${primaryBtn} self-start`}>
-                        Spara ändringar
-                      </button>
-                    </form>
-
-                    <div className="border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-                      <p>
-                        Veckomönster:{" "}
-                        <Link href="/detaljplan" className="underline">
-                          Redigera i Detaljplan →
-                        </Link>
-                      </p>
-                    </div>
-
-                    <form action={deleteBlock}>
-                      <input type="hidden" name="id" value={b.id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
-                      >
-                        Ta bort block
-                      </button>
-                    </form>
-                  </div>
-                  ) : (
-                    <ReadOnlyBlockSummary block={b} />
-                  )}
-                </details>
-              );
-            })}
+            {blockList.map((b) => (
+              <BlockCard
+                key={b.id}
+                block={b}
+                canEdit={canEdit}
+                athletes={scoped.role === "coach" ? viewableAthletes(scoped) : []}
+                selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
+              />
+            ))}
           </div>
         )}
 
