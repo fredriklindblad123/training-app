@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { canEditPlanning, getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
+import {
+  canEditPlanning,
+  getScopedProfile,
+  resolveScopedUserId,
+  viewableAthletes,
+  type ScopedProfile,
+} from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   SeasonTimeline,
@@ -517,6 +523,97 @@ function formatPeriodRange(period: InterruptionPeriod): string {
   return fromMonth === toMonth ? `${fromLabel.split(" ")[0]}–${toLabel}` : `${fromLabel} – ${toLabel}`;
 }
 
+/** "Alla"-läget (uttrycklig begäran 2026-08-18): i stället för att klicka
+ * igenom en löpare i taget ser en coach alla sina löpares säsonger sida vid
+ * sida — ett kompakt kort per löpare (aktuellt block, nästa A-tävling, en
+ * liten säsongstidslinje för innevarande år) som länkar vidare till den
+ * löparens fulla Årsplan-vy för att faktiskt redigera. Ersätter hela
+ * sidans övriga innehåll (blockformulär, rutnät osv. ger ingen mening att
+ * visa för flera löpare samtidigt), inte ett tillägg ovanpå det. */
+async function ArsplanOverview({
+  supabase,
+  scoped,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  scoped: ScopedProfile;
+}) {
+  const today = toDateKey(new Date());
+  const currentYear = today.slice(0, 4);
+  const athletes = viewableAthletes(scoped);
+
+  const cards = await Promise.all(
+    athletes.map(async (athlete) => {
+      const { data: blockAthleteRows } = await supabase
+        .from("season_block_athletes")
+        .select("block_id")
+        .eq("athlete_id", athlete.id);
+      const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
+
+      const [{ data: blocks }, { data: nextA }, { data: yearCompetitionRows }] = await Promise.all([
+        blockIds.length > 0
+          ? supabase.from("season_blocks").select("*").in("id", blockIds).order("start_date")
+          : Promise.resolve({ data: [] as never[] }),
+        supabase
+          .from("competitions")
+          .select("name, competition_date")
+          .eq("user_id", athlete.id)
+          .eq("priority", "A")
+          .gte("competition_date", today)
+          .order("competition_date")
+          .limit(1)
+          .maybeSingle(),
+        // Bara innevarande år — samma avgränsning som huvudvyns tidslinje
+        // (se motiveringen vid timelineYearBlocks/timelineYearCompetitions
+        // nedan), annars blir de små korten lika oläsliga som helvyn var.
+        supabase
+          .from("competitions")
+          .select("id, name, competition_date, priority, venue")
+          .eq("user_id", athlete.id)
+          .gte("competition_date", `${currentYear}-01-01`)
+          .lte("competition_date", `${currentYear}-12-31`),
+      ]);
+
+      const blockList = (blocks ?? []) as TimelineBlock[];
+      const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
+      const yearBlocks = blockList.filter(
+        (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
+      );
+
+      return {
+        athlete,
+        activeBlock,
+        nextA,
+        yearBlocks,
+        yearCompetitions: (yearCompetitionRows ?? []) as TimelineCompetition[],
+      };
+    }),
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {cards.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
+        <Link
+          key={athlete.id}
+          href={`/arsplan?athlete=${athlete.id}`}
+          className="flex flex-col gap-3 rounded border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        >
+          <div className="font-medium text-zinc-900 dark:text-zinc-100">
+            {athlete.fullName ?? "Namnlös löpare"}
+          </div>
+          <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            {activeBlock ? `${activeBlock.name} · ${PHASE_LABELS[activeBlock.phase]}` : "Inget aktivt block"}
+          </div>
+          <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            Nästa A-tävling:{" "}
+            {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
+          </div>
+          <SeasonTimeline blocks={yearBlocks} competitions={yearCompetitions} compact />
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export default async function ArsplanPage({
   searchParams,
 }: {
@@ -545,6 +642,32 @@ export default async function ArsplanPage({
 
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null; // Layouten redirectar redan utan inloggning.
+
+  // "Alla"-läget ersätter hela sidans innehåll med ett kort per löpare — se
+  // motiveringen vid ArsplanOverview. Bara relevant för en coach; en
+  // löpare ser aldrig ?athlete= över huvud taget.
+  if (athleteParam === "alla" && scoped.role === "coach") {
+    return (
+      <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Årsplan</h1>
+          <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+            Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
+            löparens block och veckomönster.
+          </p>
+        </div>
+        <AthleteSwitcher
+          athletes={viewableAthletes(scoped)}
+          activeId="alla"
+          viewerUserId={scoped.userId}
+          buildHref={(id) => `/arsplan?athlete=${id}`}
+          overviewHref="/arsplan?athlete=alla"
+        />
+        <ArsplanOverview supabase={supabase} scoped={scoped} />
+      </div>
+    );
+  }
+
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
   // canEdit styr om redigeringsformulären visas alls (RLS är den faktiska
   // spärren, se migration 20260816100000).
@@ -644,6 +767,19 @@ export default async function ArsplanPage({
 
   const nextA = nextACompetition;
   const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
+
+  // Säsongsöversikten (SeasonTimeline) fick hela historiken (år av importerade
+  // tävlingsresultat + gamla block) tidigare — bandet blev en oläslig klump
+  // av överlappande markörer (uttrycklig begäran). Visar bara innevarande
+  // kalenderår här; block-listan, jämförelsen och Årsplan-rutnätet nedanför
+  // rörs inte, de använder fortfarande blockList/competitionList ofiltrerat.
+  const currentYear = today.slice(0, 4);
+  const timelineYearBlocks = blockList.filter(
+    (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
+  );
+  const timelineYearCompetitions = competitionList.filter(
+    (c) => c.competition_date.slice(0, 4) === currentYear,
+  );
 
   // --- Årsplan-rutnät (speglar Excel-mallens Årsplan-flik) -----------------
   // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
@@ -810,6 +946,7 @@ export default async function ArsplanPage({
           activeId={scopedUserId}
           viewerUserId={scoped.userId}
           buildHref={athleteHref}
+          overviewHref="/arsplan?athlete=alla"
         />
       )}
 
@@ -848,7 +985,7 @@ export default async function ArsplanPage({
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Säsongsöversikt</h2>
-        <SeasonTimeline blocks={blockList} competitions={competitionList} />
+        <SeasonTimeline blocks={timelineYearBlocks} competitions={timelineYearCompetitions} />
       </section>
 
       {/* ---------------- Årsplan-rutnät ---------------- */}

@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { canEditPlanning, getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
+import {
+  canEditPlanning,
+  getScopedProfile,
+  resolveScopedUserId,
+  viewableAthletes,
+  type ScopedProfile,
+} from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   PERIOD_LABELS,
@@ -92,6 +98,77 @@ type BlockRow = {
   week_template_items?: TemplateItemRow[] | null;
 };
 
+/** "Alla"-läget (uttrycklig begäran 2026-08-18, samma mönster som
+ * ArsplanOverview i /arsplan): en coach ser hur långt varje löpares
+ * veckomönster kommit — fas, block och antal ifyllda pass/vecka — utan att
+ * klicka igenom en löpare i taget. Den fulla dag-för-dag-rutnätet för alla
+ * samtidigt vore för brett, så kortet är medvetet bara en räkning; klick
+ * går vidare till löparens fulla Detaljplan-vy för att faktiskt redigera. */
+async function DetaljplanOverview({
+  supabase,
+  scoped,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  scoped: ScopedProfile;
+}) {
+  const athletes = viewableAthletes(scoped);
+
+  const cards = await Promise.all(
+    athletes.map(async (athlete) => {
+      const { data: blockAthleteRows } = await supabase
+        .from("season_block_athletes")
+        .select("block_id")
+        .eq("athlete_id", athlete.id);
+      const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
+
+      const { data: blocks } =
+        blockIds.length > 0
+          ? await supabase
+              .from("season_blocks")
+              .select("id, name, phase, week_template_items(id)")
+              .in("id", blockIds)
+              .order("start_date")
+          : { data: [] as never[] };
+
+      const blockList = (blocks ?? []) as {
+        id: string;
+        name: string;
+        phase: PhaseType;
+        week_template_items: { id: string }[] | null;
+      }[];
+
+      return { athlete, blockList };
+    }),
+  );
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {cards.map(({ athlete, blockList }) => (
+        <Link
+          key={athlete.id}
+          href={`/detaljplan?athlete=${athlete.id}`}
+          className="flex flex-col gap-2 rounded border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+        >
+          <div className="font-medium text-zinc-900 dark:text-zinc-100">
+            {athlete.fullName ?? "Namnlös löpare"}
+          </div>
+          {blockList.length === 0 ? (
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga block ännu.</p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
+              {blockList.map((b) => (
+                <li key={b.id}>
+                  {PHASE_LABELS[b.phase]} — {b.name}: {(b.week_template_items ?? []).length} pass/vecka
+                </li>
+              ))}
+            </ul>
+          )}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export default async function DetaljplanPage({
   searchParams,
 }: {
@@ -106,6 +183,31 @@ export default async function DetaljplanPage({
 
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
+
+  // "Alla"-läget ersätter hela sidans innehåll med ett kort per löpare — se
+  // motiveringen vid DetaljplanOverview.
+  if (athleteParam === "alla" && scoped.role === "coach") {
+    return (
+      <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Detaljplan</h1>
+          <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+            Hur långt varje löpares veckomönster har kommit. Klicka på ett kort för att fylla i
+            eller justera dag för dag.
+          </p>
+        </div>
+        <AthleteSwitcher
+          athletes={viewableAthletes(scoped)}
+          activeId="alla"
+          viewerUserId={scoped.userId}
+          buildHref={(id) => `/detaljplan?athlete=${id}`}
+          overviewHref="/detaljplan?athlete=alla"
+        />
+        <DetaljplanOverview supabase={supabase} scoped={scoped} />
+      </div>
+    );
+  }
+
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
   const canEdit = canEditPlanning(scoped);
 
@@ -164,6 +266,7 @@ export default async function DetaljplanPage({
           activeId={scopedUserId}
           viewerUserId={scoped.userId}
           buildHref={athleteHref}
+          overviewHref="/detaljplan?athlete=alla"
         />
       )}
 

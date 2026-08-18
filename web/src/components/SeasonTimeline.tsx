@@ -53,15 +53,21 @@ function shortDate(dateKey: string): string {
 export function SeasonTimeline({
   blocks,
   competitions,
+  compact,
 }: {
   blocks: TimelineBlock[];
   competitions: TimelineCompetition[];
+  /** Mindre band, inga tävlingsetiketter/förklaring under — för
+   * översiktskorten (Alla-läget på /arsplan) där flera löpares tidslinjer
+   * visas sida vid sida. */
+  compact?: boolean;
 }) {
   if (blocks.length === 0 && competitions.length === 0) {
     return (
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        Ingen planering ännu. Lägg till en A-tävling och låt appen föreslå en periodisering,
-        eller skapa block för hand nedan.
+        {compact
+          ? "Ingen planering ännu."
+          : "Ingen planering ännu. Lägg till en A-tävling och låt appen föreslå en periodisering, eller skapa block för hand nedan."}
       </p>
     );
   }
@@ -82,19 +88,21 @@ export function SeasonTimeline({
   // Sorterade så att banden ritas i kronologisk ordning.
   const sortedBlocks = [...blocks].sort((a, b) => a.start_date.localeCompare(b.start_date));
 
+  const bandHeight = compact ? "h-6" : "h-12";
+
   return (
     <div className="flex flex-col gap-3">
       <div className="relative overflow-x-auto">
-        <div className="min-w-[32rem]">
+        <div className={compact ? "min-w-[12rem]" : "min-w-[32rem]"}>
           {/* Blockband */}
-          <div className="relative h-12 rounded bg-zinc-100 dark:bg-zinc-900">
+          <div className={`relative ${bandHeight} rounded bg-zinc-100 dark:bg-zinc-900`}>
             {sortedBlocks.map((b) => {
               const left = pct(b.start_date);
               const width = Math.max(1.5, pct(b.end_date) - left);
               return (
                 <div
                   key={b.id}
-                  className="absolute top-0 flex h-12 items-center overflow-hidden rounded px-2"
+                  className={`absolute top-0 flex ${bandHeight} items-center overflow-hidden rounded px-2`}
                   style={{
                     left: `${left}%`,
                     width: `${width}%`,
@@ -102,16 +110,18 @@ export function SeasonTimeline({
                   }}
                   title={`${b.name} — ${PHASE_LABELS[b.phase]}, ${shortDate(b.start_date)}–${shortDate(b.end_date)}`}
                 >
-                  <span className="truncate text-xs font-medium text-white drop-shadow-sm">
-                    {b.name}
-                  </span>
+                  {!compact && (
+                    <span className="truncate text-xs font-medium text-white drop-shadow-sm">
+                      {b.name}
+                    </span>
+                  )}
                 </div>
               );
             })}
 
             {todayVisible && (
               <div
-                className="absolute top-0 h-12 w-0.5 bg-zinc-900 dark:bg-zinc-50"
+                className={`absolute top-0 ${bandHeight} w-0.5 bg-zinc-900 dark:bg-zinc-50`}
                 style={{ left: `${todayPct}%` }}
                 title={`Idag ${todayKey}`}
               />
@@ -119,7 +129,7 @@ export function SeasonTimeline({
           </div>
 
           {/* Tävlingsmarkörer */}
-          <div className="relative mt-1 h-10">
+          <div className={`relative mt-1 ${compact ? "h-2" : "h-10"}`}>
             {competitions.map((c) => (
               <div
                 key={c.id}
@@ -128,7 +138,7 @@ export function SeasonTimeline({
                 title={`${c.name} — ${shortDate(c.competition_date)}${c.venue ? ` (${SEASON_LABELS[c.venue]})` : ""}`}
               >
                 <div
-                  className={`h-3 w-3 rotate-45 ${
+                  className={`${compact ? "h-2 w-2" : "h-3 w-3"} rotate-45 ${
                     c.priority === "A"
                       ? "bg-red-600"
                       : c.priority === "B"
@@ -136,15 +146,18 @@ export function SeasonTimeline({
                         : "bg-zinc-400"
                   }`}
                 />
-                <span className="mt-0.5 whitespace-nowrap text-[10px] text-zinc-500 dark:text-zinc-400">
-                  {PRIORITY_SHORT[c.priority]} {shortDate(c.competition_date)}
-                </span>
+                {!compact && (
+                  <span className="mt-0.5 whitespace-nowrap text-[10px] text-zinc-500 dark:text-zinc-400">
+                    {PRIORITY_SHORT[c.priority]} {shortDate(c.competition_date)}
+                  </span>
+                )}
               </div>
             ))}
           </div>
         </div>
       </div>
 
+      {!compact && (
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
         {[...new Set(sortedBlocks.map((b) => b.phase))].map((t) => (
           <span key={t} className="flex items-center gap-1.5">
@@ -162,6 +175,7 @@ export function SeasonTimeline({
           </span>
         )}
       </div>
+      )}
     </div>
   );
 }
