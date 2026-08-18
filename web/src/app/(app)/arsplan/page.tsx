@@ -39,7 +39,13 @@ import {
   deleteBlock,
   updateBlock,
 } from "./actions";
-import { TRAINING_FACTORS, TRAINING_FACTOR_GROUP_LABELS, type TrainingFactorGroup } from "@/lib/training-factors";
+import {
+  TRAINING_FACTORS,
+  TRAINING_FACTOR_GROUP_LABELS,
+  TRAINING_FACTOR_SUBGROUP_LABELS,
+  type TrainingFactorGroup,
+  type TrainingFactorSubgroup,
+} from "@/lib/training-factors";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
@@ -1328,7 +1334,14 @@ export default async function ArsplanPage({
                   })}
                 </tr>
                 {(() => {
+                  // Tre nivåer, som originalmallens fetstil/vänsterställning
+                  // (grupp: fetstil, ingen indragning; undergrupp: fetstil,
+                  // indragen; rad: normal stil, indragen ytterligare om den
+                  // hör till en undergrupp) — uttrycklig begäran 2026-08-18,
+                  // annars kom alla rader på en rak lista under bara
+                  // gruppnivån.
                   let lastGroup: TrainingFactorGroup | null = null;
+                  let lastSubgroup: TrainingFactorSubgroup | null = null;
                   return TRAINING_FACTORS.flatMap((factor) => {
                     const rows = [];
                     if (factor.group !== lastGroup) {
@@ -1344,10 +1357,30 @@ export default async function ArsplanPage({
                         </tr>,
                       );
                       lastGroup = factor.group;
+                      lastSubgroup = null;
                     }
+                    if (factor.subgroup && factor.subgroup !== lastSubgroup) {
+                      rows.push(
+                        <tr key={`subgroup-${factor.group}-${factor.subgroup}`}>
+                          <th
+                            scope="row"
+                            colSpan={arsplanWeeks.length + 1}
+                            className="sticky left-0 bg-white py-1 pl-3 text-left font-medium italic text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400"
+                          >
+                            {TRAINING_FACTOR_SUBGROUP_LABELS[factor.subgroup]}
+                          </th>
+                        </tr>,
+                      );
+                    }
+                    lastSubgroup = factor.subgroup ?? null;
                     rows.push(
                       <tr key={factor.key}>
-                        <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                        <th
+                          scope="row"
+                          className={`sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400 ${
+                            factor.subgroup ? "pl-6" : ""
+                          }`}
+                        >
                           {factor.label}
                         </th>
                         {arsplanWeeks.map((w) => (

@@ -2,7 +2,12 @@ import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
-import { TRAINING_FACTOR_GROUP_LABELS, TRAINING_FACTORS } from "@/lib/training-factors";
+import {
+  TRAINING_FACTOR_GROUP_LABELS,
+  TRAINING_FACTOR_SUBGROUP_LABELS,
+  TRAINING_FACTORS,
+  type TrainingFactorSubgroup,
+} from "@/lib/training-factors";
 import { PERIOD_LABELS, PHASE_LABELS } from "@/lib/planning";
 import {
   buildArsplanWeeks,
@@ -129,14 +134,25 @@ function buildArsplanSheet(
 
   // Träningsfaktorerna (Snabbhet/Uthållighet/...) härleds ur faktiskt taggade
   // pass, inte ur ett fält på blocket — se training_factor på
-  // week_template_items/planned_workouts.
+  // week_template_items/planned_workouts. Tre nivåer (grupp/undergrupp/rad),
+  // som originalmallens fetstil/indragning — se motsvarande rendering i
+  // arsplan/page.tsx, samma tre-nivå-princip.
   let lastGroup: string | null = null;
+  let lastSubgroup: TrainingFactorSubgroup | null = null;
   for (const factor of TRAINING_FACTORS) {
     if (factor.group !== lastGroup) {
       sheet.addRow([TRAINING_FACTOR_GROUP_LABELS[factor.group]]).font = { italic: true };
       lastGroup = factor.group;
+      lastSubgroup = null;
     }
-    sheet.addRow([factor.label, ...weeks.map((w) => w.factorCounts[factor.key] ?? "")]);
+    if (factor.subgroup && factor.subgroup !== lastSubgroup) {
+      const subgroupRow = sheet.addRow([TRAINING_FACTOR_SUBGROUP_LABELS[factor.subgroup]]);
+      subgroupRow.font = { italic: true };
+      subgroupRow.getCell(1).alignment = { indent: 1 };
+    }
+    lastSubgroup = factor.subgroup ?? null;
+    const factorRow = sheet.addRow([factor.label, ...weeks.map((w) => w.factorCounts[factor.key] ?? "")]);
+    if (factor.subgroup) factorRow.getCell(1).alignment = { indent: 2 };
   }
 
   sheet.getColumn(1).width = 32;

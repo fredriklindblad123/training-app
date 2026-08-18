@@ -29,10 +29,22 @@ export const TRAINING_FACTOR_GROUP_LABELS: Record<TrainingFactorGroup, string> =
   rorlighet: "Rörlighet",
 };
 
+/** Undergrupp inom en TrainingFactorGroup — bara "uthallighet" har en i
+ * dagens taxonomi (den aeroba klustret Distans/Tröskel/Intervall/Backe/
+ * Tempo, som i originalmallen står under en egen fetstilt "Aerob"-rubrik
+ * skild från de anaeroba/snabbhetsuthållighets-posterna ovanför). Valfri —
+ * de flesta faktorer hör direkt till sin grupp utan mellanled. */
+export type TrainingFactorSubgroup = "aerob";
+
+export const TRAINING_FACTOR_SUBGROUP_LABELS: Record<TrainingFactorSubgroup, string> = {
+  aerob: "Aerob",
+};
+
 export type TrainingFactor = {
   key: string;
   label: string;
   group: TrainingFactorGroup;
+  subgroup?: TrainingFactorSubgroup;
 };
 
 export const TRAINING_FACTORS: readonly TrainingFactor[] = [
@@ -48,11 +60,11 @@ export const TRAINING_FACTORS: readonly TrainingFactor[] = [
     label: "Förberedande snabbhetsuthållighet (80-85%)",
     group: "uthallighet",
   },
-  { key: "endurance_aerob_distans", label: "Distans", group: "uthallighet" },
-  { key: "endurance_aerob_troskel", label: "Tröskel", group: "uthallighet" },
-  { key: "endurance_aerob_intervall", label: "Intervall", group: "uthallighet" },
-  { key: "endurance_aerob_backe", label: "Backe", group: "uthallighet" },
-  { key: "endurance_aerob_tempo", label: "Tempo", group: "uthallighet" },
+  { key: "endurance_aerob_distans", label: "Distans", group: "uthallighet", subgroup: "aerob" },
+  { key: "endurance_aerob_troskel", label: "Tröskel", group: "uthallighet", subgroup: "aerob" },
+  { key: "endurance_aerob_intervall", label: "Intervall", group: "uthallighet", subgroup: "aerob" },
+  { key: "endurance_aerob_backe", label: "Backe", group: "uthallighet", subgroup: "aerob" },
+  { key: "endurance_aerob_tempo", label: "Tempo", group: "uthallighet", subgroup: "aerob" },
 
   { key: "alternativ_traning", label: "Alternativ träning", group: "ovrigt" },
   { key: "koordination", label: "Koordination (inkl stödövningar)", group: "ovrigt" },
