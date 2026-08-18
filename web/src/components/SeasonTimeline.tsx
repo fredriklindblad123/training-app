@@ -54,6 +54,8 @@ export function SeasonTimeline({
   blocks,
   competitions,
   compact,
+  rangeStart,
+  rangeEnd,
 }: {
   blocks: TimelineBlock[];
   competitions: TimelineCompetition[];
@@ -61,8 +63,16 @@ export function SeasonTimeline({
    * översiktskorten (Alla-läget på /arsplan) där flera löpares tidslinjer
    * visas sida vid sida. */
   compact?: boolean;
+  /** Fast datumintervall för skalan, i stället för att härleda min/max ur
+   * blocks/competitions — så flera löpares tidslinjer i Alla-läget delar
+   * exakt samma axel och går att jämföra rakt av (annars auto-skalar varje
+   * kort till sin egen data, och samma kalendermånad hamnar på olika
+   * x-positioner för olika löpare). Utelämnad = samma auto-skalning som
+   * innan (ensam-löpar-vyn, som bara visar en tidslinje i taget). */
+  rangeStart?: string;
+  rangeEnd?: string;
 }) {
-  if (blocks.length === 0 && competitions.length === 0) {
+  if (!rangeStart && blocks.length === 0 && competitions.length === 0) {
     return (
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         {compact
@@ -72,12 +82,20 @@ export function SeasonTimeline({
     );
   }
 
-  const allDates = [
-    ...blocks.flatMap((b) => [b.start_date, b.end_date]),
-    ...competitions.map((c) => c.competition_date),
-  ];
-  const min = dayNumber(allDates.reduce((a, b) => (a < b ? a : b)));
-  const max = dayNumber(allDates.reduce((a, b) => (a > b ? a : b)));
+  const min = rangeStart
+    ? dayNumber(rangeStart)
+    : dayNumber(
+        [...blocks.map((b) => b.start_date), ...competitions.map((c) => c.competition_date)].reduce(
+          (a, b) => (a < b ? a : b),
+        ),
+      );
+  const max = rangeEnd
+    ? dayNumber(rangeEnd)
+    : dayNumber(
+        [...blocks.map((b) => b.end_date), ...competitions.map((c) => c.competition_date)].reduce(
+          (a, b) => (a > b ? a : b),
+        ),
+      );
   const span = Math.max(1, max - min);
 
   const pct = (dateKey: string) => ((dayNumber(dateKey) - min) / span) * 100;

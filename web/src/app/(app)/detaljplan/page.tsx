@@ -14,6 +14,7 @@ import {
   PHASE_TYPES,
   QUALITY_WORKOUT_TYPES,
   SLOT_LABELS,
+  toDateKey,
   WEEKDAY_LABELS,
   WORKOUT_LABELS,
   WORKOUT_TYPES,
@@ -112,6 +113,10 @@ async function DetaljplanOverview({
   scoped: ScopedProfile;
 }) {
   const athletes = viewableAthletes(scoped);
+  // Samma innevarande-år-avgränsning som ArsplanOverview — uttrycklig
+  // begäran att de två sidornas "Alla"-vyer visar samma tidsperiod för alla
+  // löpare, så de faktiskt går att jämföra sida vid sida.
+  const currentYear = toDateKey(new Date()).slice(0, 4);
 
   const cards = await Promise.all(
     athletes.map(async (athlete) => {
@@ -125,17 +130,22 @@ async function DetaljplanOverview({
         blockIds.length > 0
           ? await supabase
               .from("season_blocks")
-              .select("id, name, phase, week_template_items(id)")
+              .select("id, name, phase, start_date, end_date, week_template_items(id)")
               .in("id", blockIds)
               .order("start_date")
           : { data: [] as never[] };
 
-      const blockList = (blocks ?? []) as {
+      const allBlocks = (blocks ?? []) as {
         id: string;
         name: string;
         phase: PhaseType;
+        start_date: string;
+        end_date: string;
         week_template_items: { id: string }[] | null;
       }[];
+      const blockList = allBlocks.filter(
+        (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
+      );
 
       return { athlete, blockList };
     }),
@@ -153,12 +163,13 @@ async function DetaljplanOverview({
             {athlete.fullName ?? "Namnlös löpare"}
           </div>
           {blockList.length === 0 ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga block ännu.</p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga block i år ännu.</p>
           ) : (
             <ul className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
               {blockList.map((b) => (
                 <li key={b.id}>
-                  {PHASE_LABELS[b.phase]} — {b.name}: {(b.week_template_items ?? []).length} pass/vecka
+                  {PHASE_LABELS[b.phase]} — {b.name} ({b.start_date} – {b.end_date}):{" "}
+                  {(b.week_template_items ?? []).length} pass/vecka
                 </li>
               ))}
             </ul>

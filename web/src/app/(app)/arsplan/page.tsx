@@ -607,7 +607,13 @@ async function ArsplanOverview({
             Nästa A-tävling:{" "}
             {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
           </div>
-          <SeasonTimeline blocks={yearBlocks} competitions={yearCompetitions} compact />
+          <SeasonTimeline
+            blocks={yearBlocks}
+            competitions={yearCompetitions}
+            compact
+            rangeStart={`${currentYear}-01-01`}
+            rangeEnd={`${currentYear}-12-31`}
+          />
         </Link>
       ))}
     </div>
