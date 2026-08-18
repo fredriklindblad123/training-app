@@ -24,12 +24,28 @@ import {
 } from "@/lib/planning";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
-import { addTemplateItem, addTemplateRepGroup, deleteTemplateItem, deleteTemplateRepGroup, updateTemplateRepGroup } from "./actions";
+import {
+  addManualPass,
+  addTemplateItem,
+  addTemplateRepGroup,
+  deleteTemplateItem,
+  deleteTemplateRepGroup,
+  updateTemplateRepGroup,
+} from "./actions";
 import {
   TRAINING_FACTORS,
   TRAINING_FACTOR_GROUP_LABELS,
   type TrainingFactorGroup,
 } from "@/lib/training-factors";
+
+/** Vilken träningsfaktor-GRUPP ett pass tillhör, för att kunna gruppera
+ * rutnätet radvis (Excel-mallens Detaljplan-flik har en rad per faktor,
+ * grupperad likadant) — `null` för pass utan satt träningsfaktor, samlas i
+ * en egen sista rad ("Ej kopplat") i stället för att falla bort tyst. */
+function factorGroupOf(key: string | null): TrainingFactorGroup | null {
+  if (!key) return null;
+  return TRAINING_FACTORS.find((f) => f.key === key)?.group ?? null;
+}
 
 /* Detaljplan: varje blocks eget dag-för-dag-veckomönster, en fas i taget —
  * speglar Excel-mallens Detaljplan-flik. Flyttad hit ur /sasongen
@@ -89,6 +105,111 @@ type TemplateItemRow = {
   template_rep_groups?: RepGroupRow[] | null;
 };
 
+/** Ett enskilt pass-kort i rutnätet — delad mellan alla celler (dag ×
+ * träningsfaktor-grupp) i PatternGrid nedan, så kortets innehåll bara
+ * behöver underhållas på ett ställe. */
+function PatternItemCard({ it, canEdit }: { it: TemplateItemRow; canEdit: boolean }) {
+  const sigLabel = plannedSignatureLabel(
+    (it.template_rep_groups ?? []).map(
+      (g): PlannedRepGroup => ({
+        reps: g.reps,
+        distanceMeters: g.distance_meters,
+        durationSeconds: g.duration_seconds,
+        sortOrder: g.sort_order,
+      }),
+    ),
+  );
+  return (
+    <div className="rounded bg-zinc-100 px-1.5 py-1 text-xs dark:bg-zinc-800">
+      <div className="font-medium text-zinc-900 dark:text-zinc-100">
+        {WORKOUT_LABELS[it.workout_type as keyof typeof WORKOUT_LABELS] ?? it.workout_type}
+      </div>
+      {it.title && <div className="text-zinc-600 dark:text-zinc-400">{it.title}</div>}
+      {it.training_factor && (
+        <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
+          {TRAINING_FACTORS.find((f) => f.key === it.training_factor)?.label ?? it.training_factor}
+        </div>
+      )}
+      {sigLabel && <div className="text-zinc-600 dark:text-zinc-400">{sigLabel}</div>}
+      {it.slot > 1 && (
+        <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{SLOT_LABELS[it.slot]}</div>
+      )}
+      {canEdit && (
+        <form action={deleteTemplateItem}>
+          <input type="hidden" name="id" value={it.id} />
+          <button type="submit" className="mt-0.5 text-[10px] text-zinc-400 hover:text-red-600">
+            ta bort
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** Veckorutnätet: dag-kolumner × träningsfaktor-rader — speglar
+ * Excel-mallens Detaljplan-flik (dag × faktor, inte bara dag som tidigare)
+ * uttrycklig begäran 2026-08-18. Samma underliggande pass-data som innan
+ * (typ/rubrik/mål-tid/repgrupper) — bara omorganiserad radvis. Bara de
+ * faktor-grupper som faktiskt har minst ett pass visas som rad, plus en
+ * sista "Ej kopplat"-rad om något pass saknar träningsfaktor — annars fem
+ * mestadels tomma rader varje gång, samma "visa bara det som används"-
+ * princip som redan styr vilka faser som visas ovanför. */
+function PatternGrid({ items, canEdit }: { items: TemplateItemRow[]; canEdit: boolean }) {
+  const groupOrder = Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[];
+  const usedGroups = groupOrder.filter((g) => items.some((it) => factorGroupOf(it.training_factor) === g));
+  const hasUngrouped = items.some((it) => factorGroupOf(it.training_factor) === null);
+  const rows: (TrainingFactorGroup | null)[] = [...usedGroups, ...(hasUngrouped ? [null] : [])];
+
+  if (rows.length === 0) {
+    return <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-600">Inga pass i mönstret ännu.</p>;
+  }
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full min-w-[640px] border-collapse text-xs">
+        <thead>
+          <tr>
+            <th className="w-28 border-b border-zinc-200 px-1 pb-1 text-left font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+              Träningsfaktor
+            </th>
+            {WEEKDAY_LABELS.map((label) => (
+              <th
+                key={label}
+                className="border-b border-zinc-200 px-1 pb-1 text-left font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
+              >
+                {label.slice(0, 3)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((group) => (
+            <tr key={group ?? "_none"} className="align-top">
+              <td className="border-b border-zinc-100 px-1 py-2 font-medium text-zinc-700 dark:border-zinc-900 dark:text-zinc-300">
+                {group ? TRAINING_FACTOR_GROUP_LABELS[group] : "Ej kopplat"}
+              </td>
+              {WEEKDAY_LABELS.map((label, wi) => {
+                const cellItems = items
+                  .filter((it) => it.weekday === wi + 1 && factorGroupOf(it.training_factor) === group)
+                  .sort((a, b2) => a.slot - b2.slot);
+                return (
+                  <td key={label} className="border-b border-zinc-100 px-1 py-2 dark:border-zinc-900">
+                    <div className="flex flex-col gap-1">
+                      {cellItems.map((it) => (
+                        <PatternItemCard key={it.id} it={it} canEdit={canEdit} />
+                      ))}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 type BlockRow = {
   id: string;
   name: string;
@@ -97,6 +218,7 @@ type BlockRow = {
   start_date: string;
   end_date: string;
   week_template_items?: TemplateItemRow[] | null;
+  season_block_athletes?: { athlete_id: string }[] | null;
 };
 
 /** "Alla"-läget (uttrycklig begäran 2026-08-18, samma mönster som
@@ -236,12 +358,17 @@ export default async function DetaljplanPage({
     blockIds.length > 0
       ? await supabase
           .from("season_blocks")
-          .select("id, name, period, phase, start_date, end_date, week_template_items(*, template_rep_groups(*))")
+          .select(
+            "id, name, period, phase, start_date, end_date, week_template_items(*, template_rep_groups(*)), season_block_athletes(athlete_id)",
+          )
           .in("id", blockIds)
           .order("start_date")
       : { data: [] as BlockRow[] };
 
   const blockList = (blocks ?? []) as BlockRow[];
+  // Namn för "extra pass"-formulärets löparväljare — bara coacher har fler
+  // än sig själv att välja mellan, se athletesById-uppslaget nedan.
+  const athletesById = new Map(viewableAthletes(scoped).map((a) => [a.id, a]));
 
   // Visa bara faser som faktiskt har ett block — en lista med alla sex
   // faser, mest tomma, gjorde det svårt att se vad man faktiskt skulle
@@ -339,81 +466,7 @@ export default async function DetaljplanPage({
                         </span>
                       </summary>
 
-                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-7">
-                        {WEEKDAY_LABELS.map((label, wi) => {
-                          const day = items
-                            .filter((it) => it.weekday === wi + 1)
-                            .sort((a, b2) => a.slot - b2.slot);
-                          return (
-                            <div key={label} className="flex flex-col gap-1">
-                              <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                                {label.slice(0, 3)}
-                              </div>
-                              {day.length === 0 && (
-                                <div className="text-xs text-zinc-300 dark:text-zinc-700">—</div>
-                              )}
-                              {day.map((it) => (
-                                <div
-                                  key={it.id}
-                                  className="rounded bg-zinc-100 px-1.5 py-1 text-xs dark:bg-zinc-800"
-                                >
-                                  <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                                    {WORKOUT_LABELS[it.workout_type as keyof typeof WORKOUT_LABELS] ??
-                                      it.workout_type}
-                                  </div>
-                                  {it.title && (
-                                    <div className="text-zinc-600 dark:text-zinc-400">{it.title}</div>
-                                  )}
-                                  {it.training_factor && (
-                                    <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
-                                      {TRAINING_FACTORS.find((f) => f.key === it.training_factor)
-                                        ?.label ?? it.training_factor}
-                                    </div>
-                                  )}
-                                  {(() => {
-                                    // Samma nyckelformat som utfallets
-                                    // buildSessionSignature — se
-                                    // lib/session-signature.ts.
-                                    const sigLabel = plannedSignatureLabel(
-                                      (it.template_rep_groups ?? []).map(
-                                        (g): PlannedRepGroup => ({
-                                          reps: g.reps,
-                                          distanceMeters: g.distance_meters,
-                                          durationSeconds: g.duration_seconds,
-                                          sortOrder: g.sort_order,
-                                        }),
-                                      ),
-                                    );
-                                    return (
-                                      sigLabel && (
-                                        <div className="text-zinc-600 dark:text-zinc-400">
-                                          {sigLabel}
-                                        </div>
-                                      )
-                                    );
-                                  })()}
-                                  {it.slot > 1 && (
-                                    <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
-                                      {SLOT_LABELS[it.slot]}
-                                    </div>
-                                  )}
-                                  {canEdit && (
-                                    <form action={deleteTemplateItem}>
-                                      <input type="hidden" name="id" value={it.id} />
-                                      <button
-                                        type="submit"
-                                        className="mt-0.5 text-[10px] text-zinc-400 hover:text-red-600"
-                                      >
-                                        ta bort
-                                      </button>
-                                    </form>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <PatternGrid items={items} canEdit={canEdit} />
 
                       {canEdit && repEditableItems.length > 0 && (
                         <div className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
@@ -493,6 +546,84 @@ export default async function DetaljplanPage({
                           </button>
                         </form>
                       )}
+
+                      {(() => {
+                        // Extra pass för en enskild löpare på blocket — utanför
+                        // det delade mönstret ovan, se addManualPass i
+                        // actions.ts. Bara en coach har fler än sig själv att
+                        // välja bland, så formuläret är meningslöst för en
+                        // självcoachad löpare (hon skulle bara kunna välja sig
+                        // själv, vilket "Lägg till pass" redan gör via mönstret).
+                        const blockAthletes = (b.season_block_athletes ?? [])
+                          .map((r) => athletesById.get(r.athlete_id))
+                          .filter((a): a is NonNullable<typeof a> => a != null);
+                        if (!canEdit || scoped.role !== "coach" || blockAthletes.length === 0) {
+                          return null;
+                        }
+                        return (
+                          <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                              Extra pass för en enskild löpare — utanför det delade mönstret, syns bara
+                              hos henne.
+                            </div>
+                            <form action={addManualPass} className="flex flex-wrap items-end gap-2">
+                              <input type="hidden" name="block_id" value={b.id} />
+                              <Field label="Löpare">
+                                <select name="athlete_id" className={input} defaultValue={blockAthletes[0].id}>
+                                  {blockAthletes.map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                      {a.fullName ?? "Namnlös löpare"}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label="Datum">
+                                <input
+                                  type="date"
+                                  name="scheduled_date"
+                                  min={b.start_date}
+                                  max={b.end_date}
+                                  required
+                                  className={input}
+                                />
+                              </Field>
+                              <Field label="Pass">
+                                <select name="slot" className={input} defaultValue="1">
+                                  {[1, 2, 3].map((s) => (
+                                    <option key={s} value={s}>
+                                      {SLOT_LABELS[s]}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label="Typ">
+                                <select name="workout_type" className={input} defaultValue="easy">
+                                  {WORKOUT_TYPES.map((w) => (
+                                    <option key={w} value={w}>
+                                      {WORKOUT_LABELS[w]}
+                                    </option>
+                                  ))}
+                                </select>
+                              </Field>
+                              <Field label="Rubrik">
+                                <input name="title" placeholder="Extra pass" className={input} />
+                              </Field>
+                              <Field label="Minuter">
+                                <input
+                                  name="target_duration_minutes"
+                                  type="number"
+                                  min="0"
+                                  className={`${input} w-24`}
+                                />
+                              </Field>
+                              <TrainingFactorSelect />
+                              <button type="submit" className={ghostBtn}>
+                                Lägg till extra pass
+                              </button>
+                            </form>
+                          </div>
+                        );
+                      })()}
                     </details>
                   );
                 })}

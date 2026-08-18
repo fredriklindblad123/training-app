@@ -42,6 +42,45 @@ async function requireUser(): Promise<{ supabase: SupabaseServerClient } | null>
   return user ? { supabase } : null;
 }
 
+/** Ett enskilt extra pass för EN löpare inom blocket, utanför det delade
+ * veckomönstret — uttrycklig begäran 2026-08-18: kalenderns "lägg till
+ * pass" togs bort helt tidigare (allt skapande skulle ske i Detaljplan),
+ * men det saknades ett sätt att ge en enskild löpare något utöver det som
+ * redan rullas ut till alla på blocket (t ex ett läger-pass bara för
+ * henne). Skriver rakt in i planned_workouts (ingen week_template_items-
+ * rad) — precis för att INTE rulla ut till blockets övriga löpare. Datumet
+ * är fritt (inte begränsat till en veckodag i mönstret), men bunden till
+ * blockets datumspann i formuläret (min/max på date-inputen, se page.tsx). */
+export async function addManualPass(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const blockId = str(formData, "block_id");
+  const athleteId = str(formData, "athlete_id");
+  const scheduledDate = str(formData, "scheduled_date");
+  const workoutType = str(formData, "workout_type");
+  if (!blockId || !athleteId || !scheduledDate || !workoutType) return;
+
+  await supabase.from("planned_workouts").insert({
+    user_id: athleteId,
+    scheduled_date: scheduledDate,
+    slot: num(formData, "slot") ?? 1,
+    workout_type: workoutType,
+    title: str(formData, "title"),
+    description: str(formData, "description"),
+    target_duration_seconds:
+      num(formData, "target_duration_minutes") != null
+        ? (num(formData, "target_duration_minutes") as number) * 60
+        : null,
+    training_factor: str(formData, "training_factor"),
+    block_id: blockId,
+    status: "planned",
+  });
+
+  refresh();
+}
+
 export async function addTemplateItem(formData: FormData) {
   const auth = await requireUser();
   if (!auth) return;
