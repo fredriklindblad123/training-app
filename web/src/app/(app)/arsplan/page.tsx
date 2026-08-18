@@ -130,6 +130,7 @@ function ReadOnlyBlockSummary({
     starts_count: number | null;
     hours_count: number | null;
     has_test: boolean;
+    factor_notes: Record<string, string> | null;
   };
 }) {
   const bits = [
@@ -139,10 +140,23 @@ function ReadOnlyBlockSummary({
     block.hours_count != null ? `${block.hours_count} timmar` : null,
     block.has_test ? "test" : null,
   ].filter(Boolean);
+  const factorNoteEntries = Object.entries(block.factor_notes ?? {}).filter(([, v]) => v);
   return (
     <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
       {block.focus && <p>{block.focus}</p>}
       <p>{bits.length > 0 ? bits.join(" · ") : "Ingen standardvecka ifylld ännu."}</p>
+      {factorNoteEntries.length > 0 && (
+        <dl className="flex flex-col gap-1">
+          {factorNoteEntries.map(([group, note]) => (
+            <div key={group}>
+              <dt className="inline font-medium text-zinc-700 dark:text-zinc-300">
+                {TRAINING_FACTOR_GROUP_LABELS[group as TrainingFactorGroup] ?? group}:{" "}
+              </dt>
+              <dd className="inline">{note}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
     </div>
   );
 }
@@ -214,22 +228,70 @@ function StandardWeekFields({
   );
 }
 
+/** Fri text per träningsfaktor-grupp — coachens avsedda prioritering för
+ * blocket, t.ex. "3 pass/vecka distans (30–60 min), 1 tröskel, 2
+ * intervall" för Uthållighet. Speglar Excel-mallens Årsplan-flik, där en
+ * sammanslagen cell över blockets veckor beskriver samma sak per
+ * faktorgrupp (uttrycklig begäran 2026-08-18). Fri text som coachen
+ * skriver själv — INTE kopplad till de faktiska pass-taggarna i
+ * Detaljplan/Årsplan-rutnätet, det är en avsikt, inte en räkning (se
+ * migration 20260818100000_block_factor_notes.sql för varför den
+ * distinktionen spelar roll: ett tidigare block-nivå-fält med samma namn
+ * togs bort 2026-08-16 just för att det blandades ihop med en räkning). */
+function TrainingFactorNotesFields({
+  notes,
+}: {
+  notes?: Record<string, string> | null;
+}) {
+  const groups = Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[];
+  return (
+    <div className="flex flex-col gap-3 rounded border border-zinc-100 p-3 dark:border-zinc-800">
+      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        Prioritering per träningsfaktor — fri text, t.ex. &quot;3 pass/vecka distans (30–60
+        min), 1 tröskel, 2 intervall&quot;
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {groups.map((group) => (
+          <Field key={group} label={TRAINING_FACTOR_GROUP_LABELS[group]}>
+            <textarea
+              name={`factor_note_${group}`}
+              rows={2}
+              defaultValue={notes?.[group] ?? ""}
+              className={input}
+            />
+          </Field>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Blocktypen BlockCard/ReadOnlyBlockSummary/blocklistorna delar — TimelineBlock
+ * (SeasonTimeline.tsx) plus fälten bara redigeringskortet behöver. */
+type BlockCardBlock = TimelineBlock & {
+  focus: string | null;
+  /** Fri text per träningsfaktor-grupp, se migration
+   * 20260818100000_block_factor_notes.sql — INTE en räkning mot Detaljplans
+   * pass-taggar, bara coachens egna ord om vad blocket ska prioritera. */
+  factor_notes: Record<string, string> | null;
+};
+
 /** Ett enskilt blocks redigeringskort — namn/period/fas/säsong/datum/fokus,
- * löpar-kryssrutor, standardvecka, länk till Detaljplan, ta bort-knapp.
- * Delad mellan den enskilda löparens Block-sektion och ArsplanOverview
- * (Alla-vyns block-lista, uttrycklig begäran 2026-08-18) så de aldrig kan
- * glida isär — samma block ska gå att redigera precis likadant oavsett
- * varifrån man kom till det. `athletes`/`selectedAthleteIds` styr
- * kryssrutorna; skickar man in en tom `athletes`-lista (en självcoachad
- * löpare, ingen att välja mellan) visar AthleteTargetFields inget alls, se
- * dess egen guard. */
+ * löpar-kryssrutor, standardvecka, prioritering per träningsfaktor, länk
+ * till Detaljplan, ta bort-knapp. Delad mellan den enskilda löparens
+ * Block-sektion och ArsplanOverview (Alla-vyns block-lista, uttrycklig
+ * begäran 2026-08-18) så de aldrig kan glida isär — samma block ska gå
+ * att redigera precis likadant oavsett varifrån man kom till det.
+ * `athletes`/`selectedAthleteIds` styr kryssrutorna; skickar man in en tom
+ * `athletes`-lista (en självcoachad löpare, ingen att välja mellan) visar
+ * AthleteTargetFields inget alls, se dess egen guard. */
 function BlockCard({
   block: b,
   canEdit,
   athletes,
   selectedAthleteIds,
 }: {
-  block: TimelineBlock & { focus: string | null };
+  block: BlockCardBlock;
   canEdit: boolean;
   athletes: { id: string; fullName: string | null }[];
   selectedAthleteIds: Set<string>;
@@ -307,6 +369,8 @@ function BlockCard({
             <AthleteTargetFields athletes={athletes} selectedIds={selectedAthleteIds} />
 
             <StandardWeekFields block={b} />
+
+            <TrainingFactorNotesFields notes={b.factor_notes} />
 
             <button type="submit" className={`${primaryBtn} self-start`}>
               Spara ändringar
@@ -732,14 +796,14 @@ async function ArsplanOverview({
     ),
   ]);
 
-  const allBlocks = (allBlocksRaw ?? []) as (TimelineBlock & { focus: string | null })[];
+  const allBlocks = (allBlocksRaw ?? []) as BlockCardBlock[];
   const blockById = new Map(allBlocks.map((b) => [b.id, b]));
   const sortedAllBlocks = [...allBlocks].sort((a, b) => a.start_date.localeCompare(b.start_date));
 
   const athleteSummaries = athleteExtras.map(({ athlete, nextA, yearCompetitions }) => {
     const myBlocks = (blockIdsByAthlete.get(athlete.id) ?? [])
       .map((id) => blockById.get(id))
-      .filter((b): b is TimelineBlock & { focus: string | null } => b != null);
+      .filter((b): b is BlockCardBlock => b != null);
     const activeBlock = myBlocks.find((b) => b.start_date <= today && b.end_date >= today);
     const yearBlocks = myBlocks.filter(
       (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
@@ -859,6 +923,8 @@ async function ArsplanOverview({
           <AthleteTargetFields athletes={athletes} selectedIds={new Set()} />
 
           <StandardWeekFields />
+
+          <TrainingFactorNotesFields />
 
           <button type="submit" className={`${primaryBtn} self-start`}>
             Lägg till
@@ -1017,7 +1083,7 @@ export default async function ArsplanPage({
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
   // fokustexten, därav den utökade typen här. Samma form täcker också
   // ArsplanBlockInput (lib/arsplan-grid.ts) rakt av.
-  const blockList = (blocks ?? []) as (TimelineBlock & { focus: string | null })[];
+  const blockList = (blocks ?? []) as BlockCardBlock[];
   const competitionList = (timelineCompetitionRows ?? []) as (TimelineCompetition & {
     competition_events: { event: string }[];
   })[];
@@ -1500,6 +1566,8 @@ export default async function ArsplanPage({
             </div>
 
             <StandardWeekFields />
+
+            <TrainingFactorNotesFields />
 
             <button type="submit" className={`${primaryBtn} self-start`}>
               Lägg till

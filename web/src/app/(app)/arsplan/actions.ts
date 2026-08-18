@@ -10,6 +10,7 @@ import {
 } from "@/lib/auth-scope";
 import { type AvailabilityKind, type PeriodType, type PhaseType } from "@/lib/planning";
 import { syncBlockPattern } from "@/lib/template-sync";
+import { TRAINING_FACTOR_GROUP_LABELS } from "@/lib/training-factors";
 
 /* Block och tillgänglighet (K7) — flyttat hit ur sasongen/actions.ts
  * 2026-08-17. Veckomallarnas dag-för-dag-innehåll (skapa/redigera mall,
@@ -51,6 +52,21 @@ function standardWeekFieldsFromForm(formData: FormData) {
     hours_count: num(formData, "hours_count"),
     has_test: formData.get("has_test") === "on",
   };
+}
+
+/** Fri text per träningsfaktor-grupp — coachens avsedda prioritering för
+ * blocket ("3 pass/vecka Distans, 1 Tröskel, 2 Intervall"), inte en räkning
+ * mot de faktiska pass-taggarna i Detaljplan. Se migration
+ * 20260818100000_block_factor_notes.sql för varför det här INTE är samma
+ * sak som det tidigare borttagna block-nivå-fältet training_factors. Tomma
+ * fält utelämnas helt ur jsonb-objektet i stället för att sparas som "". */
+function factorNotesFromForm(formData: FormData): Record<string, string> {
+  const notes: Record<string, string> = {};
+  for (const group of Object.keys(TRAINING_FACTOR_GROUP_LABELS)) {
+    const value = str(formData, `factor_note_${group}`);
+    if (value) notes[group] = value;
+  }
+  return notes;
 }
 
 /** Bara "är någon inloggad" — för actions som opererar på en rad via `id`.
@@ -126,6 +142,7 @@ export async function createBlock(formData: FormData) {
       start_date: start,
       end_date: end,
       focus: str(formData, "focus"),
+      factor_notes: factorNotesFromForm(formData),
       ...standardWeekFieldsFromForm(formData),
     })
     .select("id, start_date, end_date, phase")
@@ -167,6 +184,7 @@ export async function updateBlock(formData: FormData) {
       start_date: start,
       end_date: end,
       focus: str(formData, "focus"),
+      factor_notes: factorNotesFromForm(formData),
       ...standardWeekFieldsFromForm(formData),
     })
     .eq("id", id)
