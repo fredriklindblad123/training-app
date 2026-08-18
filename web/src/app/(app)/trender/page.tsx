@@ -901,7 +901,11 @@ export default async function TrendsPage({
             </p>
           </div>
           <Link
-            href={`/arsplan?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}${athleteQuery}`}
+            href={
+              scoped.role === "coach"
+                ? `/arsplan?athlete=alla&nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
+                : `/arsplan?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
+            }
             className="rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
           >
             Skapa nästa block →

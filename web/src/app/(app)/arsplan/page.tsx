@@ -533,9 +533,11 @@ function formatPeriodRange(period: InterruptionPeriod): string {
 async function ArsplanOverview({
   supabase,
   scoped,
+  nyttBlockFranParam,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   scoped: ScopedProfile;
+  nyttBlockFranParam?: string;
 }) {
   const today = toDateKey(new Date());
   const currentYear = today.slice(0, 4);
@@ -590,32 +592,108 @@ async function ArsplanOverview({
   );
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {cards.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
-        <Link
-          key={athlete.id}
-          href={`/arsplan?athlete=${athlete.id}`}
-          className="flex flex-col gap-3 rounded border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-        >
-          <div className="font-medium text-zinc-900 dark:text-zinc-100">
-            {athlete.fullName ?? "Namnlös löpare"}
+    <div className="flex flex-col gap-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {cards.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
+          <Link
+            key={athlete.id}
+            href={`/arsplan?athlete=${athlete.id}`}
+            className="flex flex-col gap-3 rounded border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+          >
+            <div className="font-medium text-zinc-900 dark:text-zinc-100">
+              {athlete.fullName ?? "Namnlös löpare"}
+            </div>
+            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+              {activeBlock ? `${activeBlock.name} · ${PHASE_LABELS[activeBlock.phase]}` : "Inget aktivt block"}
+            </div>
+            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+              Nästa A-tävling:{" "}
+              {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
+            </div>
+            <SeasonTimeline
+              blocks={yearBlocks}
+              competitions={yearCompetitions}
+              compact
+              rangeStart={`${currentYear}-01-01`}
+              rangeEnd={`${currentYear}-12-31`}
+            />
+          </Link>
+        ))}
+      </div>
+
+      {/* Blockskapande hör hemma på den aggregerade nivån (uttrycklig
+       * begäran 2026-08-18) — löpar-kryssrutorna väljer vem/vilka blocket
+       * gäller, utan att man först behöver stå på en enskild löpares sida. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          Lägg till block för hand
+        </h2>
+        <form action={createBlock} className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Namn">
+              <input name="name" required placeholder="Grundträning 1" className={input} />
+            </Field>
+            <Field label="Period">
+              <select name="period" className={input} defaultValue="forberedelse">
+                {PERIOD_TYPES.map((p) => (
+                  <option key={p} value={p}>
+                    {PERIOD_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Fas">
+              <select name="phase" className={input} defaultValue="allman">
+                {PHASE_TYPES.map((p) => (
+                  <option key={p} value={p}>
+                    {PHASE_LABELS[p]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Säsong">
+              <select name="season" className={input} defaultValue="">
+                <option value="">Ingen</option>
+                <option value="indoor">{SEASON_LABELS.indoor}</option>
+                <option value="outdoor">{SEASON_LABELS.outdoor}</option>
+              </select>
+            </Field>
+            <Field label="Från">
+              <input
+                type="date"
+                name="start_date"
+                required
+                defaultValue={nyttBlockFranParam ?? undefined}
+                className={input}
+              />
+            </Field>
+            <Field label="Till">
+              <input type="date" name="end_date" required className={input} />
+            </Field>
+            <Field label="Fokus">
+              <input name="focus" placeholder="Tröskelvolym, 2 pass/vecka" className={input} />
+            </Field>
           </div>
-          <div className="text-sm text-zinc-500 dark:text-zinc-400">
-            {activeBlock ? `${activeBlock.name} · ${PHASE_LABELS[activeBlock.phase]}` : "Inget aktivt block"}
-          </div>
-          <div className="text-sm text-zinc-500 dark:text-zinc-400">
-            Nästa A-tävling:{" "}
-            {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
-          </div>
-          <SeasonTimeline
-            blocks={yearBlocks}
-            competitions={yearCompetitions}
-            compact
-            rangeStart={`${currentYear}-01-01`}
-            rangeEnd={`${currentYear}-12-31`}
-          />
-        </Link>
-      ))}
+
+          <AthleteTargetFields athletes={athletes} selectedIds={new Set()} />
+
+          <StandardWeekFields />
+
+          <button type="submit" className={`${primaryBtn} self-start`}>
+            Lägg till
+          </button>
+        </form>
+        <dl className="grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2 dark:text-zinc-400">
+          {PHASE_TYPES.map((p) => (
+            <div key={p}>
+              <dt className="inline font-medium text-zinc-700 dark:text-zinc-300">
+                {PHASE_LABELS[p]}:{" "}
+              </dt>
+              <dd className="inline">{PHASE_INTENT[p]}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
     </div>
   );
 }
@@ -669,7 +747,7 @@ export default async function ArsplanPage({
           buildHref={(id) => `/arsplan?athlete=${id}`}
           overviewHref="/arsplan?athlete=alla"
         />
-        <ArsplanOverview supabase={supabase} scoped={scoped} />
+        <ArsplanOverview supabase={supabase} scoped={scoped} nyttBlockFranParam={nyttBlockFranParam} />
       </div>
     );
   }
@@ -1149,9 +1227,13 @@ export default async function ArsplanPage({
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
         <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Klicka på ett block för att redigera det. Blockets eget dag-för-dag-veckomönster
-          fylls i på <Link href="/detaljplan" className="underline">Detaljplan</Link> — ett
-          pass som läggs till där dyker automatiskt upp i kalendern.
+          Klicka på ett block för att redigera det. Nya block skapas från{" "}
+          <Link href="/arsplan?athlete=alla" className="underline">
+            Översikt
+          </Link>{" "}
+          — det är där löparna för blocket väljs. Blockets eget dag-för-dag-veckomönster fylls
+          i på <Link href="/detaljplan" className="underline">Detaljplan</Link> — ett pass som
+          läggs till där dyker automatiskt upp i kalendern.
         </p>
 
         {blockList.length > 0 && (
@@ -1272,7 +1354,11 @@ export default async function ArsplanPage({
           </div>
         )}
 
-        {canEdit && (
+        {/* Skapa-formuläret flyttat till Översikt (uttrycklig begäran
+         * 2026-08-18) — en coach väljer löpare i Alla-vyn i stället, det är
+         * den aggregerade nivån blockskapande hör hemma på. Kvar bara här
+         * för en självcoachad löpare (ingen Översikt att skapa via). */}
+        {canEdit && scoped.role !== "coach" && (
         <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
           <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Lägg till block för hand
@@ -1323,13 +1409,6 @@ export default async function ArsplanPage({
                 <input name="focus" placeholder="Tröskelvolym, 2 pass/vecka" className={input} />
               </Field>
             </div>
-
-            {scoped.role === "coach" && (
-              <AthleteTargetFields
-                athletes={viewableAthletes(scoped)}
-                selectedIds={new Set([scopedUserId])}
-              />
-            )}
 
             <StandardWeekFields />
 
