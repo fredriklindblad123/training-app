@@ -126,23 +126,17 @@ function BlockWeekSection({
 /** Ett pass i veckovyn: sammanfattning + löparchips + "öppna" för
  * detaljer. Chips visas bara när blocket har fler än en taggad löpare —
  * med en enda löpare är "vilka är taggade" ingen fråga.
- *
- * `trailing` läggs på samma rad som "öppna", till höger. Dagens
- * "+ nytt pass" hamnar där i stället för på en egen rad under kortet — det
- * finns gott om bredd bredvid "öppna", och en rad mindre per dagruta gör
- * veckoraden märkbart lägre när flera dagar har pass. */
+ */
 function WeekPassCard({
   pass,
   blockId,
   canEdit,
   blockAthletes,
-  trailing,
 }: {
   pass: PassGroup;
   blockId: string;
   canEdit: boolean;
   blockAthletes: AthleteOption[];
-  trailing?: React.ReactNode;
 }) {
   const tagged = new Set(pass.athleteIds);
   const untagged = blockAthletes.filter((a) => !tagged.has(a.id));
@@ -305,7 +299,6 @@ function WeekPassCard({
             ta bort{pass.athleteIds.length > 1 ? " (alla)" : ""}
           </button>
         </form>
-        {trailing}
         </div>
       )}
     </div>
@@ -476,31 +469,21 @@ function WeekGrid({
                     {day.competitions.map((c) => (
                       <CompetitionCard key={c.key} competition={c} athletesById={athletesById} />
                     ))}
-                    {day.passes.map((p, pi) => (
+                    {day.passes.map((p) => (
                       <WeekPassCard
                         key={p.key}
                         pass={p}
                         blockId={blockId}
                         canEdit={canEdit}
                         blockAthletes={blockAthletes}
-                        // "+ nytt pass" delar rad med sista passets
-                        // "öppna" i stället för att lägga till en egen rad
-                        // i rutan. Dagar utanför blockets datumspann får
-                        // inget pass — de finns bara för att veckoraden ska
-                        // behålla sin form.
-                        trailing={
-                          canEditableDay && pi === day.passes.length - 1 ? (
-                            <DayAddPass
-                              blockId={blockId}
-                              date={day.date}
-                              blockAthletes={blockAthletes}
-                            />
-                          ) : undefined
-                        }
                       />
                     ))}
-                    {/* Tom dag har inget kort att hänga knappen på. */}
-                    {canEditableDay && day.passes.length === 0 && (
+                    {/* "+ nytt pass" hör till DAGEN, inte till något av
+                        passen, och ligger därför utanför passkorten
+                        (uttrycklig begäran 2026-08-21). Dagar utanför
+                        blockets datumspann får den inte — de finns bara för
+                        att veckoraden ska behålla sin form. */}
+                    {canEditableDay && (
                       <DayAddPass blockId={blockId} date={day.date} blockAthletes={blockAthletes} />
                     )}
                   </div>
