@@ -388,11 +388,27 @@ export async function addPassOnDate(formData: FormData) {
   const workoutType = str(formData, "workout_type");
   if (!blockId || !scheduledDate || !workoutType) return;
 
-  const slot = num(formData, "slot") ?? 1;
   const scope = str(formData, "scope") ?? "alla";
   const blockAthletes = await athletesForBlock(supabase, blockId);
   const targets = scope === "alla" ? blockAthletes : blockAthletes.filter((a) => a === scope);
   if (targets.length === 0) return;
+
+  // Slot väljs automatiskt när formuläret inte anger någon: "nytt pass" på
+  // en dag som redan har ett förmiddagspass ska bli eftermiddagens, inte
+  // krocka med det. Första lediga slot 1–3 bland de valda löparna vinner;
+  // är alla tre tagna avbryter vi hellre än att skriva över något.
+  let slot = num(formData, "slot");
+  if (slot == null) {
+    const { data: dayRows } = await supabase
+      .from("planned_workouts")
+      .select("slot, user_id")
+      .eq("block_id", blockId)
+      .eq("scheduled_date", scheduledDate)
+      .in("user_id", targets);
+    const usedSlots = new Set((dayRows ?? []).map((r) => r.slot as number));
+    slot = [1, 2, 3].find((s) => !usedSlots.has(s)) ?? null;
+    if (slot == null) return;
+  }
 
   // Hoppa över löpare som redan har ett pass i samma datum+slot — samma
   // idempotens som rollout-motorn (existingKeys i lib/template-sync.ts), så

@@ -57,17 +57,6 @@ import { TRAINING_FACTORS } from "@/lib/training-factors";
 
 const input =
   "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
-const ghostBtn =
-  "w-fit rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900";
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="text-zinc-600 dark:text-zinc-400">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 type TemplateItemRow = {
   id: string;
@@ -91,7 +80,7 @@ type BlockRow = {
   season_block_athletes?: { athlete_id: string }[] | null;
 };
 
-/** Ett block med sin veckovy och "lägg till pass"-formulär. Delad mellan
+/** Ett block med sin veckovy. Delad mellan
  * Alla-vyn och den enskilda löparens vy så de aldrig kan glida isär —
  * samma resonemang som BlockCard på /arsplan. */
 function BlockWeekSection({
@@ -130,65 +119,6 @@ function BlockWeekSection({
         blockAthletes={blockAthletes}
         athletesById={athletesById}
       />
-
-      {canEdit && (
-        <form
-          action={addPassOnDate}
-          className="mt-3 flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-3 dark:border-zinc-800"
-        >
-          <input type="hidden" name="block_id" value={block.id} />
-          <Field label="Datum">
-            <input
-              type="date"
-              name="scheduled_date"
-              min={block.start_date}
-              max={block.end_date}
-              required
-              className={input}
-            />
-          </Field>
-          <Field label="Pass">
-            <select name="slot" className={input} defaultValue="1">
-              {[1, 2, 3].map((s) => (
-                <option key={s} value={s}>
-                  {SLOT_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Typ">
-            <select name="workout_type" className={input} defaultValue="easy">
-              {WORKOUT_TYPES.map((w) => (
-                <option key={w} value={w}>
-                  {WORKOUT_LABELS[w]}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Rubrik">
-            <input name="title" placeholder="10x400m" className={input} />
-          </Field>
-          <Field label="Minuter">
-            <input name="target_duration_minutes" type="number" min="0" className={`${input} w-24`} />
-          </Field>
-          <TrainingFactorSelect />
-          {blockAthletes.length > 1 && (
-            <Field label="Gäller">
-              <select name="scope" className={input} defaultValue="alla">
-                <option value="alla">Alla på blocket</option>
-                {blockAthletes.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    Bara {a.fullName ?? "namnlös löpare"}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          )}
-          <button type="submit" className={ghostBtn}>
-            Lägg till pass
-          </button>
-        </form>
-      )}
     </details>
   );
 }
@@ -358,6 +288,58 @@ function WeekPassCard({
   );
 }
 
+/** "+ nytt pass" i en dagruta. Datumet ligger i rutan och sloten väljs
+ * automatiskt av addPassOnDate (första lediga förmiddag/eftermiddag/kväll),
+ * så det som återstår att fråga om är typ och vilka löpare — resten fylls i
+ * efteråt via passets "öppna", precis som tränarens process ser ut:
+ * skelett först, detaljer när det passar. Ersatte ett stort formulär mellan
+ * blocken där datumet fick skrivas in för hand (uttrycklig begäran
+ * 2026-08-21). */
+function DayAddPass({
+  blockId,
+  date,
+  blockAthletes,
+}: {
+  blockId: string;
+  date: string;
+  blockAthletes: AthleteOption[];
+}) {
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
+        + nytt pass
+      </summary>
+      <form action={addPassOnDate} className="mt-1 flex flex-col gap-1">
+        <input type="hidden" name="block_id" value={blockId} />
+        <input type="hidden" name="scheduled_date" value={date} />
+        <select name="workout_type" defaultValue="easy" className={`${input} w-full`} aria-label="Typ">
+          {WORKOUT_TYPES.map((w) => (
+            <option key={w} value={w}>
+              {WORKOUT_LABELS[w]}
+            </option>
+          ))}
+        </select>
+        {blockAthletes.length > 1 && (
+          <select name="scope" defaultValue="alla" className={`${input} w-full`} aria-label="Gäller">
+            <option value="alla">Alla på blocket</option>
+            {blockAthletes.map((a) => (
+              <option key={a.id} value={a.id}>
+                Bara {a.fullName ?? "namnlös löpare"}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="submit"
+          className="rounded bg-zinc-200 px-2 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600"
+        >
+          Lägg till
+        </button>
+      </form>
+    </details>
+  );
+}
+
 /** En planerad tävling i veckoraden. Visuellt skild från passen (ram +
  * accentfärg) — en tävling är inte ett pass tränaren ordinerar, den är en
  * fixpunkt han planerar runt. A-lopp markeras eftersom det är det som styr
@@ -467,6 +449,13 @@ function WeekGrid({
                         blockAthletes={blockAthletes}
                       />
                     ))}
+                    {/* Dagar utanför blockets datumspann får inget pass —
+                        de finns bara för att veckoraden ska behålla sin
+                        form, och ett pass där skulle ligga utanför blocket
+                        det påstår sig tillhöra. */}
+                    {canEdit && !week.outside[di] && (
+                      <DayAddPass blockId={blockId} date={day.date} blockAthletes={blockAthletes} />
+                    )}
                   </div>
                 </td>
               ))}
