@@ -422,6 +422,38 @@ export async function addPassOnDate(formData: FormData) {
   refresh();
 }
 
+/** Tar bort ett helt pass ur veckovyn — alla löpares rader för samma
+ * (block, datum, slot). Komplementet till chipsens ×, som bara tar bort en
+ * enskild löpare från passet.
+ *
+ * Rör bara `planned`: har någon redan genomfört passet är den raden
+ * historik och blir kvar, och passet ligger då fortfarande i veckovyn för
+ * henne. Det är avsiktligt — ett genomfört pass får inte försvinna ur
+ * loggen för att tränaren städar i planen. Blockets veckomönster lämnas
+ * också orört, så en framtida utrullning kan skapa passet igen; vill man bli
+ * av med det permanent ändras standardveckan på /arsplan. */
+export async function deletePlannedPass(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const blockId = str(formData, "block_id");
+  const scheduledDate = str(formData, "scheduled_date");
+  const slot = num(formData, "slot") ?? 1;
+  if (!blockId || !scheduledDate) return;
+
+  // planned_rep_groups städas av on delete cascade.
+  await supabase
+    .from("planned_workouts")
+    .delete()
+    .eq("block_id", blockId)
+    .eq("scheduled_date", scheduledDate)
+    .eq("slot", slot)
+    .eq("status", "planned");
+
+  refresh();
+}
+
 /** Fyller på/ändrar detaljerna på ETT konkret pass (ett datum), till
  * skillnad från updateTemplateItem som gäller varje förekomst av
  * veckodagen i blocket. Scope "alla" = alla löpare som har just det här

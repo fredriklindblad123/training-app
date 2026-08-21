@@ -29,6 +29,7 @@ import {
   addAthleteToPass,
   addPassOnDate,
   addTemplateRepGroup,
+  deletePlannedPass,
   deleteTemplateRepGroup,
   removeAthleteFromPass,
   updatePlannedPass,
@@ -341,6 +342,16 @@ function WeekPassCard({
               Något av passen är redan genomfört — det lämnas orört.
             </p>
           )}
+          {/* Tar bort passet för alla löpare på det. Att ta bort det för
+              EN löpare görs med × på hennes chip ovan. */}
+          <form action={deletePlannedPass} className="mt-1 border-t border-zinc-200 pt-1 dark:border-zinc-700">
+            <input type="hidden" name="block_id" value={blockId} />
+            <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+            <input type="hidden" name="slot" value={pass.slot} />
+            <button type="submit" className="text-[10px] text-zinc-400 hover:text-red-600">
+              {pass.athleteIds.length > 1 ? "ta bort passet (alla löpare)" : "ta bort passet"}
+            </button>
+          </form>
         </details>
       )}
     </div>
