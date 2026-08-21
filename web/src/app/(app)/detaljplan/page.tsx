@@ -205,14 +205,14 @@ function WeekPassCard({
       )}
 
       {canEdit && (
-        <div className="mt-1 flex items-start justify-between gap-2">
-        <details className="min-w-0 flex-1">
+        <div className="mt-1 flex flex-wrap items-start gap-x-2 gap-y-0.5">
+        <details className="min-w-0">
           <summary className="cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
             öppna
           </summary>
 
           {showChips && untagged.length > 0 && (
-            <form action={addAthleteToPass} className="mt-1 flex items-center gap-1">
+            <form action={addAthleteToPass} className="mt-1 flex w-28 items-center gap-1">
               <input type="hidden" name="block_id" value={blockId} />
               <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
               <input type="hidden" name="slot" value={pass.slot} />
@@ -229,7 +229,7 @@ function WeekPassCard({
             </form>
           )}
 
-          <form action={updatePlannedPass} className="mt-1 flex flex-col gap-1">
+          <form action={updatePlannedPass} className="mt-1 flex w-28 flex-col gap-1">
             <input type="hidden" name="block_id" value={blockId} />
             <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
             <input type="hidden" name="slot" value={pass.slot} />
@@ -283,17 +283,28 @@ function WeekPassCard({
               Något av passen är redan genomfört — det lämnas orört.
             </p>
           )}
-          {/* Tar bort passet för alla löpare på det. Att ta bort det för
-              EN löpare görs med × på hennes chip ovan. */}
-          <form action={deletePlannedPass} className="mt-1 border-t border-zinc-200 pt-1 dark:border-zinc-700">
-            <input type="hidden" name="block_id" value={blockId} />
-            <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
-            <input type="hidden" name="slot" value={pass.slot} />
-            <button type="submit" className="text-[10px] text-zinc-400 hover:text-red-600">
-              {pass.athleteIds.length > 1 ? "ta bort passet (alla löpare)" : "ta bort passet"}
-            </button>
-          </form>
         </details>
+        {/* Tar bort passet för alla löpare på det. Att ta bort det för EN
+            löpare görs med × på hennes chip ovan. Ligger i actionraden, inte
+            inne i "öppna" — man ska inte behöva fälla ut passet för att
+            kunna ta bort det. Titeln bär den fulla innebörden, som inte får
+            plats i en dagkolumn. */}
+        <form action={deletePlannedPass}>
+          <input type="hidden" name="block_id" value={blockId} />
+          <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+          <input type="hidden" name="slot" value={pass.slot} />
+          <button
+            type="submit"
+            title={
+              pass.athleteIds.length > 1
+                ? "Ta bort passet för alla löpare på det"
+                : "Ta bort passet"
+            }
+            className="whitespace-nowrap text-[10px] text-zinc-400 hover:text-red-600"
+          >
+            ta bort{pass.athleteIds.length > 1 ? " (alla)" : ""}
+          </button>
+        </form>
         {trailing}
         </div>
       )}
