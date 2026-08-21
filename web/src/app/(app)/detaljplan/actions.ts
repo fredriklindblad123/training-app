@@ -261,6 +261,163 @@ export async function deleteTemplateItem(formData: FormData) {
   refresh();
 }
 
+// --- Veckovyn: pass som faktiskt ligger i kalendern ---------------------
+// Uttrycklig begäran 2026-08-21: Detaljplan visar riktiga veckor, och det
+// ska gå att tagga på/av en enskild löpare per PASS samt öppna passet och
+// fylla på detaljer. Ingen ny tabell behövs — planned_workouts har redan en
+// rad per löpare och datum, se lib/detaljplan-weeks.ts.
+
+/** Alla rader som utgör "samma pass" (block + datum + slot). */
+async function passRows(
+  supabase: SupabaseServerClient,
+  blockId: string,
+  scheduledDate: string,
+  slot: number,
+) {
+  const { data } = await supabase
+    .from("planned_workouts")
+    .select(
+      "id, user_id, workout_type, title, description, target_distance_meters, target_duration_seconds, target_pace_seconds_per_km, training_factor, status",
+    )
+    .eq("block_id", blockId)
+    .eq("scheduled_date", scheduledDate)
+    .eq("slot", slot);
+  return data ?? [];
+}
+
+/** Taggar på en löpare på ett enskilt pass — hennes rad skapas genom att
+ * kopiera innehållet från en löpare som redan har passet, inklusive
+ * repgrupperna (annars får hon ett intervallpass utan intervaller). */
+export async function addAthleteToPass(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const blockId = str(formData, "block_id");
+  const scheduledDate = str(formData, "scheduled_date");
+  const slot = num(formData, "slot") ?? 1;
+  const athleteId = str(formData, "athlete_id");
+  if (!blockId || !scheduledDate || !athleteId) return;
+
+  // Bara löpare som är taggade på blocket — annars vore det här en väg att
+  // skriva pass i en godtycklig användares kalender. (RLS är den faktiska
+  // spärren; det här är att inte ens försöka.)
+  const blockAthletes = await athletesForBlock(supabase, blockId);
+  if (!blockAthletes.includes(athleteId)) return;
+
+  const rows = await passRows(supabase, blockId, scheduledDate, slot);
+  if (rows.length === 0) return;
+  if (rows.some((r) => r.user_id === athleteId)) return; // redan taggad
+
+  const src = rows[0];
+  const { data: created } = await supabase
+    .from("planned_workouts")
+    .insert({
+      user_id: athleteId,
+      scheduled_date: scheduledDate,
+      slot,
+      workout_type: src.workout_type,
+      title: src.title,
+      description: src.description,
+      target_distance_meters: src.target_distance_meters,
+      target_duration_seconds: src.target_duration_seconds,
+      target_pace_seconds_per_km: src.target_pace_seconds_per_km,
+      training_factor: src.training_factor,
+      block_id: blockId,
+      status: "planned",
+    })
+    .select("id")
+    .single();
+
+  if (created) {
+    const { data: groups } = await supabase
+      .from("planned_rep_groups")
+      .select(
+        "sort_order, reps, distance_meters, duration_seconds, target_pace_seconds_per_km, target_hr_low, target_hr_high, recovery_seconds, recovery_kind, note",
+      )
+      .eq("planned_workout_id", src.id)
+      .order("sort_order");
+    if (groups && groups.length > 0) {
+      await supabase
+        .from("planned_rep_groups")
+        .insert(groups.map((g) => ({ planned_workout_id: created.id, ...g })));
+    }
+  }
+
+  refresh();
+}
+
+/** Taggar av en löpare från ett enskilt pass. Bara `planned` — ett
+ * genomfört pass är historik och tas aldrig bort så här. */
+export async function removeAthleteFromPass(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const blockId = str(formData, "block_id");
+  const scheduledDate = str(formData, "scheduled_date");
+  const slot = num(formData, "slot") ?? 1;
+  const athleteId = str(formData, "athlete_id");
+  if (!blockId || !scheduledDate || !athleteId) return;
+
+  // planned_rep_groups städas av on delete cascade.
+  await supabase
+    .from("planned_workouts")
+    .delete()
+    .eq("block_id", blockId)
+    .eq("scheduled_date", scheduledDate)
+    .eq("slot", slot)
+    .eq("user_id", athleteId)
+    .eq("status", "planned");
+
+  refresh();
+}
+
+/** Fyller på/ändrar detaljerna på ETT konkret pass (ett datum), till
+ * skillnad från updateTemplateItem som gäller varje förekomst av
+ * veckodagen i blocket. Scope "alla" = alla löpare som har just det här
+ * passet; annars bara den ena. */
+export async function updatePlannedPass(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const blockId = str(formData, "block_id");
+  const scheduledDate = str(formData, "scheduled_date");
+  const slot = num(formData, "slot") ?? 1;
+  const workoutType = str(formData, "workout_type");
+  if (!blockId || !scheduledDate || !workoutType) return;
+  const scope = str(formData, "scope") ?? "alla";
+
+  const fields = {
+    workout_type: workoutType,
+    title: str(formData, "title"),
+    description: str(formData, "description"),
+    target_duration_seconds:
+      num(formData, "target_duration_minutes") != null
+        ? (num(formData, "target_duration_minutes") as number) * 60
+        : null,
+    training_factor: str(formData, "training_factor"),
+  };
+
+  let query = supabase
+    .from("planned_workouts")
+    .update(fields)
+    .eq("block_id", blockId)
+    .eq("scheduled_date", scheduledDate)
+    .eq("slot", slot)
+    .eq("status", "planned");
+
+  if (scope !== "alla") {
+    const blockAthletes = await athletesForBlock(supabase, blockId);
+    if (!blockAthletes.includes(scope)) return;
+    query = query.eq("user_id", scope);
+  }
+
+  await query;
+  refresh();
+}
+
 // --- Repgrupper i veckomönstret (K1) -----------------------------------
 // Samma modell som planned_rep_groups i calendar/[year]/[month]/[day]/actions.ts,
 // men riktad mot en mönsterrad i stället för ett datumsatt pass. En ändring

@@ -27,14 +27,23 @@ import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signa
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
 import { TrainingFactorSelect } from "@/components/TrainingFactorSelect";
 import {
+  addAthleteToPass,
   addManualPass,
   addTemplateItem,
   addTemplateRepGroup,
   deleteTemplateItem,
   deleteTemplateRepGroup,
+  removeAthleteFromPass,
+  updatePlannedPass,
   updateTemplateItem,
   updateTemplateRepGroup,
 } from "./actions";
+import {
+  buildDetaljplanWeeks,
+  type DetaljplanWeek,
+  type PassGroup,
+  type PlannedPassRow,
+} from "@/lib/detaljplan-weeks";
 import { Fragment } from "react";
 import {
   TRAINING_FACTORS,
@@ -323,6 +332,234 @@ type BlockRow = {
   season_block_athletes?: { athlete_id: string }[] | null;
 };
 
+/** Ett pass i veckovyn: sammanfattning + löparchips + "öppna" för
+ * detaljer. Chips visas bara när blocket har fler än en taggad löpare —
+ * med en enda löpare är "vilka är taggade" ingen fråga. */
+function WeekPassCard({
+  pass,
+  blockId,
+  canEdit,
+  blockAthletes,
+}: {
+  pass: PassGroup;
+  blockId: string;
+  canEdit: boolean;
+  blockAthletes: AthleteOption[];
+}) {
+  const tagged = new Set(pass.athleteIds);
+  const untagged = blockAthletes.filter((a) => !tagged.has(a.id));
+  const showChips = blockAthletes.length > 1;
+  const minutes =
+    pass.targetDurationSeconds != null ? Math.round(pass.targetDurationSeconds / 60) : null;
+
+  return (
+    <div className="rounded bg-zinc-100 px-1.5 py-1 text-xs dark:bg-zinc-800">
+      <div className="font-medium text-zinc-900 dark:text-zinc-100">
+        {WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType}
+      </div>
+      {pass.title && <div className="text-zinc-600 dark:text-zinc-400">{pass.title}</div>}
+      {pass.trainingFactor && (
+        <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
+          {TRAINING_FACTORS.find((f) => f.key === pass.trainingFactor)?.label ?? pass.trainingFactor}
+        </div>
+      )}
+      {minutes != null && <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{minutes} min</div>}
+      {pass.slot > 1 && (
+        <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{SLOT_LABELS[pass.slot]}</div>
+      )}
+      {/* Skiljer sig innehållet åt mellan löparna (efter en ändring med
+          scope "bara en") får kortet inte se ut att gälla alla. */}
+      {pass.diverges && (
+        <div className="text-[10px] italic text-amber-700 dark:text-amber-500">olika per löpare</div>
+      )}
+
+      {showChips && (
+        <div className="mt-1 flex flex-wrap gap-0.5">
+          {blockAthletes
+            .filter((a) => tagged.has(a.id))
+            .map((a) => (
+              <span
+                key={a.id}
+                className="inline-flex items-center gap-0.5 rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+              >
+                {a.fullName ?? "namnlös"}
+                {canEdit && (
+                  <form action={removeAthleteFromPass} className="inline">
+                    <input type="hidden" name="block_id" value={blockId} />
+                    <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+                    <input type="hidden" name="slot" value={pass.slot} />
+                    <input type="hidden" name="athlete_id" value={a.id} />
+                    <button
+                      type="submit"
+                      title={`Ta bort ${a.fullName ?? "löparen"} från passet`}
+                      className="text-zinc-400 hover:text-red-600"
+                    >
+                      ×
+                    </button>
+                  </form>
+                )}
+              </span>
+            ))}
+        </div>
+      )}
+
+      {canEdit && (
+        <details className="mt-1">
+          <summary className="cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
+            öppna
+          </summary>
+
+          {showChips && untagged.length > 0 && (
+            <form action={addAthleteToPass} className="mt-1 flex items-center gap-1">
+              <input type="hidden" name="block_id" value={blockId} />
+              <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+              <input type="hidden" name="slot" value={pass.slot} />
+              <select name="athlete_id" className={`${input} w-full`} aria-label="Lägg till löpare">
+                {untagged.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.fullName ?? "namnlös löpare"}
+                  </option>
+                ))}
+              </select>
+              <button type="submit" className="rounded bg-zinc-200 px-1.5 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600">
+                +
+              </button>
+            </form>
+          )}
+
+          <form action={updatePlannedPass} className="mt-1 flex flex-col gap-1">
+            <input type="hidden" name="block_id" value={blockId} />
+            <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+            <input type="hidden" name="slot" value={pass.slot} />
+            <select
+              name="workout_type"
+              defaultValue={pass.workoutType}
+              className={`${input} w-full`}
+              aria-label="Typ"
+            >
+              {WORKOUT_TYPES.map((w) => (
+                <option key={w} value={w}>
+                  {WORKOUT_LABELS[w]}
+                </option>
+              ))}
+            </select>
+            <input
+              name="title"
+              defaultValue={pass.title ?? ""}
+              placeholder="10x400m"
+              aria-label="Rubrik"
+              className={`${input} w-full`}
+            />
+            <input
+              name="target_duration_minutes"
+              type="number"
+              min="0"
+              defaultValue={minutes ?? ""}
+              placeholder="minuter"
+              aria-label="Minuter"
+              className={`${input} w-full`}
+            />
+            <TrainingFactorSelect defaultValue={pass.trainingFactor} label={null} />
+            {pass.athleteIds.length > 1 && (
+              <select name="scope" defaultValue="alla" className={`${input} w-full`} aria-label="Gäller">
+                <option value="alla">Alla på passet</option>
+                {blockAthletes
+                  .filter((a) => tagged.has(a.id))
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      Bara {a.fullName ?? "namnlös löpare"}
+                    </option>
+                  ))}
+              </select>
+            )}
+            <button type="submit" className="rounded bg-zinc-200 px-2 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600">
+              Spara
+            </button>
+          </form>
+          {pass.hasCompleted && (
+            <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-500">
+              Något av passen är redan genomfört — det lämnas orört.
+            </p>
+          )}
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** Veckovyn: en rad per kalendervecka i blocket, tidigaste veckan överst,
+ * dagarna som kolumner (uttrycklig begäran 2026-08-21). Ersätter den
+ * abstrakta standardvecka-vyn i den enskilda löparens Detaljplan —
+ * standardveckan sätts numera vid blockskapandet på /arsplan, så det här
+ * är platsen där tränaren arbetar med de pass som faktiskt ligger i
+ * kalendern. */
+function WeekGrid({
+  weeks,
+  blockId,
+  canEdit,
+  blockAthletes,
+}: {
+  weeks: DetaljplanWeek[];
+  blockId: string;
+  canEdit: boolean;
+  blockAthletes: AthleteOption[];
+}) {
+  if (weeks.length === 0) {
+    return <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-600">Inga veckor i blocket.</p>;
+  }
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full min-w-[720px] border-collapse text-xs">
+        <thead>
+          <tr>
+            <th className="w-24 border-b border-zinc-200 px-1 pb-1 text-left font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+              Vecka
+            </th>
+            {WEEKDAY_LABELS.map((label) => (
+              <th
+                key={label}
+                className="border-b border-zinc-200 px-1 pb-1 text-left font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
+              >
+                {label.slice(0, 3)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {weeks.map((week) => (
+            <tr key={week.weekStart} className="align-top">
+              <td className="border-b border-zinc-100 px-1 py-2 dark:border-zinc-900">
+                <div className="font-medium text-zinc-700 dark:text-zinc-300">v{week.isoWeekNumber}</div>
+                <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{week.weekStart}</div>
+              </td>
+              {week.days.map((day, di) => (
+                <td
+                  key={day.date}
+                  className={`border-b border-zinc-100 px-1 py-2 dark:border-zinc-900 ${
+                    week.outside[di] ? "bg-zinc-50 dark:bg-zinc-900/40" : ""
+                  }`}
+                >
+                  <div className="flex flex-col gap-1">
+                    {day.passes.map((p) => (
+                      <WeekPassCard
+                        key={p.key}
+                        pass={p}
+                        blockId={blockId}
+                        canEdit={canEdit}
+                        blockAthletes={blockAthletes}
+                      />
+                    ))}
+                  </div>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** "Alla"-läget (samma dedup-princip som ArsplanOverview i /arsplan, se
  * lib/auth-scope.ts): en coach ser blockens riktiga dag×faktor-rutnät direkt
  * i stället för bara en räkning — uttrycklig begäran 2026-08-20, eftersom ett
@@ -508,9 +745,34 @@ export default async function DetaljplanPage({
       : { data: [] as BlockRow[] };
 
   const blockList = (blocks ?? []) as BlockRow[];
-  // Namn för "extra pass"-formulärets löparväljare — bara coacher har fler
-  // än sig själv att välja mellan, se athletesById-uppslaget nedan.
+  // Namn för löparchips och väljare — bara coacher har fler än sig själv,
+  // se athletesById-uppslaget nedan.
   const athletesById = new Map(viewableAthletes(scoped).map((a) => [a.id, a]));
+
+  // Veckovyn visar passen för ALLA löpare som är taggade på blocket, inte
+  // bara den löpare vyn är scopad till — hela poängen är att se vilka
+  // löpare som ligger på vilket pass. Hämtas i en fråga för samtliga block.
+  const allBlockAthleteIds = [
+    ...new Set(blockList.flatMap((b) => (b.season_block_athletes ?? []).map((r) => r.athlete_id))),
+  ];
+  const { data: plannedRows } =
+    blockList.length > 0 && allBlockAthleteIds.length > 0
+      ? await supabase
+          .from("planned_workouts")
+          .select(
+            "id, user_id, scheduled_date, slot, workout_type, title, description, target_duration_seconds, training_factor, status, block_id",
+          )
+          .in(
+            "block_id",
+            blockList.map((b) => b.id),
+          )
+          .in("user_id", allBlockAthleteIds)
+      : { data: [] as (PlannedPassRow & { block_id: string })[] };
+
+  const passesByBlock = new Map<string, PlannedPassRow[]>();
+  for (const row of (plannedRows ?? []) as (PlannedPassRow & { block_id: string })[]) {
+    passesByBlock.set(row.block_id, [...(passesByBlock.get(row.block_id) ?? []), row]);
+  }
 
   // Visa bara faser som faktiskt har ett block — en lista med alla sex
   // faser, mest tomma, gjorde det svårt att se vad man faktiskt skulle
@@ -560,27 +822,13 @@ export default async function DetaljplanPage({
         </p>
       )}
 
-      <div className="flex flex-col gap-3">
-        {relevantPhases.map((phase) => {
-          const phaseBlocks = blockList.filter((b) => b.phase === phase);
-
-          return (
-            <details
-              key={phase}
-              className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
-              open
-            >
-              <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                  {PHASE_LABELS[phase]}
-                </span>
-                <span className="text-sm text-zinc-500 dark:text-zinc-400">
-                  {phaseBlocks.length} block
-                </span>
-              </summary>
-
-              <div className="mt-4 flex flex-col gap-4">
-                {phaseBlocks.map((b) => {
+      {/* Block i datumordning, tidigaste överst (uttrycklig begäran
+          2026-08-21). Fas-grupperingen som låg här tidigare är borta: den
+          lade ett lager mellan tränaren och veckorna utan att svara på
+          någon fråga han faktiskt ställer i den här vyn — fasen står kvar
+          på varje blockrubrik. */}
+      <div className="flex flex-col gap-4">
+        {blockList.map((b) => {
                   const items = b.week_template_items ?? [];
                   // K1: repgrupps-redigeraren visas bara för kvalitetstyper
                   // som standard (fallgrop 1), men aldrig hårt blockerad —
@@ -591,12 +839,16 @@ export default async function DetaljplanPage({
                       QUALITY_WORKOUT_TYPES.includes(it.workout_type as WorkoutType) ||
                       (it.template_rep_groups ?? []).length > 0,
                   );
-                  // Vilka löpare blocket gäller för — driver både scope-
-                  // väljaren i varje pass-kort (steg 4) och "extra pass"-
-                  // formulärets löparväljare längre ned.
+                  // Vilka löpare blocket gäller för — driver löparchipsen
+                  // per pass, scope-väljarna och "extra pass"-formuläret.
                   const blockAthletes = (b.season_block_athletes ?? [])
                     .map((r) => athletesById.get(r.athlete_id))
                     .filter((a): a is NonNullable<typeof a> => a != null);
+                  const weeks = buildDetaljplanWeeks(
+                    b.start_date,
+                    b.end_date,
+                    passesByBlock.get(b.id) ?? [],
+                  );
 
                   return (
                     <details
@@ -609,12 +861,17 @@ export default async function DetaljplanPage({
                           {b.name}
                         </span>
                         <span className="ml-2 text-sm text-zinc-500 dark:text-zinc-400">
-                          {PERIOD_LABELS[b.period]} · {b.start_date} – {b.end_date} ·{" "}
-                          {items.length} pass/vecka
+                          {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]} · {b.start_date} –{" "}
+                          {b.end_date} · {items.length} pass/vecka
                         </span>
                       </summary>
 
-                      <PatternGrid items={items} canEdit={canEdit} blockAthletes={blockAthletes} />
+                      <WeekGrid
+                        weeks={weeks}
+                        blockId={b.id}
+                        canEdit={canEdit}
+                        blockAthletes={blockAthletes}
+                      />
 
                       {canEdit && repEditableItems.length > 0 && (
                         <div className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
@@ -771,10 +1028,6 @@ export default async function DetaljplanPage({
                       })()}
                     </details>
                   );
-                })}
-              </div>
-            </details>
-          );
         })}
       </div>
     </div>
