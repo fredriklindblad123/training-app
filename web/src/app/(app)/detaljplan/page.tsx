@@ -648,8 +648,12 @@ export default async function DetaljplanPage({
         <div>
           <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Detaljplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-            Alla blocks veckomönster samlade, oavsett vilka löpare de gäller. Klicka på en löpares
-            namn för att fylla i eller justera dag för dag.
+            Alla blockens veckor, tidigaste först. Öppna ett pass för att fylla på detaljer, eller
+            tagga på och av löpare direkt i rutan. Tävlingar läggs in på{" "}
+            <Link href="/tavlingsresultat#lagg-till-tavling" className="underline">
+              Tävlingar
+            </Link>{" "}
+            — flera löpare kan taggas på samma tävling — och dyker upp här automatiskt.
           </p>
         </div>
         <AthleteSwitcher

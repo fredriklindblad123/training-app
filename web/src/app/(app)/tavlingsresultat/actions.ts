@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
 
 /* Tävlingar: lägga till, prioritera och logga resultat — flyttat hit från
  * /sasongen 2026-08-16 (uttrycklig begäran). Att logga ETT RESULTAT efter
@@ -31,6 +31,9 @@ function num(form: FormData, key: string): number | null {
 function refresh() {
   revalidatePath("/tavlingsresultat");
   revalidatePath("/arsplan");
+  // Tävlingarna visas numera i Detaljplans veckovy (med deltagarna), så en
+  // ny/borttagen tävling måste slå igenom där också.
+  revalidatePath("/detaljplan");
 }
 
 /** Bara "är någon inloggad" — RLS avgör om raden faktiskt går att nå. Samma
@@ -55,46 +58,79 @@ async function resolvedAthleteId(
   return resolveScopedUserId(scoped, str(formData, "athlete") ?? undefined);
 }
 
+/** Vilka löpare tävlingen ska läggas in för. `competitions` har ingen
+ * junction-tabell — en tävling flera löpare kör är flera rader med samma
+ * namn och datum (det är också så veckovyn på /detaljplan grupperar dem, se
+ * lib/detaljplan-weeks.ts). En coach kryssar i en delmängd via fältet
+ * `athletes`; en löpare utan coach får alltid bara sin egen rad. Ogiltiga
+ * id:n filtreras bort — säkerheten ligger i RLS, det här är att inte spara
+ * skräp. Samma mönster som targetAthletesFromForm i arsplan/actions.ts. */
+async function targetAthleteIds(
+  supabase: SupabaseServerClient,
+  formData: FormData,
+): Promise<string[]> {
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) return [];
+  if (scoped.role !== "coach") return [scoped.userId];
+
+  const valid = viewableAthletes(scoped);
+  const checked = formData
+    .getAll("athletes")
+    .map(String)
+    .filter((id) => valid.some((a) => a.id === id));
+  if (checked.length > 0) return checked;
+
+  // Inga kryssrutor med i formuläret (äldre formulär, eller ingen ikryssad)
+  // — falla tillbaka på den löpare vyn är scopad till, som tidigare.
+  const fallback = await resolvedAthleteId(supabase, formData);
+  return fallback ? [fallback] : [];
+}
+
 export async function createCompetition(formData: FormData) {
   const supabase = await createClient();
-  const userId = await resolvedAthleteId(supabase, formData);
-  if (!userId) return;
+  const athleteIds = await targetAthleteIds(supabase, formData);
+  if (athleteIds.length === 0) return;
 
   const name = str(formData, "name");
   const date = str(formData, "competition_date");
   if (!name || !date) return;
   const venue = str(formData, "venue");
 
-  const { data: competition } = await supabase
+  const { data: created } = await supabase
     .from("competitions")
-    .insert({
-      user_id: userId,
-      name,
-      competition_date: date,
-      location: str(formData, "location"),
-      venue,
-      priority: str(formData, "priority") ?? "C",
-      notes: str(formData, "notes"),
-    })
-    .select("id")
-    .single();
+    .insert(
+      athleteIds.map((userId) => ({
+        user_id: userId,
+        name,
+        competition_date: date,
+        location: str(formData, "location"),
+        venue,
+        priority: str(formData, "priority") ?? "C",
+        notes: str(formData, "notes"),
+      })),
+    )
+    .select("id");
 
   // Grenarna kommer som en kommaseparerad rad ("1500m, 800m") för att hålla
   // formuläret till ett fält — de flesta tävlingar har en eller två grenar.
+  // Varje löpares rad får sin egen uppsättning grenar: competition_events
+  // pekar på en competition, och varje löpare har en egen sådan.
   const eventsRaw = str(formData, "events");
-  if (competition && eventsRaw) {
+  if (created && created.length > 0 && eventsRaw) {
     const events = eventsRaw
       .split(",")
       .map((e) => e.trim())
       .filter(Boolean);
     if (events.length > 0) {
       await supabase.from("competition_events").insert(
-        events.map((event, i) => ({
-          competition_id: competition.id,
-          event,
-          target_result: i === 0 ? str(formData, "target_result") : null,
-          sort_order: i,
-        })),
+        created.flatMap((competition) =>
+          events.map((event, i) => ({
+            competition_id: competition.id,
+            event,
+            target_result: i === 0 ? str(formData, "target_result") : null,
+            sort_order: i,
+          })),
+        ),
       );
     }
   }

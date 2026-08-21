@@ -1036,7 +1036,7 @@ export default async function TavlingsresultatPage({
           </div>
         )}
 
-        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <details id="lagg-till-tavling" className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
           <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Lägg till tävling
           </summary>
@@ -1047,6 +1047,28 @@ export default async function TavlingsresultatPage({
             <input type="hidden" name="current_tavlingsAr" value={tavlingsAr} />
             <input type="hidden" name="current_tavlingsBana" value={tavlingsBana} />
             <input type="hidden" name="athlete" value={scopedUserId} />
+            {/* Flera löpare på samma tävling blir en rad var — competitions
+                har ingen junction-tabell, se targetAthleteIds i actions.ts.
+                Den löpare vyn står på är förkryssad, så enkelfallet är ett
+                klick som förut. */}
+            {scoped.role === "coach" && viewableAthletes(scoped).length > 0 && (
+              <fieldset className="flex flex-col gap-1">
+                <legend className="text-sm text-zinc-600 dark:text-zinc-400">Löpare</legend>
+                <div className="flex flex-wrap gap-3">
+                  {viewableAthletes(scoped).map((a) => (
+                    <label key={a.id} className="flex items-center gap-1 text-sm">
+                      <input
+                        type="checkbox"
+                        name="athletes"
+                        value={a.id}
+                        defaultChecked={a.id === scopedUserId}
+                      />
+                      {a.fullName ?? "Namnlös löpare"}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <Field label="Namn">
               <input name="name" required placeholder="Inomhus-SM" className={input} />
             </Field>
