@@ -95,3 +95,11 @@ export function factorGroupOf(key: string | null): TrainingFactorGroup | null {
   if (!key) return null;
   return TRAINING_FACTORS.find((f) => f.key === key)?.group ?? null;
 }
+
+/** Samma sak för UNDERGRUPP (bara satt för uthållighets Anaerob/Aerob-rader
+ * i dagens taxonomi) — `null` både för ett pass utan faktor och för en
+ * faktor vars grupp inte har undergrupper. */
+export function factorSubgroupOf(key: string | null): TrainingFactorSubgroup | null {
+  if (!key) return null;
+  return TRAINING_FACTORS.find((f) => f.key === key)?.subgroup ?? null;
+}

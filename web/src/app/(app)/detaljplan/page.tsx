@@ -33,12 +33,18 @@ import {
   deleteTemplateRepGroup,
   updateTemplateRepGroup,
 } from "./actions";
+import { Fragment } from "react";
 import {
   TRAINING_FACTORS,
   TRAINING_FACTOR_GROUP_LABELS,
-  factorGroupOf,
-  type TrainingFactorGroup,
+  TRAINING_FACTOR_SUBGROUP_LABELS,
 } from "@/lib/training-factors";
+import {
+  detaljplanItemsFor,
+  detaljplanRowCountByGroup,
+  hasUngroupedDetaljplanItems,
+  usedDetaljplanFactorRows,
+} from "@/lib/detaljplan-grid";
 
 /* Detaljplan: varje blocks eget dag-för-dag-veckomönster, en fas i taget —
  * speglar Excel-mallens Detaljplan-flik. Flyttad hit ur /sasongen
@@ -123,15 +129,42 @@ function PatternItemCard({ it, canEdit }: { it: TemplateItemRow; canEdit: boolea
  * faktor-grupper som faktiskt har minst ett pass visas som rad, plus en
  * sista "Ej kopplat"-rad om något pass saknar träningsfaktor — annars fem
  * mestadels tomma rader varje gång, samma "visa bara det som används"-
- * princip som redan styr vilka faser som visas ovanför. */
+ * princip som redan styr vilka faser som visas ovanför.
+ *
+ * Bryter en grupp ut i sina undergrupper (Anaerob alaktisk & laktisk /
+ * Aerob, i dag bara under Uthållighet) så snart mer än en undergrupp
+ * faktiskt används — samma tre-nivåers hierarki som Årsplans faktortabell
+ * fick 2026-08-18. Använder bara en rad (utan undergrupp-rubrik) när
+ * gruppens pass råkar ligga i en enda undergrupp den veckan, annars blir
+ * "Uthållighet" en tom rubrikrad ovanför en enda datarad.
+ *
+ * Radlogiken (vilka grupper/undergrupper som visas) sitter i
+ * lib/detaljplan-grid.ts, delad med Excel-exporten — samma "en datamodul"-
+ * princip som lib/arsplan-grid.ts redan använder för Årsplan-fliken. */
 function PatternGrid({ items, canEdit }: { items: TemplateItemRow[]; canEdit: boolean }) {
-  const groupOrder = Object.keys(TRAINING_FACTOR_GROUP_LABELS) as TrainingFactorGroup[];
-  const usedGroups = groupOrder.filter((g) => items.some((it) => factorGroupOf(it.training_factor) === g));
-  const hasUngrouped = items.some((it) => factorGroupOf(it.training_factor) === null);
-  const rows: (TrainingFactorGroup | null)[] = [...usedGroups, ...(hasUngrouped ? [null] : [])];
+  const usedRows = usedDetaljplanFactorRows(items);
+  const hasUngrouped = hasUngroupedDetaljplanItems(items);
 
-  if (rows.length === 0) {
+  if (usedRows.length === 0 && !hasUngrouped) {
     return <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-600">Inga pass i mönstret ännu.</p>;
+  }
+
+  const rowCountByGroup = detaljplanRowCountByGroup(usedRows);
+  const colSpan = WEEKDAY_LABELS.length + 1;
+
+  function cellsFor(row: (typeof usedRows)[number] | { group: null }) {
+    return WEEKDAY_LABELS.map((label, wi) => {
+      const cellItems = detaljplanItemsFor(items, wi + 1, row);
+      return (
+        <td key={label} className="border-b border-zinc-100 px-1 py-2 dark:border-zinc-900">
+          <div className="flex flex-col gap-1">
+            {cellItems.map((it) => (
+              <PatternItemCard key={it.id} it={it} canEdit={canEdit} />
+            ))}
+          </div>
+        </td>
+      );
+    });
   }
 
   return (
@@ -153,27 +186,47 @@ function PatternGrid({ items, canEdit }: { items: TemplateItemRow[]; canEdit: bo
           </tr>
         </thead>
         <tbody>
-          {rows.map((group) => (
-            <tr key={group ?? "_none"} className="align-top">
-              <td className="border-b border-zinc-100 px-1 py-2 font-medium text-zinc-700 dark:border-zinc-900 dark:text-zinc-300">
-                {group ? TRAINING_FACTOR_GROUP_LABELS[group] : "Ej kopplat"}
-              </td>
-              {WEEKDAY_LABELS.map((label, wi) => {
-                const cellItems = items
-                  .filter((it) => it.weekday === wi + 1 && factorGroupOf(it.training_factor) === group)
-                  .sort((a, b2) => a.slot - b2.slot);
-                return (
-                  <td key={label} className="border-b border-zinc-100 px-1 py-2 dark:border-zinc-900">
-                    <div className="flex flex-col gap-1">
-                      {cellItems.map((it) => (
-                        <PatternItemCard key={it.id} it={it} canEdit={canEdit} />
-                      ))}
-                    </div>
+          {usedRows.map((row, i) => {
+            const splitBySubgroup = (rowCountByGroup[row.group] ?? 0) > 1;
+            const isFirstOfGroup = i === 0 || usedRows[i - 1].group !== row.group;
+            const label =
+              splitBySubgroup && row.subgroup
+                ? TRAINING_FACTOR_SUBGROUP_LABELS[row.subgroup]
+                : TRAINING_FACTOR_GROUP_LABELS[row.group];
+            return (
+              <Fragment key={`${row.group}-${row.subgroup ?? "_"}`}>
+                {splitBySubgroup && isFirstOfGroup && (
+                  <tr>
+                    <th
+                      scope="row"
+                      colSpan={colSpan}
+                      className="border-b border-zinc-100 px-1 py-1 text-left font-medium italic text-zinc-500 dark:border-zinc-900 dark:text-zinc-400"
+                    >
+                      {TRAINING_FACTOR_GROUP_LABELS[row.group]}
+                    </th>
+                  </tr>
+                )}
+                <tr className="align-top">
+                  <td
+                    className={`border-b border-zinc-100 px-1 py-2 font-medium text-zinc-700 dark:border-zinc-900 dark:text-zinc-300 ${
+                      splitBySubgroup ? "pl-4" : ""
+                    }`}
+                  >
+                    {label}
                   </td>
-                );
-              })}
+                  {cellsFor(row)}
+                </tr>
+              </Fragment>
+            );
+          })}
+          {hasUngrouped && (
+            <tr className="align-top">
+              <td className="border-b border-zinc-100 px-1 py-2 font-medium text-zinc-700 dark:border-zinc-900 dark:text-zinc-300">
+                Ej kopplat
+              </td>
+              {cellsFor({ group: null })}
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
     </div>
@@ -191,12 +244,16 @@ type BlockRow = {
   season_block_athletes?: { athlete_id: string }[] | null;
 };
 
-/** "Alla"-läget (uttrycklig begäran 2026-08-18, samma mönster som
- * ArsplanOverview i /arsplan): en coach ser hur långt varje löpares
- * veckomönster kommit — fas, block och antal ifyllda pass/vecka — utan att
- * klicka igenom en löpare i taget. Den fulla dag-för-dag-rutnätet för alla
- * samtidigt vore för brett, så kortet är medvetet bara en räkning; klick
- * går vidare till löparens fulla Detaljplan-vy för att faktiskt redigera. */
+/** "Alla"-läget (samma dedup-princip som ArsplanOverview i /arsplan, se
+ * lib/auth-scope.ts): en coach ser blockens riktiga dag×faktor-rutnät direkt
+ * i stället för bara en räkning — uttrycklig begäran 2026-08-20, eftersom ett
+ * blocks veckomönster ändå är identiskt för alla löpare kopplade till det
+ * (samma week_template_items delas). Ett delat block visas EN gång, inte en
+ * gång per löpare, med namnchips (länkar vidare till respektive löpares
+ * fulla vy) för vilka löpare det gäller. Repgrupps-redigerare och
+ * "lägg till pass"-formulär hör bara hemma i den enskilda löparvyn
+ * (canEdit=false här) — annars blir det oklart vems mönster man just
+ * redigerade. */
 async function DetaljplanOverview({
   supabase,
   scoped,
@@ -205,69 +262,105 @@ async function DetaljplanOverview({
   scoped: ScopedProfile;
 }) {
   const athletes = viewableAthletes(scoped);
+  const athleteIds = athletes.map((a) => a.id);
+  const athletesById = new Map(athletes.map((a) => [a.id, a]));
   // Samma innevarande-år-avgränsning som ArsplanOverview — uttrycklig
   // begäran att de två sidornas "Alla"-vyer visar samma tidsperiod för alla
   // löpare, så de faktiskt går att jämföra sida vid sida.
   const currentYear = toDateKey(new Date()).slice(0, 4);
 
-  const cards = await Promise.all(
-    athletes.map(async (athlete) => {
-      const { data: blockAthleteRows } = await supabase
-        .from("season_block_athletes")
-        .select("block_id")
-        .eq("athlete_id", athlete.id);
-      const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
+  const { data: blockAthleteRows } =
+    athleteIds.length > 0
+      ? await supabase
+          .from("season_block_athletes")
+          .select("block_id, athlete_id")
+          .in("athlete_id", athleteIds)
+      : { data: [] as { block_id: string; athlete_id: string }[] };
 
-      const { data: blocks } =
-        blockIds.length > 0
-          ? await supabase
-              .from("season_blocks")
-              .select("id, name, phase, start_date, end_date, week_template_items(id)")
-              .in("id", blockIds)
-              .order("start_date")
-          : { data: [] as never[] };
+  const athleteIdsByBlockId = new Map<string, string[]>();
+  for (const row of blockAthleteRows ?? []) {
+    const list = athleteIdsByBlockId.get(row.block_id) ?? [];
+    list.push(row.athlete_id);
+    athleteIdsByBlockId.set(row.block_id, list);
+  }
+  const blockIds = [...athleteIdsByBlockId.keys()];
 
-      const allBlocks = (blocks ?? []) as {
-        id: string;
-        name: string;
-        phase: PhaseType;
-        start_date: string;
-        end_date: string;
-        week_template_items: { id: string }[] | null;
-      }[];
-      const blockList = allBlocks.filter(
-        (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
-      );
+  const { data: blocks } =
+    blockIds.length > 0
+      ? await supabase
+          .from("season_blocks")
+          .select(
+            "id, name, period, phase, start_date, end_date, week_template_items(*, template_rep_groups(*))",
+          )
+          .in("id", blockIds)
+          .order("start_date")
+      : { data: [] as BlockRow[] };
 
-      return { athlete, blockList };
-    }),
+  const blockList = ((blocks ?? []) as BlockRow[]).filter(
+    (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
   );
+  const relevantPhases = PHASE_TYPES.filter((phase) => blockList.some((b) => b.phase === phase));
+
+  if (relevantPhases.length === 0) {
+    return <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga block i år ännu.</p>;
+  }
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {cards.map(({ athlete, blockList }) => (
-        <Link
-          key={athlete.id}
-          href={`/detaljplan?athlete=${athlete.id}`}
-          className="flex flex-col gap-2 rounded border border-zinc-200 p-4 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
-        >
-          <div className="font-medium text-zinc-900 dark:text-zinc-100">
-            {athlete.fullName ?? "Namnlös löpare"}
-          </div>
-          {blockList.length === 0 ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga block i år ännu.</p>
-          ) : (
-            <ul className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
-              {blockList.map((b) => (
-                <li key={b.id}>
-                  {PHASE_LABELS[b.phase]} — {b.name} ({b.start_date} – {b.end_date}):{" "}
-                  {(b.week_template_items ?? []).length} pass/vecka
-                </li>
-              ))}
-            </ul>
-          )}
-        </Link>
-      ))}
+    <div className="flex flex-col gap-3">
+      {relevantPhases.map((phase) => {
+        const phaseBlocks = blockList.filter((b) => b.phase === phase);
+        return (
+          <details
+            key={phase}
+            className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
+            open
+          >
+            <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                {PHASE_LABELS[phase]}
+              </span>
+              <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                {phaseBlocks.length} block
+              </span>
+            </summary>
+
+            <div className="mt-4 flex flex-col gap-4">
+              {phaseBlocks.map((b) => {
+                const items = b.week_template_items ?? [];
+                const chipAthletes = (athleteIdsByBlockId.get(b.id) ?? [])
+                  .map((id) => athletesById.get(id))
+                  .filter((a): a is NonNullable<typeof a> => a != null);
+
+                return (
+                  <div key={b.id} className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="font-medium text-zinc-900 dark:text-zinc-100">{b.name}</span>
+                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                        {PERIOD_LABELS[b.period]} · {b.start_date} – {b.end_date} · {items.length}{" "}
+                        pass/vecka
+                      </span>
+                    </div>
+                    {chipAthletes.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {chipAthletes.map((a) => (
+                          <Link
+                            key={a.id}
+                            href={`/detaljplan?athlete=${a.id}`}
+                            className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                          >
+                            {a.fullName ?? "Namnlös löpare"}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                    <PatternGrid items={items} canEdit={false} />
+                  </div>
+                );
+              })}
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -295,8 +388,8 @@ export default async function DetaljplanPage({
         <div>
           <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Detaljplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-            Hur långt varje löpares veckomönster har kommit. Klicka på ett kort för att fylla i
-            eller justera dag för dag.
+            Alla blocks veckomönster samlade, oavsett vilka löpare de gäller. Klicka på en löpares
+            namn för att fylla i eller justera dag för dag.
           </p>
         </div>
         <AthleteSwitcher
