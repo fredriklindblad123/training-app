@@ -287,8 +287,22 @@ function BlockCard({
           <div className="border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
             <p>
               Veckomönster:{" "}
-              <Link href="/detaljplan" className="underline">
-                Redigera i Detaljplan →
+              {/* Länken bär med sig en löpare som faktiskt är taggad på
+                  blocket. Utan ?athlete= faller /detaljplan tillbaka på
+                  linkedAthletes[0] (se resolveScopedUserId), så en coach som
+                  satt och redigerade Alices block landade på någon annans
+                  Detaljplan — mitt i det som ska vara ett sammanhängande
+                  flöde: skapa block → veckomönster → tagga löpare → fyll på
+                  detaljer. */}
+              <Link
+                href={
+                  [...selectedAthleteIds][0]
+                    ? `/detaljplan?athlete=${[...selectedAthleteIds][0]}`
+                    : "/detaljplan"
+                }
+                className="underline"
+              >
+                Fyll i detaljer i Detaljplan →
               </Link>
             </p>
           </div>

@@ -5,6 +5,7 @@ import {
   getScopedProfile,
   resolveScopedUserId,
   viewableAthletes,
+  type AthleteOption,
   type ScopedProfile,
 } from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
@@ -31,6 +32,7 @@ import {
   addTemplateRepGroup,
   deleteTemplateItem,
   deleteTemplateRepGroup,
+  updateTemplateItem,
   updateTemplateRepGroup,
 } from "./actions";
 import { Fragment } from "react";
@@ -83,8 +85,21 @@ type TemplateItemRow = {
 
 /** Ett enskilt pass-kort i rutnätet — delad mellan alla celler (dag ×
  * träningsfaktor-grupp) i PatternGrid nedan, så kortets innehåll bara
- * behöver underhållas på ett ställe. */
-function PatternItemCard({ it, canEdit }: { it: TemplateItemRow; canEdit: boolean }) {
+ * behöver underhållas på ett ställe.
+ *
+ * Kortet bär också steg 4 i tränarens process (2026-08-21): "ändra"-fliken
+ * fyller på detaljer i efterhand, med en scope-väljare för om ändringen
+ * gäller alla taggade löpare eller bara en. Se updateTemplateItem i
+ * actions.ts för varför det måste skriva i planned_workouts direkt. */
+function PatternItemCard({
+  it,
+  canEdit,
+  blockAthletes,
+}: {
+  it: TemplateItemRow;
+  canEdit: boolean;
+  blockAthletes: AthleteOption[];
+}) {
   const sigLabel = plannedSignatureLabel(
     (it.template_rep_groups ?? []).map(
       (g): PlannedRepGroup => ({
@@ -111,12 +126,65 @@ function PatternItemCard({ it, canEdit }: { it: TemplateItemRow; canEdit: boolea
         <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{SLOT_LABELS[it.slot]}</div>
       )}
       {canEdit && (
-        <form action={deleteTemplateItem}>
-          <input type="hidden" name="id" value={it.id} />
-          <button type="submit" className="mt-0.5 text-[10px] text-zinc-400 hover:text-red-600">
-            ta bort
-          </button>
-        </form>
+        <details className="mt-1">
+          <summary className="cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
+            ändra
+          </summary>
+          <form action={updateTemplateItem} className="mt-1 flex flex-col gap-1">
+            <input type="hidden" name="id" value={it.id} />
+            <select
+              name="workout_type"
+              defaultValue={it.workout_type}
+              className={`${input} w-full`}
+              aria-label="Typ"
+            >
+              {WORKOUT_TYPES.map((w) => (
+                <option key={w} value={w}>
+                  {WORKOUT_LABELS[w]}
+                </option>
+              ))}
+            </select>
+            <input
+              name="title"
+              defaultValue={it.title ?? ""}
+              placeholder="10x400m"
+              aria-label="Rubrik"
+              className={`${input} w-full`}
+            />
+            <input
+              name="target_duration_minutes"
+              type="number"
+              min="0"
+              placeholder="minuter"
+              aria-label="Minuter"
+              className={`${input} w-full`}
+            />
+            <TrainingFactorSelect defaultValue={it.training_factor} label={null} />
+            {/* Scope-väljaren: hela poängen med steg 4. Visas bara när
+                blocket faktiskt har fler än en taggad löpare — för ett
+                block med en enda löpare är "alla" och "hon" samma sak, och
+                en väljare med ett meningslöst val gör det bara krångligare. */}
+            {blockAthletes.length > 1 && (
+              <select name="scope" defaultValue="alla" className={`${input} w-full`} aria-label="Gäller">
+                <option value="alla">Alla på blocket</option>
+                {blockAthletes.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    Bara {a.fullName ?? "namnlös löpare"}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button type="submit" className="rounded bg-zinc-200 px-2 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600">
+              Spara
+            </button>
+          </form>
+          <form action={deleteTemplateItem} className="mt-1">
+            <input type="hidden" name="id" value={it.id} />
+            <button type="submit" className="text-[10px] text-zinc-400 hover:text-red-600">
+              ta bort
+            </button>
+          </form>
+        </details>
       )}
     </div>
   );
@@ -141,7 +209,18 @@ function PatternItemCard({ it, canEdit }: { it: TemplateItemRow; canEdit: boolea
  * Radlogiken (vilka grupper/undergrupper som visas) sitter i
  * lib/detaljplan-grid.ts, delad med Excel-exporten — samma "en datamodul"-
  * princip som lib/arsplan-grid.ts redan använder för Årsplan-fliken. */
-function PatternGrid({ items, canEdit }: { items: TemplateItemRow[]; canEdit: boolean }) {
+function PatternGrid({
+  items,
+  canEdit,
+  blockAthletes = [],
+}: {
+  items: TemplateItemRow[];
+  canEdit: boolean;
+  /** Vilka löpare blocket är taggat för — driver scope-väljaren i varje
+   * pass-kort ("alla på blocket" vs "bara hon"). Tom i Alla-vyn, som är
+   * read-only. */
+  blockAthletes?: AthleteOption[];
+}) {
   const usedRows = usedDetaljplanFactorRows(items);
   const hasUngrouped = hasUngroupedDetaljplanItems(items);
 
@@ -159,7 +238,7 @@ function PatternGrid({ items, canEdit }: { items: TemplateItemRow[]; canEdit: bo
         <td key={label} className="border-b border-zinc-100 px-1 py-2 dark:border-zinc-900">
           <div className="flex flex-col gap-1">
             {cellItems.map((it) => (
-              <PatternItemCard key={it.id} it={it} canEdit={canEdit} />
+              <PatternItemCard key={it.id} it={it} canEdit={canEdit} blockAthletes={blockAthletes} />
             ))}
           </div>
         </td>
@@ -512,6 +591,12 @@ export default async function DetaljplanPage({
                       QUALITY_WORKOUT_TYPES.includes(it.workout_type as WorkoutType) ||
                       (it.template_rep_groups ?? []).length > 0,
                   );
+                  // Vilka löpare blocket gäller för — driver både scope-
+                  // väljaren i varje pass-kort (steg 4) och "extra pass"-
+                  // formulärets löparväljare längre ned.
+                  const blockAthletes = (b.season_block_athletes ?? [])
+                    .map((r) => athletesById.get(r.athlete_id))
+                    .filter((a): a is NonNullable<typeof a> => a != null);
 
                   return (
                     <details
@@ -529,7 +614,7 @@ export default async function DetaljplanPage({
                         </span>
                       </summary>
 
-                      <PatternGrid items={items} canEdit={canEdit} />
+                      <PatternGrid items={items} canEdit={canEdit} blockAthletes={blockAthletes} />
 
                       {canEdit && repEditableItems.length > 0 && (
                         <div className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
@@ -617,9 +702,6 @@ export default async function DetaljplanPage({
                         // välja bland, så formuläret är meningslöst för en
                         // självcoachad löpare (hon skulle bara kunna välja sig
                         // själv, vilket "Lägg till pass" redan gör via mönstret).
-                        const blockAthletes = (b.season_block_athletes ?? [])
-                          .map((r) => athletesById.get(r.athlete_id))
-                          .filter((a): a is NonNullable<typeof a> => a != null);
                         if (!canEdit || scoped.role !== "coach" || blockAthletes.length === 0) {
                           return null;
                         }

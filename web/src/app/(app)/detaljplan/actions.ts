@@ -122,6 +122,97 @@ export async function addTemplateItem(formData: FormData) {
   refresh();
 }
 
+/** Steg 4 i tränarens process (uttrycklig begäran 2026-08-21): fylla på
+ * detaljer på ett pass i efterhand — "när det passar" — antingen för ALLA
+ * löpare som är taggade på blocket, eller för BARA EN av dem.
+ *
+ * Det här var det som saknades för att processen skulle hänga ihop. Fram
+ * till nu slog en ändring i veckomönstret bara igenom på FRAMTIDA
+ * utrullningar: `syncItemsIntoBlock` hoppar över varje datum+slot som redan
+ * har ett pass (`existingKeys` i lib/template-sync.ts), så när blocket väl
+ * rullats ut nådde tränarens detaljer aldrig kalendern. Därför skriver den
+ * här funktionen direkt i planned_workouts i stället för att gå via
+ * rollout-motorn.
+ *
+ * Två scope:
+ *  - `alla`  — uppdaterar mönsterraden (så framtida utrullningar ärver den)
+ *              OCH varje taggad löpares redan utrullade pass.
+ *  - <id>    — rör INTE mönstret, bara den löparens egna pass. Konsekvensen
+ *              är att en senare "alla"-ändring skriver över hennes
+ *              avvikelse; det är avsiktligt (mönstret är facit) och står i
+ *              UI:t.
+ *
+ * Rör bara pass med `status = 'planned'` — ett genomfört eller ändrat pass
+ * är historik och får aldrig skrivas om i efterhand, samma spärr som
+ * deleteTemplateItem redan använder. */
+export async function updateTemplateItem(formData: FormData) {
+  const auth = await requireUser();
+  const id = str(formData, "id");
+  if (!auth || !id) return;
+  const { supabase } = auth;
+
+  const workoutType = str(formData, "workout_type");
+  if (!workoutType) return;
+  const scope = str(formData, "scope") ?? "alla";
+
+  const { data: item } = await supabase
+    .from("week_template_items")
+    .select("block_id, weekday, slot")
+    .eq("id", id)
+    .maybeSingle();
+  if (!item) return;
+
+  const fields = {
+    workout_type: workoutType,
+    title: str(formData, "title"),
+    description: str(formData, "description"),
+    target_duration_seconds:
+      num(formData, "target_duration_minutes") != null
+        ? (num(formData, "target_duration_minutes") as number) * 60
+        : null,
+    training_factor: str(formData, "training_factor"),
+  };
+
+  const { data: block } = await supabase
+    .from("season_blocks")
+    .select("id, start_date, end_date")
+    .eq("id", item.block_id)
+    .maybeSingle();
+  if (!block) return;
+
+  // Bara ett scope får ändra själva mönstret — annars skulle en justering
+  // för en enskild löpare tyst bli allas nästa utrullning.
+  if (scope === "alla") {
+    await supabase.from("week_template_items").update(fields).eq("id", id);
+  }
+
+  const dates = datesForWeekday(block.start_date, block.end_date, item.weekday);
+  if (dates.length === 0) {
+    refresh();
+    return;
+  }
+
+  const blockAthletes = await athletesForBlock(supabase, block.id);
+  // Ett scope som inte är "alla" måste peka på en löpare som faktiskt är
+  // taggad på blocket — annars vore det en väg att skriva i en godtycklig
+  // användares kalender. (RLS är den faktiska spärren, det här är att inte
+  // ens försöka.)
+  const targets = scope === "alla" ? blockAthletes : blockAthletes.filter((a) => a === scope);
+
+  for (const athleteId of targets) {
+    await supabase
+      .from("planned_workouts")
+      .update(fields)
+      .eq("user_id", athleteId)
+      .eq("block_id", block.id)
+      .eq("slot", item.slot)
+      .eq("status", "planned")
+      .in("scheduled_date", dates);
+  }
+
+  refresh();
+}
+
 export async function deleteTemplateItem(formData: FormData) {
   const auth = await requireUser();
   const id = str(formData, "id");
