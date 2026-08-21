@@ -49,7 +49,34 @@ export type PassGroup = {
   hasCompleted: boolean;
 };
 
-export type DetaljplanDay = { date: string; passes: PassGroup[] };
+/** En tävlingsrad ur `competitions` — en rad per löpare, precis som passen.
+ * Det finns ingen junction-tabell: att flera löpare kör samma tävling är
+ * flera rader med samma namn och datum. */
+export type CompetitionRow = {
+  id: string;
+  user_id: string;
+  competition_date: string;
+  name: string;
+  priority: string;
+};
+
+/** En tävling i veckovyn = alla löpares rader för samma (datum, namn). */
+export type CompetitionGroup = {
+  key: string;
+  date: string;
+  name: string;
+  /** Högsta prioritet bland löparnas rader — A väger tyngst. En tävling som
+   * är A-lopp för en löpare men C för en annan ska synas som det viktigare
+   * av de två i en vy som visar båda. */
+  priority: string;
+  athleteIds: string[];
+};
+
+export type DetaljplanDay = {
+  date: string;
+  passes: PassGroup[];
+  competitions: CompetitionGroup[];
+};
 
 export type DetaljplanWeek = {
   weekStart: string;
@@ -103,11 +130,47 @@ function groupPasses(rows: PlannedPassRow[]): Map<string, PassGroup> {
   return groups;
 }
 
-/** Veckoraderna för ett block, tidigaste veckan först. */
+const PRIORITY_RANK: Record<string, number> = { A: 3, B: 2, C: 1 };
+
+function groupCompetitions(rows: CompetitionRow[]): Map<string, CompetitionGroup[]> {
+  const byKey = new Map<string, CompetitionRow[]>();
+  for (const c of rows) {
+    const key = `${c.competition_date}|${c.name}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), c]);
+  }
+
+  const byDate = new Map<string, CompetitionGroup[]>();
+  for (const [key, group] of byKey) {
+    const first = group[0];
+    const priority = group.reduce(
+      (best, c) => ((PRIORITY_RANK[c.priority] ?? 0) > (PRIORITY_RANK[best] ?? 0) ? c.priority : best),
+      first.priority,
+    );
+    const entry: CompetitionGroup = {
+      key,
+      date: first.competition_date,
+      name: first.name,
+      priority,
+      athleteIds: group.map((c) => c.user_id),
+    };
+    byDate.set(entry.date, [...(byDate.get(entry.date) ?? []), entry]);
+  }
+  for (const list of byDate.values()) list.sort((a, b) => a.name.localeCompare(b.name, "sv"));
+  return byDate;
+}
+
+/** Veckoraderna för ett block, tidigaste veckan först.
+ *
+ * Tävlingar visas även på dagar strax utanför blockets datumspann (de dagar
+ * som fyller ut första och sista veckoraden) — ett A-lopp två dagar innan
+ * blocket börjar är precis den kontext tränaren behöver se när han planerar
+ * blockets första vecka, inte något som ska döljas för att datumet råkar
+ * ligga utanför. */
 export function buildDetaljplanWeeks(
   blockStart: string,
   blockEnd: string,
   rows: PlannedPassRow[],
+  competitions: CompetitionRow[] = [],
 ): DetaljplanWeek[] {
   const groups = groupPasses(rows);
   const passesByDate = new Map<string, PassGroup[]>();
@@ -116,12 +179,18 @@ export function buildDetaljplanWeeks(
   }
   for (const list of passesByDate.values()) list.sort((a, b) => a.slot - b.slot);
 
+  const competitionsByDate = groupCompetitions(competitions);
+
   return buildWeekSeriesForRange(blockStart, blockEnd).map((weekStart) => {
     const days: DetaljplanDay[] = [];
     const outside: boolean[] = [];
     for (let i = 0; i < 7; i++) {
       const date = addDaysKey(weekStart, i);
-      days.push({ date, passes: passesByDate.get(date) ?? [] });
+      days.push({
+        date,
+        passes: passesByDate.get(date) ?? [],
+        competitions: competitionsByDate.get(date) ?? [],
+      });
       outside.push(date < blockStart || date > blockEnd);
     }
     return { weekStart, isoWeekNumber: isoWeekNumber(weekStart), days, outside };

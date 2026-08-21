@@ -373,6 +373,55 @@ export async function removeAthleteFromPass(formData: FormData) {
   refresh();
 }
 
+/** Lägger till ett pass på ett konkret datum i veckovyn, för alla taggade
+ * löpare på blocket eller bara en. Skriver rakt i planned_workouts, alltså
+ * utan att röra blockets veckomönster — ett tillagt pass är ett tillägg
+ * just den veckan, inte en ändring av standardveckan. (Vill man ändra
+ * mönstret självt görs det på /arsplan där blocket bor.) */
+export async function addPassOnDate(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const blockId = str(formData, "block_id");
+  const scheduledDate = str(formData, "scheduled_date");
+  const workoutType = str(formData, "workout_type");
+  if (!blockId || !scheduledDate || !workoutType) return;
+
+  const slot = num(formData, "slot") ?? 1;
+  const scope = str(formData, "scope") ?? "alla";
+  const blockAthletes = await athletesForBlock(supabase, blockId);
+  const targets = scope === "alla" ? blockAthletes : blockAthletes.filter((a) => a === scope);
+  if (targets.length === 0) return;
+
+  // Hoppa över löpare som redan har ett pass i samma datum+slot — samma
+  // idempotens som rollout-motorn (existingKeys i lib/template-sync.ts), så
+  // att en dubbelklickad knapp inte ger två pass samma morgon.
+  const existing = await passRows(supabase, blockId, scheduledDate, slot);
+  const taken = new Set(existing.map((r) => r.user_id));
+
+  const rows = targets
+    .filter((athleteId) => !taken.has(athleteId))
+    .map((athleteId) => ({
+      user_id: athleteId,
+      scheduled_date: scheduledDate,
+      slot,
+      workout_type: workoutType,
+      title: str(formData, "title"),
+      description: str(formData, "description"),
+      target_duration_seconds:
+        num(formData, "target_duration_minutes") != null
+          ? (num(formData, "target_duration_minutes") as number) * 60
+          : null,
+      training_factor: str(formData, "training_factor"),
+      block_id: blockId,
+      status: "planned",
+    }));
+
+  if (rows.length > 0) await supabase.from("planned_workouts").insert(rows);
+  refresh();
+}
+
 /** Fyller på/ändrar detaljerna på ETT konkret pass (ett datum), till
  * skillnad från updateTemplateItem som gäller varje förekomst av
  * veckodagen i blocket. Scope "alla" = alla löpare som har just det här
