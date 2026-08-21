@@ -151,7 +151,10 @@ function WeekPassCard({
     pass.targetDurationSeconds != null ? Math.round(pass.targetDurationSeconds / 60) : null;
 
   return (
-    <div className="rounded bg-zinc-100 px-1.5 py-1 text-xs dark:bg-zinc-800">
+    // `break-words`: kolumnen har fast bredd sedan table-fixed, så en lång
+    // passrubrik ska radbrytas i rutan i stället för att spilla ut över
+    // nästa dag.
+    <div className="rounded bg-zinc-100 px-1.5 py-1 text-xs break-words dark:bg-zinc-800">
       <div className="font-medium text-zinc-900 dark:text-zinc-100">
         {WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType}
       </div>
@@ -322,7 +325,7 @@ function DayAddPass({
       {/* Utfällt läge får egen bredd i stället för att pressas ihop av
           raden det ligger på — det är ett övergående läge, medan den
           hopfällda raden är den man ser hela tiden. */}
-      <form action={addPassOnDate} className="mt-1 flex w-32 flex-col gap-1">
+      <form action={addPassOnDate} className="mt-1 flex w-28 flex-col gap-1">
         <input type="hidden" name="block_id" value={blockId} />
         <input type="hidden" name="scheduled_date" value={date} />
         <select name="workout_type" defaultValue="easy" className={`${input} w-full`} aria-label="Typ">
@@ -369,7 +372,7 @@ function CompetitionCard({
     .filter((a): a is AthleteOption => a != null);
 
   return (
-    <div className="rounded border border-amber-300 bg-amber-50 px-1.5 py-1 text-xs dark:border-amber-700/60 dark:bg-amber-950/40">
+    <div className="rounded border border-amber-300 bg-amber-50 px-1.5 py-1 text-xs break-words dark:border-amber-700/60 dark:bg-amber-950/40">
       <div className="flex items-baseline gap-1">
         <span className="font-medium text-amber-900 dark:text-amber-200">{competition.name}</span>
         {competition.priority === "A" && (
@@ -419,7 +422,14 @@ function WeekGrid({
   }
   return (
     <div className="mt-3 overflow-x-auto">
-      <table className="w-full min-w-[720px] border-collapse text-xs">
+      {/* `table-fixed` + fast veckokolumn gör att alla sju dagkolumner blir
+          exakt lika breda, och — eftersom varje block renderar samma tabell
+          med samma mått — att måndagen i ett block hamnar rakt under
+          måndagen i nästa. Utan det auto-anpassar varje tabell sig efter
+          sitt EGET innehåll, så två block med olika många löpare eller
+          längre passrubriker fick olika kolumnbredder och dagarna
+          hamnade i sicksack mellan blocken (uttrycklig begäran 2026-08-21). */}
+      <table className="w-full min-w-[960px] table-fixed border-collapse text-xs">
         <thead>
           <tr>
             <th className="w-24 border-b border-zinc-200 px-1 pb-1 text-left font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
