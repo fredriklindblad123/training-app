@@ -333,6 +333,45 @@ export async function saveTestLt2(formData: FormData) {
   revalidatePath("/trender");
 }
 
+/** Alla rader som utgör SAMMA pass — ett pass identifieras av (block, datum,
+ * slot) och dess detaljer delas av varje löpare som är taggad till det.
+ *
+ * Det här är kärnan i modellen: man taggar en löpare TILL ett pass, man
+ * planerar inte ett eget pass per löpare. Detaljerna ligger visserligen på
+ * varje rad i planned_workouts (raden är det som hamnar i löparens kalender
+ * och som utfallet matchas mot), men de skrivs alltid för hela passet på en
+ * gång — annars skulle tränaren behöva skriva in "5×1000 m" en gång per
+ * löpare, och en glömd löpare får tyst en annan plan än de andra.
+ *
+ * Ett pass utan block (block_id null) är per definition bara sitt eget — ett
+ * extrapass för en enskild löpare har inga syskon. Genomförda rader rörs
+ * aldrig; de är historik.
+ */
+async function passSiblingIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  workoutId: string,
+): Promise<string[]> {
+  const { data: row } = await supabase
+    .from("planned_workouts")
+    .select("id, block_id, scheduled_date, slot")
+    .eq("id", workoutId)
+    .maybeSingle();
+  if (!row) return [];
+  if (!row.block_id) return [row.id as string];
+
+  const { data: siblings } = await supabase
+    .from("planned_workouts")
+    .select("id")
+    .eq("block_id", row.block_id)
+    .eq("scheduled_date", row.scheduled_date)
+    .eq("slot", row.slot)
+    .eq("status", "planned");
+
+  const ids = new Set<string>([row.id as string]);
+  for (const sib of siblings ?? []) ids.add(sib.id as string);
+  return [...ids];
+}
+
 export async function updatePlannedWorkout(formData: FormData) {
   const supabase = await createClient();
   const {
@@ -347,6 +386,11 @@ export async function updatePlannedWorkout(formData: FormData) {
   const distanceRaw = formData.get("target_distance_km") as string;
   const durationRaw = formData.get("target_duration_min") as string;
 
+  // Syskonen slås upp INNAN uppdateringen: formuläret kan flytta passet till
+  // en annan slot, och då matchar den gamla nyckeln inte längre.
+  const ids = await passSiblingIds(supabase, workoutId);
+  if (ids.length === 0) return;
+
   await supabase
     .from("planned_workouts")
     .update({
@@ -358,7 +402,7 @@ export async function updatePlannedWorkout(formData: FormData) {
       target_duration_seconds: durationRaw ? Number(durationRaw) * 60 : null,
       training_factor: (formData.get("training_factor") as string) || null,
     })
-    .eq("id", workoutId);
+    .in("id", ids);
 
   revalidatePath("/calendar", "layout");
   // Planerade pass redigeras även från Detaljplans dagsvy för flera
@@ -429,11 +473,14 @@ export async function addPlannedRepGroup(formData: FormData) {
     .limit(1);
   const nextSort = ((existing ?? [])[0]?.sort_order ?? -1) + 1;
 
-  await supabase.from("planned_rep_groups").insert({
-    planned_workout_id: workoutId,
-    sort_order: nextSort,
-    ...fields,
-  });
+  // Repgruppen hör till PASSET, inte till en enskild löpare — den läggs in
+  // för alla som är taggade till det. Se passSiblingIds ovan.
+  const ids = await passSiblingIds(supabase, workoutId);
+  if (ids.length === 0) return;
+
+  await supabase.from("planned_rep_groups").insert(
+    ids.map((id) => ({ planned_workout_id: id, sort_order: nextSort, ...fields })),
+  );
 
   revalidatePath("/calendar", "layout");
   // Planerade pass redigeras även från Detaljplans dagsvy för flera
@@ -455,7 +502,22 @@ export async function updatePlannedRepGroup(formData: FormData) {
   const fields = repGroupFieldsFromForm(formData);
   if (fields.distance_meters == null && fields.duration_seconds == null) return;
 
-  await supabase.from("planned_rep_groups").update(fields).eq("id", id);
+  // Uppdatera motsvarande grupp hos alla löpare på passet. Grupperna paras
+  // ihop på sort_order — samma ordning betyder samma grupp, eftersom de
+  // alltid skapas tillsammans (se addPlannedRepGroup).
+  const { data: group } = await supabase
+    .from("planned_rep_groups")
+    .select("planned_workout_id, sort_order")
+    .eq("id", id)
+    .maybeSingle();
+  if (!group) return;
+
+  const ids = await passSiblingIds(supabase, group.planned_workout_id as string);
+  await supabase
+    .from("planned_rep_groups")
+    .update(fields)
+    .in("planned_workout_id", ids)
+    .eq("sort_order", group.sort_order);
 
   revalidatePath("/calendar", "layout");
   // Planerade pass redigeras även från Detaljplans dagsvy för flera
@@ -474,7 +536,21 @@ export async function deletePlannedRepGroup(formData: FormData) {
   const id = formData.get("id") as string;
   if (!id) return;
 
-  await supabase.from("planned_rep_groups").delete().eq("id", id);
+  const { data: group } = await supabase
+    .from("planned_rep_groups")
+    .select("planned_workout_id, sort_order")
+    .eq("id", id)
+    .maybeSingle();
+  if (!group) return;
+
+  // Samma resonemang som vid uppdatering: gruppen hör till passet, så den
+  // tas bort för alla löpare på det.
+  const ids = await passSiblingIds(supabase, group.planned_workout_id as string);
+  await supabase
+    .from("planned_rep_groups")
+    .delete()
+    .in("planned_workout_id", ids)
+    .eq("sort_order", group.sort_order);
 
   revalidatePath("/calendar", "layout");
   // Planerade pass redigeras även från Detaljplans dagsvy för flera

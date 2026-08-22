@@ -128,6 +128,17 @@ export default async function PassDayPage({
             : `${columns.length} löpare sida vid sida`}
           {blockName ? ` · ${blockName}` : ""}
         </p>
+        {columns.length > 1 && (
+          /* Formuläret finns i varje kolumn, men passets detaljer hör till
+             PASSET och inte till löparen — en ändring i vilken kolumn som
+             helst gäller alla taggade. Utan den här raden ser det ut som att
+             man måste skriva samma sak en gång per löpare. */
+          <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+            Passets innehåll är gemensamt: ändrar du det planerade passet i en kolumn gäller
+            ändringen alla löpare som är taggade till det. Dagbok, genomförda pass och
+            sömn är förstås personliga.
+          </p>
+        )}
       </div>
 
       {columns.length === 0 ? (
