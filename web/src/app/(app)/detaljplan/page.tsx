@@ -132,13 +132,6 @@ function BlockWeekSection({
   );
 }
 
-/** Länk till kalenderns dagvy för en löpare — samma URL-form som månads-
- * och veckovyn bygger (månad/dag utan inledande nolla). */
-function dayHref(dateKey: string, athleteId: string): string {
-  const [y, m, d] = dateKey.split("-").map(Number);
-  return `/calendar/${y}/${m}/${d}?athlete=${athleteId}`;
-}
-
 /** Ett pass i veckovyn: sammanfattning + löparchips + "öppna" för
  * detaljer. Chips visas bara när blocket har fler än en taggad löpare —
  * med en enda löpare är "vilka är taggade" ingen fråga.
@@ -227,19 +220,16 @@ function WeekPassCard({
                     : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
                 }`}
               >
-                {/* Namnet är en länk till löparens dagvy i kalendern, som
-                    redan visar plan och utfall sida vid sida — den vyn
-                    behöver inte byggas en gång till här. */}
-                <Link
-                  href={dayHref(pass.scheduledDate, a.id)}
-                  title={`${a.fullName ?? "Löparen"} ${pass.scheduledDate}: plan och utfall${
-                    outcome ? ` — ${outcome}` : ""
-                  }`}
-                  className="underline-offset-2 hover:underline"
+                {/* Ingen länk på namnet: klick på passet självt går till
+                    dagsvyn med en kolumn per löpare, vilket täcker både den
+                    enskilda och jämförelsen. Chipset bär bara VEM och
+                    HUR DET GICK. */}
+                <span
+                  title={`${a.fullName ?? "Löparen"}${outcome ? ` — ${outcome}` : ""}`}
                 >
                   {a.fullName ?? "namnlös"}
                   {done ? " ✓" : outcome === "ej genomfört" ? " ·" : ""}
-                </Link>
+                </span>
                 {canEdit && (
                   <form action={removeAthleteFromPass} className="inline">
                     <input type="hidden" name="block_id" value={blockId} />

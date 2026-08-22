@@ -116,6 +116,10 @@ export async function deletePlannedWorkout(formData: FormData) {
   await supabase.from("planned_workouts").delete().eq("id", workoutId);
 
   revalidatePath("/calendar", "layout");
+  // Planerade pass redigeras även från Detaljplans dagsvy för flera
+  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // utan den här raden skulle en ändring där se ut att inte hända.
+  revalidatePath("/detaljplan", "layout");
 }
 
 export async function resetActivityCategory(formData: FormData) {
@@ -357,6 +361,10 @@ export async function updatePlannedWorkout(formData: FormData) {
     .eq("id", workoutId);
 
   revalidatePath("/calendar", "layout");
+  // Planerade pass redigeras även från Detaljplans dagsvy för flera
+  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // utan den här raden skulle en ändring där se ut att inte hända.
+  revalidatePath("/detaljplan", "layout");
 }
 
 // --- Repgrupper på ett planerat pass (K1) -----------------------------------
@@ -428,6 +436,10 @@ export async function addPlannedRepGroup(formData: FormData) {
   });
 
   revalidatePath("/calendar", "layout");
+  // Planerade pass redigeras även från Detaljplans dagsvy för flera
+  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // utan den här raden skulle en ändring där se ut att inte hända.
+  revalidatePath("/detaljplan", "layout");
 }
 
 export async function updatePlannedRepGroup(formData: FormData) {
@@ -446,6 +458,10 @@ export async function updatePlannedRepGroup(formData: FormData) {
   await supabase.from("planned_rep_groups").update(fields).eq("id", id);
 
   revalidatePath("/calendar", "layout");
+  // Planerade pass redigeras även från Detaljplans dagsvy för flera
+  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // utan den här raden skulle en ändring där se ut att inte hända.
+  revalidatePath("/detaljplan", "layout");
 }
 
 export async function deletePlannedRepGroup(formData: FormData) {
@@ -461,4 +477,8 @@ export async function deletePlannedRepGroup(formData: FormData) {
   await supabase.from("planned_rep_groups").delete().eq("id", id);
 
   revalidatePath("/calendar", "layout");
+  // Planerade pass redigeras även från Detaljplans dagsvy för flera
+  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // utan den här raden skulle en ändring där se ut att inte hända.
+  revalidatePath("/detaljplan", "layout");
 }
