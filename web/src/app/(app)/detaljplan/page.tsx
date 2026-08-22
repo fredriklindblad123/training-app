@@ -25,7 +25,6 @@ import {
   type WorkoutType,
 } from "@/lib/planning";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
-import { TrainingFactorSelect } from "@/components/TrainingFactorSelect";
 import {
   addAthleteToPass,
   addPassOnDate,
@@ -33,7 +32,6 @@ import {
   deletePlannedPass,
   deleteTemplateRepGroup,
   removeAthleteFromPass,
-  updatePlannedPass,
   updateTemplateRepGroup,
 } from "./actions";
 import {
@@ -249,105 +247,50 @@ function WeekPassCard({
 
       {canEdit && (
         <div className="mt-1 flex flex-wrap items-start gap-x-2 gap-y-0.5">
-        <details className="min-w-0">
-          <summary className="cursor-pointer text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
-            öppna
-          </summary>
-
+          {/* "öppna" är borttaget: detaljerad planering och utfall görs i
+              kalenderns dagvy, som chipsens namn länkar till. Kvar här är
+              bara det som handlar om PASSET som helhet — vilka löpare som
+              är med, och att ta bort det. */}
           {showChips && untagged.length > 0 && (
-            <form action={addAthleteToPass} className="mt-1 flex w-28 items-center gap-1">
-              <input type="hidden" name="block_id" value={blockId} />
-              <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
-              <input type="hidden" name="slot" value={pass.slot} />
-              <select name="athlete_id" className={`${input} w-full`} aria-label="Lägg till löpare">
-                {untagged.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.fullName ?? "namnlös löpare"}
-                  </option>
-                ))}
-              </select>
-              <button type="submit" className="rounded bg-zinc-200 px-1.5 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600">
-                +
-              </button>
-            </form>
+            <details className="min-w-0">
+              <summary className="cursor-pointer whitespace-nowrap text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
+                + löpare
+              </summary>
+              <form action={addAthleteToPass} className="mt-1 flex w-28 items-center gap-1">
+                <input type="hidden" name="block_id" value={blockId} />
+                <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+                <input type="hidden" name="slot" value={pass.slot} />
+                <select name="athlete_id" className={`${input} w-full`} aria-label="Lägg till löpare">
+                  {untagged.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.fullName ?? "namnlös löpare"}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="rounded bg-zinc-200 px-1.5 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600">
+                  +
+                </button>
+              </form>
+            </details>
           )}
-
-          <form action={updatePlannedPass} className="mt-1 flex w-28 flex-col gap-1">
+          {/* Tar bort passet för alla löpare på det. Att ta bort det för EN
+              löpare görs med × på hennes chip ovan. */}
+          <form action={deletePlannedPass}>
             <input type="hidden" name="block_id" value={blockId} />
             <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
             <input type="hidden" name="slot" value={pass.slot} />
-            <select
-              name="workout_type"
-              defaultValue={pass.workoutType}
-              className={`${input} w-full`}
-              aria-label="Typ"
+            <button
+              type="submit"
+              title={
+                pass.athleteIds.length > 1
+                  ? "Ta bort passet för alla löpare på det"
+                  : "Ta bort passet"
+              }
+              className="whitespace-nowrap text-[10px] text-zinc-400 hover:text-red-600"
             >
-              {WORKOUT_TYPES.map((w) => (
-                <option key={w} value={w}>
-                  {WORKOUT_LABELS[w]}
-                </option>
-              ))}
-            </select>
-            <input
-              name="title"
-              defaultValue={pass.title ?? ""}
-              placeholder="10x400m"
-              aria-label="Rubrik"
-              className={`${input} w-full`}
-            />
-            <input
-              name="target_duration_minutes"
-              type="number"
-              min="0"
-              defaultValue={minutes ?? ""}
-              placeholder="minuter"
-              aria-label="Minuter"
-              className={`${input} w-full`}
-            />
-            <TrainingFactorSelect defaultValue={pass.trainingFactor} label={null} />
-            {pass.athleteIds.length > 1 && (
-              <select name="scope" defaultValue="alla" className={`${input} w-full`} aria-label="Gäller">
-                <option value="alla">Alla på passet</option>
-                {blockAthletes
-                  .filter((a) => tagged.has(a.id))
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      Bara {a.fullName ?? "namnlös löpare"}
-                    </option>
-                  ))}
-              </select>
-            )}
-            <button type="submit" className="rounded bg-zinc-200 px-2 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600">
-              Spara
+              ta bort{pass.athleteIds.length > 1 ? " (alla)" : ""}
             </button>
           </form>
-          {pass.hasCompleted && (
-            <p className="mt-1 text-[10px] text-zinc-500 dark:text-zinc-500">
-              Något av passen är redan genomfört — det lämnas orört.
-            </p>
-          )}
-        </details>
-        {/* Tar bort passet för alla löpare på det. Att ta bort det för EN
-            löpare görs med × på hennes chip ovan. Ligger i actionraden, inte
-            inne i "öppna" — man ska inte behöva fälla ut passet för att
-            kunna ta bort det. Titeln bär den fulla innebörden, som inte får
-            plats i en dagkolumn. */}
-        <form action={deletePlannedPass}>
-          <input type="hidden" name="block_id" value={blockId} />
-          <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
-          <input type="hidden" name="slot" value={pass.slot} />
-          <button
-            type="submit"
-            title={
-              pass.athleteIds.length > 1
-                ? "Ta bort passet för alla löpare på det"
-                : "Ta bort passet"
-            }
-            className="whitespace-nowrap text-[10px] text-zinc-400 hover:text-red-600"
-          >
-            ta bort{pass.athleteIds.length > 1 ? " (alla)" : ""}
-          </button>
-        </form>
         </div>
       )}
     </div>
@@ -885,9 +828,16 @@ export default async function DetaljplanPage({
               QUALITY_WORKOUT_TYPES.includes(it.workout_type as WorkoutType) ||
               (it.template_rep_groups ?? []).length > 0,
           );
+          // Den här vyn är filtrerad på EN löpare, så bara hennes pass,
+          // hennes chip och hennes tävlingar ska synas — inte hela blockets
+          // (uttrycklig begäran 2026-08-22). Filtreringen görs på datan i
+          // stället för i rutnätet: ett pass som bara andra löpare har
+          // försvinner då helt ur hennes vecka, i stället för att ligga kvar
+          // som ett tomt kort.
           const blockAthletes = (b.season_block_athletes ?? [])
             .map((r) => athletesById.get(r.athlete_id))
-            .filter((a): a is AthleteOption => a != null);
+            .filter((a): a is AthleteOption => a != null)
+            .filter((a) => a.id === scopedUserId);
 
           return (
             <div key={b.id} className="flex flex-col gap-2">
@@ -896,8 +846,8 @@ export default async function DetaljplanPage({
                 weeks={buildDetaljplanWeeks(
                   b.start_date,
                   b.end_date,
-                  passesByBlock.get(b.id) ?? [],
-                  competitionsByBlock.get(b.id) ?? [],
+                  (passesByBlock.get(b.id) ?? []).filter((r) => r.user_id === scopedUserId),
+                  (competitionsByBlock.get(b.id) ?? []).filter((c) => c.user_id === scopedUserId),
                   outcomes,
                 )}
                 canEdit={canEdit}
