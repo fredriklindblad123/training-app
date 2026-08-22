@@ -28,10 +28,13 @@ import {
   WEEKDAY_LABELS,
   WORKOUT_LABELS,
   WORKOUT_TYPES,
+  workoutTypeColorVar,
   type AvailabilityKind,
   type PeriodType,
   type PhaseType,
+  type WorkoutType,
 } from "@/lib/planning";
+import { computeBlockStats, type BlockStats } from "@/lib/block-stats";
 import {
   createAvailabilityPeriod,
   createBlock,
@@ -187,6 +190,86 @@ function DayPatternFields() {
  * TimelineBlock (SeasonTimeline.tsx) plus fokus-fältet. */
 type BlockCardBlock = TimelineBlock & { focus: string | null };
 
+
+/** Blockstatistik: vad som är planerat och hur det gått. Visas bara i den
+ * enskilda löparens vy — Alla-vyn hämtar varken planerade pass eller
+ * aktiviteter, och en tom statistikruta vore sämre än ingen alls.
+ *
+ * Siffrorna räknas i lib/block-stats.ts ur samma data som veckorutnätet
+ * ovanför redan bygger på, så de kan aldrig visa något annat än rutnätet. */
+function BlockStatsPanel({ stats }: { stats: BlockStats }) {
+  const pct = (n: number) => `${Math.round(n * 100)} %`;
+  return (
+    <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+        <Stat label="Planerade pass" value={String(stats.plannedCount)} sub={`${stats.passesPerWeek}/vecka`} />
+        <Stat
+          label="Genomfört"
+          value={`${stats.completedCount} av ${stats.plannedCount}`}
+          sub={stats.unplannedCount > 0 ? `+${stats.unplannedCount} oplanerade` : undefined}
+        />
+        <Stat
+          label="Kvalitetspass"
+          value={`${stats.qualityCompleted} av ${stats.qualityPlanned}`}
+          sub={stats.qualityShare != null ? `${pct(stats.qualityShare)} av planen` : undefined}
+        />
+        <Stat label="Veckor" value={String(stats.weeks)} sub={stats.plannedRestDays > 0 ? `${stats.plannedRestDays} vilodagar` : undefined} />
+        <Stat
+          label="Distans"
+          value={`${stats.actualKm.toFixed(1)} km`}
+          sub={stats.plannedKm != null ? `plan ${stats.plannedKm.toFixed(1)} km` : "genomfört"}
+        />
+        <Stat
+          label="Tid"
+          value={`${stats.actualHours.toFixed(1)} h`}
+          sub={stats.plannedHours != null ? `plan ${stats.plannedHours.toFixed(1)} h` : "genomfört"}
+        />
+        <Stat label="Belastning" value={String(Math.round(stats.trainingLoad))} sub="genomfört" />
+        <Stat
+          label="Tävlingar"
+          value={String(stats.competitionCount)}
+          sub={stats.sessionCount > 0 ? `${stats.sessionCount} pass loggade` : undefined}
+        />
+      </div>
+
+      {stats.plannedByType.length > 0 && (
+        <div>
+          <div className="text-xs text-zinc-500 dark:text-zinc-400">Planerade pass per typ</div>
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {stats.plannedByType.map((row: BlockStats["plannedByType"][number]) => (
+              <span
+                key={row.type}
+                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+              >
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={
+                    workoutTypeColorVar(row.type)
+                      ? { backgroundColor: workoutTypeColorVar(row.type) as string }
+                      : { border: "1.5px dashed currentColor" }
+                  }
+                  aria-hidden="true"
+                />
+                {WORKOUT_LABELS[row.type as WorkoutType] ?? row.type} · {row.count}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div>
+      <div className="text-xs text-zinc-500 dark:text-zinc-400">{label}</div>
+      <div className="text-zinc-900 dark:text-zinc-100">{value}</div>
+      {sub && <div className="text-xs text-zinc-400 dark:text-zinc-500">{sub}</div>}
+    </div>
+  );
+}
+
 /** Ett enskilt blocks redigeringskort — namn/period/fas/säsong/datum/fokus,
  * löpar-kryssrutor, standardvecka, prioritering per träningsfaktor, länk
  * till Detaljplan, ta bort-knapp. Delad mellan den enskilda löparens
@@ -201,11 +284,14 @@ function BlockCard({
   canEdit,
   athletes,
   selectedAthleteIds,
+  stats,
 }: {
   block: BlockCardBlock;
   canEdit: boolean;
   athletes: { id: string; fullName: string | null }[];
   selectedAthleteIds: Set<string>;
+  /** Utelämnas i Alla-vyn, som saknar underlaget. */
+  stats?: BlockStats;
 }) {
   return (
     <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
@@ -306,6 +392,8 @@ function BlockCard({
               </Link>
             </p>
           </div>
+
+          {stats && <BlockStatsPanel stats={stats} />}
 
           <form action={deleteBlock}>
             <input type="hidden" name="id" value={b.id} />
@@ -1445,6 +1533,15 @@ export default async function ArsplanPage({
                 canEdit={canEdit}
                 athletes={scoped.role === "coach" ? viewableAthletes(scoped) : []}
                 selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
+                // Räknas ur samma planerade pass och sessioner som
+                // veckorutnätet ovanför bygger på — inga extra frågor, och
+                // ingen risk att rutnätet och statistiken säger olika saker.
+                stats={computeBlockStats({
+                  block: { startDate: b.start_date, endDate: b.end_date },
+                  planned: gridPlannedWorkouts,
+                  sessions: gridSessions,
+                  competitionDates: competitionList.map((c) => c.competition_date),
+                })}
               />
             ))}
           </div>
