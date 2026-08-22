@@ -56,11 +56,15 @@ export async function DayContent({
   userId,
   dateStr,
   nextDateStr,
+  includePlanned = true,
 }: {
   userId: string;
   dateStr: string;
   /** Dagen efter, för aktivitetsintervallet. */
   nextDateStr: string;
+  /** Dagsvyn för flera löpare visar planeringen EN gång ovanför kolumnerna
+   * (passet är gemensamt, se SharedPlannedDay) och stänger av den här. */
+  includePlanned?: boolean;
 }) {
   const supabase = await createClient();
   const scopedUserId = userId;
@@ -263,34 +267,36 @@ export async function DayContent({
         />
       )}
 
-      <DaySection
-        title="Planerat pass"
-        hasData={hasPlan}
-        summary={
-          <span className="flex flex-wrap items-center gap-2">
-            {hasPlan ? (
-              (plannedWorkouts ?? []).map((p, i) => (
-                <span key={p.id ?? i} className="inline-flex items-center gap-1.5">
-                  <TypeDot type={p.workout_type} />
-                  {p.title || typeLabel(p.workout_type)}
-                </span>
-              ))
-            ) : (
-              "Inget planerat"
-            )}
-            <PlanStatusBadge status={planStatus} />
-          </span>
-        }
-      >
-        <PlannedSessions
-          planned={(plannedWorkouts ?? []) as PlannedRow[]}
-          updateAction={updatePlannedWorkout}
-          deleteAction={deletePlannedWorkout}
-          addRepGroupAction={addPlannedRepGroup}
-          updateRepGroupAction={updatePlannedRepGroup}
-          deleteRepGroupAction={deletePlannedRepGroup}
-        />
-      </DaySection>
+      {includePlanned && (
+        <DaySection
+          title="Planerat pass"
+          hasData={hasPlan}
+          summary={
+            <span className="flex flex-wrap items-center gap-2">
+              {hasPlan ? (
+                (plannedWorkouts ?? []).map((p, i) => (
+                  <span key={p.id ?? i} className="inline-flex items-center gap-1.5">
+                    <TypeDot type={p.workout_type} />
+                    {p.title || typeLabel(p.workout_type)}
+                  </span>
+                ))
+              ) : (
+                "Inget planerat"
+              )}
+              <PlanStatusBadge status={planStatus} />
+            </span>
+          }
+        >
+          <PlannedSessions
+            planned={(plannedWorkouts ?? []) as PlannedRow[]}
+            updateAction={updatePlannedWorkout}
+            deleteAction={deletePlannedWorkout}
+            addRepGroupAction={addPlannedRepGroup}
+            updateRepGroupAction={updatePlannedRepGroup}
+            deleteRepGroupAction={deletePlannedRepGroup}
+          />
+        </DaySection>
+      )}
 
       <DaySection
         title="Genomförda pass"
@@ -693,5 +699,104 @@ function CategoryBadge({ category }: { category: string | null }) {
       />
       {CATEGORY_LABELS[category]}
     </span>
+  );
+}
+
+/** Dagens planering EN gång för flera löpare — passets innehåll är
+ * gemensamt (se passSiblingIds i calendar-dagvyns actions.ts), så det ska
+ * inte redigeras en gång per kolumn. Uttrycklig begäran 2026-08-22: två
+ * identiska formulär bredvid varandra för samma pass är fel bild av
+ * modellen, man taggar löpare TILL ett pass.
+ *
+ * Passen grupperas på (block, slot) — samma nyckel som avgör vilka rader som
+ * hör ihop. Varje grupp renderas med EN redigerare (första radens id;
+ * uppdateringen propagerar till alla taggade) och namnen på dem som är med,
+ * så det syns när ett pass bara gäller några av löparna i vyn. */
+export async function SharedPlannedDay({
+  athleteIds,
+  dateStr,
+  athleteNames,
+}: {
+  athleteIds: string[];
+  dateStr: string;
+  athleteNames: Map<string, string>;
+}) {
+  const supabase = await createClient();
+  const { data: rows } = await supabase
+    .from("planned_workouts")
+    .select("*, season_blocks(name), planned_rep_groups(*)")
+    .in("user_id", athleteIds)
+    .eq("scheduled_date", dateStr)
+    .order("slot", { ascending: true });
+
+  const planned = (rows ?? []) as (PlannedRow & {
+    user_id: string;
+    block_id: string | null;
+    slot: number | null;
+  })[];
+
+  const groups = new Map<string, typeof planned>();
+  for (const row of planned) {
+    const key = `${row.block_id ?? "utan-block"}|${row.slot ?? 1}`;
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+
+  if (groups.size === 0) {
+    return (
+      <DaySection title="Planerat pass" hasData={false} summary="Inget planerat">
+        <p className="text-sm text-zinc-400 dark:text-zinc-600">Inget planerat pass den här dagen.</p>
+      </DaySection>
+    );
+  }
+
+  return (
+    <DaySection
+      title="Planerat pass"
+      hasData
+      summary={
+        <span className="flex flex-wrap items-center gap-2">
+          {[...groups.values()].map((group) => (
+            <span key={group[0].id} className="inline-flex items-center gap-1.5">
+              <TypeDot type={group[0].workout_type} />
+              {group[0].title || typeLabel(group[0].workout_type)}
+            </span>
+          ))}
+        </span>
+      }
+    >
+      {[...groups.values()].map((group) => {
+        const names = group
+          .map((r) => athleteNames.get(r.user_id))
+          .filter((n): n is string => n != null);
+        return (
+          <div key={group[0].id} className="flex flex-col gap-2">
+            {names.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+                <span>Gäller:</span>
+                {names.map((n) => (
+                  <span
+                    key={n}
+                    className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+                  >
+                    {n}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* En redigerare för hela gruppen. Vilken rad den utgår från
+                spelar ingen roll — updatePlannedWorkout skriver till alla
+                löpares rader för passet. */}
+            <PlannedSessions
+              planned={[group[0]] as PlannedRow[]}
+              updateAction={updatePlannedWorkout}
+              deleteAction={deletePlannedWorkout}
+              addRepGroupAction={addPlannedRepGroup}
+              updateRepGroupAction={updatePlannedRepGroup}
+              deleteRepGroupAction={deletePlannedRepGroup}
+            />
+          </div>
+        );
+      })}
+    </DaySection>
   );
 }

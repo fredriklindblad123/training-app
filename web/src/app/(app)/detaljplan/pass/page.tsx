@@ -8,7 +8,7 @@ import {
   type AthleteOption,
 } from "@/lib/auth-scope";
 import { WEEKDAY_LABELS } from "@/lib/planning";
-import { DayContent } from "@/components/DayContent";
+import { DayContent, SharedPlannedDay } from "@/components/DayContent";
 
 /* Dagsvy för flera löpare samtidigt (uttrycklig begäran 2026-08-22): klick
  * på ett pass i Detaljplans veckovy landar här, med en kolumn per löpare i
@@ -37,10 +37,13 @@ function AthleteColumn({
   athlete,
   dateKey,
   nextDateKey,
+  includePlanned,
 }: {
   athlete: AthleteOption;
   dateKey: string;
   nextDateKey: string;
+  /** Falskt när planeringen visas delad ovanför kolumnerna. */
+  includePlanned: boolean;
 }) {
   const [y, m, d] = dateKey.split("-").map(Number);
   return (
@@ -56,7 +59,12 @@ function AthleteColumn({
           Hennes kalenderdag →
         </Link>
       </div>
-      <DayContent userId={athlete.id} dateStr={dateKey} nextDateStr={nextDateKey} />
+      <DayContent
+        userId={athlete.id}
+        dateStr={dateKey}
+        nextDateStr={nextDateKey}
+        includePlanned={includePlanned}
+      />
     </div>
   );
 }
@@ -128,32 +136,33 @@ export default async function PassDayPage({
             : `${columns.length} löpare sida vid sida`}
           {blockName ? ` · ${blockName}` : ""}
         </p>
-        {columns.length > 1 && (
-          /* Formuläret finns i varje kolumn, men passets detaljer hör till
-             PASSET och inte till löparen — en ändring i vilken kolumn som
-             helst gäller alla taggade. Utan den här raden ser det ut som att
-             man måste skriva samma sak en gång per löpare. */
-          <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-            Passets innehåll är gemensamt: ändrar du det planerade passet i en kolumn gäller
-            ändringen alla löpare som är taggade till det. Dagbok, genomförda pass och
-            sömn är förstås personliga.
-          </p>
-        )}
       </div>
 
       {columns.length === 0 ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga löpare att visa.</p>
       ) : (
-        <div className="flex flex-wrap items-start gap-4">
+        <>
+          {columns.length > 1 && (
+            <SharedPlannedDay
+              athleteIds={columns.map((a) => a.id)}
+              dateStr={dateKey}
+              athleteNames={
+                new Map(columns.map((a) => [a.id, a.fullName ?? "Namnlös löpare"]))
+              }
+            />
+          )}
+          <div className="flex flex-wrap items-start gap-4">
           {columns.map((a) => (
             <AthleteColumn
               key={a.id}
               athlete={a}
               dateKey={dateKey}
               nextDateKey={nextDateKey}
+              includePlanned={columns.length === 1}
             />
           ))}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
