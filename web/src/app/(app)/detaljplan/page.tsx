@@ -38,12 +38,19 @@ import {
 } from "./actions";
 import {
   buildDetaljplanWeeks,
+  outcomeKey,
   type CompetitionGroup,
   type CompetitionRow,
   type DetaljplanWeek,
   type PassGroup,
   type PlannedPassRow,
 } from "@/lib/detaljplan-weeks";
+import { matchPlanToSessions, type PlanOutcome, type PlannedWorkout } from "@/lib/plan-matching";
+import {
+  groupActivitiesIntoSessions,
+  SESSION_ACTIVITY_COLUMNS,
+  type SessionActivity,
+} from "@/lib/sessions";
 import { TRAINING_FACTORS } from "@/lib/training-factors";
 
 /* Detaljplan: varje blocks eget dag-för-dag-veckomönster, en fas i taget —
@@ -124,6 +131,13 @@ function BlockWeekSection({
   );
 }
 
+/** Länk till kalenderns dagvy för en löpare — samma URL-form som månads-
+ * och veckovyn bygger (månad/dag utan inledande nolla). */
+function dayHref(dateKey: string, athleteId: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return `/calendar/${y}/${m}/${d}?athlete=${athleteId}`;
+}
+
 /** Ett pass i veckovyn: sammanfattning + löparchips + "öppna" för
  * detaljer. Chips visas bara när blocket har fler än en taggad löpare —
  * med en enda löpare är "vilka är taggade" ingen fråga.
@@ -187,12 +201,31 @@ function WeekPassCard({
         <div className="mt-1 flex flex-wrap gap-0.5">
           {blockAthletes
             .filter((a) => tagged.has(a.id))
-            .map((a) => (
+            .map((a) => {
+              const outcome = pass.outcomeByAthlete[a.id];
+              const done = outcome === "genomfört" || outcome === "avvikande typ";
+              return (
               <span
                 key={a.id}
-                className="inline-flex items-center gap-0.5 rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] ${
+                  done
+                    ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100"
+                    : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+                }`}
               >
-                {a.fullName ?? "namnlös"}
+                {/* Namnet är en länk till löparens dagvy i kalendern, som
+                    redan visar plan och utfall sida vid sida — den vyn
+                    behöver inte byggas en gång till här. */}
+                <Link
+                  href={dayHref(pass.scheduledDate, a.id)}
+                  title={`${a.fullName ?? "Löparen"} ${pass.scheduledDate}: plan och utfall${
+                    outcome ? ` — ${outcome}` : ""
+                  }`}
+                  className="underline-offset-2 hover:underline"
+                >
+                  {a.fullName ?? "namnlös"}
+                  {done ? " ✓" : outcome === "ej genomfört" ? " ·" : ""}
+                </Link>
                 {canEdit && (
                   <form action={removeAthleteFromPass} className="inline">
                     <input type="hidden" name="block_id" value={blockId} />
@@ -209,7 +242,8 @@ function WeekPassCard({
                   </form>
                 )}
               </span>
-            ))}
+              );
+            })}
         </div>
       )}
 
@@ -571,7 +605,7 @@ async function DetaljplanOverview({
     return <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga block i år ännu.</p>;
   }
 
-  const { passesByBlock, competitionsByBlock } = await loadWeekData(supabase, blockList);
+  const { passesByBlock, competitionsByBlock, outcomes } = await loadWeekData(supabase, blockList);
 
   return (
     <div className="flex flex-col gap-4">
@@ -588,6 +622,7 @@ async function DetaljplanOverview({
               b.end_date,
               passesByBlock.get(b.id) ?? [],
               competitionsByBlock.get(b.id) ?? [],
+              outcomes,
             )}
             canEdit={canEdit}
             blockAthletes={blockAthletes}
@@ -610,15 +645,17 @@ async function loadWeekData(
 ): Promise<{
   passesByBlock: Map<string, PlannedPassRow[]>;
   competitionsByBlock: Map<string, CompetitionRow[]>;
+  outcomes: Map<string, PlanOutcome>;
 }> {
   const passesByBlock = new Map<string, PlannedPassRow[]>();
   const competitionsByBlock = new Map<string, CompetitionRow[]>();
-  if (blockList.length === 0) return { passesByBlock, competitionsByBlock };
+  const outcomes = new Map<string, PlanOutcome>();
+  if (blockList.length === 0) return { passesByBlock, competitionsByBlock, outcomes };
 
   const allAthleteIds = [
     ...new Set(blockList.flatMap((b) => (b.season_block_athletes ?? []).map((r) => r.athlete_id))),
   ];
-  if (allAthleteIds.length === 0) return { passesByBlock, competitionsByBlock };
+  if (allAthleteIds.length === 0) return { passesByBlock, competitionsByBlock, outcomes };
 
   const blockIds = blockList.map((b) => b.id);
   const minDate = blockList.reduce((m, b) => (b.start_date < m ? b.start_date : m), blockList[0].start_date);
@@ -629,21 +666,35 @@ async function loadWeekData(
     return d.toISOString().slice(0, 10);
   };
 
-  const [{ data: plannedRows }, { data: competitionRows }] = await Promise.all([
-    supabase
-      .from("planned_workouts")
-      .select(
-        "id, user_id, scheduled_date, slot, workout_type, title, description, target_duration_seconds, training_factor, status, block_id",
-      )
-      .in("block_id", blockIds)
-      .in("user_id", allAthleteIds),
-    supabase
-      .from("competitions")
-      .select("id, user_id, competition_date, name, priority")
-      .in("user_id", allAthleteIds)
-      .gte("competition_date", pad(minDate, -7))
-      .lte("competition_date", pad(maxDate, 7)),
-  ]);
+  const [{ data: plannedRows }, { data: competitionRows }, { data: activityRows }] =
+    await Promise.all([
+      supabase
+        .from("planned_workouts")
+        .select(
+          "id, user_id, scheduled_date, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, status, block_id",
+        )
+        .in("block_id", blockIds)
+        .in("user_id", allAthleteIds),
+      supabase
+        .from("competitions")
+        .select("id, user_id, competition_date, name, priority")
+        .in("user_id", allAthleteIds)
+        .gte("competition_date", pad(minDate, -7))
+        .lte("competition_date", pad(maxDate, 7)),
+      // Utfallet: `planned_workouts.status` skrivs aldrig (verifierat
+      // 2026-08-22 — alla rader är `planned`, ingen har
+      // linked_activity_id), så "genomfört" måste räknas fram ur de
+      // faktiska aktiviteterna i läsvägen. Samma väg som /arsplan och
+      // kalendern: activities → groupActivitiesIntoSessions →
+      // matchPlanToSessions.
+      supabase
+        .from("activities")
+        .select(SESSION_ACTIVITY_COLUMNS)
+        .in("user_id", allAthleteIds)
+        .gte("start_time", minDate)
+        .lte("start_time", pad(maxDate, 1))
+        .order("start_time"),
+    ]);
 
   for (const row of (plannedRows ?? []) as (PlannedPassRow & { block_id: string })[]) {
     passesByBlock.set(row.block_id, [...(passesByBlock.get(row.block_id) ?? []), row]);
@@ -666,7 +717,29 @@ async function loadWeekData(
     );
   }
 
-  return { passesByBlock, competitionsByBlock };
+  // Matchningen körs PER LÖPARE: matchPlanToSessions parar ihop planerade
+  // pass med genomförda inom en dag, och att blanda två löpares dagar i
+  // samma anrop skulle para Alices pass med Nikes aktivitet.
+  const plannedByAthlete = new Map<string, (PlannedWorkout & { user_id: string })[]>();
+  for (const row of (plannedRows ?? []) as (PlannedPassRow & { block_id: string })[]) {
+    plannedByAthlete.set(row.user_id, [...(plannedByAthlete.get(row.user_id) ?? []), row]);
+  }
+  const activitiesByAthlete = new Map<string, SessionActivity[]>();
+  for (const a of (activityRows ?? []) as unknown as (SessionActivity & { user_id: string })[]) {
+    activitiesByAthlete.set(a.user_id, [...(activitiesByAthlete.get(a.user_id) ?? []), a]);
+  }
+  for (const [athleteId, planned] of plannedByAthlete) {
+    const sessions = groupActivitiesIntoSessions(activitiesByAthlete.get(athleteId) ?? []);
+    for (const m of matchPlanToSessions(planned, sessions)) {
+      if (!m.planned) continue; // oplanerade pass hör inte till någon plan-ruta
+      outcomes.set(
+        outcomeKey(athleteId, m.planned.scheduled_date, m.planned.slot ?? 1),
+        m.outcome,
+      );
+    }
+  }
+
+  return { passesByBlock, competitionsByBlock, outcomes };
 }
 
 export default async function DetaljplanPage({
@@ -746,7 +819,7 @@ export default async function DetaljplanPage({
   // Veckovyn visar passen för ALLA löpare som är taggade på blocket, inte
   // bara den löpare vyn är scopad till — hela poängen är att se vilka
   // löpare som ligger på vilket pass.
-  const { passesByBlock, competitionsByBlock } = await loadWeekData(supabase, blockList);
+  const { passesByBlock, competitionsByBlock, outcomes } = await loadWeekData(supabase, blockList);
 
   // Visa bara faser som faktiskt har ett block — en lista med alla sex
   // faser, mest tomma, gjorde det svårt att se vad man faktiskt skulle
@@ -825,6 +898,7 @@ export default async function DetaljplanPage({
                   b.end_date,
                   passesByBlock.get(b.id) ?? [],
                   competitionsByBlock.get(b.id) ?? [],
+                  outcomes,
                 )}
                 canEdit={canEdit}
                 blockAthletes={blockAthletes}

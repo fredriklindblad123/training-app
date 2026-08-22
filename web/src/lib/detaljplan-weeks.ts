@@ -1,4 +1,5 @@
 import { buildWeekSeriesForRange } from "@/lib/week-series";
+import type { PlanOutcome } from "@/lib/plan-matching";
 import { isoWeekNumber } from "@/lib/arsplan-grid";
 
 /* Detaljplanens veckovy (uttrycklig begäran 2026-08-21): riktiga
@@ -23,6 +24,9 @@ export type PlannedPassRow = {
   workout_type: string;
   title: string | null;
   description: string | null;
+  /** Behövs av matchPlanToSessions (PlannedWorkout), inte av veckovyn
+   * själv — hämtas därför alltid med i samma fråga. */
+  target_distance_meters: number | null;
   target_duration_seconds: number | null;
   training_factor: string | null;
   status: string;
@@ -47,6 +51,13 @@ export type PassGroup = {
   /** Någon rad är inte längre `planned` (genomförd/ändrad) — sådana rör vi
    * aldrig, så UI:t ska inte låtsas att de går att redigera bort. */
   hasCompleted: boolean;
+  /** Utfall per löpare: user_id → PlanOutcome. Tomt när inget utfall
+   * beräknats. OBS att detta INTE kommer ur planned_workouts.status — den
+   * kolumnen skrivs aldrig (verifierat 2026-08-22: samtliga rader är
+   * `planned`, ingen har linked_activity_id). Utfallet räknas i läsvägen av
+   * matchPlanToSessions, samma funktion som kalendern, /arsplan och
+   * /trender använder, och matas in här utifrån. */
+  outcomeByAthlete: Record<string, PlanOutcome>;
 };
 
 /** En tävlingsrad ur `competitions` — en rad per löpare, precis som passen.
@@ -103,7 +114,15 @@ function sameContent(a: PlannedPassRow, b: PlannedPassRow): boolean {
   );
 }
 
-function groupPasses(rows: PlannedPassRow[]): Map<string, PassGroup> {
+/** Nyckel för utfallskartan: en löpares pass ett visst datum och slot. */
+export function outcomeKey(userId: string, date: string, slot: number): string {
+  return `${userId}|${date}|${slot}`;
+}
+
+function groupPasses(
+  rows: PlannedPassRow[],
+  outcomes: Map<string, PlanOutcome>,
+): Map<string, PassGroup> {
   const byKey = new Map<string, PlannedPassRow[]>();
   for (const r of rows) {
     const key = `${r.scheduled_date}|${r.slot}`;
@@ -113,6 +132,11 @@ function groupPasses(rows: PlannedPassRow[]): Map<string, PassGroup> {
   const groups = new Map<string, PassGroup>();
   for (const [key, group] of byKey) {
     const first = group[0];
+    const outcomeByAthlete: Record<string, PlanOutcome> = {};
+    for (const r of group) {
+      const outcome = outcomes.get(outcomeKey(r.user_id, r.scheduled_date, r.slot));
+      if (outcome) outcomeByAthlete[r.user_id] = outcome;
+    }
     groups.set(key, {
       key,
       scheduledDate: first.scheduled_date,
@@ -125,6 +149,7 @@ function groupPasses(rows: PlannedPassRow[]): Map<string, PassGroup> {
       targetDurationSeconds: first.target_duration_seconds,
       diverges: group.some((r) => !sameContent(r, first)),
       hasCompleted: group.some((r) => r.status !== "planned"),
+      outcomeByAthlete,
     });
   }
   return groups;
@@ -171,8 +196,9 @@ export function buildDetaljplanWeeks(
   blockEnd: string,
   rows: PlannedPassRow[],
   competitions: CompetitionRow[] = [],
+  outcomes: Map<string, PlanOutcome> = new Map(),
 ): DetaljplanWeek[] {
-  const groups = groupPasses(rows);
+  const groups = groupPasses(rows, outcomes);
   const passesByDate = new Map<string, PassGroup[]>();
   for (const g of groups.values()) {
     passesByDate.set(g.scheduledDate, [...(passesByDate.get(g.scheduledDate) ?? []), g]);
