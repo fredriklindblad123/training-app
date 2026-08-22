@@ -95,12 +95,14 @@ function BlockWeekSection({
   canEdit,
   blockAthletes,
   athletesById,
+  athleteFilter,
 }: {
   block: BlockRow;
   weeks: DetaljplanWeek[];
   canEdit: boolean;
   blockAthletes: AthleteOption[];
   athletesById: Map<string, AthleteOption>;
+  athleteFilter: string;
 }) {
   const items = block.week_template_items ?? [];
   return (
@@ -124,6 +126,7 @@ function BlockWeekSection({
         canEdit={canEdit}
         blockAthletes={blockAthletes}
         athletesById={athletesById}
+        athleteFilter={athleteFilter}
       />
     </details>
   );
@@ -145,11 +148,15 @@ function WeekPassCard({
   blockId,
   canEdit,
   blockAthletes,
+  athleteFilter,
 }: {
   pass: PassGroup;
   blockId: string;
   canEdit: boolean;
   blockAthletes: AthleteOption[];
+  /** Samma urval som vyn står på — följer med till passvyn så den visar
+   * exakt de löpare man klickade i. */
+  athleteFilter: string;
 }) {
   const tagged = new Set(pass.athleteIds);
   const untagged = blockAthletes.filter((a) => !tagged.has(a.id));
@@ -176,10 +183,19 @@ function WeekPassCard({
           : { borderLeftStyle: "dashed", borderLeftColor: "currentColor" }
       }
     >
-      <div className="font-medium text-zinc-900 dark:text-zinc-100">
+      {/* Klick på själva passet öppnar alla dess löpare sida vid sida —
+          chipsens namn går till en enskild löpares dagvy, det här svarar på
+          "hur gick passet för dem som körde det, jämfört med varandra?"
+          (uttrycklig begäran 2026-08-22). */}
+      <Link
+        href={`/detaljplan/pass?block=${blockId}&date=${pass.scheduledDate}&slot=${pass.slot}&athlete=${athleteFilter}`}
+        className="block font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
+      >
         {WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType}
-      </div>
-      {pass.title && <div className="text-zinc-600 dark:text-zinc-400">{pass.title}</div>}
+        {pass.title && (
+          <span className="block font-normal text-zinc-600 dark:text-zinc-400">{pass.title}</span>
+        )}
+      </Link>
       {pass.trainingFactor && (
         <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
           {TRAINING_FACTORS.find((f) => f.key === pass.trainingFactor)?.label ?? pass.trainingFactor}
@@ -406,12 +422,14 @@ function WeekGrid({
   canEdit,
   blockAthletes,
   athletesById,
+  athleteFilter,
 }: {
   weeks: DetaljplanWeek[];
   blockId: string;
   canEdit: boolean;
   blockAthletes: AthleteOption[];
   athletesById: Map<string, AthleteOption>;
+  athleteFilter: string;
 }) {
   if (weeks.length === 0) {
     return <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-600">Inga veckor i blocket.</p>;
@@ -468,6 +486,7 @@ function WeekGrid({
                         blockId={blockId}
                         canEdit={canEdit}
                         blockAthletes={blockAthletes}
+                        athleteFilter={athleteFilter}
                       />
                     ))}
                     {/* "+ nytt pass" hör till DAGEN, inte till något av
@@ -570,6 +589,7 @@ async function DetaljplanOverview({
             canEdit={canEdit}
             blockAthletes={blockAthletes}
             athletesById={athletesById}
+            athleteFilter="alla"
           />
         );
       })}
@@ -853,6 +873,7 @@ export default async function DetaljplanPage({
                 canEdit={canEdit}
                 blockAthletes={blockAthletes}
                 athletesById={athletesById}
+                athleteFilter={scopedUserId}
               />
 
               {canEdit && repEditableItems.length > 0 && (
