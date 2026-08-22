@@ -19,6 +19,7 @@ import {
   WEEKDAY_LABELS,
   WORKOUT_LABELS,
   WORKOUT_TYPES,
+  workoutTypeColorVar,
   type PeriodType,
   type PhaseType,
   type WorkoutType,
@@ -143,12 +144,26 @@ function WeekPassCard({
   const showChips = blockAthletes.length > 1;
   const minutes =
     pass.targetDurationSeconds != null ? Math.round(pass.targetDurationSeconds / 60) : null;
+  // Samma färgkälla som kalendern, dashboarden och graferna: --cat-*-
+  // variablerna via workoutTypeColorVar. Ingen egen palett här, så
+  // Detaljplan aldrig kan visa en annan färg för "Tröskel" än resten av
+  // appen. `rest`/`test` saknar färg med flit (vila är ingen träning, ett
+  // test är ett testtillfälle, inte en kategori) och får appens etablerade
+  // "ingen färg"-behandling: streckat i stället för heldraget.
+  const typeColor = workoutTypeColorVar(pass.workoutType);
 
   return (
     // `break-words`: kolumnen har fast bredd sedan table-fixed, så en lång
     // passrubrik ska radbrytas i rutan i stället för att spilla ut över
     // nästa dag.
-    <div className="rounded bg-zinc-100 px-1.5 py-1 text-xs break-words dark:bg-zinc-800">
+    <div
+      className="rounded border-l-4 bg-zinc-100 px-1.5 py-1 text-xs break-words dark:bg-zinc-800"
+      style={
+        typeColor
+          ? { borderLeftColor: typeColor }
+          : { borderLeftStyle: "dashed", borderLeftColor: "currentColor" }
+      }
+    >
       <div className="font-medium text-zinc-900 dark:text-zinc-100">
         {WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType}
       </div>
