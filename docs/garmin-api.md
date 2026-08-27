@@ -49,7 +49,7 @@ automatiskt:
 
 | Trigger | Vilka som synkas | Strypning |
 |---|---|---|
-| Cron, 05:00 UTC (`vercel.json`) | alla med `status = 'connected'` | ingen |
+| Cron, 05:00 UTC (`vercel.json`) — **GET**, se nedan | alla med `status = 'connected'` | ingen |
 | Inloggning (`app/login/actions.ts`) | den inloggade; en **tränare** även alla länkade adepter | 15 min |
 | "Till appen" på startsidan (`app/actions.ts`) | samma som ovan | 15 min |
 | "Synka nu" på `/settings` | bara den inloggade | **ingen** — uttrycklig begäran ska alltid ge färsk data |
@@ -60,6 +60,14 @@ läser `coach_athletes` genom den inloggades **egen** klient (inte
 innehålla en löpare anroparen inte faktiskt coachar — viktigt, eftersom id:na
 sedan skickas till en endpoint som med `INTERNAL_API_SECRET` får synka vilken
 användare som helst.
+
+**Cron anropar med GET, inte POST.** Fram till 2026-08-27 fanns bara en
+`@app.post("/api/garmin/sync")`, vilket betyder att det dagliga cron-jobbet
+**aldrig hade kört** — det fick 405 Method Not Allowed varje natt, tyst.
+Symptomet var att `last_synced_at` bara rörde sig när någon tryckte "Synka
+nu", aldrig 05:00 UTC; upptäckt genom att jämföra tidsstämplarna mot
+schemat. Det finns nu en separat GET-route som bara godtar `CRON_SECRET`.
+Lägger man till fler cron-jobb: kontrollera att pathen svarar på GET.
 
 Strypningen (`AUTO_SYNC_MIN_INTERVAL_MINUTES = 15` i `web/api/index.py`) är
 inte en optimering utan ett skydd: utan den drar en tränare med fyra adepter

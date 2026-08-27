@@ -4,8 +4,10 @@ Vercel Python-funktion (FastAPI/ASGI) för multi-user Garmin-synk.
 Endpoints:
   POST /api/garmin/login  - ansluter ett Garmin-konto till en app-användare.
   POST /api/garmin/sync   - synkar aktiviteter, antingen för en specifik
-                             användare (on-demand, "Synka nu"-knappen) eller
-                             för alla anslutna användare (schemalagd cron).
+                             användare (on-demand: "Synka nu", inloggning)
+                             eller för alla anslutna användare.
+  GET  /api/garmin/sync   - samma som ovan för alla anslutna användare.
+                             Finns för att Vercels cron anropar med GET.
 
 Skyddas av två separata mekanismer (miljövariabler):
   INTERNAL_API_SECRET - delas bara med vår egen Next.js-server (server
@@ -601,6 +603,32 @@ async def garmin_login(request: Request):
     return JSONResponse({"ok": True})
 
 
+def _sync_all_connected(min_interval: Optional[int] = None) -> dict:
+    connections = _sb_select("garmin_connections", "user_id", {"status": "eq.connected"})
+    return {"ok": True, "results": [_sync_one_user(c["user_id"], min_interval) for c in connections]}
+
+
+@app.get("/api/garmin/sync")
+async def garmin_sync_cron(request: Request):
+    """Schemalagd synk.
+
+    Egen GET-route, för att Vercels cron-jobb anropar sin path med **GET** —
+    inte POST. Fram till 2026-08-27 fanns bara POST-varianten nedan, vilket
+    betyder att det dagliga cron-jobbet i vercel.json aldrig har kört: det fick
+    405 Method Not Allowed varje natt, tyst, eftersom ingen läser cron-loggarna.
+    Symptomet var att last_synced_at bara rörde sig när någon tryckte "Synka
+    nu" — aldrig 05:00 UTC.
+
+    Bara cron-hemligheten duger här. En GET utan body kan inte peka ut en
+    enskild användare, så den här vägen gör alltid "alla anslutna" — och
+    därför ska den inte gå att nå med INTERNAL_API_SECRET, som är till för
+    riktade anrop från vår egen Next-server.
+    """
+    if not CRON_SECRET or request.headers.get("authorization", "") != f"Bearer {CRON_SECRET}":
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return JSONResponse(_sync_all_connected())
+
+
 @app.post("/api/garmin/sync")
 async def garmin_sync(request: Request):
     auth_header = request.headers.get("authorization", "")
@@ -633,8 +661,6 @@ async def garmin_sync(request: Request):
     if not is_cron:
         return JSONResponse({"error": "user_id krävs utanför schemalagd synk"}, status_code=400)
 
-    connections = _sb_select("garmin_connections", "user_id", {"status": "eq.connected"})
-    results = [_sync_one_user(c["user_id"], min_interval) for c in connections]
-    return JSONResponse({"ok": True, "results": results})
+    return JSONResponse(_sync_all_connected(min_interval))
 
 
