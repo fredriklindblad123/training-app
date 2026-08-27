@@ -8,8 +8,8 @@ import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/a
 /* Tävlingar: lägga till, prioritera och logga resultat — flyttat hit från
  * /sasongen 2026-08-16 (uttrycklig begäran). Att logga ETT RESULTAT efter
  * ett lopp är retrospektivt, inte säsongsplanering, och hörde inte hemma på
- * en framåtblickande sida. /arsplan (tidigare /sasongen) behåller bara en
- * läsande "Nästa A-tävling"-rad, Årsplan-rutnätets tävlingsrad och
+ * en framåtblickande sida. /blockplan (tidigare /sasongen) behåller bara en
+ * läsande "Nästa A-tävling"-rad, Blockplans veckorutnäts tävlingsrad och
  * tävlingsmarkörer i tidslinjen — all redigering (den här filen) hör nu
  * ihop med analysen av samma data på den här sidan. */
 
@@ -30,7 +30,7 @@ function num(form: FormData, key: string): number | null {
 
 function refresh() {
   revalidatePath("/tavlingsresultat");
-  revalidatePath("/arsplan");
+  revalidatePath("/blockplan");
   // Tävlingarna visas numera i Detaljplans veckovy (med deltagarna), så en
   // ny/borttagen tävling måste slå igenom där också.
   revalidatePath("/detaljplan");

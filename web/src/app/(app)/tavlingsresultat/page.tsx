@@ -53,8 +53,8 @@ import {
  * Utökad 2026-08-16: Tävlingar-sektionen (lägga till/prioritera/logga
  * resultat) flyttad hit från /sasongen, se motiveringen i actions.ts —
  * att analysera och att administrera samma tävlingar hör ihop på en sida,
- * /arsplan (tidigare /sasongen) behåller bara en läsande
- * "Nästa A-tävling"-rad och Årsplan-rutnätets tävlingsrad. */
+ * /blockplan (tidigare /sasongen) behåller bara en läsande
+ * "Nästa A-tävling"-rad och Blockplans veckorutnäts tävlingsrad. */
 
 const input =
   "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -192,7 +192,7 @@ async function loadRaceAggregate(
 }
 
 /** Radlista för tävlingsjämförelsen — speglar blockjämförelsens rader
- * (/arsplan) i form och stil, se docs/tranarperspektiv.md K5 punkt 2. */
+ * (/blockplan) i form och stil, se docs/tranarperspektiv.md K5 punkt 2. */
 function raceComparisonRows(
   a: RaceAggregate,
   b: RaceAggregate,
@@ -293,7 +293,7 @@ export default async function TavlingsresultatPage({
      * sidans filter. */
     redigeraTavling?: string;
     /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
-     * mönster som /arsplan, se lib/auth-scope.ts. */
+     * mönster som /blockplan, se lib/auth-scope.ts. */
     athlete?: string;
   }>;
 }) {
@@ -769,7 +769,7 @@ export default async function TavlingsresultatPage({
                 information på samma sida. */}
 
             {/* Upptrappningsjämförelsen — samma tabellstruktur som
-                blockjämförelsen på /arsplan, men bara lopp i någon av de
+                blockjämförelsen på /blockplan, men bara lopp i någon av de
                 valda grenarna. */}
             {racesInSelectedEvents.length < 2 ? (
               <p className="text-sm text-zinc-500 dark:text-zinc-400">

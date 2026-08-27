@@ -9,14 +9,14 @@ import type { TrainingSession } from "@/lib/sessions";
 /* Statistik för ett datumspann — planerat, utfall och fördelning per passtyp.
  *
  * Hette lib/block-stats.ts fram till 2026-08-27 och räknade bara per
- * träningsblock (/arsplan, uttrycklig begäran 2026-08-22). Funktionen var
+ * träningsblock (/blockplan, uttrycklig begäran 2026-08-22). Funktionen var
  * dock aldrig blockspecifik: den filtrerar på [startDate, endDate] och bryr
  * sig inte om var spannet kommer ifrån. /uppfoljning behövde exakt samma
  * siffror per månad, vecka och dag, så namnet fick följa vad koden gör i
  * stället för vad den först användes till. Ingen räknelogik ändrades.
  *
  * Ren datamodul utan Supabase- eller JSX-beroenden, samma princip som
- * lib/arsplan-grid.ts och lib/detaljplan-weeks.ts. Räknas ur data sidan
+ * lib/blockplan-grid.ts och lib/detaljplan-weeks.ts. Räknas ur data sidan
  * redan hämtar — inga nya frågor.
  *
  * Efterlevnaden (planerat mot genomfört) kommer från summarizeCompliance,

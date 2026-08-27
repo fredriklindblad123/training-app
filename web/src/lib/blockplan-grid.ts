@@ -2,8 +2,8 @@ import { blockForDate, type PeriodType, type PhaseType } from "@/lib/planning";
 import { buildWeekSeriesForRange } from "@/lib/week-series";
 import { isoWeekStart } from "@/lib/stats-utils";
 
-/* Ren datamodul (inga Supabase/ExcelJS/JSX-beroenden) för Årsplanens
- * veckorutnät — en kolumn per vecka, delad mellan /arsplan (in-app-vyn) och
+/* Ren datamodul (inga Supabase/ExcelJS/JSX-beroenden) för Blockplanens
+ * veckorutnät — en kolumn per vecka, delad mellan /blockplan (in-app-vyn) och
  * Excel-exporten (flerarsplan/export/route.ts) så de aldrig kan visa olika
  * siffror för samma data. Flyttad hit 2026-08-17 ur exportens tidigare
  * ExcelJS-kopplade buildArsplanSheet.

@@ -9,7 +9,7 @@ import { usePathname, useSearchParams } from "next/navigation";
  * — layouten själv får aldrig searchParams (bara page.tsx gör det i App
  * Router), så det kräver antingen en klientkomponent eller en cookie. Detta
  * är det enklaste alternativet: samma URL-param-drivna mönster som redan
- * finns i /arsplan, bara återanvänt av menyn också. Sidor utan
+ * finns i /blockplan, bara återanvänt av menyn också. Sidor utan
  * löparväljare (en vanlig löpare, eller ingen coach) berörs inte — utan
  * `athlete` i URL:en blir länkarna identiska med innan.
  *
@@ -19,7 +19,7 @@ import { usePathname, useSearchParams } from "next/navigation";
  * Menyn låg tidigare som en enda rad av åtta jämnstora länkar. Problemet var
  * inte att någon sida var överflödig — det utreddes och avfärdades med data:
  * 94 % av aktiviteterna och 96 % av dagboksinläggen ligger utanför varje
- * säsongsblock, och eftersom /arsplan och /detaljplan bara spänner blockens
+ * säsongsblock, och eftersom /blockplan och /detaljplan bara spänner blockens
  * datum kan de strukturellt inte nå den historiken. Kalendern är alltså inte
  * en dubblett av planeringen.
  *
@@ -65,7 +65,7 @@ const LOGG: NavItem[] = [
  * en detalj av detaljplanen. */
 const PLAN: NavItem[] = [
   { href: "/flerarsplan", label: "Flerårsplan" },
-  { href: "/arsplan", label: "Årsplan" },
+  { href: "/blockplan", label: "Blockplan" },
   { href: "/detaljplan", label: "Detaljplan" },
 ];
 

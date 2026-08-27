@@ -75,15 +75,29 @@ import {
   type InterruptionPeriod,
   type InterruptionPrecursor,
 } from "@/lib/interruption-timeline";
-import { buildArsplanWeeks, computeMergeRuns, type ArsplanCompetitionInput } from "@/lib/arsplan-grid";
+import { buildArsplanWeeks, computeMergeRuns, type ArsplanCompetitionInput } from "@/lib/blockplan-grid";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 
-/* Årsplan: säsongens block, standardvecka och ett rutnät som speglar
+/* Hette /arsplan ("Årsplan") till 2026-08-27, då den döptes om på uttrycklig
+ * begäran: sidan handlar om BLOCK — skapa dem, se dem på tidslinjen, jämföra
+ * dem, läsa statistik per block — och "Årsplan" antydde en kalenderårsvy den
+ * aldrig har varit. Samma sorts eftersläpning som när /blocket blev /trender
+ * 2026-08-13. Gamla adressen lever kvar som en permanent redirect i
+ * next.config.ts, så bokmärken och länkar utifrån inte dör.
+ *
+ * OBS att "Årsplan" lever kvar på två ställen med flit, och att de INTE ska
+ * bytas ut: Excel-exportens flik och kommentarerna som hänvisar till
+ * Excel-mallens Årsplan-flik. Den fliken är ett externt dokument (Daniels
+ * "Träningsplanering Friidrottstränare steg 3") vars namn vi inte äger —
+ * döps den om här slutar korrespondensen mellan app och mall att gå att följa.
+ *
+ */
+/* Blockplan: säsongens block, standardvecka och ett veckorutnät som speglar
  * Excel-mallens Årsplan-flik (en kolumn per vecka) — flyttad hit ur
  * /sasongen 2026-08-17. Veckomallarnas dag-för-dag-innehåll (tidigare
  * nästlat under varje block) flyttades samtidigt till /detaljplan, som
  * speglar mallens Detaljplan-flik — se motiveringen i lib/template-sync.ts
- * och lib/arsplan-grid.ts. */
+ * och lib/blockplan-grid.ts. */
 
 const input =
   "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
@@ -821,7 +835,7 @@ async function ArsplanOverview({
         {athleteSummaries.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
           <Link
             key={athlete.id}
-            href={`/arsplan?athlete=${athlete.id}`}
+            href={`/blockplan?athlete=${athlete.id}`}
             className="flex flex-wrap items-center gap-4 rounded border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
           >
             <div className="w-32 shrink-0 font-medium text-zinc-900 dark:text-zinc-100">
@@ -983,7 +997,7 @@ export default async function ArsplanPage({
     return (
       <div className="flex flex-1 flex-col gap-10 px-6 py-8">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Årsplan</h1>
+          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Blockplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
             Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
             löparens block och veckomönster.
@@ -993,8 +1007,8 @@ export default async function ArsplanPage({
           athletes={viewableAthletes(scoped)}
           activeId="alla"
           viewerUserId={scoped.userId}
-          buildHref={(id) => `/arsplan?athlete=${id}`}
-          overviewHref="/arsplan?athlete=alla"
+          buildHref={(id) => `/blockplan?athlete=${id}`}
+          overviewHref="/blockplan?athlete=alla"
         />
         <ArsplanOverview supabase={supabase} scoped={scoped} nyttBlockFranParam={nyttBlockFranParam} />
       </div>
@@ -1036,7 +1050,7 @@ export default async function ArsplanPage({
     // nedan faller tillbaka till "inga perioder" precis som övriga frågor
     // på den här sidan gör för sina egna eventuellt okörda tabeller.
     supabase.from("availability_periods").select("*").eq("user_id", scopedUserId).order("start_date"),
-    // Till tidslinjens markörer (SeasonTimeline) OCH Årsplan-rutnätets
+    // Till tidslinjens markörer (SeasonTimeline) OCH veckorutnätets
     // tävlingsrad — competition_events(event) hämtas med här så rutnätet
     // slipper en egen fråga. Att lägga till/redigera/logga resultat för en
     // tävling flyttade till /tavlingsresultat 2026-08-16 (retrospektivt,
@@ -1079,12 +1093,12 @@ export default async function ArsplanPage({
   function athleteHref(id: string): string {
     const params = new URLSearchParams();
     params.set("athlete", id);
-    return `/arsplan?${params.toString()}`;
+    return `/blockplan?${params.toString()}`;
   }
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
   // fokustexten, därav den utökade typen här. Samma form täcker också
-  // ArsplanBlockInput (lib/arsplan-grid.ts) rakt av.
+  // ArsplanBlockInput (lib/blockplan-grid.ts) rakt av.
   const blockList = (blocks ?? []) as BlockCardBlock[];
   const competitionList = (timelineCompetitionRows ?? []) as (TimelineCompetition & {
     competition_events: { event: string }[];
@@ -1104,7 +1118,7 @@ export default async function ArsplanPage({
   // Säsongsöversikten (SeasonTimeline) fick hela historiken (år av importerade
   // tävlingsresultat + gamla block) tidigare — bandet blev en oläslig klump
   // av överlappande markörer (uttrycklig begäran). Visar bara innevarande
-  // kalenderår här; block-listan, jämförelsen och Årsplan-rutnätet nedanför
+  // kalenderår här; block-listan, jämförelsen och veckorutnätet nedanför
   // rörs inte, de använder fortfarande blockList/competitionList ofiltrerat.
   const currentYear = today.slice(0, 4);
   const timelineYearBlocks = blockList.filter(
@@ -1114,9 +1128,9 @@ export default async function ArsplanPage({
     (c) => c.competition_date.slice(0, 4) === currentYear,
   );
 
-  // --- Årsplan-rutnät (speglar Excel-mallens Årsplan-flik) -----------------
+  // --- Veckorutnät (speglar Excel-mallens Årsplan-flik) --------------------
   // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
-  // använder, se lib/arsplan-grid.ts — de kan aldrig visa olika siffror för
+  // använder, se lib/blockplan-grid.ts — de kan aldrig visa olika siffror för
   // samma data. Bara planned_workouts/competitions i blockens datumspann
   // behövs, inte hela historiken.
   const gridMinDate = blockList.reduce((m, b) => (b.start_date < m ? b.start_date : m), blockList[0]?.start_date ?? "");
@@ -1279,7 +1293,7 @@ export default async function ArsplanPage({
           activeId={scopedUserId}
           viewerUserId={scoped.userId}
           buildHref={athleteHref}
-          overviewHref="/arsplan?athlete=alla"
+          overviewHref="/blockplan?athlete=alla"
         />
       )}
 
@@ -1321,11 +1335,11 @@ export default async function ArsplanPage({
         <SeasonTimeline blocks={timelineYearBlocks} competitions={timelineYearCompetitions} />
       </section>
 
-      {/* ---------------- Årsplan-rutnät ---------------- */}
+      {/* ---------------- Veckorutnät ---------------- */}
       {arsplanWeeks.length > 0 && (
         <section className="flex flex-col gap-3">
           <div>
-            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Årsplan</h2>
+            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Veckorutnät</h2>
             <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
               En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
               räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
@@ -1516,7 +1530,7 @@ export default async function ArsplanPage({
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
         <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
           Klicka på ett block för att redigera det. Nya block skapas från{" "}
-          <Link href="/arsplan?athlete=alla" className="underline">
+          <Link href="/blockplan?athlete=alla" className="underline">
             Översikt
           </Link>{" "}
           — det är där löparna för blocket väljs. Blockets eget dag-för-dag-veckomönster fylls
@@ -1636,7 +1650,7 @@ export default async function ArsplanPage({
             </p>
           </div>
 
-          <form action="/arsplan" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+          <form action="/blockplan" method="get" className="flex flex-wrap items-end gap-3 text-sm">
             {athleteParam && <input type="hidden" name="athlete" value={athleteParam} />}
             <label className="flex flex-col gap-1">
               <span className="text-zinc-600 dark:text-zinc-400">Block A</span>

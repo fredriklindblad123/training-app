@@ -58,7 +58,7 @@ import { TRAINING_FACTORS } from "@/lib/training-factors";
  * — ingen separat namngiven "mall" att skapa, ingen delning mellan block.
  * Uttrycklig begäran: en gammal, coach-ägd mall läckte in mellan löpare
  * bara för att den delade fas med ett block, och det extra namngivnings-
- * steget kändes redundant ovanpå att blocket redan skapats på /arsplan —
+ * steget kändes redundant ovanpå att blocket redan skapats på /blockplan —
  * "man får skapa ett nytt varje gång istället, lättare att begripa". */
 
 const input =
@@ -88,7 +88,7 @@ type BlockRow = {
 
 /** Ett block med sin veckovy. Delad mellan
  * Alla-vyn och den enskilda löparens vy så de aldrig kan glida isär —
- * samma resonemang som BlockCard på /arsplan. */
+ * samma resonemang som BlockCard på /blockplan. */
 function BlockWeekSection({
   block,
   weeks,
@@ -403,7 +403,7 @@ function CompetitionCard({
 /** Veckovyn: en rad per kalendervecka i blocket, tidigaste veckan överst,
  * dagarna som kolumner (uttrycklig begäran 2026-08-21). Ersätter den
  * abstrakta standardvecka-vyn i den enskilda löparens Detaljplan —
- * standardveckan sätts numera vid blockskapandet på /arsplan, så det här
+ * standardveckan sätts numera vid blockskapandet på /blockplan, så det här
  * är platsen där tränaren arbetar med de pass som faktiskt ligger i
  * kalendern. */
 function WeekGrid({
@@ -637,7 +637,7 @@ async function loadWeekData(
       // Utfallet: `planned_workouts.status` skrivs aldrig (verifierat
       // 2026-08-22 — alla rader är `planned`, ingen har
       // linked_activity_id), så "genomfört" måste räknas fram ur de
-      // faktiska aktiviteterna i läsvägen. Samma väg som /arsplan och
+      // faktiska aktiviteterna i läsvägen. Samma väg som /blockplan och
       // kalendern: activities → groupActivitiesIntoSessions →
       // matchPlanToSessions.
       supabase
@@ -700,7 +700,7 @@ export default async function DetaljplanPage({
 }: {
   searchParams: Promise<{
     /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
-     * mönster som /arsplan, se lib/auth-scope.ts. */
+     * mönster som /blockplan, se lib/auth-scope.ts. */
     athlete?: string;
   }>;
 }) {
@@ -778,7 +778,7 @@ export default async function DetaljplanPage({
   // faser, mest tomma, gjorde det svårt att se vad man faktiskt skulle
   // göra. Arbetsflödet är Flerårsplan → Årsplan (skapar block) → Detaljplan
   // (fyller i just den fasens block), så Detaljplan speglar vad som redan
-  // finns i Årsplan i stället för att lista hela taxonomin i förväg.
+  // finns i Blockplan i stället för att lista hela taxonomin i förväg.
   const relevantPhases = PHASE_TYPES.filter((phase) => blockList.some((b) => b.phase === phase));
 
   function athleteHref(id: string): string {
@@ -795,8 +795,8 @@ export default async function DetaljplanPage({
           Varje blocks eget dag-för-dag-veckomönster — precis som Excel-mallens Detaljplan-flik.
           Ett pass läggs till direkt på blocket och syns i kalendern omedelbart, utan ett
           separat &quot;rulla ut&quot;-steg. Block och standardvecka skapas på{" "}
-          <Link href="/arsplan" className="underline">
-            Årsplan
+          <Link href="/blockplan" className="underline">
+            Blockplan
           </Link>{" "}
           — nya block dyker upp här automatiskt.
         </p>
@@ -815,7 +815,7 @@ export default async function DetaljplanPage({
       {relevantPhases.length === 0 && (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Inga block skapade ännu. Lägg upp ett block för säsongens första fas på{" "}
-          <Link href="/arsplan" className="underline">
+          <Link href="/blockplan" className="underline">
             Årsplan
           </Link>{" "}
           — det dyker upp här automatiskt så fort det finns.

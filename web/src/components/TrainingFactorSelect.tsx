@@ -11,7 +11,7 @@ const input =
 /** Träningsfaktor-väljare — grupperad precis som Excel-mallens Detaljplan-
  * flik (grupp via optgroup, undergrupp som ett prefix på radens text eftersom
  * HTML inte tillåter nästlade optgroup). Delad mellan Detaljplans pass-
- * formulär och Årsplans veckomönster vid blockskapande (uttrycklig begäran
+ * formulär och Blockplans veckomönster vid blockskapande (uttrycklig begäran
  * 2026-08-19: varje pass ska taggas med sin träningsfaktor direkt, inte bara
  * i efterhand på Detaljplan) — en enda plats definierar hur listan ser ut,
  * så de två formulären aldrig kan glida isär. Fritt att lämna tom; inte alla

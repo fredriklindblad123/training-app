@@ -32,7 +32,7 @@ import { STATUS_LABEL } from "@/lib/calendar-utils";
  * sidan efter inloggning (se app/page.tsx, login/actions.ts,
  * auth/confirm/route.ts). Sidorna delades om efter loopens kadenser
  * (docs/tranarloopen.md 1.1, 3.1) — kalenderns veckovy äger veckan, /trender
- * blocket, /arsplan säsongen. Den här sidan äger bara dagen: beredskap inför
+ * blocket, /blockplan säsongen. Den här sidan äger bara dagen: beredskap inför
  * morgondagen (K3), status mot baslinjen (P1.2) och dagens pass.
  * Kontinuiteten (K6) är enda undantaget med lång horisont — den står kvar
  * som ett ankare, inte som en periodvy. Nyckeltalen visas som samma sorts
@@ -307,7 +307,7 @@ export default async function DashboardPage({
   searchParams,
 }: {
   /** Fas 0-uppföljning (2026-08-16): vilken löpare en coach tittar på just
-   * nu — samma `athlete`-param-mönster som /arsplan, se lib/auth-scope.ts.
+   * nu — samma `athlete`-param-mönster som /blockplan, se lib/auth-scope.ts.
    * Ignoreras helt för en löpare (ser alltid bara sig själv). */
   searchParams: Promise<{ athlete?: string }>;
 }) {

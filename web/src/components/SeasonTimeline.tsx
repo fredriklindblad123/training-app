@@ -45,6 +45,63 @@ function shortDate(dateKey: string): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
 
+function toKey(d: Date): string {
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** Den 1:a i varje månad inom [fromKey, toKey], som markeringar på tidsaxeln.
+ *
+ * Utan en synlig axel gick datumen bara att nå genom att hovra över ett band
+ * — man såg ATT ett block låg någonstans i mitten, aldrig NÄR (rapporterat
+ * 2026-08-27). Månadssteg är rätt upplösning här: banden är veckor till
+ * månader långa, så dagmarkeringar vore brus och årsmarkeringar för grovt.
+ *
+ * Januari bär årtalet. Det är den enda punkt där årtalet ändras, och en
+ * säsong som spänner ett årsskifte är normalfallet för en friidrottare
+ * (inomhus- och utomhussäsong hör till samma träningsår). */
+function monthTicks(fromKey: string, toKey_: string): { key: string; label: string }[] {
+  const from = new Date(`${fromKey}T00:00:00`);
+  const to = new Date(`${toKey_}T00:00:00`);
+  const ticks: { key: string; label: string }[] = [];
+  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+  if (cursor < from) cursor.setMonth(cursor.getMonth() + 1);
+  while (cursor <= to) {
+    ticks.push({
+      key: toKey(cursor),
+      label:
+        cursor.getMonth() === 0
+          ? `${MONTHS[0]} ${String(cursor.getFullYear()).slice(2)}`
+          : MONTHS[cursor.getMonth()],
+    });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return ticks;
+}
+
+/** Månadsstrecken med färdigt uträknad x-position och etikettgallring.
+ *
+ * Egen funktion på modulnivå, inte en loop inuti JSX: gallringen behöver ett
+ * löpande "senast etiketterade position", och att mutera en variabel inne i
+ * en render-callback är precis vad React Compiler (med rätta) underkänner.
+ * Här är den en lokal variabel i en ren funktion — samma resultat, inget
+ * tillstånd som läcker mellan renderingar. */
+function axisTicks(
+  minKey: string,
+  maxKey: string,
+  pct: (dateKey: string) => number,
+  minLabelGap: number,
+): { key: string; label: string; left: number; showLabel: boolean }[] {
+  let lastLabelPct = -Infinity;
+  return monthTicks(minKey, maxKey).map((t) => {
+    const left = pct(t.key);
+    const showLabel = left - lastLabelPct >= minLabelGap;
+    if (showLabel) lastLabelPct = left;
+    return { ...t, left, showLabel };
+  });
+}
+
 export function SeasonTimeline({
   blocks,
   competitions,
@@ -55,7 +112,7 @@ export function SeasonTimeline({
   blocks: TimelineBlock[];
   competitions: TimelineCompetition[];
   /** Mindre band, inga tävlingsetiketter/förklaring under — för
-   * översiktskorten (Alla-läget på /arsplan) där flera löpares tidslinjer
+   * översiktskorten (Alla-läget på /blockplan) där flera löpares tidslinjer
    * visas sida vid sida. */
   compact?: boolean;
   /** Fast datumintervall för skalan, i stället för att härleda min/max ur
@@ -77,20 +134,18 @@ export function SeasonTimeline({
     );
   }
 
-  const min = rangeStart
-    ? dayNumber(rangeStart)
-    : dayNumber(
-        [...blocks.map((b) => b.start_date), ...competitions.map((c) => c.competition_date)].reduce(
-          (a, b) => (a < b ? a : b),
-        ),
-      );
-  const max = rangeEnd
-    ? dayNumber(rangeEnd)
-    : dayNumber(
-        [...blocks.map((b) => b.end_date), ...competitions.map((c) => c.competition_date)].reduce(
-          (a, b) => (a > b ? a : b),
-        ),
-      );
+  const minKey =
+    rangeStart ??
+    [...blocks.map((b) => b.start_date), ...competitions.map((c) => c.competition_date)].reduce(
+      (a, b) => (a < b ? a : b),
+    );
+  const maxKey =
+    rangeEnd ??
+    [...blocks.map((b) => b.end_date), ...competitions.map((c) => c.competition_date)].reduce(
+      (a, b) => (a > b ? a : b),
+    );
+  const min = dayNumber(minKey);
+  const max = dayNumber(maxKey);
   const span = Math.max(1, max - min);
 
   const pct = (dateKey: string) => ((dayNumber(dateKey) - min) / span) * 100;
@@ -124,8 +179,17 @@ export function SeasonTimeline({
                   title={`${b.name} — ${PHASE_LABELS[b.phase]}, ${shortDate(b.start_date)}–${shortDate(b.end_date)}`}
                 >
                   {!compact && (
-                    <span className="truncate text-xs font-medium text-white drop-shadow-sm">
-                      {b.name}
+                    /* Namn OCH datumspann i bandet. Bandet är h-12, så två
+                       rader får plats; datumen var tidigare bara nåbara via
+                       tooltipen, vilket gjorde att man såg att ett block låg
+                       "någonstans i mitten" men aldrig när det började. */
+                    <span className="flex min-w-0 flex-col leading-tight">
+                      <span className="truncate text-xs font-medium text-white drop-shadow-sm">
+                        {b.name}
+                      </span>
+                      <span className="truncate text-[10px] text-white/85 drop-shadow-sm">
+                        {shortDate(b.start_date)}–{shortDate(b.end_date)}
+                      </span>
                     </span>
                   )}
                 </div>
@@ -139,6 +203,29 @@ export function SeasonTimeline({
                 title={`Idag ${todayKey}`}
               />
             )}
+          </div>
+
+          {/* Tidsaxel: månadsstreck med etikett. Ritas mellan blockbandet och
+              tävlingsmarkörerna så att den ligger närmast det den förklarar.
+              Etiketter gallras när de skulle trängas — se `minLabelGap`. */}
+          <div className="relative mt-0.5 h-4">
+            {/* Minsta avstånd mellan två etiketter: ett band över två år har
+                ~24 månadsstreck, och alla utskrivna vore en gröt. Strecken
+                ritas ändå — bara etiketterna gallras. */}
+            {axisTicks(minKey, maxKey, pct, compact ? 14 : 7).map((t) => (
+              <div
+                key={t.key}
+                className="absolute top-0 flex flex-col items-center"
+                style={{ left: `${t.left}%` }}
+              >
+                <span className="h-1 w-px bg-zinc-300 dark:bg-zinc-700" aria-hidden />
+                {t.showLabel && (
+                  <span className="-translate-x-1/2 whitespace-nowrap text-[10px] text-zinc-500 dark:text-zinc-400">
+                    {t.label}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* Tävlingsmarkörer */}

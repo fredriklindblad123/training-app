@@ -153,7 +153,7 @@ export default async function TrendsPage({
     weeks?: string;
     block?: string;
     /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
-     * mönster som /arsplan, se lib/auth-scope.ts. */
+     * mönster som /blockplan, se lib/auth-scope.ts. */
     athlete?: string;
   }>;
 }) {
@@ -912,8 +912,8 @@ export default async function TrendsPage({
           <Link
             href={
               scoped.role === "coach"
-                ? `/arsplan?athlete=alla&nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
-                : `/arsplan?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
+                ? `/blockplan?athlete=alla&nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
+                : `/blockplan?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
             }
             className="rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
           >

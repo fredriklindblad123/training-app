@@ -1,6 +1,6 @@
 import { buildWeekSeriesForRange } from "@/lib/week-series";
 import type { PlanOutcome } from "@/lib/plan-matching";
-import { isoWeekNumber } from "@/lib/arsplan-grid";
+import { isoWeekNumber } from "@/lib/blockplan-grid";
 
 /* Detaljplanens veckovy (uttrycklig begäran 2026-08-21): riktiga
  * kalenderveckor inom blocket, inte den abstrakta "standardveckan".
@@ -14,7 +14,7 @@ import { isoWeekNumber } from "@/lib/arsplan-grid";
  * löpare är att skapa/ta bort hennes rad.
  *
  * Ren datamodul: inga Supabase- eller JSX-beroenden, samma princip som
- * lib/arsplan-grid.ts och lib/detaljplan-grid.ts. */
+ * lib/blockplan-grid.ts och lib/detaljplan-grid.ts. */
 
 export type PlannedPassRow = {
   id: string;
@@ -55,7 +55,7 @@ export type PassGroup = {
    * beräknats. OBS att detta INTE kommer ur planned_workouts.status — den
    * kolumnen skrivs aldrig (verifierat 2026-08-22: samtliga rader är
    * `planned`, ingen har linked_activity_id). Utfallet räknas i läsvägen av
-   * matchPlanToSessions, samma funktion som kalendern, /arsplan och
+   * matchPlanToSessions, samma funktion som kalendern, /blockplan och
    * /trender använder, och matas in här utifrån. */
   outcomeByAthlete: Record<string, PlanOutcome>;
 };

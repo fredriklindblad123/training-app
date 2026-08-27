@@ -9,7 +9,7 @@ import { athletesForBlock } from "@/lib/template-sync";
  * 2026-08-17, förenklat samma dag när "mall" (week_templates) togs bort:
  * ett block äger sitt mönster direkt (week_template_items.block_id), inget
  * separat namngivet objekt att skapa/radera/matcha mot andra block. Block/
- * tillgänglighet hör till /arsplan, se den filens actions.ts. */
+ * tillgänglighet hör till /blockplan, se den filens actions.ts. */
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -28,7 +28,7 @@ function num(form: FormData, key: string): number | null {
 
 function refresh() {
   revalidatePath("/detaljplan");
-  revalidatePath("/arsplan");
+  revalidatePath("/blockplan");
   revalidatePath("/calendar", "layout");
 }
 
@@ -158,7 +158,7 @@ export async function removeAthleteFromPass(formData: FormData) {
  * löpare på blocket eller bara en. Skriver rakt i planned_workouts, alltså
  * utan att röra blockets veckomönster — ett tillagt pass är ett tillägg
  * just den veckan, inte en ändring av standardveckan. (Vill man ändra
- * mönstret självt görs det på /arsplan där blocket bor.) */
+ * mönstret självt görs det på /blockplan där blocket bor.) */
 export async function addPassOnDate(formData: FormData) {
   const auth = await requireUser();
   if (!auth) return;
@@ -228,7 +228,7 @@ export async function addPassOnDate(formData: FormData) {
  * henne. Det är avsiktligt — ett genomfört pass får inte försvinna ur
  * loggen för att tränaren städar i planen. Blockets veckomönster lämnas
  * också orört, så en framtida utrullning kan skapa passet igen; vill man bli
- * av med det permanent ändras standardveckan på /arsplan. */
+ * av med det permanent ändras standardveckan på /blockplan. */
 export async function deletePlannedPass(formData: FormData) {
   const auth = await requireUser();
   if (!auth) return;

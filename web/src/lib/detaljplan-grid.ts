@@ -8,7 +8,7 @@ import {
 
 /* Delad mellan Detaljplans in-app-rutnät (detaljplan/page.tsx) och
  * Excel-exporten (flerarsplan/export/route.ts) — samma "en datamodul, aldrig
- * olika siffror för samma data"-princip som lib/arsplan-grid.ts redan
+ * olika siffror för samma data"-princip som lib/blockplan-grid.ts redan
  * etablerade för Årsplan-fliken. */
 
 export type DetaljplanItemInput = {

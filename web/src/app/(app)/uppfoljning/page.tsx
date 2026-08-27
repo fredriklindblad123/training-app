@@ -46,10 +46,10 @@ import {
  * /dashboard där den räknas ur samma daily_metrics.
  *
  * Räknelogiken är LÅNAD, inte nyskriven: computeRangeStats i
- * lib/range-stats.ts är exakt samma funktion som /arsplan visar sin
+ * lib/range-stats.ts är exakt samma funktion som /blockplan visar sin
  * blockstatistik med (den hette computeBlockStats till 2026-08-27, se den
  * filens kommentar). Det är hela poängen — ett block som granskas här och på
- * Årsplan får aldrig visa olika siffror, eftersom det är samma kod på samma
+ * Blockplan får aldrig visa olika siffror, eftersom det är samma kod på samma
  * data. Efterlevnaden kommer i sin tur ur summarizeCompliance, samma som
  * kalendern, Detaljplan och /trender.
  *
@@ -205,7 +205,7 @@ export default async function UppfoljningPage({
         });
 
   /** Bygger en länk som byter EN sak och behåller resten — samma
-   * URL-param-mönster som /arsplan och /tavlingsresultat redan använder. */
+   * URL-param-mönster som /blockplan och /tavlingsresultat redan använder. */
   function href(next: { period?: PeriodKind; datum?: string; block?: string }): string {
     const params = new URLSearchParams();
     params.set("period", next.period ?? kind);
@@ -229,7 +229,7 @@ export default async function UppfoljningPage({
         <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Uppföljning</h1>
         <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
           Alla dina löpare sida vid sida: hur många pass som var planerade, hur många som blev
-          gjorda och hur de fördelade sig. Samma uträkning som blockstatistiken på Årsplan, så
+          gjorda och hur de fördelade sig. Samma uträkning som blockstatistiken på Blockplan, så
           siffrorna kan aldrig säga emot varandra.
         </p>
       </div>
@@ -287,8 +287,8 @@ export default async function UppfoljningPage({
       {kind === "block" && period == null && (
         <p className="text-sm text-zinc-400 dark:text-zinc-600">
           Inga block upplagda än — lägg upp säsongen på{" "}
-          <Link href="/arsplan" className="underline">
-            Årsplan
+          <Link href="/blockplan" className="underline">
+            Blockplan
           </Link>
           .
         </p>
@@ -386,7 +386,7 @@ export default async function UppfoljningPage({
           </div>
 
           {/* Fördelning per passtyp — samma chip-form och samma
-              kategorifärger (workoutTypeColorVar) som Årsplans
+              kategorifärger (workoutTypeColorVar) som Blockplans
               blockstatistik, så en typ ser likadan ut var man än möter den. */}
           <section className="flex flex-col gap-3">
             <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">

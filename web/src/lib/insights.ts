@@ -197,7 +197,7 @@ export function buildInsights(input: InsightInput): Insight[] {
       headline: `Din längsta period utan avbrott hittills — ${input.continuity.currentWeeksWithoutInterruption} veckor.`,
       detail:
         "Sammanhängande veckor utan sjuk- eller skadedag. Det är den siffra som ligger närmast det uthållig träning faktiskt kräver.",
-      href: "/arsplan",
+      href: "/blockplan",
       tone: "positiv",
       priority: 1,
     });

@@ -147,7 +147,7 @@ export async function addAthlete(formData: FormData) {
         { onConflict: "coach_id,athlete_id", ignoreDuplicates: true },
       );
     revalidatePath("/settings");
-    revalidatePath("/arsplan");
+    revalidatePath("/blockplan");
     revalidatePath("/detaljplan");
     revalidatePath("/flerarsplan");
     redirect("/settings?athleteAdded=linked");
@@ -172,7 +172,7 @@ export async function removeAthlete(formData: FormData) {
     .eq("athlete_id", athleteId);
 
   revalidatePath("/settings");
-  revalidatePath("/arsplan");
+  revalidatePath("/blockplan");
   revalidatePath("/detaljplan");
   revalidatePath("/flerarsplan");
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 /* Löparväljare, samma knapprads-stil som redan fanns inline i /sasongen och
  * /flerarsplan — utbruten hit så att de coach-medvetna sidorna (dashboard,
- * kalender, trender, tävlingsresultat, /arsplan, /detaljplan) inte behöver
+ * kalender, trender, tävlingsresultat, /blockplan, /detaljplan) inte behöver
  * upprepa samma markup. `buildHref` låter varje sida bestämma exakt hur
  * länken ser ut (vilka egna filter/parametrar som ska bevaras).
  *
@@ -15,7 +15,7 @@ import Link from "next/link";
  * läge man är i — det var själva klagomålet: för otydlig skillnad mellan
  * coach-vy och adept-vy.
  *
- * 2026-08-18 (uttrycklig begäran): Årsplan/Detaljplan fick en "Alla"-knapp
+ * 2026-08-18 (uttrycklig begäran): Blockplan/Detaljplan fick en "Alla"-knapp
  * (`overviewHref`) — en coach med flera löpare ska kunna se dem sida vid
  * sida i stället för att klicka igenom en i taget. Valfri prop, ingen annan
  * sida (dashboard, kalender, trender, tävlingsresultat, flerårsplan) har

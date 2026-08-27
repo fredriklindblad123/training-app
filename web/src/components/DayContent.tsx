@@ -47,7 +47,7 @@ import type { SignatureLap } from "@/lib/session-signature";
  * Detaljplans dagsvy (/detaljplan/pass) ska kunna visa exakt samma sak i en
  * kolumn per löpare. Att kopiera sektionerna dit hade garanterat att de två
  * vyerna glider isär — det här är samma "en datamodul/en komponent"-princip
- * som lib/arsplan-grid.ts och lib/detaljplan-grid.ts redan följer.
+ * som lib/blockplan-grid.ts och lib/detaljplan-grid.ts redan följer.
  *
  * Komponenten hämtar sin egen data utifrån (userId, dateStr), så anroparen
  * bara behöver veta vem och vilken dag. */

@@ -6,7 +6,7 @@ import { weekRangeLabel } from "@/lib/week-series";
  * 2026-08-27: "per block, månad, vecka, dag").
  *
  * Ren datamodul utan Supabase- eller JSX-beroenden, samma princip som
- * lib/arsplan-grid.ts, lib/detaljplan-weeks.ts och lib/range-stats.ts. Den
+ * lib/blockplan-grid.ts, lib/detaljplan-weeks.ts och lib/range-stats.ts. Den
  * här filen översätter bara (granularitet + ankare) till ett datumspann och
  * en etikett; själva siffrorna räknas av computeRangeStats, som redan är
  * spannbaserad och inte bryr sig om var spannet kommer ifrån.
@@ -142,7 +142,7 @@ export function resolveDatePeriod(
  *
  * Returnerar null när det inte finns några block alls — anroparen ska då
  * säga "inga block upplagda än" i stället för att visa en tom tabell, av
- * samma skäl som /arsplan gör det: noll block är ett normalt startläge, inte
+ * samma skäl som /blockplan gör det: noll block är ett normalt startläge, inte
  * ett fel.
  *
  * Utan giltigt `anchorId` väljs blocket som täcker `today`, annars det
