@@ -10,6 +10,7 @@ import {
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   SeasonTimeline,
+  SeasonTimelineLegend,
   type TimelineBlock,
   type TimelineCompetition,
 } from "@/components/SeasonTimeline";
@@ -829,9 +830,24 @@ async function ArsplanOverview({
     return { athlete, activeBlock, nextA, yearBlocks, yearCompetitions };
   });
 
+  /* Legenden ritas EN gång för hela listan, inte en gång per löparrad — fem
+   * identiska förklaringar under varandra vore brus. Faserna är unionen av
+   * alla löpares block, så förklaringen täcker varje färg som faktiskt syns
+   * i någon rad. */
+  const overviewPhases = [...new Set(sortedAllBlocks.map((b) => b.phase))];
+  const overviewHasCompetitions = athleteSummaries.some((a) => a.yearCompetitions.length > 0);
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
+        {(overviewPhases.length > 0 || overviewHasCompetitions) && (
+          <div className="px-3 pb-1">
+            <SeasonTimelineLegend
+              phases={overviewPhases}
+              hasCompetitions={overviewHasCompetitions}
+            />
+          </div>
+        )}
         {athleteSummaries.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
           <Link
             key={athlete.id}
