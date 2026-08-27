@@ -642,7 +642,8 @@ export default async function TavlingsresultatPage({
         <div>
           <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Grenutveckling</h2>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Välj en eller flera grenar för att se dem som egna kurvor i samma graf. Y-axeln är
+            Välj en eller flera grenar för att se dem som egna kurvor i samma graf — minst en
+            måste vara vald. Y-axeln är
             andel av respektive grens eget personbästa, inte råtid — grenar med olika längd går
             annars inte att jämföra på samma axel. Exakt tid finns i hovertooltipen och
             tabellen under. Kryssa i en streckad träningskurva (formkurva/VO2max/LT2) under
@@ -677,17 +678,53 @@ export default async function TavlingsresultatPage({
             <div className="flex flex-wrap gap-2 text-sm">
               {eventOptions.map((o) => {
                 const active = selectedEvents.includes(o.event);
+                /* Den sista valda grenen går inte att kryssa ur. Grafen kräver
+                 * minst en kurva, och `selectedEvents` faller tillbaka på
+                 * eventOptions[0] när inget är valt — så ett urkryssande av
+                 * den sista gav förut en länk som såg ut att göra något men
+                 * landade i exakt samma läge (eller värre: bytte till en
+                 * ANNAN gren, om den urkryssade inte råkade vara den med
+                 * flest resultat). Rapporterat 2026-08-27: "jag klickar på
+                 * 800m men den är fortsatt markerad".
+                 *
+                 * Fixen är att inte erbjuda klicket alls i stället för att
+                 * uppfinna ett tomt läge: en tom graf svarar inte på någon
+                 * fråga, och resten av sidan (upptrappningsjämförelsen,
+                 * tabellen) förutsätter redan minst en vald gren. */
+                const isOnlySelected = active && selectedEvents.length === 1;
+                const chipStyle = active
+                  ? { borderColor: eventColor(o.event), backgroundColor: eventColor(o.event), color: "white" }
+                  : { borderColor: "var(--color-zinc-300, #d4d4d8)" };
+
+                if (isOnlySelected) {
+                  return (
+                    <span
+                      key={o.event}
+                      role="button"
+                      aria-pressed
+                      aria-disabled
+                      /* tabIndex, trots att den inte går att aktivera: ARIA:s
+                         mönster för en avstängd men fortfarande meningsbärande
+                         kontroll. Utan den hoppar en skärmläsare som stegar
+                         mellan knappar över just den gren som ÄR vald, vilket
+                         är den enda chipen vars tillstånd betyder något. */
+                      tabIndex={0}
+                      title="Minst en gren måste vara vald — välj en annan gren för att byta."
+                      className="flex cursor-default items-center gap-1.5 rounded border px-3 py-1"
+                      style={chipStyle}
+                    >
+                      {o.event} ({o.count})
+                    </span>
+                  );
+                }
+
                 return (
                   <Link
                     key={o.event}
                     href={toggleEventHref(o.event)}
                     aria-pressed={active}
                     className="flex items-center gap-1.5 rounded border px-3 py-1"
-                    style={
-                      active
-                        ? { borderColor: eventColor(o.event), backgroundColor: eventColor(o.event), color: "white" }
-                        : { borderColor: "var(--color-zinc-300, #d4d4d8)" }
-                    }
+                    style={chipStyle}
                   >
                     {o.event} ({o.count})
                   </Link>
