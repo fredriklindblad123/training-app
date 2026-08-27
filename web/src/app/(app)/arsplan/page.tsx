@@ -34,7 +34,7 @@ import {
   type PhaseType,
   type WorkoutType,
 } from "@/lib/planning";
-import { computeBlockStats, type BlockStats } from "@/lib/block-stats";
+import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
 import {
   createAvailabilityPeriod,
   createBlock,
@@ -195,9 +195,9 @@ type BlockCardBlock = TimelineBlock & { focus: string | null };
  * enskilda löparens vy — Alla-vyn hämtar varken planerade pass eller
  * aktiviteter, och en tom statistikruta vore sämre än ingen alls.
  *
- * Siffrorna räknas i lib/block-stats.ts ur samma data som veckorutnätet
+ * Siffrorna räknas i lib/range-stats.ts ur samma data som veckorutnätet
  * ovanför redan bygger på, så de kan aldrig visa något annat än rutnätet. */
-function BlockStatsPanel({ stats }: { stats: BlockStats }) {
+function BlockStatsPanel({ stats }: { stats: RangeStats }) {
   const pct = (n: number) => `${Math.round(n * 100)} %`;
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
@@ -236,7 +236,7 @@ function BlockStatsPanel({ stats }: { stats: BlockStats }) {
         <div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400">Planerade pass per typ</div>
           <div className="mt-1 flex flex-wrap gap-1.5">
-            {stats.plannedByType.map((row: BlockStats["plannedByType"][number]) => (
+            {stats.plannedByType.map((row: RangeStats["plannedByType"][number]) => (
               <span
                 key={row.type}
                 className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
@@ -291,7 +291,7 @@ function BlockCard({
   athletes: { id: string; fullName: string | null }[];
   selectedAthleteIds: Set<string>;
   /** Utelämnas i Alla-vyn, som saknar underlaget. */
-  stats?: BlockStats;
+  stats?: RangeStats;
 }) {
   return (
     <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
@@ -1536,8 +1536,8 @@ export default async function ArsplanPage({
                 // Räknas ur samma planerade pass och sessioner som
                 // veckorutnätet ovanför bygger på — inga extra frågor, och
                 // ingen risk att rutnätet och statistiken säger olika saker.
-                stats={computeBlockStats({
-                  block: { startDate: b.start_date, endDate: b.end_date },
+                stats={computeRangeStats({
+                  range: { startDate: b.start_date, endDate: b.end_date },
                   planned: gridPlannedWorkouts,
                   sessions: gridSessions,
                   competitionDates: competitionList.map((c) => c.competition_date),

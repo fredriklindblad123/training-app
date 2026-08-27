@@ -69,13 +69,17 @@ const PLAN: NavItem[] = [
   { href: "/detaljplan", label: "Detaljplan" },
 ];
 
-/** "Översikt" (alla adepter sida vid sida, 2026-08-16 på uttrycklig begäran
- * — jobbigt att scrolla mellan varje löpares dashboard en och en) hör bara
- * hemma i menyn för en coach; en löpare har ingen adept att se en översikt
- * av, och /oversikt redirectar därför bort en sådan besökare. Ligger direkt
- * efter Dashboard i LOGG — det är precis det den ersätter för en coach med
- * flera löpare. */
-const COACH_OVERVIEW: NavItem = { href: "/oversikt", label: "Översikt" };
+/** "Uppföljning" (2026-08-27): tränarens statistiksida — alla löpare sida
+ * vid sida, per block/månad/vecka/dag. Hör bara hemma i menyn för en coach;
+ * en löpare har inga adepter att följa upp, och /uppfoljning redirectar
+ * därför bort en sådan besökare.
+ *
+ * Ligger sist i PLAN och inte i LOGG trots att den mest visar utfall:
+ * frågan den svarar på är "höll planen?", vilket är planeringens egen
+ * uppföljning. Den ersatte samma dag "Översikt" (/oversikt, 2026-08-16),
+ * som visade ett kort per löpare med bara dagens pass — det är den här
+ * sidans "Dag"-läge, med tre grovare kadenser och efterlevnad därtill. */
+const COACH_FOLLOWUP: NavItem = { href: "/uppfoljning", label: "Uppföljning" };
 
 const SETTINGS: NavItem = { href: "/settings", label: "Inställningar" };
 
@@ -90,7 +94,7 @@ export function NavLinks({
   const pathname = usePathname();
   const athlete = useSearchParams().get("athlete");
 
-  const logg = isCoach ? [LOGG[0], COACH_OVERVIEW, ...LOGG.slice(1)] : LOGG;
+  const plan = isCoach ? [...PLAN, COACH_FOLLOWUP] : PLAN;
 
   const renderLink = (link: NavItem) => {
     const href = athlete ? `${link.href}?athlete=${athlete}` : link.href;
@@ -130,7 +134,7 @@ export function NavLinks({
 
   return (
     <nav className="flex flex-wrap items-baseline gap-x-5 gap-y-2 text-sm font-medium">
-      {renderGroup("nav-logg", "Logg", logg)}
+      {renderGroup("nav-logg", "Logg", LOGG)}
 
       {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
           role="group", så den ska inte läsas upp. */}
@@ -139,7 +143,7 @@ export function NavLinks({
       {renderGroup(
         "nav-plan",
         "Plan",
-        PLAN,
+        plan,
         planOwnedByCoach ? "från din tränare" : undefined,
       )}
 

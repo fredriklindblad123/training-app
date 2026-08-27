@@ -6,11 +6,18 @@ import {
 import { QUALITY_WORKOUT_TYPES, type WorkoutType } from "@/lib/planning";
 import type { TrainingSession } from "@/lib/sessions";
 
-/* Statistik per träningsblock för /arsplan (uttrycklig begäran 2026-08-22).
+/* Statistik för ett datumspann — planerat, utfall och fördelning per passtyp.
+ *
+ * Hette lib/block-stats.ts fram till 2026-08-27 och räknade bara per
+ * träningsblock (/arsplan, uttrycklig begäran 2026-08-22). Funktionen var
+ * dock aldrig blockspecifik: den filtrerar på [startDate, endDate] och bryr
+ * sig inte om var spannet kommer ifrån. /uppfoljning behövde exakt samma
+ * siffror per månad, vecka och dag, så namnet fick följa vad koden gör i
+ * stället för vad den först användes till. Ingen räknelogik ändrades.
  *
  * Ren datamodul utan Supabase- eller JSX-beroenden, samma princip som
  * lib/arsplan-grid.ts och lib/detaljplan-weeks.ts. Räknas ur data sidan
- * redan hämtar för Årsplans veckorutnät — inga nya frågor.
+ * redan hämtar — inga nya frågor.
  *
  * Efterlevnaden (planerat mot genomfört) kommer från summarizeCompliance,
  * samma funktion som kalendern, /trender och veckorutnätet använder. Den här
@@ -21,12 +28,12 @@ import type { TrainingSession } from "@/lib/sessions";
  * avsikt (och ingår därför i efterlevnaden, se Compliance.plannedCount) men
  * det vore missvisande att svara "12 pass" när tre av dem är vila. */
 
-export type BlockStatsInput = {
+export type RangeStatsInput = {
   startDate: string;
   endDate: string;
 };
 
-export type BlockStats = {
+export type RangeStats = {
   weeks: number;
   /** Planerade pass exklusive vilodagar. */
   plannedCount: number;
@@ -62,26 +69,26 @@ function weeksBetweenDates(start: string, end: string): number {
   return Math.max(1, Math.round(ms / (7 * 86_400_000)) || 1);
 }
 
-export function computeBlockStats({
-  block,
+export function computeRangeStats({
+  range,
   planned,
   sessions,
   competitionDates,
 }: {
-  block: BlockStatsInput;
+  range: RangeStatsInput;
   planned: (PlannedWorkout & { training_factor?: string | null })[];
   sessions: TrainingSession[];
   competitionDates: string[];
-}): BlockStats {
-  const blockPlanned = planned.filter((p) =>
-    withinRange(p.scheduled_date, block.startDate, block.endDate),
+}): RangeStats {
+  const rangePlanned = planned.filter((p) =>
+    withinRange(p.scheduled_date, range.startDate, range.endDate),
   );
-  const blockSessions = sessions.filter((s) =>
-    withinRange(s.date, block.startDate, block.endDate),
+  const rangeSessions = sessions.filter((s) =>
+    withinRange(s.date, range.startDate, range.endDate),
   );
 
   const counts = new Map<string, number>();
-  for (const p of blockPlanned) {
+  for (const p of rangePlanned) {
     counts.set(p.workout_type, (counts.get(p.workout_type) ?? 0) + 1);
   }
   const plannedByType = [...counts.entries()]
@@ -89,18 +96,18 @@ export function computeBlockStats({
     .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type, "sv"));
 
   const plannedRestDays = counts.get("rest") ?? 0;
-  const plannedCount = blockPlanned.length - plannedRestDays;
+  const plannedCount = rangePlanned.length - plannedRestDays;
 
-  const plannedSeconds = blockPlanned.reduce((sum, p) => sum + (p.target_duration_seconds ?? 0), 0);
-  const plannedMeters = blockPlanned.reduce((sum, p) => sum + (p.target_distance_meters ?? 0), 0);
+  const plannedSeconds = rangePlanned.reduce((sum, p) => sum + (p.target_duration_seconds ?? 0), 0);
+  const plannedMeters = rangePlanned.reduce((sum, p) => sum + (p.target_distance_meters ?? 0), 0);
 
-  const qualityPlannedCount = blockPlanned.filter((p) =>
+  const qualityPlannedCount = rangePlanned.filter((p) =>
     (QUALITY_WORKOUT_TYPES as readonly string[]).includes(p.workout_type as WorkoutType),
   ).length;
 
-  const matches = matchPlanToSessions(blockPlanned, blockSessions);
+  const matches = matchPlanToSessions(rangePlanned, rangeSessions);
   const compliance = summarizeCompliance(matches);
-  const weeks = weeksBetweenDates(block.startDate, block.endDate);
+  const weeks = weeksBetweenDates(range.startDate, range.endDate);
 
   return {
     weeks,
@@ -113,16 +120,16 @@ export function computeBlockStats({
     plannedKm: plannedMeters > 0 ? plannedMeters / 1000 : null,
     passesPerWeek: Math.round((plannedCount / weeks) * 10) / 10,
     qualityShare: plannedCount > 0 ? qualityPlannedCount / plannedCount : null,
-    sessionCount: blockSessions.length,
-    actualKm: blockSessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000,
-    actualHours: blockSessions.reduce((sum, s) => sum + s.durationSeconds, 0) / 3600,
-    trainingLoad: blockSessions.reduce((sum, s) => sum + s.trainingLoad, 0),
+    sessionCount: rangeSessions.length,
+    actualKm: rangeSessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000,
+    actualHours: rangeSessions.reduce((sum, s) => sum + s.durationSeconds, 0) / 3600,
+    trainingLoad: rangeSessions.reduce((sum, s) => sum + s.trainingLoad, 0),
     completedCount: compliance.completedCount,
     qualityPlanned: compliance.qualityPlanned,
     qualityCompleted: compliance.qualityCompleted,
     unplannedCount: compliance.unplanned.length,
     competitionCount: competitionDates.filter((d) =>
-      withinRange(d, block.startDate, block.endDate),
+      withinRange(d, range.startDate, range.endDate),
     ).length,
   };
 }
