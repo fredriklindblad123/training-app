@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
+import { parseResultSeconds } from "@/lib/race-results";
 
 /* Tävlingar: lägga till, prioritera och logga resultat — flyttat hit från
  * /sasongen 2026-08-16 (uttrycklig begäran). Att logga ETT RESULTAT efter
@@ -168,11 +169,30 @@ export async function saveEventResult(formData: FormData) {
   const auth = await requireUser();
   const id = str(formData, "event_id");
   if (!auth || !id) return;
+
+  const actualResult = str(formData, "actual_result");
+
+  /* Grennamnet hämtas ur raden i stället för att skickas med i formuläret:
+   * parseResultSeconds behöver det för att avgöra om ett värde utan kolon är
+   * sekunder eller meter, och den bedömningen ska inte gå att påverka genom
+   * att posta ett annat grennamn än radens.
+   *
+   * result_seconds skrivs ALLTID, även som null. Ett resultat som rättas från
+   * en tid till "DNF" måste tappa sitt gamla sekundvärde — annars ligger
+   * loppet kvar i progressionsgrafen med en tid som inte längre står i
+   * listan. */
+  const { data: row } = await auth.supabase
+    .from("competition_events")
+    .select("event")
+    .eq("id", id)
+    .single();
+
   await auth.supabase
     .from("competition_events")
     .update({
-      actual_result: str(formData, "actual_result"),
+      actual_result: actualResult,
       placement: num(formData, "placement"),
+      result_seconds: parseResultSeconds(actualResult, row?.event as string | undefined),
     })
     .eq("id", id);
   refresh();
