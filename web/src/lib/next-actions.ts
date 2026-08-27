@@ -51,6 +51,13 @@ export type NextActionInput = {
    * oplanerad" avgörs utan ett sparat "granskad"-tillstånd. */
   lastWeekHadSession: boolean;
   currentWeekHasPlannedWorkout: boolean;
+  /** Vart "gå igenom veckan" pekar. Kommer utifrån av samma skäl som
+   * `tomorrowHref`/`yesterdayHref`: veckovyns adress är datumberoende
+   * (`/calendar/vecka/<YYYY-MM-DD>`), och den här filen gör inga egna
+   * datumslag åt anroparen. Låg tidigare hårdkodad som `/veckan` — en sida
+   * som togs bort 2026-08-13 när kalenderns veckovy tog över både rutnätet
+   * och nyckeltalen (se app/(app)/layout.tsx). */
+  weekHref: string;
 
   /** Regel 5. `null` när inget block täcker idag. */
   activeBlockEndDate: string | null;
@@ -122,7 +129,7 @@ export function nextActions(input: NextActionInput): NextAction[] {
       phase: "vecka",
       title: "Gå igenom veckan",
       why: "Förra veckan är i hamn, och nästa väntar på ett upplägg.",
-      href: "/veckan",
+      href: input.weekHref,
       priority: 4,
     });
   }
