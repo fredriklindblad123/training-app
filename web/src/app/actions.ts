@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { triggerGarminSync } from "@/lib/garmin-sync";
+import { resolveSyncTargets, triggerGarminSyncForAll } from "@/lib/garmin-sync";
 
 /** Klick på "Till appen" på startsidan. Synken körs schemalagt varje natt
  * (05:00 UTC, se vercel.json), men det gör datan upp till ett dygn gammal
@@ -21,9 +21,19 @@ export async function enterApp() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  // Samma målgrupp som vid inloggning (se app/login/actions.ts): en tränare
+  // synkar sig själv och sina adepter, en löpare bara sig själv. Räknas ut
+  // före after(), medan Supabase-klienten fortfarande lever.
+  let targets: string[];
+  try {
+    targets = await resolveSyncTargets(supabase, user.id);
+  } catch {
+    targets = [user.id];
+  }
+
   after(async () => {
     try {
-      await triggerGarminSync(user.id);
+      await triggerGarminSyncForAll(targets);
     } catch {
       // Synkas ändå på schemat, eller vid nästa klick.
     }

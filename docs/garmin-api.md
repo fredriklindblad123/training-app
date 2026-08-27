@@ -45,6 +45,28 @@ automatiskt:
   användare respektive den sparade token:en.
 - UI: `/settings`-sidan i webappen (anslut-formulär + "Synka nu"-knapp).
 
+**Vad som triggar en synk (uppdaterat 2026-08-27):**
+
+| Trigger | Vilka som synkas | Strypning |
+|---|---|---|
+| Cron, 05:00 UTC (`vercel.json`) | alla med `status = 'connected'` | ingen |
+| Inloggning (`app/login/actions.ts`) | den inloggade; en **tränare** även alla länkade adepter | 15 min |
+| "Till appen" på startsidan (`app/actions.ts`) | samma som ovan | 15 min |
+| "Synka nu" på `/settings` | bara den inloggade | **ingen** — uttrycklig begäran ska alltid ge färsk data |
+
+Vem som ska synkas avgörs av `resolveSyncTargets` i `lib/garmin-sync.ts`, som
+läser `coach_athletes` genom den inloggades **egen** klient (inte
+`service_role`). RLS avgör därmed vilka länkar som syns, så listan kan aldrig
+innehålla en löpare anroparen inte faktiskt coachar — viktigt, eftersom id:na
+sedan skickas till en endpoint som med `INTERNAL_API_SECRET` får synka vilken
+användare som helst.
+
+Strypningen (`AUTO_SYNC_MIN_INTERVAL_MINUTES = 15` i `web/api/index.py`) är
+inte en optimering utan ett skydd: utan den drar en tränare med fyra adepter
+igång fem Garmin-sessioner vid varje inloggning, vilket är precis det mönster
+som blockeras enligt risken nedan. Beslutet fattas i Python, som äger
+`last_synced_at`; Next skickar bara med önskat intervall.
+
 **Känd risk, upptäckt vid research 2026-07-25:** `garth` (som både
 `python-garminconnect` och de flesta JS-motsvarigheter bygger på) blev
 formellt **övergivet av sin maintainer under 2026**, efter att Garmin ändrade

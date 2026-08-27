@@ -48,6 +48,14 @@ FIRST_SYNC_DAYS = 365  # hur långt bakåt den allra första synken för en anv�
 SLEEP_SYNC_DAYS = 7
 FIRST_SLEEP_SYNC_DAYS = 30
 
+# Automatiska synkar (vid inloggning) hoppas över om användaren redan
+# synkades nyligen. Utan detta skulle en tränare med fyra adepter dra igång
+# fem Garmin-sessioner vid VARJE inloggning — och garth/garminconnect är ett
+# inofficiellt bibliotek mot ett API som rate-limitar (se docs/garmin-api.md).
+# Manuell "Synka nu" skickar inget intervall och stryps därför aldrig: då har
+# användaren uttryckligen bett om färsk data och ska få den.
+AUTO_SYNC_MIN_INTERVAL_MINUTES = 15
+
 # Varvdata kostar ett Garmin-anrop per pass. Taket skyddar mot att den första
 # synken för en användare (ett helt år bakåt) drar hundratals anrop och både
 # spränger Vercels femminutersgräns och triggar rate-limiting. Historik hämtas
@@ -463,7 +471,40 @@ def _sync_evaluations(client: Garmin, user_id: str, activities: list[dict]) -> i
     return written
 
 
-def _sync_one_user(user_id: str) -> dict:
+def _minutes_since(iso_timestamp: str) -> Optional[float]:
+    """Minuter sedan `iso_timestamp`, eller None om det inte gick att tolka.
+
+    None betyder "vet inte" och ska alltid leda till att synken KÖRS — att
+    hoppa över på grund av ett oläsbart tidsstämpelvärde vore att tyst sluta
+    synka.
+    """
+    try:
+        parsed = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - parsed).total_seconds() / 60
+
+
+def _sync_one_user(user_id: str, min_interval_minutes: Optional[int] = None) -> dict:
+    # Anslutningsraden läses FÖRST, före token:en, så att en strypt synk kan
+    # returnera utan att ens konstruera en Garmin-klient.
+    connection_rows = _sb_select(
+        "garmin_connections", "last_synced_at", {"user_id": f"eq.{user_id}"}
+    )
+    last_synced_at = connection_rows[0].get("last_synced_at") if connection_rows else None
+
+    if min_interval_minutes and last_synced_at:
+        age = _minutes_since(last_synced_at)
+        if age is not None and age < min_interval_minutes:
+            return {
+                "user_id": user_id,
+                "ok": True,
+                "skipped": True,
+                "reason": f"synkad för {int(age)} min sedan",
+            }
+
     token_rows = _sb_select("garmin_tokens", "token", {"user_id": f"eq.{user_id}"})
     if not token_rows:
         return {"user_id": user_id, "ok": False, "error": "ingen sparad Garmin-anslutning"}
@@ -478,10 +519,7 @@ def _sync_one_user(user_id: str) -> dict:
     # Första synken för en användare (ingen last_synced_at än) hämtar ett helt
     # år bakåt istället för det korta dagliga fönstret, så historiken kommer
     # med direkt efter att man anslutit sitt Garmin-konto.
-    connection_rows = _sb_select(
-        "garmin_connections", "last_synced_at", {"user_id": f"eq.{user_id}"}
-    )
-    is_first_sync = not connection_rows or not connection_rows[0].get("last_synced_at")
+    is_first_sync = not last_synced_at
     days = FIRST_SYNC_DAYS if is_first_sync else SYNC_DAYS
 
     start = date.today() - timedelta(days=days)
@@ -579,14 +617,24 @@ async def garmin_sync(request: Request):
         pass
     user_id = body.get("user_id")
 
+    # Sätts av automatiska synkar (inloggning) för att hoppa över användare som
+    # nyss synkades; utelämnas av "Synka nu" och av cron, som alltid ska köra.
+    # Klampas till ett dygn så en felskickad parameter aldrig kan stänga av
+    # synken permanent.
+    raw_interval = body.get("min_interval_minutes")
+    try:
+        min_interval = min(int(raw_interval), 1440) if raw_interval is not None else None
+    except (TypeError, ValueError):
+        min_interval = None
+
     if user_id:
-        return JSONResponse(_sync_one_user(user_id))
+        return JSONResponse(_sync_one_user(user_id, min_interval))
 
     if not is_cron:
         return JSONResponse({"error": "user_id krävs utanför schemalagd synk"}, status_code=400)
 
     connections = _sb_select("garmin_connections", "user_id", {"status": "eq.connected"})
-    results = [_sync_one_user(c["user_id"]) for c in connections]
+    results = [_sync_one_user(c["user_id"], min_interval) for c in connections]
     return JSONResponse({"ok": True, "results": results})
 
 
