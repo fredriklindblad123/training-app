@@ -53,6 +53,7 @@ export type MetricFormatKind =
   | "hours"
   | "bpm"
   | "ms"
+  | "m_per_beat"
   | "decimal2"
   | "decimal1"
   | "decimal0";
@@ -67,6 +68,12 @@ export function formatMetricValue(kind: MetricFormatKind, value: number): string
       return `${Math.round(value)} slag/min`;
     case "ms":
       return `${Math.round(value)} ms`;
+    // Meter per hjärtslag (formkurvan/Efficiency Factor). Enheten hör hemma i
+    // formatteraren och inte i serie-etiketten: etiketten står i en legend
+    // vars y-axel mäter SD, medan det här värdet bara dyker upp i tooltipen,
+    // där det ÄR ett råvärde i m/slag.
+    case "m_per_beat":
+      return `${value.toFixed(2)} m/slag`;
     case "decimal2":
       return value.toFixed(2);
     case "decimal1":

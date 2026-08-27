@@ -474,9 +474,16 @@ export default async function TrendsPage({
     },
     {
       id: "ef",
-      label: "Formkurva (m/slag)",
+      /* Hette "Formkurva (m/slag)" till 2026-08-27. Etiketten lovade en
+       * enhet som axeln inte visar: sekundäraxeln här är SD-avvikelse mot
+       * en rullande baslinje, inte meter per hjärtslag. Det fick den här
+       * linjen att se ut att säga emot Formkurva-diagrammet längre ner (som
+       * visar råvärden) när de i själva verket svarar på olika frågor —
+       * rapporterat 2026-08-27. Enheten bor nu i formatteraren i stället,
+       * där råvärdet faktiskt visas: tooltipen. */
+      label: "Formkurva",
       values: efWeekly,
-      formatKind: "decimal2",
+      formatKind: "m_per_beat",
       higherIsBetter: true,
       // "Fart" i Almgrens fyra axlar (2.3) — ska gå att skilja från
       // puls-/sömnlagren i en blick, därför en egen färg i stället för bläck
@@ -748,10 +755,12 @@ export default async function TrendsPage({
             Staplarna är veckans summerade träningsbelastning, stackad på passkategori.
             Linjerna nedanför visar avvikelse mot din egen baslinje i SD-enheter — 0 är ditt
             normala, ±1 kanten på ditt normalintervall. Håll pekaren över en vecka för
-            siffrorna och dina egna dagboksord. Baslinjen är rullande och följer med datan,
-            så Formkurva-linjen här visar kortsiktig avvikelse, inte den långsiktiga
-            utvecklingen — vid många veckor, se Formkurva-diagrammet längre ner i stället,
-            som visar råvärden och en glidande trend oavsett hur långt fönster du valt.
+            siffrorna och dina egna dagboksord. Baslinjen är rullande åtta veckor bakåt, så
+            linjerna svarar på <em>&quot;högre eller lägre än de senaste veckorna?&quot;</em> — inte
+            &quot;var ligger nivån?&quot;. Därför kan Formkurvan här peka uppåt samtidigt som
+            Formkurva-diagrammet längre ner pekar nedåt: efter en svacka kan formen vara på väg
+            upp mot den egna senaste tiden och ändå ligga lågt för säsongen. Det diagrammet
+            visar råvärden och en glidande trend, och svarar på den andra frågan.
           </p>
         </div>
 
