@@ -41,7 +41,7 @@ export function AthleteSwitcher({
   const active = athletes.find((a) => a.id === activeId);
 
   return (
-    <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3">
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
       <div
         className={`text-sm font-medium ${
           !isOverview && !isSelf ? "text-sky-700 dark:text-sky-400" : "text-[var(--ink-2)]"

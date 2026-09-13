@@ -47,9 +47,9 @@ function AthleteColumn({
 }) {
   const [y, m, d] = dateKey.split("-").map(Number);
   return (
-    <div className="flex min-w-[26rem] flex-1 flex-col gap-3 rounded border border-[var(--line)] p-3">
+    <div className="flex min-w-[26rem] flex-1 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-lg font-medium text-[var(--foreground)]">
+        <span className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
           {athlete.fullName ?? "Namnlös löpare"}
         </span>
         <Link
@@ -119,7 +119,7 @@ export default async function PassDayPage({
   const backHref = `/detaljplan${showAll ? "?athlete=alla" : focusId ? `?athlete=${focusId}` : ""}`;
 
   return (
-    <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
         <Link
           href={backHref}

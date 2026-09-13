@@ -557,7 +557,7 @@ export function RaceProgressionChart({
 
       {/* --- Träningslager: kryssrutor, av som standard utom den första --- */}
       {trainingSeries.length > 0 && (
-        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded border border-[var(--line)] p-3 text-sm">
+        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
           <legend className="px-1 text-xs font-medium text-[var(--ink-3)]">
             Träningskurvor (streckade)
           </legend>
@@ -596,7 +596,7 @@ export function RaceProgressionChart({
       )}
 
       {(hoveredRacePoint || hoveredTrainingPoint) && (
-        <div className="flex flex-col gap-1 rounded border border-[var(--line)] p-3 text-sm">
+        <div className="flex flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
           {hoveredRacePoint && (
             <>
               <div className="font-medium text-[var(--foreground)]">

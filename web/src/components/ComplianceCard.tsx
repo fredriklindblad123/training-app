@@ -111,9 +111,9 @@ export function ComplianceCard({
       : null;
 
   return (
-    <div className="flex flex-col gap-3 rounded border border-[var(--line)] p-4">
+    <div className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">{title}</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">{title}</h2>
         <span className="text-sm font-semibold text-[var(--ink-2)]">
           {completedCount} av {plannedCount} planerade pass genomförda
         </span>

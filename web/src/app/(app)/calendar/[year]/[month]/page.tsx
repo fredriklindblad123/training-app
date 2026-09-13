@@ -158,7 +158,7 @@ export default async function MonthPage({
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       {scoped.role === "coach" && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}

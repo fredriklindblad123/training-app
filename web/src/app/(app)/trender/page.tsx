@@ -626,7 +626,7 @@ export default async function TrendsPage({
   ];
 
   return (
-    <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       {scoped.role === "coach" && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
@@ -640,7 +640,7 @@ export default async function TrendsPage({
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Trender</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Trender</h1>
           {activeBlock ? (
             <p className="text-sm text-[var(--ink-3)]">
               <strong className="font-medium text-[var(--foreground)]">{activeBlock.name}</strong> (
@@ -699,9 +699,9 @@ export default async function TrendsPage({
           inte på dashboarden, så den är kvar här. */}
       {loadCv != null && (
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="flex flex-col gap-1 rounded border border-[var(--line)] p-4">
+          <div className="flex flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
             <dt className="text-sm text-[var(--ink-3)]">Konsekvens (CV)</dt>
-            <dd className="text-2xl font-semibold text-[var(--foreground)]">{loadCv.toFixed(2)}</dd>
+            <dd className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">{loadCv.toFixed(2)}</dd>
             <dd className="text-xs text-[var(--ink-3)]">lägre = jämnare vecka för vecka</dd>
           </div>
         </dl>
@@ -738,7 +738,7 @@ export default async function TrendsPage({
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-[var(--foreground)]">
+          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
             Belastning och återhämtning
           </h2>
           <p className="text-sm text-[var(--ink-3)]">
@@ -769,7 +769,7 @@ export default async function TrendsPage({
         />
 
         {/* Datatäckning: en serie som saknas ska förklaras, inte tigas ihjäl. */}
-        <details className="rounded border border-[var(--line)] p-3 text-sm">
+        <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
           <summary className="cursor-pointer text-[var(--ink-2)]">
             Datatäckning för lagren ({series.length} av {candidateSeries.length} har data i
             perioden)
@@ -826,7 +826,7 @@ export default async function TrendsPage({
       {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-[var(--foreground)]">Intensitetsfördelning</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Intensitetsfördelning</h2>
           <p className="text-sm text-[var(--ink-3)]">
             Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
             {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
@@ -844,7 +844,7 @@ export default async function TrendsPage({
       {/* ================= C. Formkurva (P1.4) ============================= */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-[var(--foreground)]">
+          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
             Formkurva (Efficiency Factor)
           </h2>
           <p className="text-sm text-[var(--ink-3)]">
@@ -863,7 +863,7 @@ export default async function TrendsPage({
           emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
         />
 
-        <p className="rounded border border-[var(--line)] p-3 text-sm text-[var(--ink-2)]">
+        <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
           <strong className="font-medium text-[var(--foreground)]">Läs kurvan försiktigt.</strong>{" "}
           Efficiency Factor påverkas kraftigt av värme, uttorkning, stress, höjd och underlag. En
           dipp i juli är sannolikt vädret, inte formen. Kurvan är dessutom räknad på rå fart — ett
@@ -874,7 +874,7 @@ export default async function TrendsPage({
 
       {/* ============ P2.1: passkvalitet ============ */}
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
           Passkvalitet: återkommande nyckelpass
         </h2>
         <SessionQuality groups={signatureGroups} />
@@ -886,7 +886,7 @@ export default async function TrendsPage({
           börjar dagen efter det nuvarande slutar, i stället för att man
           landar på ett tomt formulär och får räkna själv. */}
       {activeBlock && (
-        <div className="flex flex-wrap items-center gap-4 rounded border border-[var(--line)] p-4">
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
           <div className="flex-1">
             <p className="font-medium text-[var(--foreground)]">Nästa block</p>
             <p className="text-sm text-[var(--ink-3)]">

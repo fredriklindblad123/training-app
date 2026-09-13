@@ -47,12 +47,12 @@ export default async function SettingsPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="text-2xl font-semibold text-[var(--foreground)]">
+      <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
         Inställningar
       </h1>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
           Garmin-koppling
         </h2>
         <p className="text-sm text-[var(--ink-3)]">
@@ -63,7 +63,7 @@ export default async function SettingsPage({
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         {connection && (
-          <div className="flex flex-col gap-3 rounded border border-[var(--line)] p-4">
+          <div className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
             <div className="text-sm">
               Status:{" "}
               <span className="font-medium text-[var(--foreground)]">
@@ -102,7 +102,7 @@ export default async function SettingsPage({
 
         <form
           action={connectGarmin}
-          className="flex flex-col gap-3 rounded border border-[var(--line)] p-4 sm:max-w-sm"
+          className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:max-w-sm"
         >
           <label className="flex flex-col gap-1 text-sm">
             Garmin-e-post
@@ -136,7 +136,7 @@ export default async function SettingsPage({
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
           Personligt tröskelband
         </h2>
         <p className="max-w-2xl text-sm text-[var(--ink-3)]">
@@ -148,7 +148,7 @@ export default async function SettingsPage({
         </p>
         <form
           action={saveThresholds}
-          className="grid grid-cols-2 gap-3 rounded border border-[var(--line)] p-4 sm:max-w-lg sm:grid-cols-3"
+          className="grid grid-cols-2 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:max-w-lg sm:grid-cols-3"
         >
           <label className="flex flex-col gap-1 text-sm">
             Tröskelband låg
@@ -216,7 +216,7 @@ export default async function SettingsPage({
 
       {scoped?.role === "coach" && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-medium text-[var(--foreground)]">
+          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
             Löpare du coachar
           </h2>
           <p className="max-w-2xl text-sm text-[var(--ink-3)]">
@@ -257,7 +257,7 @@ export default async function SettingsPage({
 
           <form
             action={addAthlete}
-            className="flex flex-wrap items-end gap-3 rounded border border-[var(--line)] p-4 sm:max-w-sm"
+            className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:max-w-sm"
           >
             <label className="flex flex-1 flex-col gap-1 text-sm">
               Löparens e-post

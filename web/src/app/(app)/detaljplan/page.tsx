@@ -716,9 +716,9 @@ export default async function DetaljplanPage({
   // löpares vy; det är bara startläget som ändrats.
   if ((athleteParam == null || athleteParam === "alla") && scoped.role === "coach") {
     return (
-      <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+      <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Detaljplan</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Detaljplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Alla blockens veckor, tidigaste först. Öppna ett pass för att fylla på detaljer, eller
             tagga på och av löpare direkt i rutan. Tävlingar läggs in på{" "}
@@ -788,9 +788,9 @@ export default async function DetaljplanPage({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold text-[var(--foreground)]">Detaljplan</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Detaljplan</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
           Varje blocks eget dag-för-dag-veckomönster — precis som Excel-mallens Detaljplan-flik.
           Ett pass läggs till direkt på blocket och syns i kalendern omedelbart, utan ett

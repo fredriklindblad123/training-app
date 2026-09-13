@@ -713,7 +713,7 @@ export function ComboChart({
       {/* --- detaljpanel: veckans siffror, förändring mot föregående vecka,
               och dagbokens egna ord --- */}
       {hoveredPeriod && hovered != null && (
-        <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3 text-sm">
+        <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
           <div className="font-medium text-[var(--foreground)]">
             {hoveredPeriod.fullLabel ?? hoveredPeriod.label}
           </div>

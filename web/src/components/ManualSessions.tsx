@@ -50,7 +50,7 @@ export function ManualSessions({
         <form
           key={a.id}
           action={saveAction}
-          className="flex flex-wrap items-end gap-3 rounded border border-[var(--line)] p-3"
+          className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3"
         >
           <input type="hidden" name="activity_id" value={a.id} />
           <input type="hidden" name="entry_date" value={dateStr} />
@@ -142,7 +142,7 @@ export function ManualSessions({
         </form>
       ))}
 
-      <details className="rounded border border-[var(--line)] p-3">
+      <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
         <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
           Lägg till genomfört pass manuellt
         </summary>

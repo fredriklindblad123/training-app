@@ -523,7 +523,7 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="text-2xl font-semibold text-[var(--foreground)]">Dashboard</h1>
+      <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Dashboard</h1>
 
       {scoped.role === "coach" && (
         <AthleteSwitcher
@@ -539,7 +539,7 @@ export default async function DashboardPage({
           ändras inte dag för dag, så de hör hemma bredvid varandra, inte i
           "dagens" brus. --------------------------------------------------- */}
       <Card className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">Form och kondition</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Form och kondition</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {formRings.map((r) => (
             <KpiRing key={r.label} {...r} />
@@ -551,7 +551,7 @@ export default async function DashboardPage({
           snitt per vecka (P1.5) — flyttad hit från den borttagna /veckan
           2026-08-13. ---------------------------------------------------- */}
       <Card className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">Volym och belastning</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Volym och belastning</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
@@ -588,7 +588,7 @@ export default async function DashboardPage({
       {/* --- Kontinuitet (K6): den enda långa horisonten på den här sidan,
           ett ankare mot dagens brus. --------------------------------------- */}
       <Card className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">Kontinuitet</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Kontinuitet</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {continuityRings.map((r) => (
             <KpiRing key={r.label} {...r} />
@@ -600,7 +600,7 @@ export default async function DashboardPage({
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold text-[var(--foreground)]">Dagens pass</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Dagens pass</h2>
         {sessions.length === 0 ? (
           <p className="text-sm text-[var(--ink-3)]">
             Inget pass loggat idag ännu.{" "}

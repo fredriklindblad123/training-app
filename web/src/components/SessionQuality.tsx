@@ -84,7 +84,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
     ((latest.meanRepSeconds - first.meanRepSeconds) / first.meanRepSeconds) * 100;
 
   return (
-    <details className="rounded border border-[var(--line)] p-4" open={false}>
+    <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4" open={false}>
       <summary className="cursor-pointer list-none">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <span className="flex items-center gap-2 font-medium text-[var(--foreground)]">

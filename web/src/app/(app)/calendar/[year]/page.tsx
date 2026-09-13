@@ -187,7 +187,7 @@ export default async function YearPage({
   const monthHref = `/calendar/${year}/${isCurrentYear ? now.getMonth() + 1 : 1}${athleteQuery}`;
 
   return (
-    <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       {scoped.role === "coach" && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}

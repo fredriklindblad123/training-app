@@ -357,7 +357,7 @@ export function EfficiencyChart({
       </div>
 
       {hoveredPoint && (
-        <div className="flex flex-col gap-1 rounded border border-[var(--line)] p-3 text-sm">
+        <div className="flex flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
           <div className="font-medium text-[var(--foreground)]">
             {formatShortDate(hoveredPoint.date)} — {hoveredPoint.label}
           </div>

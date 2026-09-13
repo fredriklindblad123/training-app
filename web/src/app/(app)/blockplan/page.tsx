@@ -36,6 +36,7 @@ import {
   type WorkoutType,
 } from "@/lib/planning";
 import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
+import { Stat } from "@/components/ui/Stat";
 import {
   createAvailabilityPeriod,
   createBlock,
@@ -217,30 +218,35 @@ function BlockStatsPanel({ stats }: { stats: RangeStats }) {
   return (
     <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-        <Stat label="Planerade pass" value={String(stats.plannedCount)} sub={`${stats.passesPerWeek}/vecka`} />
+        <Stat size="sm" label="Planerade pass" value={String(stats.plannedCount)} sub={`${stats.passesPerWeek}/vecka`} />
         <Stat
+          size="sm"
           label="Genomfört"
           value={`${stats.completedCount} av ${stats.plannedCount}`}
           sub={stats.unplannedCount > 0 ? `+${stats.unplannedCount} oplanerade` : undefined}
         />
         <Stat
+          size="sm"
           label="Kvalitetspass"
           value={`${stats.qualityCompleted} av ${stats.qualityPlanned}`}
           sub={stats.qualityShare != null ? `${pct(stats.qualityShare)} av planen` : undefined}
         />
-        <Stat label="Veckor" value={String(stats.weeks)} sub={stats.plannedRestDays > 0 ? `${stats.plannedRestDays} vilodagar` : undefined} />
+        <Stat size="sm" label="Veckor" value={String(stats.weeks)} sub={stats.plannedRestDays > 0 ? `${stats.plannedRestDays} vilodagar` : undefined} />
         <Stat
+          size="sm"
           label="Distans"
           value={`${stats.actualKm.toFixed(1)} km`}
           sub={stats.plannedKm != null ? `plan ${stats.plannedKm.toFixed(1)} km` : "genomfört"}
         />
         <Stat
+          size="sm"
           label="Tid"
           value={`${stats.actualHours.toFixed(1)} h`}
           sub={stats.plannedHours != null ? `plan ${stats.plannedHours.toFixed(1)} h` : "genomfört"}
         />
-        <Stat label="Belastning" value={String(Math.round(stats.trainingLoad))} sub="genomfört" />
+        <Stat size="sm" label="Belastning" value={String(Math.round(stats.trainingLoad))} sub="genomfört" />
         <Stat
+          size="sm"
           label="Tävlingar"
           value={String(stats.competitionCount)}
           sub={stats.sessionCount > 0 ? `${stats.sessionCount} pass loggade` : undefined}
@@ -271,16 +277,6 @@ function BlockStatsPanel({ stats }: { stats: RangeStats }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div>
-      <div className="text-xs text-[var(--ink-3)]">{label}</div>
-      <div className="text-[var(--foreground)]">{value}</div>
-      {sub && <div className="text-xs text-[var(--ink-3)]">{sub}</div>}
     </div>
   );
 }
@@ -882,7 +878,7 @@ async function ArsplanOverview({
        * enskilda löparens Block-sektion använder. Ett delat block (flera
        * löpare ikryssade) räknas bara en gång, inte en gång per löpare. */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">Block</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Block</h2>
         {sortedAllBlocks.length === 0 ? (
           <p className="text-sm text-[var(--ink-3)]">Inga block skapade ännu.</p>
         ) : (
@@ -904,7 +900,7 @@ async function ArsplanOverview({
        * begäran 2026-08-18) — löpar-kryssrutorna väljer vem/vilka blocket
        * gäller, utan att man först behöver stå på en enskild löpares sida. */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
           Lägg till block för hand
         </h2>
         <form action={createBlock} className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
@@ -1011,9 +1007,9 @@ export default async function ArsplanPage({
   // löpare ser aldrig ?athlete= över huvud taget.
   if (athleteParam === "alla" && scoped.role === "coach") {
     return (
-      <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+      <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Blockplan</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Blockplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
             löparens block och veckomönster.
@@ -1288,9 +1284,9 @@ export default async function ArsplanPage({
       : [null, null];
 
   return (
-    <div className="flex flex-1 flex-col gap-10 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold text-[var(--foreground)]">Årsplan</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Årsplan</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
           kommer. Dag-för-dag-innehållet i varje veckomall redigeras på{" "}
@@ -1347,7 +1343,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">Säsongsöversikt</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Säsongsöversikt</h2>
         <SeasonTimeline blocks={timelineYearBlocks} competitions={timelineYearCompetitions} />
       </section>
 
@@ -1355,7 +1351,7 @@ export default async function ArsplanPage({
       {arsplanWeeks.length > 0 && (
         <section className="flex flex-col gap-3">
           <div>
-            <h2 className="text-lg font-medium text-[var(--foreground)]">Veckorutnät</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Veckorutnät</h2>
             <p className="max-w-3xl text-sm text-[var(--ink-3)]">
               En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
               räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
@@ -1543,7 +1539,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">Block</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Block</h2>
         <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Klicka på ett block för att redigera det. Nya block skapas från{" "}
           <Link href="/blockplan?athlete=alla" className="underline">
@@ -1657,7 +1653,7 @@ export default async function ArsplanPage({
       {blockList.length >= 2 && (
         <section className="flex flex-col gap-4">
           <div>
-            <h2 className="text-lg font-medium text-[var(--foreground)]">
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
               Jämför block
             </h2>
             <p className="text-sm text-[var(--ink-3)]">
@@ -1748,7 +1744,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Tillgänglighet (K7) ---------------- */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">Tillgänglighet</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Tillgänglighet</h2>
         <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Tentaveckor, lov, läger och resor styr träningen minst lika mycket som
           periodiseringen, men syns ingen annanstans i appen. Det här är bara kontext som gör

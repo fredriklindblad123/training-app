@@ -327,7 +327,7 @@ export async function DayContent({
         {garminActivities.map((a) => (
           <div
             key={a.id}
-            className="grid grid-cols-2 gap-x-6 gap-y-2 rounded border border-[var(--line)] p-4 text-sm sm:grid-cols-4"
+            className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm sm:grid-cols-4"
           >
             <div className="col-span-2 flex flex-wrap items-center gap-3 text-base font-medium text-[var(--foreground)] sm:col-span-4">
               <span>
@@ -458,7 +458,7 @@ export async function DayContent({
 
       <DaySection title="Träningsdagbok" summary={diarySummary} hasData={hasDiaryData}>
         {diaryEntry?.session_log && (
-          <div className="rounded border border-[var(--line)] p-4 text-sm">
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm">
             <div className="text-xs text-[var(--ink-3)]">Träningslogg</div>
             <div className="whitespace-pre-wrap text-[var(--foreground)]">
               {diaryEntry.session_log}
@@ -477,7 +477,7 @@ export async function DayContent({
 
         <form
           action={saveDiaryEntry}
-          className="flex flex-col gap-3 rounded border border-[var(--line)] p-4"
+          className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4"
         >
           <input type="hidden" name="entry_date" value={dateStr} />
           <input type="hidden" name="entry_id" value={diaryEntry?.id ?? ""} />
@@ -511,7 +511,7 @@ export async function DayContent({
 
       {dailyMetrics && (
         <DaySection title="Sömn &amp; återhämtning" summary={sleepSummary} hasData={true}>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-[var(--line)] p-4 text-sm sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm sm:grid-cols-4">
             <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
             <Stat
               label="Sömnpoäng"

@@ -99,13 +99,20 @@ export function PeriodStatTiles({
     }),
   ];
 
+  /* Formen följer StatRow/Stat (components/ui): hårfina skiljelinjer som gap
+     på en linjefärgad bakgrund i stället för en ram per ruta, versal etikett
+     och tabellsiffror. Egen komponent ändå — den bär ett målvärde med
+     statusfärg som Stat medvetet inte modellerar, och dl/dt/dd-semantiken är
+     rätt här och ska inte tappas för enhetlighetens skull. */
   return (
-    <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-5">
       {tiles.map((t) => (
-        <div key={t.label} className="rounded border border-[var(--line)] px-3 py-2">
-          <dt className="text-xs text-[var(--ink-3)]">{t.label}</dt>
-          <dd className="mt-0.5 flex items-baseline gap-1.5">
-            <span className="text-lg font-semibold text-[var(--foreground)]">
+        <div key={t.label} className="bg-[var(--surface)] px-3 py-3">
+          <dt className="text-[0.6875rem] font-semibold tracking-wider text-[var(--ink-3)] uppercase">
+            {t.label}
+          </dt>
+          <dd className="mt-1 flex items-baseline gap-1.5">
+            <span className="tabular text-2xl leading-none font-semibold text-[var(--foreground)]">
               {t.valueText}
             </span>
             {t.targetText && <span className={`text-xs ${t.statusClass}`}>{t.targetText}</span>}

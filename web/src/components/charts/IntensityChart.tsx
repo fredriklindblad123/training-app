@@ -327,7 +327,7 @@ export function IntensityChart({
           </div>
 
           {hoveredWeek && (
-            <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3 text-sm">
+            <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
               <div className="font-medium text-[var(--foreground)]">{hoveredWeek.fullLabel}</div>
               {hoveredTotal > 0 ? (
                 <>
@@ -364,7 +364,7 @@ export function IntensityChart({
           )}
 
           {/* ------------------- mittenzonen ------------------------------ */}
-          <div className="rounded border border-[var(--line)] p-4">
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
             <div className="text-sm text-[var(--ink-3)]">
               Mittenzonen (zon 3) — varken lugnt eller tröskel
             </div>

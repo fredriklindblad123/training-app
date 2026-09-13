@@ -78,7 +78,7 @@ export default async function FlerarsplanPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Flerårsplan</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Flerårsplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Mål, volym och tävlingar/läger per år — motsvarar Flerårsplan-fliken i mallen
             från Svensk Friidrott. Kan laddas ner ifylld nedan.
@@ -111,7 +111,7 @@ export default async function FlerarsplanPage({
         ) : (
           <div className="flex flex-col gap-2">
             {yearPlans.map((y) => (
-              <details key={y.id} className="rounded border border-[var(--line)] p-4">
+              <details key={y.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
                 <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className="font-medium text-[var(--foreground)]">{y.year_label}</span>
                   {y.overall_goal && (
@@ -234,7 +234,7 @@ export default async function FlerarsplanPage({
           </div>
         )}
 
-        <details className="rounded border border-[var(--line)] p-4">
+        <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
           <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till år
           </summary>

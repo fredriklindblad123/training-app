@@ -626,8 +626,8 @@ export default async function TavlingsresultatPage({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-10 px-6 py-8">
-      <h1 className="text-2xl font-semibold text-[var(--foreground)]">Tävlingsresultat</h1>
+    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+      <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Tävlingsresultat</h1>
 
       {scoped.role === "coach" && (
         <AthleteSwitcher
@@ -640,7 +640,7 @@ export default async function TavlingsresultatPage({
 
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-[var(--foreground)]">Grenutveckling</h2>
+          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Grenutveckling</h2>
           <p className="text-sm text-[var(--ink-3)]">
             Välj en eller flera grenar för att se dem som egna kurvor i samma graf — minst en
             måste vara vald. Y-axeln är
@@ -890,7 +890,7 @@ export default async function TavlingsresultatPage({
 
       {/* ---------------- Tävlingar ---------------- */}
       <section id="tavlingar" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-[var(--foreground)]">Tävlingar</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Tävlingar</h2>
         {/* Texten lovade tidigare att "prioriteten styr hur planeringen toppar" och att
             en A-tävling "får en nedtrappning före sig". Det gjorde den aldrig: priority
             förekommer inte i template-sync.ts, planning.ts, plan-matching.ts eller
