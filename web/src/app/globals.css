@@ -5,12 +5,26 @@
   --foreground: #171717;
 
   /* Kategorisk palett för träningspass-kategorier (activities.category).
-     Fast slot-ordning, se web/src/lib/categories.ts. */
+     Fast slot-ordning, se web/src/lib/categories.ts.
+
+     Tre färger justerade 2026-09-13 efter att paletten körts genom en
+     validator som mäter kontrast, färgblindhetsseparation och ljushetsband
+     i stället för att bedöma dem med ögat. Två kontroller föll ut:
+
+       LJUST  kontrast mot ytan under 3:1 — tröskel 2,74:1, intervall 2,11:1.
+              Båda mörkade tills de klarar gränsen.
+       MÖRKT  tävling ↔ intervall låg på ΔE 6,9 för protanopi, i golvbandet.
+
+     Den djupare orsaken till det andra: tävling och tröskel var BÅDA gröna,
+     och tävling var dessutom enda färgen med identisk hex i ljust och mörkt
+     läge. Tävling flyttas därför till magenta — en lucka som stod tom i
+     paletten — i stället för att finjusteras inom grönt. Efter ändringen
+     klarar båda lägena samtliga sex kontroller (ΔE 6,9 → 8,4). */
   --cat-easy: #2a78d6;
   --cat-long_run: #eb6834;
-  --cat-threshold: #1baf7a;
-  --cat-interval: #eda100;
-  --cat-race: #008300;
+  --cat-threshold: #0f8f63;
+  --cat-interval: #a97400;
+  --cat-race: #bc3a86;
   --cat-strength: #4a3aa7;
   --cat-cross_training: #e34948;
 
@@ -75,7 +89,7 @@
     --cat-long_run: #d95926;
     --cat-threshold: #199e70;
     --cat-interval: #c98500;
-    --cat-race: #008300;
+    --cat-race: #d957a8;
     --cat-strength: #9085e9;
     --cat-cross_training: #e66767;
 
@@ -103,8 +117,42 @@
   }
 }
 
+/* Ytor och linjer för kortsystemet. Appen hade tidigare ingen ytnivå alls —
+   noll filer använde en kortyta, allt låg kant i kant mot bakgrunden, vilket
+   är den enskilt största orsaken till att den läste som ett kalkylblad
+   snarare än ett instrument. Neutralerna är svagt blåtonade, inte rena
+   gråtoner: en vald neutral, inte en ärvd. */
+:root {
+  --surface: #ffffff;
+  --surface-raised: #edf0f1;
+  --line: #dce3e5;
+  --ink-2: #4c5a61;
+  --ink-3: #78868d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #151a1d;
+    --surface-raised: #1e262a;
+    --line: #263136;
+    --ink-2: #a7b4ba;
+    --ink-3: #7c8a91;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Låg tidigare som `Arial, Helvetica, sans-serif` och skrev därmed över
+     Geist, som layout.tsx laddar och lägger på <html> som --font-geist-sans.
+     Appen renderade alltså i Arial trots att rätt typsnitt fanns i bundlen —
+     ingen komponent använde font-sans, så ingenting tog tillbaka det. */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Tabellsiffror överallt där tal ska stå i kolumn — nyckeltal, tabeller,
+   diagramaxlar. Utan detta hoppar siffrorna i sidled när värdet ändras. */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
