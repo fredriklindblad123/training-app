@@ -891,9 +891,16 @@ export default async function TavlingsresultatPage({
       {/* ---------------- Tävlingar ---------------- */}
       <section id="tavlingar" className="flex flex-col gap-3">
         <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
+        {/* Texten lovade tidigare att "prioriteten styr hur planeringen toppar" och att
+            en A-tävling "får en nedtrappning före sig". Det gjorde den aldrig: priority
+            förekommer inte i template-sync.ts, planning.ts, plan-matching.ts eller
+            block-stats.ts, utan färgar bara markörer och väljer nästa A-tävling. Löftet
+            togs bort 2026-09-13 i stället för att byggas — planeringen ska styras av
+            tränaren, inte av ett antagande appen gör åt honom. */}
         <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
-          Prioriteten styr hur planeringen toppar. A är säsongens huvudmål och får en
-          nedtrappning före sig; C är träningstävling och planeras rakt igenom.
+          Prioriteten märker upp säsongen: A är huvudmålen, C träningstävlingar. Den visas i
+          tidslinjen och väljer &quot;Nästa A-tävling&quot;, men styr ingen planering — hur
+          veckorna ser ut inför ett lopp bestämmer du i Blockplan och Detaljplan.
         </p>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
