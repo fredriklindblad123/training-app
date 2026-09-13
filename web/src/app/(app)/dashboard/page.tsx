@@ -4,6 +4,7 @@ import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/a
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
+import { Card } from "@/components/ui/Card";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
@@ -522,7 +523,7 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Dashboard</h1>
+      <h1 className="text-2xl font-semibold text-[var(--foreground)]">Dashboard</h1>
 
       {scoped.role === "coach" && (
         <AthleteSwitcher
@@ -537,26 +538,26 @@ export default async function DashboardPage({
           horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
           ändras inte dag för dag, så de hör hemma bredvid varandra, inte i
           "dagens" brus. --------------------------------------------------- */}
-      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Form och kondition</h2>
+      <Card className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Form och kondition</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {formRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* --- Volym och belastning: egen sektion, rullande 7 dagar mot årets
           snitt per vecka (P1.5) — flyttad hit från den borttagna /veckan
           2026-08-13. ---------------------------------------------------- */}
-      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Volym och belastning</h2>
+      <Card className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Volym och belastning</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* --- K3: beredskap kopplad till morgondagens pass. Visas bara när
           avvikelsen (P1.2) och ett kvalitetspass imorgon båda är sanna —
@@ -586,20 +587,20 @@ export default async function DashboardPage({
 
       {/* --- Kontinuitet (K6): den enda långa horisonten på den här sidan,
           ett ankare mot dagens brus. --------------------------------------- */}
-      <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Kontinuitet</h2>
+      <Card className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Kontinuitet</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {continuityRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
         </div>
-      </div>
+      </Card>
 
       {/* --- Status mot baslinje (P1.2), fast 7-dagarsfönster -------------- */}
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Dagens pass</h2>
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Dagens pass</h2>
         {sessions.length === 0 ? (
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
             Inget pass loggat idag ännu.{" "}
@@ -613,7 +614,7 @@ export default async function DashboardPage({
             {sessions.map((s) => (
               <li
                 key={s.id}
-                className="flex items-center justify-between gap-3 rounded border border-zinc-200 px-4 py-3 dark:border-zinc-800"
+                className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3"
               >
                 <div className="flex items-center gap-2">
                   <span

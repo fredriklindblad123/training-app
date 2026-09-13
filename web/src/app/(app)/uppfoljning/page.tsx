@@ -15,6 +15,9 @@ import {
 } from "@/lib/sessions";
 import type { PlannedWorkout } from "@/lib/plan-matching";
 import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
+import { Card, CardHeader } from "@/components/ui/Card";
+import { Chip } from "@/components/ui/Chip";
+import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
   PERIOD_KINDS,
   PERIOD_LABELS,
@@ -226,8 +229,8 @@ export default async function UppfoljningPage({
   return (
     <div className="flex flex-1 flex-col gap-6 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Uppföljning</h1>
-        <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+        <h1 className="text-2xl font-semibold text-[var(--foreground)]">Uppföljning</h1>
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Alla dina löpare sida vid sida: hur många pass som var planerade, hur många som blev
           gjorda och hur de fördelade sig. Samma uträkning som blockstatistiken på Blockplan, så
           siffrorna kan aldrig säga emot varandra.
@@ -277,7 +280,7 @@ export default async function UppfoljningPage({
                 →
               </span>
             )}
-            <span className="text-xs text-zinc-400 dark:text-zinc-500">
+            <span className="text-xs text-[var(--ink-3)]">
               {period.startDate} – {period.endDate}
             </span>
           </div>
@@ -302,80 +305,112 @@ export default async function UppfoljningPage({
 
       {period && rows.length > 0 && (
         <>
+          {/* Överblicken före detaljen: summan över hela gruppen, så man ser om
+              perioden alls blev gjord innan man läser åtta kolumner per löpare.
+              Räknas ur samma `rows` som tabellen nedanför och kan därför aldrig
+              säga något annat. */}
+          <StatRow columns={4}>
+            <StatCell>
+              <Stat label="Löpare" value={rows.length} sub={PERIOD_LABELS[kind].toLowerCase()} />
+            </StatCell>
+            <StatCell>
+              <Stat
+                label="Planerade pass"
+                value={rows.reduce((n, r) => n + r.stats.plannedCount, 0)}
+                sub="exkl. vilodagar"
+              />
+            </StatCell>
+            <StatCell>
+              <Stat
+                label="Genomförda"
+                value={rows.reduce((n, r) => n + r.stats.sessionCount, 0)}
+                sub={`${rows.reduce((n, r) => n + r.stats.unplannedCount, 0)} oplanerade`}
+              />
+            </StatCell>
+            <StatCell>
+              <Stat
+                label="Distans"
+                value={rows.reduce((n, r) => n + r.stats.actualKm, 0).toFixed(1)}
+                unit="km"
+                sub="genomfört"
+              />
+            </StatCell>
+          </StatRow>
+
           {/* Tabellen scrollar i sin egen behållare — sidan i sig ska aldrig
               scrolla i sidled, och åtta kolumner får inte plats på en telefon. */}
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
             <table className="w-full min-w-3xl border-collapse text-sm">
               <thead>
-                <tr className="border-b border-zinc-200 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-                  <th scope="col" className="py-2 pr-4 font-medium">Löpare</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Planerat</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Genomfört</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Efterlevnad</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Kvalitet</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Distans</th>
-                  <th scope="col" className="py-2 pr-4 font-medium">Tid</th>
-                  <th scope="col" className="py-2 font-medium">Tävlingar</th>
+                <tr className="border-b border-[var(--line)] text-left text-[0.6875rem] tracking-wider text-[var(--ink-3)] uppercase">
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Löpare</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Planerat</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Genomfört</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Efterlevnad</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Kvalitet</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Distans</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Tid</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Tävlingar</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map(({ athlete, stats }) => {
                   const share = complianceShare(stats);
                   return (
-                    <tr key={athlete.id} className="border-b border-zinc-100 dark:border-zinc-900">
-                      <th scope="row" className="py-2 pr-4 text-left font-medium text-zinc-900 dark:text-zinc-100">
+                    <tr key={athlete.id} className="border-b border-[var(--line)] last:border-0">
+                      <th scope="row" className="px-3 py-2.5 text-left font-medium text-[var(--foreground)]">
                         <Link href={`/dashboard?athlete=${athlete.id}`} className="hover:underline">
                           {athlete.fullName ?? "Namnlös löpare"}
                         </Link>
                       </th>
-                      <td className="py-2 pr-4 text-zinc-700 dark:text-zinc-300">
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {stats.plannedCount}
                         {stats.plannedRestDays > 0 && (
-                          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                          <span className="text-xs text-[var(--ink-3)]">
                             {" "}
                             +{stats.plannedRestDays} vila
                           </span>
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-zinc-700 dark:text-zinc-300">
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {stats.sessionCount}
                         {stats.unplannedCount > 0 && (
-                          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                          <span className="text-xs text-[var(--ink-3)]">
                             {" "}
                             varav {stats.unplannedCount} oplanerade
                           </span>
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-zinc-700 dark:text-zinc-300">
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {/* Ingen färgskala här med flit: docs/tranarloopen.md
                             avsnitt 6 — rött för vad någon gjort eller inte
                             gjort hör inte hemma i appen. Talet står för sig. */}
                         {share == null ? (
-                          <span className="text-zinc-400 dark:text-zinc-600">inget planerat</span>
+                          <span className="text-[var(--ink-3)]">inget planerat</span>
                         ) : (
                           `${stats.completedCount} av ${stats.plannedCount + stats.plannedRestDays} · ${pct(share)}`
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-zinc-700 dark:text-zinc-300">
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {stats.qualityPlanned === 0 ? (
-                          <span className="text-zinc-400 dark:text-zinc-600">—</span>
+                          <span className="text-[var(--ink-3)]">—</span>
                         ) : (
                           `${stats.qualityCompleted} av ${stats.qualityPlanned}`
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-zinc-700 dark:text-zinc-300">
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {stats.actualKm.toFixed(1)} km
                         {stats.plannedKm != null && (
-                          <span className="text-xs text-zinc-400 dark:text-zinc-500">
+                          <span className="text-xs text-[var(--ink-3)]">
                             {" "}
                             / plan {stats.plannedKm.toFixed(1)}
                           </span>
                         )}
                       </td>
-                      <td className="py-2 pr-4 text-zinc-700 dark:text-zinc-300">
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {stats.actualHours.toFixed(1)} h
                       </td>
-                      <td className="py-2 text-zinc-700 dark:text-zinc-300">
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {stats.competitionCount}
                       </td>
                     </tr>
@@ -389,41 +424,32 @@ export default async function UppfoljningPage({
               kategorifärger (workoutTypeColorVar) som Blockplans
               blockstatistik, så en typ ser likadan ut var man än möter den. */}
           <section className="flex flex-col gap-3">
-            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            <h2 className="text-lg font-semibold text-[var(--foreground)]">
               Planerade pass per typ
             </h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {rows.map(({ athlete, stats }) => (
-                <div key={athlete.id} className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-                  <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                    {athlete.fullName ?? "Namnlös löpare"}
-                  </div>
+                <Card key={athlete.id} className="flex flex-col gap-3">
+                  <CardHeader
+                    title={athlete.fullName ?? "Namnlös löpare"}
+                    detail={stats.plannedCount > 0 ? `${stats.plannedCount} pass` : undefined}
+                  />
                   {stats.plannedByType.length === 0 ? (
-                    <p className="mt-2 text-sm text-zinc-400 dark:text-zinc-600">
-                      Inget planerat den här perioden.
-                    </p>
+                    <p className="text-sm text-[var(--ink-3)]">Inget planerat den här perioden.</p>
                   ) : (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5">
                       {stats.plannedByType.map((row) => (
-                        <span
+                        <Chip
                           key={row.type}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+                          colorVar={workoutTypeColorVar(row.type) ?? undefined}
+                          ghost={workoutTypeColorVar(row.type) == null}
                         >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={
-                              workoutTypeColorVar(row.type)
-                                ? { backgroundColor: workoutTypeColorVar(row.type) as string }
-                                : { border: "1.5px dashed currentColor" }
-                            }
-                            aria-hidden="true"
-                          />
                           {WORKOUT_LABELS[row.type as WorkoutType] ?? row.type} · {row.count}
-                        </span>
+                        </Chip>
                       ))}
                     </div>
                   )}
-                </div>
+                </Card>
               ))}
             </div>
           </section>
