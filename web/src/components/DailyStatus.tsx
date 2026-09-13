@@ -96,7 +96,7 @@ export function DailyStatus({
     <div className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Status</h2>
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Status</h2>
           {periodLabel && (
             <p className="text-xs text-[var(--ink-3)]">{periodLabel}</p>
           )}

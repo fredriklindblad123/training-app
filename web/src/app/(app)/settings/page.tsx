@@ -47,12 +47,12 @@ export default async function SettingsPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
         Inställningar
       </h1>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Garmin-koppling
         </h2>
         <p className="text-sm text-[var(--ink-3)]">
@@ -136,7 +136,7 @@ export default async function SettingsPage({
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Personligt tröskelband
         </h2>
         <p className="max-w-2xl text-sm text-[var(--ink-3)]">
@@ -216,7 +216,7 @@ export default async function SettingsPage({
 
       {scoped?.role === "coach" && (
         <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             Löpare du coachar
           </h2>
           <p className="max-w-2xl text-sm text-[var(--ink-3)]">

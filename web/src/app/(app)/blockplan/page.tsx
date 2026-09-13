@@ -878,7 +878,7 @@ async function ArsplanOverview({
        * enskilda löparens Block-sektion använder. Ett delat block (flera
        * löpare ikryssade) räknas bara en gång, inte en gång per löpare. */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Block</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Block</h2>
         {sortedAllBlocks.length === 0 ? (
           <p className="text-sm text-[var(--ink-3)]">Inga block skapade ännu.</p>
         ) : (
@@ -900,7 +900,7 @@ async function ArsplanOverview({
        * begäran 2026-08-18) — löpar-kryssrutorna väljer vem/vilka blocket
        * gäller, utan att man först behöver stå på en enskild löpares sida. */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Lägg till block för hand
         </h2>
         <form action={createBlock} className="flex flex-col gap-3 rounded border border-[var(--line)] p-4">
@@ -1009,7 +1009,7 @@ export default async function ArsplanPage({
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Blockplan</h1>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
             löparens block och veckomönster.
@@ -1286,7 +1286,7 @@ export default async function ArsplanPage({
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Årsplan</h1>
+        <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Årsplan</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
           kommer. Dag-för-dag-innehållet i varje veckomall redigeras på{" "}
@@ -1343,7 +1343,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Säsongsöversikt</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Säsongsöversikt</h2>
         <SeasonTimeline blocks={timelineYearBlocks} competitions={timelineYearCompetitions} />
       </section>
 
@@ -1351,7 +1351,7 @@ export default async function ArsplanPage({
       {arsplanWeeks.length > 0 && (
         <section className="flex flex-col gap-3">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Veckorutnät</h2>
+            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Veckorutnät</h2>
             <p className="max-w-3xl text-sm text-[var(--ink-3)]">
               En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
               räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
@@ -1539,7 +1539,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Block</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Block</h2>
         <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Klicka på ett block för att redigera det. Nya block skapas från{" "}
           <Link href="/blockplan?athlete=alla" className="underline">
@@ -1653,7 +1653,7 @@ export default async function ArsplanPage({
       {blockList.length >= 2 && (
         <section className="flex flex-col gap-4">
           <div>
-            <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
               Jämför block
             </h2>
             <p className="text-sm text-[var(--ink-3)]">
@@ -1744,7 +1744,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Tillgänglighet (K7) ---------------- */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Tillgänglighet</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Tillgänglighet</h2>
         <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Tentaveckor, lov, läger och resor styr träningen minst lika mycket som
           periodiseringen, men syns ingen annanstans i appen. Det här är bara kontext som gör

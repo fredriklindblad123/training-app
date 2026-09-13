@@ -9,7 +9,7 @@ export default async function PrivatePage() {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 py-16 text-center">
-      <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
         Inloggad som {user?.email}
       </h1>
       <Link

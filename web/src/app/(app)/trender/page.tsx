@@ -640,7 +640,7 @@ export default async function TrendsPage({
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Trender</h1>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Trender</h1>
           {activeBlock ? (
             <p className="text-sm text-[var(--ink-3)]">
               <strong className="font-medium text-[var(--foreground)]">{activeBlock.name}</strong> (
@@ -701,7 +701,7 @@ export default async function TrendsPage({
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <div className="flex flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
             <dt className="text-sm text-[var(--ink-3)]">Konsekvens (CV)</dt>
-            <dd className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">{loadCv.toFixed(2)}</dd>
+            <dd className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">{loadCv.toFixed(2)}</dd>
             <dd className="text-xs text-[var(--ink-3)]">lägre = jämnare vecka för vecka</dd>
           </div>
         </dl>
@@ -738,7 +738,7 @@ export default async function TrendsPage({
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             Belastning och återhämtning
           </h2>
           <p className="text-sm text-[var(--ink-3)]">
@@ -826,7 +826,7 @@ export default async function TrendsPage({
       {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Intensitetsfördelning</h2>
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h2>
           <p className="text-sm text-[var(--ink-3)]">
             Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
             {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
@@ -844,7 +844,7 @@ export default async function TrendsPage({
       {/* ================= C. Formkurva (P1.4) ============================= */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             Formkurva (Efficiency Factor)
           </h2>
           <p className="text-sm text-[var(--ink-3)]">
@@ -874,7 +874,7 @@ export default async function TrendsPage({
 
       {/* ============ P2.1: passkvalitet ============ */}
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Passkvalitet: återkommande nyckelpass
         </h2>
         <SessionQuality groups={signatureGroups} />

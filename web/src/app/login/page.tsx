@@ -9,7 +9,7 @@ export default async function LoginPage({
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16">
-      <h1 className="text-2xl font-semibold text-[var(--foreground)]">
+      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
         Logga in
       </h1>
 

@@ -47,7 +47,7 @@ export function Card({ children, raised = false, className = "" }: CardProps) {
 export function CardHeader({ title, detail }: { title: ReactNode; detail?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-      <h3 className="text-sm font-semibold text-[var(--foreground)]">{title}</h3>
+      <h3 className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">{title}</h3>
       {detail && <span className="text-xs text-[var(--ink-3)]">{detail}</span>}
     </div>
   );

@@ -229,7 +229,7 @@ export default async function UppfoljningPage({
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Uppföljning</h1>
+        <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Uppföljning</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Alla dina löpare sida vid sida: hur många pass som var planerade, hur många som blev
           gjorda och hur de fördelade sig. Samma uträkning som blockstatistiken på Blockplan, så
@@ -424,7 +424,7 @@ export default async function UppfoljningPage({
               kategorifärger (workoutTypeColorVar) som Blockplans
               blockstatistik, så en typ ser likadan ut var man än möter den. */}
           <section className="flex flex-col gap-3">
-            <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
               Planerade pass per typ
             </h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

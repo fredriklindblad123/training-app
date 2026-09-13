@@ -76,8 +76,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -143,11 +142,10 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  /* Låg tidigare som `Arial, Helvetica, sans-serif` och skrev därmed över
-     Geist, som layout.tsx laddar och lägger på <html> som --font-geist-sans.
-     Appen renderade alltså i Arial trots att rätt typsnitt fanns i bundlen —
-     ingen komponent använde font-sans, så ingenting tog tillbaka det. */
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+  /* Låg fram till 2026-09-13 som `Arial, Helvetica, sans-serif` och skrev
+     därmed över typsnittet layout.tsx laddar — appen renderade i Arial trots
+     att rätt snitt fanns i bundlen. Numera Barlow, se layout.tsx för valet. */
+  font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system,
     "Helvetica Neue", Arial, sans-serif;
 }
 
@@ -155,4 +153,11 @@ body {
    diagramaxlar. Utan detta hoppar siffrorna i sidled när värdet ändras. */
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* Displaysnittet: mätvärden, rubriker och versala etiketter. Allt som ska
+   läsas som ett instrument snarare än en mening. */
+.display {
+  font-family: var(--font-display), var(--font-body), ui-sans-serif, sans-serif;
+  letter-spacing: -0.01em;
 }

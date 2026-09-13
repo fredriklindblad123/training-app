@@ -5,6 +5,7 @@ import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
 import { Card } from "@/components/ui/Card";
+import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
@@ -415,6 +416,13 @@ export default async function DashboardPage({
     sleepScore: m.sleep_score,
   }));
   const dailyStatus = computeDailyStatus(statusRows, todayKey, statusCurrentWindowDays);
+
+  /* Senaste raden som faktiskt har ett mätvärde — inte senaste datumet.
+     Klockan laddas inte varje dag, och en tom natt ska inte tömma kortet;
+     då visas gårdagens siffra, vilket är vad en klocka själv gör. */
+  const latestMetric = [...statusRows]
+    .reverse()
+    .find((r) => r.hrv != null || r.restingHr != null || r.sleepHours != null);
   const statusPeriodLabel = `Senaste 7 dagarna mot din ${BASELINE_WINDOW_DAYS}-dagars baslinje`;
 
   // --- K3: beredskap kopplad till morgondagens pass -----------------------
@@ -523,7 +531,7 @@ export default async function DashboardPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Dashboard</h1>
+      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Dashboard</h1>
 
       {scoped.role === "coach" && (
         <AthleteSwitcher
@@ -534,12 +542,50 @@ export default async function DashboardPage({
         />
       )}
 
+      {/* --- Dagens återhämtning, överst och i stort format.
+          Det här är adeptens första fråga varje morgon — "hur mår jag idag" —
+          och den ska gå att läsa utan att klicka. Råvärdena, inte en
+          bedömning: DailyStatus längre ned tolkar dem mot baslinjen, och att
+          färga talen här hade gjort siffran till en dom innan man hunnit se
+          vad den står för. Tomt värde blir "—" hellre än en nolla, som skulle
+          läsas som ett mätvärde. --------------------------------------- */}
+      <StatRow columns={3}>
+        <StatCell>
+          <Stat
+            label="HRV"
+            value={latestMetric?.hrv != null ? Math.round(latestMetric.hrv) : "—"}
+            unit={latestMetric?.hrv != null ? "ms" : undefined}
+            sub="senaste natten"
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Vilopuls"
+            value={latestMetric?.restingHr != null ? Math.round(latestMetric.restingHr) : "—"}
+            unit={latestMetric?.restingHr != null ? "spm" : undefined}
+            sub="senaste natten"
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Sömn"
+            value={
+              latestMetric?.sleepHours != null
+                ? latestMetric.sleepHours.toFixed(1).replace(".", ",")
+                : "—"
+            }
+            unit={latestMetric?.sleepHours != null ? "h" : undefined}
+            sub="senaste natten"
+          />
+        </StatCell>
+      </StatRow>
+
       {/* --- Form och kondition: överst på sidan, egen sektion. Långa
           horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
           ändras inte dag för dag, så de hör hemma bredvid varandra, inte i
           "dagens" brus. --------------------------------------------------- */}
       <Card className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Form och kondition</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Form och kondition</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {formRings.map((r) => (
             <KpiRing key={r.label} {...r} />
@@ -551,7 +597,7 @@ export default async function DashboardPage({
           snitt per vecka (P1.5) — flyttad hit från den borttagna /veckan
           2026-08-13. ---------------------------------------------------- */}
       <Card className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Volym och belastning</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Volym och belastning</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
@@ -588,7 +634,7 @@ export default async function DashboardPage({
       {/* --- Kontinuitet (K6): den enda långa horisonten på den här sidan,
           ett ankare mot dagens brus. --------------------------------------- */}
       <Card className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Kontinuitet</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Kontinuitet</h2>
         <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
           {continuityRings.map((r) => (
             <KpiRing key={r.label} {...r} />
@@ -600,7 +646,7 @@ export default async function DashboardPage({
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">Dagens pass</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Dagens pass</h2>
         {sessions.length === 0 ? (
           <p className="text-sm text-[var(--ink-3)]">
             Inget pass loggat idag ännu.{" "}
@@ -622,7 +668,7 @@ export default async function DashboardPage({
                     style={{ backgroundColor: categoryColorVar(s.category) }}
                   />
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium text-[var(--foreground)]">
+                    <span className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">
                       {s.dominantActivity.name?.trim() || CATEGORY_LABELS[s.category]}
                     </span>
                     <span className="text-xs text-[var(--ink-3)]">

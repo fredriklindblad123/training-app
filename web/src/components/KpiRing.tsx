@@ -77,7 +77,7 @@ export function KpiRing({
   return (
     <details className="group flex flex-col items-center gap-1.5 rounded-lg p-2 text-center hover:bg-[var(--surface-raised)]">
       <summary className="flex cursor-pointer list-none flex-col items-center gap-1.5 [&::-webkit-details-marker]:hidden">
-        <span className="text-sm font-medium text-[var(--foreground)]">{label}</span>
+        <span className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">{label}</span>
         <div className="relative flex shrink-0" style={{ width: RING_SIZE, height: RING_SIZE }}>
           <svg
             width={RING_SIZE}

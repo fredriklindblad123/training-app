@@ -49,7 +49,7 @@ function AthleteColumn({
   return (
     <div className="flex min-w-[26rem] flex-1 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
+        <span className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           {athlete.fullName ?? "Namnlös löpare"}
         </span>
         <Link
@@ -127,7 +127,7 @@ export default async function PassDayPage({
         >
           ← Detaljplan
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
+        <h1 className="display mt-2 text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
           {weekdayLabel(dateKey)} {dateKey}
         </h1>
         <p className="mt-1 text-sm text-[var(--ink-3)]">

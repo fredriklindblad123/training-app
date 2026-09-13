@@ -39,7 +39,7 @@ export function PageHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">{title}</h1>
+        <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">{title}</h1>
         {lead && <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">{lead}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -70,7 +70,7 @@ export function Section({
     <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">{title}</h2>
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">{title}</h2>
           {description && (
             <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">{description}</p>
           )}

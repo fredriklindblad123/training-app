@@ -78,7 +78,7 @@ export default async function FlerarsplanPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">Flerårsplan</h1>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Flerårsplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Mål, volym och tävlingar/läger per år — motsvarar Flerårsplan-fliken i mallen
             från Svensk Friidrott. Kan laddas ner ifylld nedan.

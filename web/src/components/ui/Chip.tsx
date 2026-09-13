@@ -27,7 +27,7 @@ export function Chip({
 }) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap ${
+      className={`display inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium tracking-[0.01em] whitespace-nowrap ${
         ghost
           ? "border-dashed border-[var(--line)] text-[var(--ink-3)]"
           : "border-[var(--line)] text-[var(--ink-2)]"

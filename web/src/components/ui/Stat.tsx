@@ -43,23 +43,28 @@ export function Stat({
   /** `lg` för ensamma hjältetal, `md` i en rad av flera, `sm` inuti en lista. */
   size?: "sm" | "md" | "lg";
 }) {
+  /* Storlekarna kommer ur prototypen: hjältetalet ~54px, radens tal ~30px,
+     listans ~20px. Förhållandet till etiketten (11px) är ungefär 5:1, 3:1 och
+     2:1 — det är den spännvidden som gör att ögat hittar talet utan att läsa
+     etiketten först. `leading-none` för att ett tal inte har underlängder och
+     annars får ett tomrum under sig som bryter radens grundlinje. */
   const valueClass =
     size === "lg"
-      ? "text-4xl leading-none"
+      ? "text-[3.25rem] leading-none"
       : size === "sm"
-        ? "text-lg leading-tight"
-        : "text-2xl leading-none";
+        ? "text-xl leading-none"
+        : "text-[1.875rem] leading-none";
   const toneVar = TONE_VAR[tone];
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="text-[0.6875rem] font-semibold tracking-wider text-[var(--ink-3)] uppercase">
+      <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
         {label}
       </div>
-      <div className={`tabular font-semibold text-[var(--foreground)] ${valueClass}`}>
+      <div className={`display tabular font-bold text-[var(--foreground)] ${valueClass}`}>
         {value}
         {unit && (
-          <span className="ml-1 text-[0.55em] font-medium text-[var(--ink-3)]">{unit}</span>
+          <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">{unit}</span>
         )}
       </div>
       {sub && (

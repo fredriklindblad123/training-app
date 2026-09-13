@@ -13,7 +13,7 @@ export default async function Home() {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[var(--background)] px-6 text-center">
-      <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+      <h1 className="display text-[2.75rem] leading-[1.05] font-bold text-[var(--foreground)]">
         Träningsapp
       </h1>
       <p className="max-w-md text-lg text-[var(--ink-2)]">

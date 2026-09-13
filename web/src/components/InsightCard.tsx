@@ -50,7 +50,7 @@ export function InsightCard({
           style={{ backgroundColor: TONE_MARKER_VAR[tone] }}
           title={TONE_LABEL[tone]}
         />
-        <span className="text-sm font-medium text-[var(--foreground)]">{headline}</span>
+        <span className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">{headline}</span>
       </summary>
       <div className="mt-2 flex flex-col items-start gap-2 pl-3.5">
         <p className="text-xs text-[var(--ink-3)]">{detail}</p>
