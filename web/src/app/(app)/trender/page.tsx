@@ -4,6 +4,7 @@ import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/a
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
+import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
   ComboChart,
   type ComboEvent,
@@ -717,6 +718,61 @@ export default async function TrendsPage({
           dayTypeByDate={blockDayTypeByDate}
         />
       )}
+
+      {/* Periodens nyckeltal, före både påståenden och diagram.
+          Sidan har sex sektioner och ingen av dem svarar på "hur stor var
+          perioden" — det fick man räkna ut själv genom att läsa staplarna.
+          Fyra tal räcker: hur mycket, hur långt, hur ofta, och hur mycket av
+          planen som blev gjord. Tomt urval ger "—", aldrig en nolla som
+          skulle läsas som ett uppmätt värde. */}
+      <StatRow columns={4}>
+        <StatCell>
+          <Stat
+            label="Pass"
+            value={sessions.length > 0 ? sessions.length : "—"}
+            sub={`${weekSeries.length} veckor`}
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Distans"
+            value={
+              sessions.length > 0
+                ? (sessions.reduce((n, s) => n + s.distanceMeters, 0) / 1000)
+                    .toFixed(0)
+                : "—"
+            }
+            unit={sessions.length > 0 ? "km" : undefined}
+            sub="genomfört"
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Belastning"
+            value={
+              sessions.length > 0
+                ? Math.round(sessions.reduce((n, s) => n + s.trainingLoad, 0))
+                : "—"
+            }
+            sub={
+              weekSeries.length > 0 && sessions.length > 0
+                ? `${Math.round(sessions.reduce((n, s) => n + s.trainingLoad, 0) / weekSeries.length)}/vecka`
+                : undefined
+            }
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Efterlevnad"
+            value={
+              blockCompliance && blockCompliance.plannedCount > 0
+                ? `${blockCompliance.completedCount}/${blockCompliance.plannedCount}`
+                : "—"
+            }
+            sub={blockCompliance ? "av planen" : "inget block"}
+          />
+        </StatCell>
+      </StatRow>
 
       {/* L3: påståenden före diagram. Sidan har sex sektioner — den här
           ytan säger vad som är värt att titta på, i stället för att man ska

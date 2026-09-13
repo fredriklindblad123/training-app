@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
+import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { createCompetition, deleteCompetition, saveEventResult } from "./actions";
 import {
@@ -637,6 +638,56 @@ export default async function TavlingsresultatPage({
           buildHref={athleteHref}
         />
       )}
+
+      {/* Karriären i fyra tal. Sidan öppnade tidigare direkt i grenväljaren,
+          så omfattningen — hur många lopp, hur länge, vad som väntar — fanns
+          bara underförstådd i diagrammet. "Nästa" räknas ur framtida datum,
+          inte ur prioritet: ett lopp nästa vecka är mer relevant än ett
+          A-lopp om ett halvår, och prioriteten styr ingen planering. */}
+      <StatRow columns={4}>
+        <StatCell>
+          <Stat
+            label="Tävlingar"
+            value={allCompetitions.length > 0 ? allCompetitions.length : "—"}
+            sub="totalt inlagda"
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Tidtagna lopp"
+            value={eventResults.length > 0 ? eventResults.length : "—"}
+            sub={`${eventOptions.length} grenar`}
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Säsonger"
+            value={competitionYears.length > 0 ? competitionYears.length : "—"}
+            sub={
+              competitionYears.length > 0
+                ? `${competitionYears[competitionYears.length - 1]}–${competitionYears[0]}`
+                : undefined
+            }
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Nästa tävling"
+            value={(() => {
+              const next = allCompetitions
+                .filter((c) => c.competition_date >= todayKey)
+                .sort((a, b) => a.competition_date.localeCompare(b.competition_date))[0];
+              return next ? next.competition_date.slice(5).replace("-", "/") : "—";
+            })()}
+            sub={(() => {
+              const next = allCompetitions
+                .filter((c) => c.competition_date >= todayKey)
+                .sort((a, b) => a.competition_date.localeCompare(b.competition_date))[0];
+              return next ? next.name : "inget inlagt";
+            })()}
+          />
+        </StatCell>
+      </StatRow>
 
       <section className="flex flex-col gap-4">
         <div>

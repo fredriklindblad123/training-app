@@ -36,7 +36,7 @@ import {
   type WorkoutType,
 } from "@/lib/planning";
 import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
-import { Stat } from "@/components/ui/Stat";
+import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
   createAvailabilityPeriod,
   createBlock,
@@ -1309,37 +1309,46 @@ export default async function ArsplanPage({
         />
       )}
 
-      {/* ---------------- Läget just nu ---------------- */}
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded border border-[var(--line)] p-4">
-          <div className="text-xs text-[var(--ink-3)]">Aktuellt block</div>
-          <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
-            {activeBlock ? activeBlock.name : "Inget block"}
-          </div>
-          {activeBlock && (
-            <div className="text-sm text-[var(--ink-3)]">
-              {PHASE_LABELS[activeBlock.phase]} · slutar {activeBlock.end_date}
-            </div>
-          )}
-        </div>
-        <div className="rounded border border-[var(--line)] p-4">
-          <div className="text-xs text-[var(--ink-3)]">Nästa A-tävling</div>
-          <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
-            {nextA ? nextA.name : "Ingen inlagd"}
-          </div>
-          {nextA && (
-            <div className="text-sm text-[var(--ink-3)]">
-              {nextA.competition_date} · {weeksBetween(today, nextA.competition_date) - 1} veckor kvar
-            </div>
-          )}
-        </div>
-        <div className="rounded border border-[var(--line)] p-4">
-          <div className="text-xs text-[var(--ink-3)]">Planerade pass framåt</div>
-          <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
-            {(plannedCounts ?? []).length}
-          </div>
-        </div>
-      </section>
+      {/* ---------------- Läget just nu ----------------
+          Tre kort som tidigare satte etiketten i text-xs och värdet i text-lg,
+          alltså nästan samma storlek — de läste som brödtext med en rubrik
+          över. Nu samma Stat som resten av appen. Blocknamn och tävlingsnamn
+          är text, inte tal, så de får `sm`: ett namn i hjältestorlek radbryter
+          och tappar poängen med stora siffror. Veckorna kvar är däremot ett
+          tal och står som sådant. */}
+      <StatRow columns={3}>
+        <StatCell>
+          <Stat
+            size="sm"
+            label="Aktuellt block"
+            value={activeBlock ? activeBlock.name : "Inget block"}
+            sub={
+              activeBlock
+                ? `${PHASE_LABELS[activeBlock.phase]} · slutar ${activeBlock.end_date}`
+                : "ingen period täcker idag"
+            }
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            size="sm"
+            label="Nästa A-tävling"
+            value={nextA ? nextA.name : "Ingen inlagd"}
+            sub={
+              nextA
+                ? `${nextA.competition_date} · ${weeksBetween(today, nextA.competition_date) - 1} veckor kvar`
+                : undefined
+            }
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Planerade pass framåt"
+            value={(plannedCounts ?? []).length}
+            sub="från och med idag"
+          />
+        </StatCell>
+      </StatRow>
 
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-4">
