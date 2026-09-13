@@ -163,7 +163,7 @@ export const COMMON_EVENTS = [
  * Passtyper i en veckomall och i `planned_workouts.workout_type`.
  *
  * Medvetet identiska med `activities.category` (se lib/categories.ts), plus
- * `rest` som bara finns i planen. Tidigare använde planeringen ett eget
+ * `rest`, `test` och `hurdles` som bara finns i planen. Tidigare använde planeringen ett eget
  * ordförråd (`tempo`, `long`) medan utfallet använde ett annat (`threshold`,
  * `long_run`). Det gjorde två saker fel samtidigt: färgvariablerna
  * `--cat-tempo` och `--cat-long` finns inte, så planerade pass ritades utan
@@ -181,6 +181,14 @@ export const WORKOUT_TYPES = [
   "cross_training",
   "test",
   "rest",
+  // Grenteknik. Tillagd 2026-09-13 (uttrycklig begäran): häckträningen låg
+  // dessförinnan som `interval` med träningsfaktorn koordination, vilket
+  // blåste upp intervallstatistiken för den som kör den — häckskolning är
+  // teknikarbete, inte ett intervallpass. Saknar motsvarighet bland
+  // genomförda pass precis som `rest` och `test`: Garmin har ingen
+  // häck-kategori, så ett utfört häckpass dyker upp som något annat eller
+  // inte alls. Därför färglös i workoutTypeColorVar nedan.
+  "hurdles",
 ] as const;
 
 export type WorkoutType = (typeof WORKOUT_TYPES)[number];
@@ -195,6 +203,7 @@ export const WORKOUT_LABELS: Record<WorkoutType, string> = {
   cross_training: "Alternativ träning",
   test: "Tröskeltest",
   rest: "Vila",
+  hurdles: "Häck",
 };
 
 /** Fältprotokollet för ett tröskeltest, ur docs/insikter-roadmap.md (P1.3,
@@ -219,12 +228,14 @@ export const QUALITY_WORKOUT_TYPES: readonly WorkoutType[] = [
   "test",
 ];
 
-/** Vilodagar och tröskeltest har ingen motsvarighet bland genomförda pass —
- * `rest` är ingen träning alls, och `test` är ett testtillfälle, inte en
- * träningskategori. Allt annat matchar en `ActivityCategory` rakt av. */
+/** Vilodagar, tröskeltest och häck har ingen motsvarighet bland genomförda
+ * pass — `rest` är ingen träning alls, `test` är ett testtillfälle, och
+ * `hurdles` är grenteknik som Garmin inte har någon kategori för. Allt annat
+ * matchar en `ActivityCategory` rakt av. */
 export function workoutTypeColorVar(type: string): string | null {
   return type === "rest" ||
     type === "test" ||
+    type === "hurdles" ||
     !(WORKOUT_TYPES as readonly string[]).includes(type)
     ? null
     : `var(--cat-${type})`;
