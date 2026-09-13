@@ -17,7 +17,7 @@ import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
  * väljaren. */
 
 const input =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm bg-[var(--surface)]";
 const primaryBtn =
   "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
 

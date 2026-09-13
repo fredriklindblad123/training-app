@@ -102,9 +102,9 @@ import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@
  * och lib/blockplan-grid.ts. */
 
 const input =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
+  "rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-sm";
 const primaryBtn =
-  "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
+  "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -152,7 +152,7 @@ function AthleteTargetFields({
 function ReadOnlyBlockSummary({ block }: { block: { focus: string | null } }) {
   if (!block.focus) return null;
   return (
-    <div className="mt-4 flex flex-col gap-2 border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+    <div className="mt-4 flex flex-col gap-2 border-t border-[var(--line)] pt-3 text-sm text-[var(--ink-2)]">
       <p>{block.focus}</p>
     </div>
   );
@@ -177,7 +177,7 @@ function ReadOnlyBlockSummary({ block }: { block: { focus: string | null } }) {
  * Detaljplan. */
 function DayPatternFields() {
   return (
-    <div className="flex flex-col gap-2 rounded border border-zinc-100 p-3 dark:border-zinc-800">
+    <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3">
       <div className="text-xs font-medium text-[var(--ink-3)]">
         Veckomönster — typ av pass och träningsfaktor per dag. Rubrik, tid/distans och repgrupper
         fylls i sedan på Detaljplan.
@@ -216,7 +216,7 @@ type BlockCardBlock = TimelineBlock & { focus: string | null };
 function BlockStatsPanel({ stats }: { stats: RangeStats }) {
   const pct = (n: number) => `${Math.round(n * 100)} %`;
   return (
-    <div className="mt-3 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+    <div className="mt-3 flex flex-col gap-3 border-t border-[var(--line)] pt-3">
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
         <Stat size="sm" label="Planerade pass" value={String(stats.plannedCount)} sub={`${stats.passesPerWeek}/vecka`} />
         <Stat
@@ -260,7 +260,7 @@ function BlockStatsPanel({ stats }: { stats: RangeStats }) {
             {stats.plannedByType.map((row: RangeStats["plannedByType"][number]) => (
               <span
                 key={row.type}
-                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5 text-xs text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-2)]"
               >
                 <span
                   className="h-2 w-2 shrink-0 rounded-full"
@@ -305,7 +305,7 @@ function BlockCard({
   stats?: RangeStats;
 }) {
   return (
-    <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+    <details className="rounded border border-[var(--line)] p-4">
       <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="font-medium text-[var(--foreground)]">{b.name}</span>
         <span className="text-sm text-[var(--ink-3)]">
@@ -319,7 +319,7 @@ function BlockCard({
         <div className="mt-4 flex flex-col gap-4">
           <form
             action={updateBlock}
-            className="flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
+            className="flex flex-col gap-3 border-t border-[var(--line)] pt-3"
           >
             <input type="hidden" name="id" value={b.id} />
             <div className="flex flex-wrap items-end gap-3">
@@ -381,7 +381,7 @@ function BlockCard({
             </button>
           </form>
 
-          <div className="border-t border-zinc-100 pt-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+          <div className="border-t border-[var(--line)] pt-3 text-sm text-[var(--ink-2)]">
             <p>
               Veckomönster:{" "}
               {/* Länken bär med sig en löpare som faktiskt är taggad på
@@ -410,7 +410,7 @@ function BlockCard({
             <input type="hidden" name="id" value={b.id} />
             <button
               type="submit"
-              className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+              className="text-xs text-[var(--ink-3)] hover:text-[var(--status-concern)]"
             >
               Ta bort block
             </button>
@@ -848,7 +848,7 @@ async function ArsplanOverview({
           <Link
             key={athlete.id}
             href={`/blockplan?athlete=${athlete.id}`}
-            className="flex flex-wrap items-center gap-4 rounded border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+            className="flex flex-wrap items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 hover:bg-[var(--surface-raised)]"
           >
             <div className="w-32 shrink-0 font-medium text-[var(--foreground)]">
               {athlete.fullName ?? "Namnlös löpare"}
@@ -903,7 +903,7 @@ async function ArsplanOverview({
         <h2 className="text-lg font-semibold tracking-tight text-[var(--foreground)]">
           Lägg till block för hand
         </h2>
-        <form action={createBlock} className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <form action={createBlock} className="flex flex-col gap-3 rounded border border-[var(--line)] p-4">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Namn">
               <input name="name" required placeholder="Grundträning 1" className={input} />
@@ -958,7 +958,7 @@ async function ArsplanOverview({
             Lägg till
           </button>
         </form>
-        <dl className="grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2 dark:text-zinc-400">
+        <dl className="grid grid-cols-1 gap-1 text-xs text-[var(--ink-3)] sm:grid-cols-2">
           {PHASE_TYPES.map((p) => (
             <div key={p}>
               <dt className="inline font-medium text-[var(--ink-2)]">
@@ -1311,7 +1311,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Läget just nu ---------------- */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="rounded border border-[var(--line)] p-4">
           <div className="text-xs text-[var(--ink-3)]">Aktuellt block</div>
           <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
             {activeBlock ? activeBlock.name : "Inget block"}
@@ -1322,7 +1322,7 @@ export default async function ArsplanPage({
             </div>
           )}
         </div>
-        <div className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="rounded border border-[var(--line)] p-4">
           <div className="text-xs text-[var(--ink-3)]">Nästa A-tävling</div>
           <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
             {nextA ? nextA.name : "Ingen inlagd"}
@@ -1333,7 +1333,7 @@ export default async function ArsplanPage({
             </div>
           )}
         </div>
-        <div className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="rounded border border-[var(--line)] p-4">
           <div className="text-xs text-[var(--ink-3)]">Planerade pass framåt</div>
           <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
             {(plannedCounts ?? []).length}
@@ -1360,9 +1360,9 @@ export default async function ArsplanPage({
               som ändå loggats den veckan (&quot;oplanerat&quot;).
             </p>
           </div>
-          <div className="w-full max-w-full overflow-x-auto">
+          <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
             <table className="w-max min-w-full text-left text-xs">
-              <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+              <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
                 <tr className="font-medium text-[var(--foreground)]">
                   <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium bg-[var(--surface)]">
                     Vecka #
@@ -1384,7 +1384,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Period / fas
                   </th>
                   {(() => {
@@ -1408,7 +1408,7 @@ export default async function ArsplanPage({
                   })()}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Pass
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1418,7 +1418,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Dagar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1428,7 +1428,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Timmar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1438,7 +1438,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Tävlingsstarter
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1488,7 +1488,7 @@ export default async function ArsplanPage({
                           <th
                             scope="row"
                             colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 bg-white py-1 text-left font-medium italic text-zinc-500 bg-[var(--surface)] dark:text-zinc-400"
+                            className="sticky left-0 bg-white py-1 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
                           >
                             {TRAINING_FACTOR_GROUP_LABELS[factor.group]}
                           </th>
@@ -1503,7 +1503,7 @@ export default async function ArsplanPage({
                           <th
                             scope="row"
                             colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 bg-white py-1 pl-3 text-left font-medium italic text-zinc-500 bg-[var(--surface)] dark:text-zinc-400"
+                            className="sticky left-0 bg-white py-1 pl-3 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
                           >
                             {TRAINING_FACTOR_SUBGROUP_LABELS[factor.subgroup]}
                           </th>
@@ -1515,7 +1515,7 @@ export default async function ArsplanPage({
                       <tr key={factor.key}>
                         <th
                           scope="row"
-                          className={`sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400 ${
+                          className={`sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)] ${
                             factor.subgroup ? "pl-6" : ""
                           }`}
                         >
@@ -1578,7 +1578,7 @@ export default async function ArsplanPage({
          * den aggregerade nivån blockskapande hör hemma på. Kvar bara här
          * för en självcoachad löpare (ingen Översikt att skapa via). */}
         {canEdit && scoped.role !== "coach" && (
-        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <details className="rounded border border-[var(--line)] p-4">
           <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till block för hand
           </summary>
@@ -1635,7 +1635,7 @@ export default async function ArsplanPage({
               Lägg till
             </button>
           </form>
-          <dl className="mt-4 grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2 dark:text-zinc-400">
+          <dl className="mt-4 grid grid-cols-1 gap-1 text-xs text-[var(--ink-3)] sm:grid-cols-2">
             {PHASE_TYPES.map((p) => (
               <div key={p}>
                 <dt className="inline font-medium text-[var(--ink-2)]">
@@ -1710,7 +1710,7 @@ export default async function ArsplanPage({
           )}
 
           {compareAggregateA && compareAggregateB && (
-            <div className="w-full max-w-full overflow-x-auto">
+            <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
                   <tr className="text-xs text-[var(--ink-3)]">
@@ -1725,7 +1725,7 @@ export default async function ArsplanPage({
                     </th>
                   </tr>
                 </thead>
-                <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
                   {blockComparisonRows(compareAggregateA, compareAggregateB).map((row) => (
                     <tr key={row.label}>
                       <th scope="row" className="py-1.5 pr-4 font-normal text-[var(--ink-2)]">
@@ -1757,7 +1757,7 @@ export default async function ArsplanPage({
             {availabilityList.map((p) => (
               <div
                 key={p.id}
-                className="flex flex-wrap items-baseline justify-between gap-2 rounded border border-zinc-200 p-4 dark:border-zinc-800"
+                className="flex flex-wrap items-baseline justify-between gap-2 rounded border border-[var(--line)] p-4"
               >
                 <div className="flex items-baseline gap-2">
                   <span
@@ -1777,7 +1777,7 @@ export default async function ArsplanPage({
                   <input type="hidden" name="id" value={p.id} />
                   <button
                     type="submit"
-                    className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                    className="text-xs text-[var(--ink-3)] hover:text-[var(--status-concern)]"
                   >
                     Ta bort
                   </button>
@@ -1787,7 +1787,7 @@ export default async function ArsplanPage({
           </div>
         )}
 
-        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <details className="rounded border border-[var(--line)] p-4">
           <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till period
           </summary>
@@ -1832,7 +1832,7 @@ export default async function ArsplanPage({
               {interruptionPeriods.length === 1 ? "period" : "perioder"} senaste året
             </span>
           </summary>
-          <div className="flex flex-col gap-4 border-t border-zinc-200 p-4 dark:border-zinc-800">
+          <div className="flex flex-col gap-4 border-t border-[var(--line)] p-4">
             <p className="text-sm text-[var(--ink-3)]">
               Sjuk- och skadeperioder ur dagboken, med vad som hände samtidigt: belastning och
               kvalitetspass veckan före, sömn och HRV mot din egen baslinje, och dina egna ord
@@ -1850,7 +1850,7 @@ export default async function ArsplanPage({
                 {interruptionPrecursors.map((p) => (
                   <li
                     key={`${p.period.dayType}-${p.period.startDate}`}
-                    className="rounded border border-zinc-100 p-3 dark:border-zinc-800"
+                    className="rounded border border-[var(--line)] p-3"
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                       <span className="font-medium text-[var(--foreground)]">

@@ -223,7 +223,7 @@ export default async function UppfoljningPage({
     `rounded px-3 py-1 text-sm ${
       active
         ? "bg-[var(--foreground)] text-[var(--background)]"
-        : "border border-[var(--line)] hover:bg-zinc-100 dark:border-zinc-700 hover:bg-[var(--surface-raised)]"
+        : "border border-[var(--line)] hover:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)]"
     }`;
 
   return (
@@ -260,7 +260,7 @@ export default async function UppfoljningPage({
                 ←
               </Link>
             ) : (
-              <span className="px-2 py-1 text-zinc-300" aria-hidden>
+              <span className="px-2 py-1 text-[var(--ink-3)]" aria-hidden>
                 ←
               </span>
             )}
@@ -276,7 +276,7 @@ export default async function UppfoljningPage({
                 →
               </Link>
             ) : (
-              <span className="px-2 py-1 text-zinc-300" aria-hidden>
+              <span className="px-2 py-1 text-[var(--ink-3)]" aria-hidden>
                 →
               </span>
             )}

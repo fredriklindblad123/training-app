@@ -62,7 +62,7 @@ import { TRAINING_FACTORS } from "@/lib/training-factors";
  * "man får skapa ett nytt varje gång istället, lättare att begripa". */
 
 const input =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
+  "rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-sm";
 
 type TemplateItemRow = {
   id: string;
@@ -106,7 +106,7 @@ function BlockWeekSection({
 }) {
   const items = block.week_template_items ?? [];
   return (
-    <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800" open>
+    <details className="rounded border border-[var(--line)] p-3" open>
       <summary className="cursor-pointer">
         <span className="font-medium text-[var(--foreground)]">{block.name}</span>
         <span className="ml-2 text-sm text-[var(--ink-3)]">
@@ -169,7 +169,7 @@ function WeekPassCard({
     // passrubrik ska radbrytas i rutan i stället för att spilla ut över
     // nästa dag.
     <div
-      className="rounded border-l-4 bg-zinc-100 px-1.5 py-1 text-xs break-words dark:bg-zinc-800"
+      className="rounded border-l-4 bg-[var(--surface-raised)] px-1.5 py-1 text-xs break-words"
       style={
         typeColor
           ? { borderLeftColor: typeColor }
@@ -182,7 +182,7 @@ function WeekPassCard({
           (uttrycklig begäran 2026-08-22). */}
       <Link
         href={`/detaljplan/pass?block=${blockId}&date=${pass.scheduledDate}&slot=${pass.slot}&athlete=${athleteFilter}`}
-        className="block font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-100"
+        className="block font-medium text-[var(--foreground)] underline-offset-2 hover:underline"
       >
         {WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType}
         {pass.title && (
@@ -190,13 +190,13 @@ function WeekPassCard({
         )}
       </Link>
       {pass.trainingFactor && (
-        <div className="text-[10px] text-zinc-500 dark:text-zinc-500">
+        <div className="text-[10px] text-[var(--ink-3)]">
           {TRAINING_FACTORS.find((f) => f.key === pass.trainingFactor)?.label ?? pass.trainingFactor}
         </div>
       )}
-      {minutes != null && <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{minutes} min</div>}
+      {minutes != null && <div className="text-[10px] text-[var(--ink-3)]">{minutes} min</div>}
       {pass.slot > 1 && (
-        <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{SLOT_LABELS[pass.slot]}</div>
+        <div className="text-[10px] text-[var(--ink-3)]">{SLOT_LABELS[pass.slot]}</div>
       )}
       {/* Skiljer sig innehållet åt mellan löparna (efter en ändring med
           scope "bara en") får kortet inte se ut att gälla alla. */}
@@ -217,7 +217,7 @@ function WeekPassCard({
                 className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] ${
                   done
                     ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100"
-                    : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+                    : "bg-[var(--line)] text-[var(--ink-2)]"
                 }`}
               >
                 {/* Ingen länk på namnet: klick på passet självt går till
@@ -239,7 +239,7 @@ function WeekPassCard({
                     <button
                       type="submit"
                       title={`Ta bort ${a.fullName ?? "löparen"} från passet`}
-                      className="text-zinc-400 hover:text-red-600"
+                      className="text-[var(--ink-3)] hover:text-[var(--status-concern)]"
                     >
                       ×
                     </button>
@@ -259,7 +259,7 @@ function WeekPassCard({
               är med, och att ta bort det. */}
           {showChips && untagged.length > 0 && (
             <details className="min-w-0">
-              <summary className="cursor-pointer whitespace-nowrap text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
+              <summary className="cursor-pointer whitespace-nowrap text-[10px] text-[var(--ink-3)] hover:text-[var(--foreground)]">
                 + löpare
               </summary>
               <form action={addAthleteToPass} className="mt-1 flex w-28 items-center gap-1">
@@ -273,7 +273,7 @@ function WeekPassCard({
                     </option>
                   ))}
                 </select>
-                <button type="submit" className="rounded bg-zinc-200 px-1.5 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600">
+                <button type="submit" className="rounded bg-[var(--line)] px-1.5 py-0.5 text-[11px] hover:bg-[var(--ink-3)]">
                   +
                 </button>
               </form>
@@ -292,7 +292,7 @@ function WeekPassCard({
                   ? "Ta bort passet för alla löpare på det"
                   : "Ta bort passet"
               }
-              className="whitespace-nowrap text-[10px] text-zinc-400 hover:text-red-600"
+              className="whitespace-nowrap text-[10px] text-[var(--ink-3)] hover:text-[var(--status-concern)]"
             >
               ta bort{pass.athleteIds.length > 1 ? " (alla)" : ""}
             </button>
@@ -321,7 +321,7 @@ function DayAddPass({
 }) {
   return (
     <details className="shrink-0 text-xs">
-      <summary className="cursor-pointer whitespace-nowrap text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
+      <summary className="cursor-pointer whitespace-nowrap text-[10px] text-[var(--ink-3)] hover:text-[var(--foreground)]">
         + nytt pass
       </summary>
       {/* Utfällt läge får egen bredd i stället för att pressas ihop av
@@ -349,7 +349,7 @@ function DayAddPass({
         )}
         <button
           type="submit"
-          className="rounded bg-zinc-200 px-2 py-0.5 text-[11px] hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600"
+          className="rounded bg-[var(--line)] px-2 py-0.5 text-[11px] hover:bg-[var(--ink-3)]"
         >
           Lägg till
         </button>
@@ -425,7 +425,7 @@ function WeekGrid({
     return <p className="mt-3 text-xs text-[var(--ink-3)]">Inga veckor i blocket.</p>;
   }
   return (
-    <div className="mt-3 overflow-x-auto">
+    <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
       {/* `table-fixed` + fast veckokolumn gör att alla sju dagkolumner blir
           exakt lika breda, och — eftersom varje block renderar samma tabell
           med samma mått — att måndagen i ett block hamnar rakt under
@@ -436,13 +436,13 @@ function WeekGrid({
       <table className="w-full min-w-[960px] table-fixed border-collapse text-xs">
         <thead>
           <tr>
-            <th className="w-24 border-b border-zinc-200 px-1 pb-1 text-left font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+            <th className="w-24 border-b border-[var(--line)] px-1 pb-1 text-left font-medium text-[var(--ink-3)]">
               Vecka
             </th>
             {WEEKDAY_LABELS.map((label) => (
               <th
                 key={label}
-                className="border-b border-zinc-200 px-1 pb-1 text-left font-medium text-zinc-500 dark:border-zinc-800 dark:text-zinc-400"
+                className="border-b border-[var(--line)] px-1 pb-1 text-left font-medium text-[var(--ink-3)]"
               >
                 {label.slice(0, 3)}
               </th>
@@ -452,16 +452,16 @@ function WeekGrid({
         <tbody>
           {weeks.map((week) => (
             <tr key={week.weekStart} className="align-top">
-              <td className="border-b border-zinc-100 px-1 py-2 dark:border-zinc-900">
+              <td className="border-b border-[var(--line)] px-1 py-2">
                 <div className="font-medium text-[var(--ink-2)]">v{week.isoWeekNumber}</div>
-                <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{week.weekStart}</div>
+                <div className="text-[10px] text-[var(--ink-3)]">{week.weekStart}</div>
               </td>
               {week.days.map((day, di) => {
                 const canEditableDay = canEdit && !week.outside[di];
                 return (
                 <td
                   key={day.date}
-                  className={`border-b border-zinc-100 px-1 py-2 dark:border-zinc-900 ${
+                  className={`border-b border-[var(--line)] px-1 py-2 ${
                     week.outside[di] ? "bg-[var(--surface-raised)]/40" : ""
                   }`}
                 >
@@ -867,7 +867,7 @@ export default async function DetaljplanPage({
               />
 
               {canEdit && repEditableItems.length > 0 && (
-                <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
+                <details className="rounded border border-[var(--line)] p-3">
                   <summary className="cursor-pointer text-xs font-medium text-[var(--ink-3)]">
                     Repgrupper i standardveckan — {repEditableItems.length} pass
                   </summary>

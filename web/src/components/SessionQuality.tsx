@@ -121,7 +121,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
         </div>
       </summary>
 
-      <div className="mt-3 overflow-x-auto">
+      <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
             <tr className="text-left text-xs text-[var(--ink-3)]">

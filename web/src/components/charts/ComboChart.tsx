@@ -366,7 +366,7 @@ export function ComboChart({
   const hoveredEvents = hoveredPeriod ? (eventsByPeriod.get(hoveredPeriod.key) ?? []) : [];
 
   return (
-    <div className="flex w-full max-w-full flex-col gap-3">
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 flex w-full max-w-full flex-col gap-3">
       {/* Lagerväljare. Ligger ovanför diagrammet, inte inuti plotytan. */}
       {series.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -805,7 +805,7 @@ export function ComboChart({
       {/* Tabellvyn är a11y-tvillingen. Den scrollar i sin egen box så att
           sidan aldrig får horisontell scroll på mobil. */}
       {showTable && (
-        <div className="w-full max-w-full overflow-x-auto">
+        <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
               <tr className="text-xs text-[var(--ink-3)]">

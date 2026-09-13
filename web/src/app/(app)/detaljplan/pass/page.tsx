@@ -54,7 +54,7 @@ function AthleteColumn({
         </span>
         <Link
           href={`/calendar/${y}/${m}/${d}?athlete=${athlete.id}`}
-          className="text-xs text-[var(--ink-3)] underline underline-offset-2 hover:text-zinc-800"
+          className="text-xs text-[var(--ink-3)] underline underline-offset-2 hover:text-[var(--foreground)]"
         >
           Hennes kalenderdag →
         </Link>
@@ -123,7 +123,7 @@ export default async function PassDayPage({
       <div>
         <Link
           href={backHref}
-          className="text-sm text-[var(--ink-3)] underline underline-offset-2 hover:text-zinc-800"
+          className="text-sm text-[var(--ink-3)] underline underline-offset-2 hover:text-[var(--foreground)]"
         >
           ← Detaljplan
         </Link>

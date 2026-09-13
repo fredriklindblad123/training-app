@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 /* Kortytan.
  *
- * Ersätter mönstret `rounded border border-zinc-200 p-4 dark:border-zinc-800`,
+ * Ersätter mönstret `rounded border border-[var(--line)] p-4`,
  * som låg utskrivet på 24 ställen i appen. Skillnaden mot det gamla mönstret
  * är inte formen utan att kortet faktiskt har en YTA: tidigare hade appen noll
  * ytnivåer — allt låg kant i kant mot bakgrunden med bara en hårfin ram, och

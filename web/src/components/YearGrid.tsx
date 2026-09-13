@@ -109,7 +109,7 @@ export function YearGrid({
             <div key={month} className="flex flex-col gap-2">
               <Link
                 href={`/calendar/${year}/${month}${athleteQuery}`}
-                className="text-sm font-medium text-zinc-800 hover:underline dark:text-zinc-200"
+                className="text-sm font-medium text-[var(--ink-2)] hover:underline"
               >
                 {monthName}
               </Link>

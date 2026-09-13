@@ -352,7 +352,7 @@ export async function DayContent({
                 </select>
                 <button
                   type="submit"
-                  className="rounded border border-[var(--line)] px-2 py-1 text-xs text-[var(--ink-2)] hover:border-zinc-950 hover:text-[var(--foreground)]"
+                  className="rounded border border-[var(--line)] px-2 py-1 text-xs text-[var(--ink-2)] hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
                 >
                   Spara kategori
                 </button>
@@ -582,9 +582,9 @@ function PlanStatusBadge({
   }[status];
   const className = {
     done: "bg-emerald-500 text-white",
-    today: "border border-[var(--line)] text-[var(--ink-2)] dark:border-zinc-700 dark:text-zinc-300",
+    today: "border border-[var(--line)] text-[var(--ink-2)]",
     missed: "bg-amber-500 text-white",
-    upcoming: "border border-[var(--line)] text-[var(--ink-2)] dark:border-zinc-700 dark:text-zinc-300",
+    upcoming: "border border-[var(--line)] text-[var(--ink-2)]",
   }[status];
   return (
     <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${className}`}>
@@ -776,7 +776,7 @@ export async function SharedPlannedDay({
                 {names.map((n) => (
                   <span
                     key={n}
-                    className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[var(--ink-2)] dark:bg-zinc-700"
+                    className="rounded-full bg-[var(--line)] px-1.5 py-0.5 text-[var(--ink-2)]"
                   >
                     {n}
                   </span>

@@ -774,7 +774,7 @@ export default async function TrendsPage({
             Datatäckning för lagren ({series.length} av {candidateSeries.length} har data i
             perioden)
           </summary>
-          <div className="mt-3 w-full max-w-full overflow-x-auto">
+          <div className="mt-3 w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
             <table className="w-full min-w-max text-left text-sm">
               <thead>
                 <tr className="text-xs text-[var(--ink-3)]">

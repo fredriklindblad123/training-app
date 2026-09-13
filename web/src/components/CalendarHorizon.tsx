@@ -90,14 +90,14 @@ export function CalendarNav({
       <div className="flex items-center gap-3">
         <Link
           href={prevHref}
-          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-zinc-100 hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
+          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
         >
           ←
         </Link>
         <h1 className="text-2xl font-semibold text-[var(--foreground)]">{title}</h1>
         <Link
           href={nextHref}
-          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-zinc-100 hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
+          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
         >
           →
         </Link>

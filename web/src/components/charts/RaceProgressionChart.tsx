@@ -354,7 +354,7 @@ export function RaceProgressionChart({
   };
 
   return (
-    <div className="flex w-full max-w-full flex-col gap-3">
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 flex w-full max-w-full flex-col gap-3">
       {periodSelector}
       <svg
         ref={svgRef}

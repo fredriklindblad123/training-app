@@ -57,7 +57,7 @@ import {
  * "Nästa A-tävling"-rad och Blockplans veckorutnäts tävlingsrad. */
 
 const input =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
+  "rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-sm";
 const primaryBtn =
   "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
 const ghostBtn =
@@ -694,7 +694,7 @@ export default async function TavlingsresultatPage({
                 const isOnlySelected = active && selectedEvents.length === 1;
                 const chipStyle = active
                   ? { borderColor: eventColor(o.event), backgroundColor: eventColor(o.event), color: "white" }
-                  : { borderColor: "var(--color-zinc-300, #d4d4d8)" };
+                  : { borderColor: "var(--line)" };
 
                 if (isOnlySelected) {
                   return (
@@ -793,7 +793,7 @@ export default async function TavlingsresultatPage({
                     <select
                       name="raceA"
                       defaultValue={raceAParam ?? ""}
-                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 bg-[var(--surface)]"
+                      className="rounded border border-[var(--line)] px-2 py-1 bg-[var(--surface)]"
                     >
                       <option value="" disabled>
                         Välj lopp
@@ -810,7 +810,7 @@ export default async function TavlingsresultatPage({
                     <select
                       name="raceB"
                       defaultValue={raceBParam ?? ""}
-                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 bg-[var(--surface)]"
+                      className="rounded border border-[var(--line)] px-2 py-1 bg-[var(--surface)]"
                     >
                       <option value="" disabled>
                         Välj lopp
@@ -836,7 +836,7 @@ export default async function TavlingsresultatPage({
                 {raceAggregateA &&
                   raceAggregateB &&
                   (buildupDataGapApplies ? (
-                    <p className="rounded border border-zinc-200 p-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+                    <p className="rounded border border-[var(--line)] p-3 text-sm text-[var(--ink-2)]">
                       Träningsdatan börjar 2025-07-25, men de importerade tävlingsresultaten
                       slutar 2024-07-21. De {BUILDUP_WINDOW_DAYS} dagarna före de här två
                       loppen ligger därför före träningsdatans start, och upptrappningen går
@@ -849,7 +849,7 @@ export default async function TavlingsresultatPage({
                       <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
                         Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
                       </summary>
-                      <div className="w-full max-w-full overflow-x-auto border-t border-zinc-200 p-4 dark:border-zinc-800">
+                      <div className="w-full max-w-full overflow-x-auto border-t border-[var(--line)] p-4 rounded-lg border border-[var(--line)] bg-[var(--surface)]">
                         <table className="w-full min-w-max text-left text-sm">
                           <thead>
                             <tr className="text-xs text-[var(--ink-3)]">
@@ -864,7 +864,7 @@ export default async function TavlingsresultatPage({
                               </th>
                             </tr>
                           </thead>
-                          <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
+                          <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
                             {raceComparisonRows(raceAggregateA, raceAggregateB).map((row) => (
                               <tr key={row.label}>
                                 <th
@@ -975,7 +975,7 @@ export default async function TavlingsresultatPage({
               return (
                 <div
                   key={c.id}
-                  className="rounded border border-zinc-200 p-4 dark:border-zinc-800"
+                  className="rounded border border-[var(--line)] p-4"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div className="flex items-baseline gap-2">
@@ -985,7 +985,7 @@ export default async function TavlingsresultatPage({
                             ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
                             : c.priority === "B"
                               ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                              : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                              : "bg-[var(--surface-raised)] text-[var(--ink-2)]"
                         }`}
                       >
                         {c.priority}
@@ -1001,7 +1001,7 @@ export default async function TavlingsresultatPage({
                       {c.competition_events.length > 0 && (
                         <Link
                           href={editCompetitionHref(editing ? null : c.id)}
-                          className="text-xs text-zinc-500 underline hover:text-[var(--foreground)]"
+                          className="text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
                         >
                           {editing ? "Klar" : "Redigera"}
                         </Link>
@@ -1010,7 +1010,7 @@ export default async function TavlingsresultatPage({
                         <input type="hidden" name="id" value={c.id} />
                         <button
                           type="submit"
-                          className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+                          className="text-xs text-[var(--ink-3)] hover:text-[var(--status-concern)]"
                         >
                           Ta bort
                         </button>
@@ -1080,7 +1080,7 @@ export default async function TavlingsresultatPage({
           </div>
         )}
 
-        <details id="lagg-till-tavling" className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <details id="lagg-till-tavling" className="rounded border border-[var(--line)] p-4">
           <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till tävling
           </summary>

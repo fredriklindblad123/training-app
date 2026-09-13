@@ -188,11 +188,11 @@ export default async function MonthPage({
         className="-mb-2"
       />
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-[var(--line)] bg-zinc-200 text-xs dark:bg-zinc-800">
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-[var(--line)] bg-[var(--line)] text-xs">
         {SV_WEEKDAYS_SHORT.map((wd) => (
           <div
             key={wd}
-            className="bg-zinc-50 px-2 py-1 text-center font-medium text-[var(--ink-3)] bg-[var(--surface)]"
+            className="bg-[var(--surface-raised)] px-2 py-1 text-center font-medium text-[var(--ink-3)]"
           >
             {wd}
           </div>
@@ -202,7 +202,7 @@ export default async function MonthPage({
             return (
               <div
                 key={`empty-${i}`}
-                className="min-h-24 bg-zinc-50 bg-[var(--surface)]"
+                className="min-h-24 bg-[var(--surface)]"
               />
             );
           }

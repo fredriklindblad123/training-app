@@ -32,7 +32,7 @@ export function DaySection({
     hasData === true
       ? "border-emerald-300/70 dark:border-emerald-800/70"
       : hasData === false
-        ? "border-[var(--line)] dark:border-zinc-800/60"
+        ? "border-[var(--line)]/60"
         : "border-[var(--line)]";
   const titleClass =
     hasData === false

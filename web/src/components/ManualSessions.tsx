@@ -19,7 +19,7 @@ export type ManualActivity = {
 };
 
 const inputClass =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm bg-[var(--surface)]";
 
 /** Klockslag ur en tidsstämpel, i den form ett <input type="time"> vill ha. */
 function timeValue(startTime: string): string {
@@ -183,7 +183,7 @@ export function ManualSessions({
           </label>
           <button
             type="submit"
-            className="mb-0.5 w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200"
+            className="mb-0.5 w-fit rounded bg-[var(--foreground)] px-4 py-1.5 text-sm text-white hover:opacity-90"
           >
             Lägg till
           </button>

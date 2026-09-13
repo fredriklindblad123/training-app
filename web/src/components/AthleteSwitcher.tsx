@@ -79,7 +79,7 @@ export function AthleteSwitcher({
                 isActive
                   ? "bg-[var(--foreground)] text-[var(--background)]"
                   : self
-                    ? "border border-dashed border-zinc-400 hover:bg-[var(--surface-raised)]"
+                    ? "border border-dashed border-[var(--ink-3)] hover:bg-[var(--surface-raised)]"
                     : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
               }`}
             >

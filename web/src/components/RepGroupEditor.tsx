@@ -19,7 +19,7 @@
  */
 
 const smallInput =
-  "rounded border border-[var(--line)] px-1.5 py-1 text-xs dark:border-zinc-700 bg-[var(--surface)]";
+  "rounded border border-[var(--line)] px-1.5 py-1 text-xs bg-[var(--surface)]";
 const smallLabel = "pb-1.5 text-xs text-[var(--ink-3)]";
 
 export type RepGroupRow = {

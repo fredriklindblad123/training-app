@@ -267,7 +267,7 @@ export default async function WeekPage({
               href={`/calendar/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}${athleteQuery}`}
               className={`flex min-h-28 flex-col gap-1.5 rounded border p-2 transition-colors hover:bg-[var(--surface-raised)] ${
                 isToday
-                  ? "border-zinc-900"
+                  ? "border-[var(--foreground)]"
                   : isEmpty
                     ? "border-[var(--line)]/60"
                     : "border-[var(--line)]"

@@ -151,7 +151,7 @@ export function IntensityChart({
   const hoveredTotal = hovered != null ? totals[hovered] : 0;
 
   return (
-    <div className="flex w-full max-w-full flex-col gap-4">
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 flex w-full max-w-full flex-col gap-4">
       {/* --- zongränserna redovisas före grafen, inte som fotnot efter ----- */}
       <div
         className={`rounded border p-3 text-sm ${
@@ -441,7 +441,7 @@ export function IntensityChart({
               ))}
             </div>
 
-            <div className="w-full max-w-full overflow-x-auto">
+            <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
                   <tr className="text-xs text-[var(--ink-3)]">
@@ -508,7 +508,7 @@ export function IntensityChart({
           </button>
 
           {showTable && (
-            <div className="w-full max-w-full overflow-x-auto">
+            <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
                   <tr className="text-xs text-[var(--ink-3)]">

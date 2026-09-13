@@ -107,7 +107,7 @@ export function NavLinks({
         className={
           active
             ? "text-[var(--foreground)]"
-            : "text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-zinc-300 dark:hover:text-zinc-50"
+            : "text-[var(--ink-2)] hover:text-[var(--foreground)]"
         }
       >
         {link.label}
@@ -138,7 +138,7 @@ export function NavLinks({
 
       {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
           role="group", så den ska inte läsas upp. */}
-      <span aria-hidden className="hidden h-4 w-px bg-zinc-200 sm:block dark:bg-zinc-700" />
+      <span aria-hidden className="hidden h-4 w-px bg-[var(--line)] sm:block" />
 
       {renderGroup(
         "nav-plan",
@@ -147,7 +147,7 @@ export function NavLinks({
         planOwnedByCoach ? "från din tränare" : undefined,
       )}
 
-      <span aria-hidden className="hidden h-4 w-px bg-zinc-200 sm:block dark:bg-zinc-700" />
+      <span aria-hidden className="hidden h-4 w-px bg-[var(--line)] sm:block" />
 
       {renderLink(SETTINGS)}
     </nav>

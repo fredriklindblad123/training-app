@@ -149,7 +149,7 @@ const PRIORITY_RANK: Record<Priority, number> = { A: 3, B: 2, C: 1 };
 const PRIORITY_COLOR: Record<Priority, string> = {
   A: "bg-red-600",
   B: "bg-amber-500",
-  C: "bg-zinc-400",
+  C: "bg-[var(--ink-3)]",
 };
 
 /** Förklaringen till bandets grafik: fasfärger, tävlingsprioriteter och
@@ -189,18 +189,18 @@ export function SeasonTimelineLegend({
             B-tävling
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-zinc-400" />
+            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-[var(--ink-3)]" />
             C · träningstävling
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-zinc-400" />
+            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-[var(--ink-3)]" />
             <span className="-ml-1 text-[10px]">2</span>
             flera samma vecka
           </span>
         </>
       )}
       <span className="flex items-center gap-1.5">
-        <span className="inline-block h-3 w-0.5 bg-zinc-900 dark:bg-zinc-50" />
+        <span className="inline-block h-3 w-0.5 bg-[var(--foreground)]" />
         Idag
       </span>
     </div>
@@ -265,7 +265,7 @@ export function SeasonTimeline({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative overflow-x-auto">
+      <div className="relative overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
         <div className={compact ? "min-w-[12rem]" : "min-w-[32rem]"}>
           {/* Blockband */}
           <div className={`relative ${bandHeight} rounded bg-[var(--surface-raised)]`}>
@@ -303,7 +303,7 @@ export function SeasonTimeline({
 
             {todayVisible && (
               <div
-                className={`absolute top-0 ${bandHeight} w-0.5 bg-zinc-900 dark:bg-zinc-50`}
+                className={`absolute top-0 ${bandHeight} w-0.5 bg-[var(--foreground)]`}
                 style={{ left: `${todayPct}%` }}
                 title={`Idag ${todayKey}`}
               />
@@ -323,7 +323,7 @@ export function SeasonTimeline({
                 className="absolute top-0 flex flex-col items-center"
                 style={{ left: `${t.left}%` }}
               >
-                <span className="h-1 w-px bg-zinc-300 dark:bg-zinc-700" aria-hidden />
+                <span className="h-1 w-px bg-[var(--line)]" aria-hidden />
                 {t.showLabel && (
                   <span className="-translate-x-1/2 whitespace-nowrap text-[10px] text-[var(--ink-3)]">
                     {t.label}

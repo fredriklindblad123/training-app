@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { enterApp } from "./actions";
 
 const buttonClass =
-  "rounded bg-zinc-950 px-4 py-2 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
+  "rounded bg-[var(--foreground)] px-4 py-2 text-[var(--background)] hover:opacity-90";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -12,11 +12,11 @@ export default async function Home() {
   } = await supabase.auth.getUser();
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-zinc-50 px-6 text-center font-sans dark:bg-black">
-      <h1 className="text-3xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 bg-[var(--background)] px-6 text-center">
+      <h1 className="text-3xl font-semibold tracking-tight text-[var(--foreground)]">
         Träningsapp
       </h1>
-      <p className="max-w-md text-lg text-zinc-600 dark:text-zinc-400">
+      <p className="max-w-md text-lg text-[var(--ink-2)]">
         Kalender, träningsdagbok och långsiktig planering för
         medeldistanslöpare. Under uppbyggnad.
       </p>
