@@ -900,7 +900,7 @@ export default async function TavlingsresultatPage({
                       <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
                         Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
                       </summary>
-                      <div className="w-full max-w-full overflow-x-auto border-t border-[var(--line)] p-4 rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+                      <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
                         <table className="w-full min-w-max text-left text-sm">
                           <thead>
                             <tr className="text-xs text-[var(--ink-3)]">

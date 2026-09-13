@@ -223,7 +223,7 @@ export default async function MonthPage({
             <Link
               key={key}
               href={`/calendar/${year}/${month}/${day}${athleteQuery}`}
-              className="flex min-h-24 flex-col gap-1 bg-white p-2 hover:bg-[var(--surface-raised)]"
+              className="flex min-h-24 flex-col gap-1 bg-[var(--surface)] p-2 hover:bg-[var(--surface-raised)]"
             >
               <span className="text-[var(--ink-3)]">{day}</span>
 

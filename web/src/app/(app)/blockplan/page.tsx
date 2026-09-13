@@ -1373,7 +1373,7 @@ export default async function ArsplanPage({
             <table className="w-max min-w-full text-left text-xs">
               <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
                 <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-medium bg-[var(--surface)]">
                     Vecka #
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1383,7 +1383,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr className="text-[var(--ink-3)]">
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal bg-[var(--surface)]">
                     Månad
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1393,7 +1393,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Period / fas
                   </th>
                   {(() => {
@@ -1417,7 +1417,7 @@ export default async function ArsplanPage({
                   })()}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Pass
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1427,7 +1427,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Dagar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1437,7 +1437,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Timmar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1447,7 +1447,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Tävlingsstarter
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1457,7 +1457,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 py-1 pr-4 font-medium bg-[var(--surface)]">
                     Utfall
                   </th>
                   {arsplanWeeks.map((w) => {
@@ -1497,7 +1497,7 @@ export default async function ArsplanPage({
                           <th
                             scope="row"
                             colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 bg-white py-1 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
+                            className="sticky left-0 py-1 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
                           >
                             {TRAINING_FACTOR_GROUP_LABELS[factor.group]}
                           </th>
@@ -1512,7 +1512,7 @@ export default async function ArsplanPage({
                           <th
                             scope="row"
                             colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 bg-white py-1 pl-3 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
+                            className="sticky left-0 py-1 pl-3 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
                           >
                             {TRAINING_FACTOR_SUBGROUP_LABELS[factor.subgroup]}
                           </th>
@@ -1524,7 +1524,7 @@ export default async function ArsplanPage({
                       <tr key={factor.key}>
                         <th
                           scope="row"
-                          className={`sticky left-0 bg-white py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)] ${
+                          className={`sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)] ${
                             factor.subgroup ? "pl-6" : ""
                           }`}
                         >
