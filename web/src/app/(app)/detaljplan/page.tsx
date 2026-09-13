@@ -9,6 +9,7 @@ import {
   type ScopedProfile,
 } from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
   PERIOD_LABELS,
   PHASE_LABELS,
@@ -812,11 +813,37 @@ export default async function DetaljplanPage({
         />
       )}
 
+      {/* Planens omfattning i tre tal. Sidan öppnade tidigare direkt i en lista
+          av block, så "hur mycket är planerat" gick bara att få genom att räkna
+          veckorutorna själv. */}
+      {blockList.length > 0 && (
+        <StatRow columns={3}>
+          <StatCell>
+            <Stat label="Block" value={blockList.length} sub={`${relevantPhases.length} faser`} />
+          </StatCell>
+          <StatCell>
+            <Stat
+              label="Pass i mönstret"
+              value={blockList.reduce((n, b) => n + (b.week_template_items ?? []).length, 0)}
+              sub="per vecka, alla block"
+            />
+          </StatCell>
+          <StatCell>
+            <Stat
+              size="sm"
+              label="Planen sträcker sig till"
+              value={blockList.map((b) => b.end_date).sort().at(-1) ?? "—"}
+              sub={`från ${blockList.map((b) => b.start_date).sort()[0] ?? "—"}`}
+            />
+          </StatCell>
+        </StatRow>
+      )}
+
       {relevantPhases.length === 0 && (
         <p className="text-sm text-[var(--ink-3)]">
           Inga block skapade ännu. Lägg upp ett block för säsongens första fas på{" "}
           <Link href="/blockplan" className="underline">
-            Årsplan
+            Blockplan
           </Link>{" "}
           — det dyker upp här automatiskt så fort det finns.
         </p>

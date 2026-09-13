@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
 
 /* Flerårsplan (fas 0): mål, volym och tävlingar/läger per år, en rad per
@@ -101,6 +102,35 @@ export default async function FlerarsplanPage({
           viewerUserId={scoped.userId}
           buildHref={athleteHref}
         />
+      )}
+
+      {/* Flerårsplanens omfattning. Sidan är en lista av hopfällda år, så utan
+          det här fick man öppna dem ett och ett för att se hur långt planen
+          sträcker sig eller hur mycket den innehåller. */}
+      {yearPlans.length > 0 && (
+        <StatRow columns={3}>
+          <StatCell>
+            <Stat label="År i planen" value={yearPlans.length} sub="hopfällda nedan" />
+          </StatCell>
+          <StatCell>
+            <Stat
+              size="sm"
+              label="Spänner"
+              value={`${yearPlans[0]?.year_label ?? "—"} – ${yearPlans[yearPlans.length - 1]?.year_label ?? "—"}`}
+              sub="första till sista"
+            />
+          </StatCell>
+          <StatCell>
+            <Stat
+              label="Resultatmål"
+              value={yearPlans.reduce(
+                (n, y) => n + (Array.isArray(y.result_targets) ? y.result_targets.length : 0),
+                0,
+              )}
+              sub="satta totalt"
+            />
+          </StatCell>
+        </StatRow>
       )}
 
       <section className="flex flex-col gap-3">
