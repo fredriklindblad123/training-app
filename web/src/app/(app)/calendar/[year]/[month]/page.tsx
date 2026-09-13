@@ -192,7 +192,7 @@ export default async function MonthPage({
         {SV_WEEKDAYS_SHORT.map((wd) => (
           <div
             key={wd}
-            className="bg-zinc-50 px-2 py-1 text-center font-medium text-[var(--ink-3)] dark:bg-zinc-900 dark:text-[var(--ink-3)]"
+            className="bg-zinc-50 px-2 py-1 text-center font-medium text-[var(--ink-3)] bg-[var(--surface)]"
           >
             {wd}
           </div>
@@ -202,7 +202,7 @@ export default async function MonthPage({
             return (
               <div
                 key={`empty-${i}`}
-                className="min-h-24 bg-zinc-50 dark:bg-zinc-950"
+                className="min-h-24 bg-zinc-50 bg-[var(--surface)]"
               />
             );
           }

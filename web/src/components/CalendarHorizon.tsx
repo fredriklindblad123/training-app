@@ -43,7 +43,7 @@ export function HorizonToggle({
           className={`rounded px-3 py-1 ${
             current === item.key
               ? "bg-[var(--foreground)] text-[var(--background)]"
-              : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+              : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
           }`}
         >
           {item.label}
@@ -111,11 +111,11 @@ export function CalendarNav({
             name="date"
             defaultValue={jumpDate}
             aria-label="Hoppa till datum"
-            className="rounded border border-[var(--line)] px-2 py-1 dark:bg-zinc-900"
+            className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
           />
           <button
             type="submit"
-            className="rounded border border-[var(--line)] px-3 py-1 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+            className="rounded border border-[var(--line)] px-3 py-1 hover:bg-[var(--surface-raised)]"
           >
             Hoppa
           </button>

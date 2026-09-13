@@ -121,7 +121,7 @@ export function NavLinks({
     <div role="group" aria-labelledby={id} className="flex items-baseline gap-3">
       <span
         id={id}
-        className="text-[0.6875rem] font-semibold tracking-wider text-[var(--ink-3)] uppercase dark:text-[var(--ink-3)]"
+        className="text-[0.6875rem] font-semibold tracking-wider text-[var(--ink-3)] uppercase"
       >
         {label}
         {note && (

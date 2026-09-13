@@ -342,7 +342,7 @@ export async function DayContent({
                 <select
                   name="category"
                   defaultValue={isActivityCategory(a.category ?? "") ? a.category! : ""}
-                  className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-xs dark:bg-zinc-900"
+                  className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-xs bg-[var(--surface)]"
                 >
                   {CATEGORY_VALUES.map((c) => (
                     <option key={c} value={c}>
@@ -496,13 +496,13 @@ export async function DayContent({
               name="notes"
               rows={4}
               defaultValue={diaryEntry?.notes ?? ""}
-              className={`rounded border-2 px-2 py-1 dark:bg-zinc-900 ${NOTE_SENTIMENT_STYLE[noteSentiment].border}`}
+              className={`rounded border-2 bg-[var(--surface)] px-2 py-1 ${NOTE_SENTIMENT_STYLE[noteSentiment].border}`}
             />
           </label>
 
           <button
             type="submit"
-            className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
+            className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
           >
             Spara
           </button>
@@ -669,7 +669,7 @@ function ThresholdTestCard({
             <input type="hidden" name="athlete" value={athleteId} />
             <button
               type="submit"
-              className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
+              className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
             >
               {currentLt2 != null
                 ? `Ersätt sparat LT2 (${currentLt2}) med ${estimate.lt2}`

@@ -91,7 +91,7 @@ export function KpiRing({
               r={RADIUS}
               fill="none"
               strokeWidth={STROKE_WIDTH}
-              className="stroke-zinc-100 dark:stroke-zinc-800"
+              className="stroke-[var(--line)]"
             />
             <circle
               cx={RING_SIZE / 2}
@@ -141,7 +141,7 @@ export function KpiRing({
           </tbody>
         </table>
         {hint && (
-          <p className="border-t border-[var(--line)] p-2 text-[var(--ink-3)] dark:text-[var(--ink-3)]">
+          <p className="border-t border-[var(--line)] p-2 text-[var(--ink-3)]">
             {hint}
           </p>
         )}

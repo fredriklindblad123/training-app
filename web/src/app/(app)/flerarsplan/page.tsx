@@ -17,9 +17,9 @@ import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
  * väljaren. */
 
 const input =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
 const primaryBtn =
-  "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200";
+  "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -105,7 +105,7 @@ export default async function FlerarsplanPage({
 
       <section className="flex flex-col gap-3">
         {yearPlans.length === 0 ? (
-          <p className="text-sm text-[var(--ink-3)] dark:text-[var(--ink-2)]">
+          <p className="text-sm text-[var(--ink-3)]">
             Inga år inlagda än — lägg till det första nedan.
           </p>
         ) : (

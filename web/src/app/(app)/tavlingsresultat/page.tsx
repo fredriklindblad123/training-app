@@ -57,11 +57,11 @@ import {
  * "Nästa A-tävling"-rad och Blockplans veckorutnäts tävlingsrad. */
 
 const input =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
 const primaryBtn =
-  "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
+  "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
 const ghostBtn =
-  "w-fit rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900";
+  "w-fit rounded border border-[var(--line)] px-3 py-1 text-sm hover:bg-[var(--surface-raised)]";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -749,7 +749,7 @@ export default async function TavlingsresultatPage({
                   className={`rounded px-3 py-1 ${
                     banaFilter === b.key
                       ? "bg-[var(--foreground)] text-[var(--background)]"
-                      : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                      : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
                   }`}
                 >
                   {b.label}
@@ -793,7 +793,7 @@ export default async function TavlingsresultatPage({
                     <select
                       name="raceA"
                       defaultValue={raceAParam ?? ""}
-                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 bg-[var(--surface)]"
                     >
                       <option value="" disabled>
                         Välj lopp
@@ -810,7 +810,7 @@ export default async function TavlingsresultatPage({
                     <select
                       name="raceB"
                       defaultValue={raceBParam ?? ""}
-                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+                      className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 bg-[var(--surface)]"
                     >
                       <option value="" disabled>
                         Välj lopp
@@ -822,7 +822,7 @@ export default async function TavlingsresultatPage({
                       ))}
                     </select>
                   </label>
-                  <button type="submit" className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200">
+                  <button type="submit" className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90">
                     Jämför
                   </button>
                 </form>
@@ -917,7 +917,7 @@ export default async function TavlingsresultatPage({
                 className={`rounded px-3 py-1 ${
                   tavlingsAr === year
                     ? "bg-[var(--foreground)] text-[var(--background)]"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                    : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
                 }`}
               >
                 {year} ({competitionCountsByYear.get(year)})
@@ -929,7 +929,7 @@ export default async function TavlingsresultatPage({
               className={`rounded px-3 py-1 ${
                 tavlingsAr === "alla"
                   ? "bg-[var(--foreground)] text-[var(--background)]"
-                  : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                  : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
               }`}
             >
               Alla år ({allCompetitions.length})
@@ -951,7 +951,7 @@ export default async function TavlingsresultatPage({
                 className={`rounded px-3 py-1 ${
                   tavlingsBana === opt.key
                     ? "bg-[var(--foreground)] text-[var(--background)]"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                    : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
                 }`}
               >
                 {opt.label}

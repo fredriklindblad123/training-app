@@ -43,7 +43,7 @@ function OccurrenceRow({
             dagbokstext och nattens sömndata. */}
         <Link
           href={dayHref(occurrence.date)}
-          className="text-[var(--ink-2)] underline-offset-2 hover:text-[var(--foreground)] hover:underline dark:text-[var(--ink-3)]"
+          className="text-[var(--ink-2)] underline-offset-2 hover:text-[var(--foreground)] hover:underline"
         >
           {occurrence.date}
         </Link>

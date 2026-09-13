@@ -216,7 +216,7 @@ export function EfficiencyChart({
               x2={WIDTH - PAD_RIGHT}
               y1={yFor(v)}
               y2={yFor(v)}
-              className="stroke-zinc-200 dark:stroke-zinc-800"
+              className="stroke-[var(--line)]"
               strokeWidth={1}
             />
             <text
@@ -224,7 +224,7 @@ export function EfficiencyChart({
               y={yFor(v)}
               textAnchor="end"
               dominantBaseline="middle"
-              className="fill-zinc-500 tabular-nums dark:fill-zinc-400"
+              className="fill-[var(--ink-3)] tabular-nums"
               style={{ fontSize: 10 }}
             >
               {v.toFixed(2)}
@@ -248,13 +248,13 @@ export function EfficiencyChart({
               x2={xFor(race.date)}
               y1={PAD_TOP}
               y2={PAD_TOP + PLOT_H}
-              className="stroke-zinc-200 dark:stroke-zinc-800"
+              className="stroke-[var(--line)]"
               strokeWidth={1}
             />
             <path
               d={`M ${xFor(race.date)} ${raceRailY - 5} L ${xFor(race.date) + 5} ${raceRailY + 4} L ${xFor(race.date) - 5} ${raceRailY + 4} Z`}
               style={{ fill: categoryColorVar("race") }}
-              className="stroke-white dark:stroke-zinc-950"
+              className="stroke-[var(--surface)]"
               strokeWidth={1.5}
               paintOrder="stroke"
             >
@@ -270,7 +270,7 @@ export function EfficiencyChart({
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="stroke-zinc-900 dark:stroke-zinc-100"
+          className="stroke-[var(--foreground)]"
           opacity={0.55}
         />
 
@@ -285,7 +285,7 @@ export function EfficiencyChart({
               cy={yFor(raw)}
               r={isHovered ? 6 : 4}
               style={{ fill: categoryColorVar(p.category) }}
-              className="stroke-white dark:stroke-zinc-950"
+              className="stroke-[var(--surface)]"
               strokeWidth={2}
               paintOrder="stroke"
               opacity={isClipped ? 0.45 : 1}
@@ -340,7 +340,7 @@ export function EfficiencyChart({
               y2={5}
               strokeWidth={2}
               strokeLinecap="round"
-              className="stroke-zinc-900 dark:stroke-zinc-100"
+              className="stroke-[var(--foreground)]"
               opacity={0.55}
             />
           </svg>
@@ -379,7 +379,7 @@ export function EfficiencyChart({
       <button
         type="button"
         onClick={() => setShowTable((v) => !v)}
-        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
       >
         {showTable ? "Dölj tabell" : `Visa som tabell (${sorted.length} pass)`}
       </button>

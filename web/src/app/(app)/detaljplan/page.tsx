@@ -62,7 +62,7 @@ import { TRAINING_FACTORS } from "@/lib/training-factors";
  * "man får skapa ett nytt varje gång istället, lättare att begripa". */
 
 const input =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
 
 type TemplateItemRow = {
   id: string;

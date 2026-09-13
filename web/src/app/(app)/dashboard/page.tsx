@@ -639,7 +639,7 @@ export default async function DashboardPage({
         )}
         <Link
           href={todayHref}
-          className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+          className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)]"
         >
           Till dagvyn →
         </Link>
@@ -650,7 +650,7 @@ export default async function DashboardPage({
           i stället. ---------------------------------------------------- */}
       <Link
         href={`/calendar/vecka/${todayKey}${athleteQuery}`}
-        className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+        className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)]"
       >
         Veckans genomgång →
       </Link>

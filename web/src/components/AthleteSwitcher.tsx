@@ -61,7 +61,7 @@ export function AthleteSwitcher({
             className={`rounded px-3 py-1 ${
               isOverview
                 ? "bg-[var(--foreground)] text-[var(--background)]"
-                : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+                : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
             }`}
           >
             Alla
@@ -79,8 +79,8 @@ export function AthleteSwitcher({
                 isActive
                   ? "bg-[var(--foreground)] text-[var(--background)]"
                   : self
-                    ? "border border-dashed border-zinc-400 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
-                    : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+                    ? "border border-dashed border-zinc-400 hover:bg-[var(--surface-raised)]"
+                    : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
               }`}
             >
               {a.fullName ?? "Namnlös löpare"}

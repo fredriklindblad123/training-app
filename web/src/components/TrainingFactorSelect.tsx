@@ -6,7 +6,7 @@ import {
 } from "@/lib/training-factors";
 
 const input =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
 
 /** Träningsfaktor-väljare — grupperad precis som Excel-mallens Detaljplan-
  * flik (grupp via optgroup, undergrupp som ett prefix på radens text eftersom

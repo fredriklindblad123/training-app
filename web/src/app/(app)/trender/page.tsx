@@ -863,7 +863,7 @@ export default async function TrendsPage({
           emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
         />
 
-        <p className="rounded border border-[var(--line)] p-3 text-sm text-[var(--ink-2)] dark:text-[var(--ink-3)]">
+        <p className="rounded border border-[var(--line)] p-3 text-sm text-[var(--ink-2)]">
           <strong className="font-medium text-[var(--foreground)]">Läs kurvan försiktigt.</strong>{" "}
           Efficiency Factor påverkas kraftigt av värme, uttorkning, stress, höjd och underlag. En
           dipp i juli är sannolikt vädret, inte formen. Kurvan är dessutom räknad på rå fart — ett
@@ -900,7 +900,7 @@ export default async function TrendsPage({
                 ? `/blockplan?athlete=alla&nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
                 : `/blockplan?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
             }
-            className="rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
+            className="rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
           >
             Skapa nästa block →
           </Link>

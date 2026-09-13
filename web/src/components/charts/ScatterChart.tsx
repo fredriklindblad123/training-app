@@ -65,7 +65,7 @@ export function ScatterChart({
           x2={paddingLeft}
           y1={paddingTop}
           y2={paddingTop + plotHeight}
-          className="stroke-zinc-300 dark:stroke-zinc-700"
+          className="stroke-[var(--line)]"
           strokeWidth={1}
         />
         <line
@@ -73,7 +73,7 @@ export function ScatterChart({
           x2={width - paddingRight}
           y1={paddingTop + plotHeight}
           y2={paddingTop + plotHeight}
-          className="stroke-zinc-300 dark:stroke-zinc-700"
+          className="stroke-[var(--line)]"
           strokeWidth={1}
         />
 

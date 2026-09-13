@@ -254,13 +254,13 @@ export default async function UppfoljningPage({
             {period.prevAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.prevAnchor }) : href({ datum: period.prevAnchor })}
-                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-[var(--surface-raised)]"
                 aria-label="Föregående period"
               >
                 ←
               </Link>
             ) : (
-              <span className="px-2 py-1 text-zinc-300 dark:text-[var(--ink-2)]" aria-hidden>
+              <span className="px-2 py-1 text-zinc-300" aria-hidden>
                 ←
               </span>
             )}
@@ -270,13 +270,13 @@ export default async function UppfoljningPage({
             {period.nextAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.nextAnchor }) : href({ datum: period.nextAnchor })}
-                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-[var(--surface-raised)]"
                 aria-label="Nästa period"
               >
                 →
               </Link>
             ) : (
-              <span className="px-2 py-1 text-zinc-300 dark:text-[var(--ink-2)]" aria-hidden>
+              <span className="px-2 py-1 text-zinc-300" aria-hidden>
                 →
               </span>
             )}

@@ -169,12 +169,12 @@ const SERIES_STYLES = [
 type SeriesStyle = (typeof SERIES_STYLES)[number];
 
 const STRONG_INK = {
-  stroke: "stroke-zinc-900 dark:stroke-zinc-100",
-  fill: "fill-zinc-900 dark:fill-zinc-100",
+  stroke: "stroke-[var(--foreground)]",
+  fill: "fill-[var(--foreground)]",
 };
 const SOFT_INK = {
-  stroke: "stroke-zinc-500 dark:stroke-zinc-400",
-  fill: "fill-zinc-500 dark:fill-zinc-400",
+  stroke: "stroke-[var(--ink-3)]",
+  fill: "fill-[var(--ink-3)]",
 };
 
 /** Statusfärger (fast palett, aldrig tematiserad) + kategorifärg för tävling,
@@ -381,8 +381,8 @@ export function ComboChart({
                 onClick={() => toggleSeries(serie.id)}
                 className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs transition-colors ${
                   isOn
-                    ? "border-zinc-400 text-[var(--foreground)]"
-                    : "border-[var(--line)] text-[var(--ink-3)] hover:border-zinc-400 dark:text-[var(--ink-3)]"
+                    ? "border-[var(--ink-3)] text-[var(--foreground)]"
+                    : "border-[var(--line)] text-[var(--ink-3)] hover:border-[var(--ink-3)]"
                 }`}
               >
                 {/* Legendnyckeln speglar märket: en linje med samma streckmönster. */}
@@ -395,12 +395,12 @@ export function ComboChart({
                     strokeWidth={2}
                     strokeDasharray={style.dash}
                     strokeLinecap="round"
-                    className={isOn ? ink.stroke : "stroke-zinc-300 dark:stroke-zinc-700"}
+                    className={isOn ? ink.stroke : "stroke-[var(--line)]"}
                     style={isOn && serie.color ? { stroke: serie.color } : undefined}
                   />
                   <path
                     d={markerPath(style.marker, 11, 5, 3)}
-                    className={isOn ? ink.fill : "fill-zinc-300 dark:fill-zinc-700"}
+                    className={isOn ? ink.fill : "fill-[var(--line)]"}
                     style={isOn && serie.color ? { fill: serie.color } : undefined}
                   />
                 </svg>
@@ -432,7 +432,7 @@ export function ComboChart({
                 x2={WIDTH - PAD_RIGHT}
                 y1={y}
                 y2={y}
-                className="stroke-zinc-200 dark:stroke-zinc-800"
+                className="stroke-[var(--line)]"
                 strokeWidth={1}
               />
               <text
@@ -440,7 +440,7 @@ export function ComboChart({
                 y={y}
                 textAnchor="end"
                 dominantBaseline="middle"
-                className="fill-zinc-500 tabular-nums dark:fill-zinc-400"
+                className="fill-[var(--ink-3)] tabular-nums"
                 style={{ fontSize: 10 }}
               >
                 {Math.round(v)}
@@ -461,7 +461,7 @@ export function ComboChart({
               x2={xCenter(i)}
               y1={loadTop}
               y2={plotBottom}
-              className="stroke-zinc-200 dark:stroke-zinc-800"
+              className="stroke-[var(--line)]"
               strokeWidth={1}
             />
           ) : null,
@@ -527,7 +527,7 @@ export function ComboChart({
               x2={WIDTH - PAD_RIGHT}
               y1={yDeviation(0)}
               y2={yDeviation(0)}
-              className="stroke-zinc-300 dark:stroke-zinc-700"
+              className="stroke-[var(--line)]"
               strokeWidth={1}
             />
             {[1, 0, -1].map((z) => (
@@ -536,7 +536,7 @@ export function ComboChart({
                 x={WIDTH - PAD_RIGHT + 6}
                 y={yDeviation(z)}
                 dominantBaseline="middle"
-                className="fill-zinc-500 tabular-nums dark:fill-zinc-400"
+                className="fill-[var(--ink-3)] tabular-nums"
                 style={{ fontSize: 10 }}
               >
                 {z === 0 ? "0" : formatSigned(z, 0)}
@@ -560,7 +560,7 @@ export function ComboChart({
             x2={xCenter(hovered)}
             y1={loadTop}
             y2={plotBottom}
-            className="stroke-zinc-400 dark:stroke-zinc-500"
+            className="stroke-[var(--ink-3)]"
             strokeWidth={1}
           />
         )}
@@ -608,7 +608,7 @@ export function ComboChart({
                 <path
                   key={`${serie.id}-marker-${i}`}
                   d={markerPath(style.marker, xCenter(i), yDeviation(deviations[i] as number), 4)}
-                  className={`${serie.color ? "" : ink.fill} stroke-white dark:stroke-zinc-950`}
+                  className={`${serie.color ? "" : ink.fill} stroke-[var(--surface)]`}
                   strokeWidth={2}
                   paintOrder="stroke"
                   style={serie.color ? { fill: serie.color } : undefined}
@@ -636,7 +636,7 @@ export function ComboChart({
                     key={`${event.kind}-${j}`}
                     d={`M ${cx} ${eventY - 5} L ${cx + 5} ${eventY + 4} L ${cx - 5} ${eventY + 4} Z`}
                     style={{ fill: EVENT_STYLES[event.kind].color }}
-                    className="stroke-white dark:stroke-zinc-950"
+                    className="stroke-[var(--surface)]"
                     strokeWidth={1.5}
                     paintOrder="stroke"
                   >
@@ -787,7 +787,7 @@ export function ComboChart({
           )}
 
           {hoveredPeriod.note && (
-            <p className="border-l-2 border-[var(--line)] pl-3 text-sm text-[var(--ink-2)] italic dark:text-[var(--ink-3)]">
+            <p className="border-l-2 border-[var(--line)] pl-3 text-sm text-[var(--ink-2)] italic">
               {hoveredPeriod.note}
             </p>
           )}
@@ -797,7 +797,7 @@ export function ComboChart({
       <button
         type="button"
         onClick={() => setShowTable((v) => !v)}
-        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
       >
         {showTable ? "Dölj tabell" : "Visa som tabell"}
       </button>

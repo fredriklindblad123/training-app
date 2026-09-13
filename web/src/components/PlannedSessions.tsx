@@ -40,7 +40,7 @@ export type PlannedRow = {
 };
 
 const inputClass =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
 
 function label(type: string): string {
   if (isActivityCategory(type)) return CATEGORY_LABELS[type];
@@ -165,12 +165,12 @@ export function PlannedSessions({
                 .join(" · ")}
             </span>
             {factorLabel(p.training_factor) && (
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-[var(--ink-2)] dark:bg-zinc-800 dark:text-[var(--ink-3)]">
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-[var(--ink-2)] dark:bg-zinc-800">
                 {factorLabel(p.training_factor)}
               </span>
             )}
             {p.season_blocks?.name && (
-              <span className="ml-auto rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-[var(--ink-2)] dark:bg-zinc-800 dark:text-[var(--ink-3)]">
+              <span className="ml-auto rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-[var(--ink-2)] dark:bg-zinc-800">
                 {p.season_blocks.name}
               </span>
             )}
@@ -245,7 +245,7 @@ export function PlannedSessions({
             <TrainingFactorField defaultValue={p.training_factor} />
             <button
               type="submit"
-              className="w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
+              className="w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200"
             >
               Spara
             </button>

@@ -56,7 +56,7 @@ export function InsightCard({
         <p className="text-xs text-[var(--ink-3)]">{detail}</p>
         <Link
           href={href}
-          className="text-xs underline text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+          className="text-xs underline text-[var(--ink-2)] hover:text-[var(--foreground)]"
         >
           Läs mer →
         </Link>

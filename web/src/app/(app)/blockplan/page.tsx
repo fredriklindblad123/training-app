@@ -101,7 +101,7 @@ import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@
  * och lib/blockplan-grid.ts. */
 
 const input =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 bg-[var(--surface)]";
 const primaryBtn =
   "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
 
@@ -1368,7 +1368,7 @@ export default async function ArsplanPage({
             <table className="w-max min-w-full text-left text-xs">
               <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
                 <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium dark:bg-zinc-950">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium bg-[var(--surface)]">
                     Vecka #
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1378,7 +1378,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr className="text-[var(--ink-3)]">
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal dark:bg-zinc-950">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal bg-[var(--surface)]">
                     Månad
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1388,7 +1388,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
                     Period / fas
                   </th>
                   {(() => {
@@ -1412,7 +1412,7 @@ export default async function ArsplanPage({
                   })()}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
                     Pass
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1422,7 +1422,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
                     Dagar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1432,7 +1432,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
                     Timmar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1442,7 +1442,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400">
                     Tävlingsstarter
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1452,7 +1452,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium dark:bg-zinc-950">
+                  <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium bg-[var(--surface)]">
                     Utfall
                   </th>
                   {arsplanWeeks.map((w) => {
@@ -1492,7 +1492,7 @@ export default async function ArsplanPage({
                           <th
                             scope="row"
                             colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 bg-white py-1 text-left font-medium italic text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400"
+                            className="sticky left-0 bg-white py-1 text-left font-medium italic text-zinc-500 bg-[var(--surface)] dark:text-zinc-400"
                           >
                             {TRAINING_FACTOR_GROUP_LABELS[factor.group]}
                           </th>
@@ -1507,7 +1507,7 @@ export default async function ArsplanPage({
                           <th
                             scope="row"
                             colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 bg-white py-1 pl-3 text-left font-medium italic text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400"
+                            className="sticky left-0 bg-white py-1 pl-3 text-left font-medium italic text-zinc-500 bg-[var(--surface)] dark:text-zinc-400"
                           >
                             {TRAINING_FACTOR_SUBGROUP_LABELS[factor.subgroup]}
                           </th>
@@ -1519,7 +1519,7 @@ export default async function ArsplanPage({
                       <tr key={factor.key}>
                         <th
                           scope="row"
-                          className={`sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400 ${
+                          className={`sticky left-0 bg-white py-1 pr-4 font-normal text-zinc-600 bg-[var(--surface)] dark:text-zinc-400 ${
                             factor.subgroup ? "pl-6" : ""
                           }`}
                         >

@@ -73,7 +73,7 @@ export function BarChart({
                 x2={width}
                 y1={y}
                 y2={y}
-                className="stroke-zinc-200 dark:stroke-zinc-800"
+                className="stroke-[var(--line)]"
                 strokeWidth={1}
               />
               <text
@@ -143,7 +143,7 @@ export function BarChart({
       <button
         type="button"
         onClick={() => setShowTable((v) => !v)}
-        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
       >
         {showTable ? "Dölj tabell" : "Visa som tabell"}
       </button>

@@ -59,7 +59,7 @@ export function YearGrid({
               className={`rounded px-3 py-1 ${
                 view === v
                   ? "bg-[var(--foreground)] text-[var(--background)]"
-                  : "text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+                  : "text-[var(--ink-2)] hover:text-[var(--foreground)]"
               }`}
             >
               {TOGGLE_LABEL[v]}
@@ -76,7 +76,7 @@ export function YearGrid({
               </span>
             ))}
             <span className="flex items-center gap-1">
-              <span className="h-3 w-3 rounded-sm border-2 border-zinc-400 dark:border-zinc-500" />
+              <span className="h-3 w-3 rounded-sm border-2 border-[var(--ink-3)]" />
               Planerat pass (framåt)
             </span>
           </div>

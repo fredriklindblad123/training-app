@@ -14,7 +14,7 @@ export default async function PrivatePage() {
       </h1>
       <Link
         href="/calendar"
-        className="rounded bg-zinc-950 px-4 py-2 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
+        className="rounded bg-zinc-950 px-4 py-2 text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200"
       >
         Till kalendern
       </Link>

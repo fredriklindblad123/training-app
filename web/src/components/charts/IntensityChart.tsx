@@ -213,7 +213,7 @@ export function IntensityChart({
                   x2={WIDTH - PAD_RIGHT}
                   y1={yFor(share)}
                   y2={yFor(share)}
-                  className="stroke-zinc-200 dark:stroke-zinc-800"
+                  className="stroke-[var(--line)]"
                   strokeWidth={1}
                 />
                 <text
@@ -221,7 +221,7 @@ export function IntensityChart({
                   y={yFor(share)}
                   textAnchor="end"
                   dominantBaseline="middle"
-                  className="fill-zinc-500 tabular-nums dark:fill-zinc-400"
+                  className="fill-[var(--ink-3)] tabular-nums"
                   style={{ fontSize: 10 }}
                 >
                   {share} %
@@ -275,7 +275,7 @@ export function IntensityChart({
                 x2={xCenter(hovered)}
                 y1={PAD_TOP}
                 y2={PAD_TOP + PLOT_H}
-                className="stroke-zinc-400 dark:stroke-zinc-500"
+                className="stroke-[var(--ink-3)]"
                 strokeWidth={1}
               />
             )}
@@ -403,8 +403,8 @@ export function IntensityChart({
                   onClick={() => setModelId(m.id)}
                   className={`rounded border px-2 py-1 text-xs transition-colors ${
                     m.id === modelId
-                      ? "border-zinc-400 text-[var(--foreground)]"
-                      : "border-[var(--line)] text-[var(--ink-3)] hover:border-zinc-400 dark:text-[var(--ink-3)]"
+                      ? "border-[var(--ink-3)] text-[var(--foreground)]"
+                      : "border-[var(--line)] text-[var(--ink-3)] hover:border-[var(--ink-3)]"
                   }`}
                 >
                   {m.label}
@@ -502,7 +502,7 @@ export function IntensityChart({
           <button
             type="button"
             onClick={() => setShowTable((v) => !v)}
-            className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
+            className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
           >
             {showTable ? "Dölj veckotabell" : "Visa veckotabell"}
           </button>

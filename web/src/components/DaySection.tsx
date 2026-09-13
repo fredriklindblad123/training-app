@@ -43,7 +43,7 @@ export function DaySection({
     <details open={defaultOpen} className={`group rounded border ${borderClass}`}>
       <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 hover:bg-[var(--surface-raised)]">
         <span
-          className="text-[var(--ink-3)] transition-transform group-open:rotate-90 dark:text-[var(--ink-3)]"
+          className="text-[var(--ink-3)] transition-transform group-open:rotate-90"
           aria-hidden="true"
         >
           ▸

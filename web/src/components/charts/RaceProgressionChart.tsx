@@ -261,7 +261,7 @@ export function RaceProgressionChart({
           className={`rounded px-3 py-1 ${
             period.years === opt.years
               ? "bg-[var(--foreground)] text-[var(--background)]"
-              : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+              : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
           }`}
         >
           {opt.label}
@@ -372,7 +372,7 @@ export function RaceProgressionChart({
               x2={WIDTH - PAD_RIGHT}
               y1={yFor(v)}
               y2={yFor(v)}
-              className="stroke-zinc-200 dark:stroke-zinc-800"
+              className="stroke-[var(--line)]"
               strokeWidth={1}
             />
             <text
@@ -380,7 +380,7 @@ export function RaceProgressionChart({
               y={yFor(v)}
               textAnchor="end"
               dominantBaseline="middle"
-              className="fill-zinc-500 tabular-nums dark:fill-zinc-400"
+              className="fill-[var(--ink-3)] tabular-nums"
               style={{ fontSize: 10 }}
             >
               {v.toFixed(0)}%
@@ -399,7 +399,7 @@ export function RaceProgressionChart({
           y2={yFor(100)}
           strokeWidth={1.5}
           strokeDasharray="4 3"
-          className="stroke-zinc-900 dark:stroke-zinc-100"
+          className="stroke-[var(--foreground)]"
           opacity={0.35}
         />
 
@@ -465,7 +465,7 @@ export function RaceProgressionChart({
               width={r * 2}
               height={r * 2}
               style={{ fill: p.color }}
-              className="stroke-white dark:stroke-zinc-950"
+              className="stroke-[var(--surface)]"
               strokeWidth={1.5}
               paintOrder="stroke"
             />
@@ -487,7 +487,7 @@ export function RaceProgressionChart({
                   r={r + 4}
                   fill="none"
                   strokeWidth={2}
-                  className="stroke-zinc-900 dark:stroke-zinc-100"
+                  className="stroke-[var(--foreground)]"
                 />
               )}
               <circle
@@ -496,7 +496,7 @@ export function RaceProgressionChart({
                 r={r}
                 style={isIndoor ? { fill: "transparent", stroke: p.color } : { fill: p.color }}
                 strokeWidth={2}
-                className={isIndoor ? "" : "stroke-white dark:stroke-zinc-950"}
+                className={isIndoor ? "" : "stroke-[var(--surface)]"}
                 paintOrder="stroke"
                 tabIndex={0}
                 onFocus={() => setHovered({ kind: "race", id: p.id })}
@@ -533,11 +533,11 @@ export function RaceProgressionChart({
           </span>
         ))}
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-zinc-400 dark:bg-zinc-500" />
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--ink-3)]" />
           Utomhus
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-zinc-400 dark:border-zinc-500" />
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-[var(--ink-3)]" />
           Inomhus
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -548,7 +548,7 @@ export function RaceProgressionChart({
               r={6}
               fill="none"
               strokeWidth={1.5}
-              className="stroke-zinc-900 dark:stroke-zinc-100"
+              className="stroke-[var(--foreground)]"
             />
           </svg>
           Personbästa (100 %)
