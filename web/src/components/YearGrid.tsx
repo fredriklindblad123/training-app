@@ -2,12 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import {
-  SV_MONTHS,
-  dateKey,
-  daysInMonth,
-  firstWeekdayOfMonth,
-} from "@/lib/calendar-utils";
+import { SV_MONTHS, dateKey, daysInMonth, firstWeekdayOfMonth } from "@/lib/calendar-utils";
 import { PHASE_LABELS, PHASE_COLOR_VARS, PHASE_TYPES, type PhaseType } from "@/lib/planning";
 import { OUTCOME_COLOR, OUTCOME_LABEL, type YearOutcome } from "@/lib/day-outcome";
 
@@ -55,7 +50,7 @@ export function YearGrid({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded border border-zinc-200 p-0.5 text-xs font-medium dark:border-zinc-800">
+        <div className="inline-flex rounded border border-[var(--line)] p-0.5 text-xs font-medium">
           {(["traning", "block"] as const).map((v) => (
             <button
               key={v}
@@ -63,8 +58,8 @@ export function YearGrid({
               onClick={() => setView(v)}
               className={`rounded px-3 py-1 ${
                 view === v
-                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                  : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
+                  : "text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
               }`}
             >
               {TOGGLE_LABEL[v]}
@@ -73,7 +68,7 @@ export function YearGrid({
         </div>
 
         {view === "traning" ? (
-          <div className="flex flex-wrap gap-3 text-xs text-zinc-600 dark:text-zinc-400">
+          <div className="flex flex-wrap gap-3 text-xs text-[var(--ink-2)]">
             {(Object.keys(OUTCOME_LABEL) as YearOutcome[]).map((key) => (
               <span key={key} className="flex items-center gap-1">
                 <span className={`h-3 w-3 rounded-sm ${OUTCOME_COLOR[key]}`} />
@@ -86,7 +81,7 @@ export function YearGrid({
             </span>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-3 text-xs text-zinc-600 dark:text-zinc-400">
+          <div className="flex flex-wrap gap-3 text-xs text-[var(--ink-2)]">
             {PHASE_TYPES.map((type) => (
               <span key={type} className="flex items-center gap-1">
                 <span
@@ -133,7 +128,7 @@ export function YearGrid({
                         key={key}
                         href={dayHref}
                         title={`${key}${block ? ` – ${block.name}` : ""}`}
-                        className={`h-4 w-4 rounded-sm ${block ? "" : "bg-zinc-100 dark:bg-zinc-800"}`}
+                        className={`h-4 w-4 rounded-sm ${block ? "" : "bg-[var(--surface-raised)]"}`}
                         style={
                           block ? { backgroundColor: PHASE_COLOR_VARS[block.phase] } : undefined
                         }
@@ -161,7 +156,7 @@ export function YearGrid({
                               : ""
                       }`}
                       className={`h-4 w-4 rounded-sm ${
-                        outcome ? OUTCOME_COLOR[outcome] : "bg-zinc-100 dark:bg-zinc-800"
+                        outcome ? OUTCOME_COLOR[outcome] : "bg-[var(--surface-raised)]"
                       }`}
                       style={
                         planned?.colorVar

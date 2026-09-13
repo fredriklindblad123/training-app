@@ -108,7 +108,7 @@ const primaryBtn =
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="text-zinc-600 dark:text-zinc-400">{label}</span>
+      <span className="text-[var(--ink-2)]">{label}</span>
       {children}
     </label>
   );
@@ -133,7 +133,7 @@ function AthleteTargetFields({
   if (athletes.length === 0) return null;
   return (
     <fieldset className="flex flex-wrap items-center gap-3 text-sm">
-      <legend className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Gäller för</legend>
+      <legend className="text-xs font-medium text-[var(--ink-3)]">Gäller för</legend>
       {athletes.map((a) => (
         <label key={a.id} className="flex items-center gap-1.5">
           <input type="checkbox" name="athletes" value={a.id} defaultChecked={selectedIds.has(a.id)} />
@@ -177,14 +177,14 @@ function ReadOnlyBlockSummary({ block }: { block: { focus: string | null } }) {
 function DayPatternFields() {
   return (
     <div className="flex flex-col gap-2 rounded border border-zinc-100 p-3 dark:border-zinc-800">
-      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+      <div className="text-xs font-medium text-[var(--ink-3)]">
         Veckomönster — typ av pass och träningsfaktor per dag. Rubrik, tid/distans och repgrupper
         fylls i sedan på Detaljplan.
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {WEEKDAY_LABELS.map((label, wi) => (
           <div key={label} className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-600 dark:text-zinc-400">{label}</span>
+            <span className="text-xs text-[var(--ink-2)]">{label}</span>
             <select name={`weekday_${wi + 1}_type`} defaultValue="" className={input}>
               <option value="">— Inget —</option>
               {WORKOUT_TYPES.map((w) => (
@@ -249,7 +249,7 @@ function BlockStatsPanel({ stats }: { stats: RangeStats }) {
 
       {stats.plannedByType.length > 0 && (
         <div>
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">Planerade pass per typ</div>
+          <div className="text-xs text-[var(--ink-3)]">Planerade pass per typ</div>
           <div className="mt-1 flex flex-wrap gap-1.5">
             {stats.plannedByType.map((row: RangeStats["plannedByType"][number]) => (
               <span
@@ -278,9 +278,9 @@ function BlockStatsPanel({ stats }: { stats: RangeStats }) {
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
-      <div className="text-xs text-zinc-500 dark:text-zinc-400">{label}</div>
-      <div className="text-zinc-900 dark:text-zinc-100">{value}</div>
-      {sub && <div className="text-xs text-zinc-400 dark:text-zinc-500">{sub}</div>}
+      <div className="text-xs text-[var(--ink-3)]">{label}</div>
+      <div className="text-[var(--foreground)]">{value}</div>
+      {sub && <div className="text-xs text-[var(--ink-3)]">{sub}</div>}
     </div>
   );
 }
@@ -311,8 +311,8 @@ function BlockCard({
   return (
     <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
       <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-medium text-zinc-900 dark:text-zinc-100">{b.name}</span>
-        <span className="text-sm text-zinc-500 dark:text-zinc-400">
+        <span className="font-medium text-[var(--foreground)]">{b.name}</span>
+        <span className="text-sm text-[var(--ink-3)]">
           {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
           {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""} · {b.start_date} – {b.end_date} ·{" "}
           {weeksBetween(b.start_date, b.end_date)} veckor
@@ -854,13 +854,13 @@ async function ArsplanOverview({
             href={`/blockplan?athlete=${athlete.id}`}
             className="flex flex-wrap items-center gap-4 rounded border border-zinc-200 p-3 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
           >
-            <div className="w-32 shrink-0 font-medium text-zinc-900 dark:text-zinc-100">
+            <div className="w-32 shrink-0 font-medium text-[var(--foreground)]">
               {athlete.fullName ?? "Namnlös löpare"}
             </div>
-            <div className="w-52 shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="w-52 shrink-0 text-sm text-[var(--ink-3)]">
               {activeBlock ? `${activeBlock.name} · ${PHASE_LABELS[activeBlock.phase]}` : "Inget aktivt block"}
             </div>
-            <div className="w-56 shrink-0 text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="w-56 shrink-0 text-sm text-[var(--ink-3)]">
               Nästa A-tävling:{" "}
               {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
             </div>
@@ -882,9 +882,9 @@ async function ArsplanOverview({
        * enskilda löparens Block-sektion använder. Ett delat block (flera
        * löpare ikryssade) räknas bara en gång, inte en gång per löpare. */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
+        <h2 className="text-lg font-medium text-[var(--foreground)]">Block</h2>
         {sortedAllBlocks.length === 0 ? (
-          <p className="text-sm text-zinc-400 dark:text-zinc-600">Inga block skapade ännu.</p>
+          <p className="text-sm text-[var(--ink-3)]">Inga block skapade ännu.</p>
         ) : (
           <div className="flex flex-col gap-2">
             {sortedAllBlocks.map((b) => (
@@ -904,7 +904,7 @@ async function ArsplanOverview({
        * begäran 2026-08-18) — löpar-kryssrutorna väljer vem/vilka blocket
        * gäller, utan att man först behöver stå på en enskild löpares sida. */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+        <h2 className="text-lg font-medium text-[var(--foreground)]">
           Lägg till block för hand
         </h2>
         <form action={createBlock} className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
@@ -965,7 +965,7 @@ async function ArsplanOverview({
         <dl className="grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2 dark:text-zinc-400">
           {PHASE_TYPES.map((p) => (
             <div key={p}>
-              <dt className="inline font-medium text-zinc-700 dark:text-zinc-300">
+              <dt className="inline font-medium text-[var(--ink-2)]">
                 {PHASE_LABELS[p]}:{" "}
               </dt>
               <dd className="inline">{PHASE_INTENT[p]}</dd>
@@ -1013,8 +1013,8 @@ export default async function ArsplanPage({
     return (
       <div className="flex flex-1 flex-col gap-10 px-6 py-8">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Blockplan</h1>
-          <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Blockplan</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
             löparens block och veckomönster.
           </p>
@@ -1290,8 +1290,8 @@ export default async function ArsplanPage({
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Årsplan</h1>
-        <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+        <h1 className="text-2xl font-semibold text-[var(--foreground)]">Årsplan</h1>
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
           kommer. Dag-för-dag-innehållet i varje veckomall redigeras på{" "}
           <Link href="/detaljplan" className="underline">
@@ -1316,30 +1316,30 @@ export default async function ArsplanPage({
       {/* ---------------- Läget just nu ---------------- */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">Aktuellt block</div>
-          <div className="mt-1 text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          <div className="text-xs text-[var(--ink-3)]">Aktuellt block</div>
+          <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
             {activeBlock ? activeBlock.name : "Inget block"}
           </div>
           {activeBlock && (
-            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="text-sm text-[var(--ink-3)]">
               {PHASE_LABELS[activeBlock.phase]} · slutar {activeBlock.end_date}
             </div>
           )}
         </div>
         <div className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">Nästa A-tävling</div>
-          <div className="mt-1 text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          <div className="text-xs text-[var(--ink-3)]">Nästa A-tävling</div>
+          <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
             {nextA ? nextA.name : "Ingen inlagd"}
           </div>
           {nextA && (
-            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+            <div className="text-sm text-[var(--ink-3)]">
               {nextA.competition_date} · {weeksBetween(today, nextA.competition_date) - 1} veckor kvar
             </div>
           )}
         </div>
         <div className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <div className="text-xs text-zinc-500 dark:text-zinc-400">Planerade pass framåt</div>
-          <div className="mt-1 text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          <div className="text-xs text-[var(--ink-3)]">Planerade pass framåt</div>
+          <div className="mt-1 text-lg font-medium text-[var(--foreground)]">
             {(plannedCounts ?? []).length}
           </div>
         </div>
@@ -1347,7 +1347,7 @@ export default async function ArsplanPage({
 
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Säsongsöversikt</h2>
+        <h2 className="text-lg font-medium text-[var(--foreground)]">Säsongsöversikt</h2>
         <SeasonTimeline blocks={timelineYearBlocks} competitions={timelineYearCompetitions} />
       </section>
 
@@ -1355,8 +1355,8 @@ export default async function ArsplanPage({
       {arsplanWeeks.length > 0 && (
         <section className="flex flex-col gap-3">
           <div>
-            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Veckorutnät</h2>
-            <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+            <h2 className="text-lg font-medium text-[var(--foreground)]">Veckorutnät</h2>
+            <p className="max-w-3xl text-sm text-[var(--ink-3)]">
               En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
               räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
               visar ett sant noll. Utfall visar hur många av veckans planerade pass som
@@ -1367,7 +1367,7 @@ export default async function ArsplanPage({
           <div className="w-full max-w-full overflow-x-auto">
             <table className="w-max min-w-full text-left text-xs">
               <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
-                <tr className="font-medium text-zinc-900 dark:text-zinc-100">
+                <tr className="font-medium text-[var(--foreground)]">
                   <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium dark:bg-zinc-950">
                     Vecka #
                   </th>
@@ -1377,7 +1377,7 @@ export default async function ArsplanPage({
                     </td>
                   ))}
                 </tr>
-                <tr className="text-zinc-500 dark:text-zinc-400">
+                <tr className="text-[var(--ink-3)]">
                   <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-normal dark:bg-zinc-950">
                     Månad
                   </th>
@@ -1403,7 +1403,7 @@ export default async function ArsplanPage({
                         <td
                           key={w.weekStart}
                           colSpan={run?.length ?? 1}
-                          className="py-1 pr-3 text-zinc-600 dark:text-zinc-400"
+                          className="py-1 pr-3 text-[var(--ink-2)]"
                         >
                           {w.block ? `${PERIOD_LABELS[w.block.period]} · ${PHASE_LABELS[w.block.phase]}` : "–"}
                         </td>
@@ -1451,7 +1451,7 @@ export default async function ArsplanPage({
                     </td>
                   ))}
                 </tr>
-                <tr className="font-medium text-zinc-900 dark:text-zinc-100">
+                <tr className="font-medium text-[var(--foreground)]">
                   <th scope="row" className="sticky left-0 bg-white py-1 pr-4 font-medium dark:bg-zinc-950">
                     Utfall
                   </th>
@@ -1543,8 +1543,8 @@ export default async function ArsplanPage({
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Block</h2>
-        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+        <h2 className="text-lg font-medium text-[var(--foreground)]">Block</h2>
+        <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Klicka på ett block för att redigera det. Nya block skapas från{" "}
           <Link href="/blockplan?athlete=alla" className="underline">
             Översikt
@@ -1583,7 +1583,7 @@ export default async function ArsplanPage({
          * för en självcoachad löpare (ingen Översikt att skapa via). */}
         {canEdit && scoped.role !== "coach" && (
         <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till block för hand
           </summary>
           <form action={createBlock} className="mt-3 flex flex-col gap-3">
@@ -1642,7 +1642,7 @@ export default async function ArsplanPage({
           <dl className="mt-4 grid grid-cols-1 gap-1 text-xs text-zinc-500 sm:grid-cols-2 dark:text-zinc-400">
             {PHASE_TYPES.map((p) => (
               <div key={p}>
-                <dt className="inline font-medium text-zinc-700 dark:text-zinc-300">
+                <dt className="inline font-medium text-[var(--ink-2)]">
                   {PHASE_LABELS[p]}:{" "}
                 </dt>
                 <dd className="inline">{PHASE_INTENT[p]}</dd>
@@ -1657,10 +1657,10 @@ export default async function ArsplanPage({
       {blockList.length >= 2 && (
         <section className="flex flex-col gap-4">
           <div>
-            <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+            <h2 className="text-lg font-medium text-[var(--foreground)]">
               Jämför block
             </h2>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-[var(--ink-3)]">
               Ställ två block mot varandra, t.ex. samma blocktyp mellan två säsonger — volym,
               intensitetsfördelning, sömn, sjuk-/skadedagar och tävlingsresultat.
             </p>
@@ -1669,7 +1669,7 @@ export default async function ArsplanPage({
           <form action="/blockplan" method="get" className="flex flex-wrap items-end gap-3 text-sm">
             {athleteParam && <input type="hidden" name="athlete" value={athleteParam} />}
             <label className="flex flex-col gap-1">
-              <span className="text-zinc-600 dark:text-zinc-400">Block A</span>
+              <span className="text-[var(--ink-2)]">Block A</span>
               <select
                 name="compareA"
                 defaultValue={compareAParam ?? ""}
@@ -1686,7 +1686,7 @@ export default async function ArsplanPage({
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-zinc-600 dark:text-zinc-400">Block B</span>
+              <span className="text-[var(--ink-2)]">Block B</span>
               <select
                 name="compareB"
                 defaultValue={compareBParam ?? ""}
@@ -1708,7 +1708,7 @@ export default async function ArsplanPage({
           </form>
 
           {compareAParam && compareBParam && !(compareAggregateA && compareAggregateB) && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-[var(--ink-3)]">
               Kunde inte jämföra — välj två olika block.
             </p>
           )}
@@ -1717,7 +1717,7 @@ export default async function ArsplanPage({
             <div className="w-full max-w-full overflow-x-auto">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
-                  <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <tr className="text-xs text-[var(--ink-3)]">
                     <th scope="col" className="py-1 pr-4 font-normal">
                       Mått
                     </th>
@@ -1732,7 +1732,7 @@ export default async function ArsplanPage({
                 <tbody className="[&_tr]:border-t [&_tr]:border-zinc-100 dark:[&_tr]:border-zinc-800">
                   {blockComparisonRows(compareAggregateA, compareAggregateB).map((row) => (
                     <tr key={row.label}>
-                      <th scope="row" className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400">
+                      <th scope="row" className="py-1.5 pr-4 font-normal text-[var(--ink-2)]">
                         {row.label}
                       </th>
                       <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
@@ -1748,8 +1748,8 @@ export default async function ArsplanPage({
 
       {/* ---------------- Tillgänglighet (K7) ---------------- */}
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tillgänglighet</h2>
-        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+        <h2 className="text-lg font-medium text-[var(--foreground)]">Tillgänglighet</h2>
+        <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Tentaveckor, lov, läger och resor styr träningen minst lika mycket som
           periodiseringen, men syns ingen annanstans i appen. Det här är bara kontext som gör
           en avvikande vecka förklarlig i efterhand — ingen logik, inga justerade riktvärden,
@@ -1770,10 +1770,10 @@ export default async function ArsplanPage({
                   >
                     {AVAILABILITY_LABELS[p.kind]}
                   </span>
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                  <span className="font-medium text-[var(--foreground)]">
                     {p.label ?? AVAILABILITY_LABELS[p.kind]}
                   </span>
-                  <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                  <span className="text-sm text-[var(--ink-3)]">
                     {p.start_date} – {p.end_date}
                   </span>
                 </div>
@@ -1792,7 +1792,7 @@ export default async function ArsplanPage({
         )}
 
         <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till period
           </summary>
           <form action={createAvailabilityPeriod} className="mt-3 flex flex-wrap items-end gap-3">
@@ -1828,16 +1828,16 @@ export default async function ArsplanPage({
           storleksordningen tre perioder per år räcker underlaget aldrig till
           ett samband, bara till vad som brukade synas samtidigt. */}
       <section className="flex flex-col gap-4">
-        <details className="rounded border border-zinc-200 dark:border-zinc-800">
-          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-4 text-zinc-900 dark:text-zinc-100">
+        <details className="rounded border border-[var(--line)]">
+          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-4 text-[var(--foreground)]">
             <span className="text-lg font-medium">Avbrott</span>
-            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400">
+            <span className="text-xs font-normal text-[var(--ink-3)]">
               {interruptionPeriods.length}{" "}
               {interruptionPeriods.length === 1 ? "period" : "perioder"} senaste året
             </span>
           </summary>
           <div className="flex flex-col gap-4 border-t border-zinc-200 p-4 dark:border-zinc-800">
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-[var(--ink-3)]">
               Sjuk- och skadeperioder ur dagboken, med vad som hände samtidigt: belastning och
               kvalitetspass veckan före, sömn och HRV mot din egen baslinje, och dina egna ord
               dagarna innan. Det är ett underlag för att lägga märke till mönster, inte ett
@@ -1846,7 +1846,7 @@ export default async function ArsplanPage({
             </p>
 
             {interruptionPrecursors.length === 0 ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-[var(--ink-3)]">
                 Inga registrerade sjuk- eller skadeperioder det senaste året.
               </p>
             ) : (
@@ -1857,15 +1857,15 @@ export default async function ArsplanPage({
                     className="rounded border border-zinc-100 p-3 dark:border-zinc-800"
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                      <span className="font-medium text-zinc-900 dark:text-zinc-100">
+                      <span className="font-medium text-[var(--foreground)]">
                         {formatPeriodRange(p.period)}
                       </span>
-                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                      <span className="text-xs text-[var(--ink-3)]">
                         {STATUS_LABEL[p.period.dayType]}, {p.period.days}{" "}
                         {p.period.days === 1 ? "dag" : "dagar"}
                       </span>
                     </div>
-                    <ul className="mt-2 flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
+                    <ul className="mt-2 flex flex-col gap-1 text-sm text-[var(--ink-2)]">
                       <li>
                         Veckan före: {Math.round(p.loadWeekBefore)} belastning
                         {p.loadBaselinePerWeek != null

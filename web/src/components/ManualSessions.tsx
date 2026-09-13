@@ -19,7 +19,7 @@ export type ManualActivity = {
 };
 
 const inputClass =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 
 /** Klockslag ur en tidsstämpel, i den form ett <input type="time"> vill ha. */
 function timeValue(startTime: string): string {
@@ -50,7 +50,7 @@ export function ManualSessions({
         <form
           key={a.id}
           action={saveAction}
-          className="flex flex-wrap items-end gap-3 rounded border border-zinc-200 p-3 dark:border-zinc-800"
+          className="flex flex-wrap items-end gap-3 rounded border border-[var(--line)] p-3"
         >
           <input type="hidden" name="activity_id" value={a.id} />
           <input type="hidden" name="entry_date" value={dateStr} />
@@ -119,19 +119,19 @@ export function ManualSessions({
 
           <button
             type="submit"
-            className="mb-0.5 w-fit rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="mb-0.5 w-fit rounded border border-[var(--line)] px-3 py-1 text-sm hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
           >
             Spara
           </button>
           <button
             type="submit"
             formAction={deleteAction}
-            className="mb-1.5 text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+            className="mb-1.5 text-xs text-[var(--ink-3)] hover:text-red-600 dark:hover:text-red-400"
           >
             Ta bort
           </button>
 
-          <div className="w-full text-xs text-zinc-500 dark:text-zinc-400">
+          <div className="w-full text-xs text-[var(--ink-3)]">
             {[
               a.distance_meters ? formatKm(a.distance_meters) : null,
               a.duration_seconds ? formatDuration(a.duration_seconds) : null,
@@ -142,8 +142,8 @@ export function ManualSessions({
         </form>
       ))}
 
-      <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-        <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
+      <details className="rounded border border-[var(--line)] p-3">
+        <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
           Lägg till genomfört pass manuellt
         </summary>
         <form action={saveAction} className="mt-3 flex flex-wrap items-end gap-3">
@@ -183,12 +183,12 @@ export function ManualSessions({
           </label>
           <button
             type="submit"
-            className="mb-0.5 w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+            className="mb-0.5 w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
           >
             Lägg till
           </button>
         </form>
-        <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mt-2 text-xs text-[var(--ink-3)]">
           Klockslaget avgör om passet räknas som ett eget pass eller slås ihop med dagens
           övriga träning. Skiljer det mer än ett par timmar blir det två pass, vilket är rätt
           för morgonlöpning plus styrka på kvällen.

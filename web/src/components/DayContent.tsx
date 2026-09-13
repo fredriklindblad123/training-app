@@ -217,9 +217,9 @@ export async function DayContent({
       labelClass: "text-rose-700 dark:text-rose-400",
     },
     neutral: {
-      border: "border-zinc-300 dark:border-zinc-700",
+      border: "border-[var(--line)]",
       label: "Neutralt",
-      labelClass: "text-zinc-500 dark:text-zinc-400",
+      labelClass: "text-[var(--ink-3)]",
     },
   } as const;
 
@@ -312,7 +312,7 @@ export async function DayContent({
                   {s.category ? CATEGORY_LABELS[s.category] : "Pass"}
                 </span>
               ))}
-              <span className="text-zinc-400 dark:text-zinc-600">
+              <span className="text-[var(--ink-3)]">
                 · {formatKm(dayKm * 1000)} · {formatDuration(daySeconds)}
               </span>
             </span>
@@ -320,19 +320,19 @@ export async function DayContent({
         }
       >
         {garminActivities.length === 0 && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-[var(--ink-3)]">
             Inget synkat pass den här dagen.
           </p>
         )}
         {garminActivities.map((a) => (
           <div
             key={a.id}
-            className="grid grid-cols-2 gap-x-6 gap-y-2 rounded border border-zinc-200 p-4 text-sm sm:grid-cols-4 dark:border-zinc-800"
+            className="grid grid-cols-2 gap-x-6 gap-y-2 rounded border border-[var(--line)] p-4 text-sm sm:grid-cols-4"
           >
-            <div className="col-span-2 flex flex-wrap items-center gap-3 text-base font-medium text-zinc-900 sm:col-span-4 dark:text-zinc-100">
+            <div className="col-span-2 flex flex-wrap items-center gap-3 text-base font-medium text-[var(--foreground)] sm:col-span-4">
               <span>
                 {a.name ?? "Pass"}{" "}
-                <span className="text-zinc-400">({a.activity_type})</span>
+                <span className="text-[var(--ink-3)]">({a.activity_type})</span>
               </span>
               <CategoryBadge category={a.category} />
             </div>
@@ -342,7 +342,7 @@ export async function DayContent({
                 <select
                   name="category"
                   defaultValue={isActivityCategory(a.category ?? "") ? a.category! : ""}
-                  className="rounded border border-zinc-300 bg-transparent px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                  className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-xs dark:bg-zinc-900"
                 >
                   {CATEGORY_VALUES.map((c) => (
                     <option key={c} value={c}>
@@ -352,7 +352,7 @@ export async function DayContent({
                 </select>
                 <button
                   type="submit"
-                  className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:border-zinc-950 hover:text-zinc-950 dark:border-zinc-700 dark:text-zinc-300 dark:hover:border-zinc-50 dark:hover:text-zinc-50"
+                  className="rounded border border-[var(--line)] px-2 py-1 text-xs text-[var(--ink-2)] hover:border-zinc-950 hover:text-[var(--foreground)]"
                 >
                   Spara kategori
                 </button>
@@ -362,13 +362,13 @@ export async function DayContent({
                   <input type="hidden" name="activity_id" value={a.id} />
                   <button
                     type="submit"
-                    className="text-xs text-zinc-400 underline hover:text-zinc-950 dark:hover:text-zinc-50"
+                    className="text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
                   >
                     återställ till auto
                   </button>
                 </form>
               ) : (
-                <span className="text-xs text-zinc-400">auto</span>
+                <span className="text-xs text-[var(--ink-3)]">auto</span>
               )}
             </div>
             <Stat label="Distans" value={formatKm(a.distance_meters)} />
@@ -402,7 +402,7 @@ export async function DayContent({
               <div className="col-span-2 mt-2 sm:col-span-4">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-zinc-500 dark:text-zinc-400">
+                    <tr className="text-left text-[var(--ink-3)]">
                       <th className="pr-3 font-normal">#</th>
                       <th className="pr-3 font-normal">Distans</th>
                       <th className="pr-3 font-normal">Tid</th>
@@ -424,7 +424,7 @@ export async function DayContent({
                           avg_pace_seconds_per_km: number | null;
                           avg_hr: number | null;
                         }) => (
-                          <tr key={s.split_index} className="border-t border-zinc-100 dark:border-zinc-800">
+                          <tr key={s.split_index} className="border-t border-[var(--line)]">
                             <td className="py-1 pr-3">{s.split_index}</td>
                             <td className="pr-3">{formatKm(s.distance_meters)}</td>
                             <td className="pr-3">{formatDuration(s.duration_seconds)}</td>
@@ -441,9 +441,9 @@ export async function DayContent({
         ))}
 
         {manualActivities.length > 0 && (
-          <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Egna pass</div>
+          <div className="text-xs font-medium text-[var(--ink-3)]">Egna pass</div>
         )}
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-[var(--ink-3)]">
           Träning som inte kommer från klockan — styrka, cykel, simning eller ett löppass du
           glömt starta klockan på. Flera per dag går bra.
         </p>
@@ -458,9 +458,9 @@ export async function DayContent({
 
       <DaySection title="Träningsdagbok" summary={diarySummary} hasData={hasDiaryData}>
         {diaryEntry?.session_log && (
-          <div className="rounded border border-zinc-200 p-4 text-sm dark:border-zinc-800">
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">Träningslogg</div>
-            <div className="whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">
+          <div className="rounded border border-[var(--line)] p-4 text-sm">
+            <div className="text-xs text-[var(--ink-3)]">Träningslogg</div>
+            <div className="whitespace-pre-wrap text-[var(--foreground)]">
               {diaryEntry.session_log}
             </div>
           </div>
@@ -469,7 +469,7 @@ export async function DayContent({
         {diaryEntry?.coach_notes && (
           <div className="rounded border border-sky-300 bg-sky-50/60 p-4 text-sm dark:border-sky-800 dark:bg-sky-950/20">
             <div className="text-xs text-sky-700 dark:text-sky-400">Tränarens kommentar</div>
-            <div className="whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">
+            <div className="whitespace-pre-wrap text-[var(--foreground)]">
               {diaryEntry.coach_notes}
             </div>
           </div>
@@ -477,7 +477,7 @@ export async function DayContent({
 
         <form
           action={saveDiaryEntry}
-          className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800"
+          className="flex flex-col gap-3 rounded border border-[var(--line)] p-4"
         >
           <input type="hidden" name="entry_date" value={dateStr} />
           <input type="hidden" name="entry_id" value={diaryEntry?.id ?? ""} />
@@ -502,7 +502,7 @@ export async function DayContent({
 
           <button
             type="submit"
-            className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+            className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
           >
             Spara
           </button>
@@ -511,7 +511,7 @@ export async function DayContent({
 
       {dailyMetrics && (
         <DaySection title="Sömn &amp; återhämtning" summary={sleepSummary} hasData={true}>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-zinc-200 p-4 text-sm sm:grid-cols-4 dark:border-zinc-800">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-[var(--line)] p-4 text-sm sm:grid-cols-4">
             <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
             <Stat
               label="Sömnpoäng"
@@ -562,8 +562,8 @@ function TypeDot({ type }: { type: string | null }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-xs text-zinc-500 dark:text-zinc-400">{label}</div>
-      <div className="text-zinc-900 dark:text-zinc-100">{value}</div>
+      <div className="text-xs text-[var(--ink-3)]">{label}</div>
+      <div className="text-[var(--foreground)]">{value}</div>
     </div>
   );
 }
@@ -582,9 +582,9 @@ function PlanStatusBadge({
   }[status];
   const className = {
     done: "bg-emerald-500 text-white",
-    today: "border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300",
+    today: "border border-[var(--line)] text-[var(--ink-2)] dark:border-zinc-700 dark:text-zinc-300",
     missed: "bg-amber-500 text-white",
-    upcoming: "border border-zinc-300 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300",
+    upcoming: "border border-[var(--line)] text-[var(--ink-2)] dark:border-zinc-700 dark:text-zinc-300",
   }[status];
   return (
     <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${className}`}>
@@ -640,23 +640,23 @@ function ThresholdTestCard({
         <>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
             <div>
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">Uppskattat LT2</div>
-              <div className="text-3xl font-semibold text-zinc-900 dark:text-zinc-50">
+              <div className="text-xs text-[var(--ink-3)]">Uppskattat LT2</div>
+              <div className="text-3xl font-semibold text-[var(--foreground)]">
                 {estimate.lt2}{" "}
-                <span className="text-base font-normal text-zinc-500 dark:text-zinc-400">
+                <span className="text-base font-normal text-[var(--ink-3)]">
                   slag/min
                 </span>
               </div>
             </div>
             {currentLabel && (
               <div>
-                <div className="text-xs text-zinc-500 dark:text-zinc-400">Sparat sedan tidigare</div>
-                <div className="text-sm text-zinc-600 dark:text-zinc-400">{currentLabel}</div>
+                <div className="text-xs text-[var(--ink-3)]">Sparat sedan tidigare</div>
+                <div className="text-sm text-[var(--ink-2)]">{currentLabel}</div>
               </div>
             )}
           </div>
 
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="text-xs text-[var(--ink-3)]">
             {estimate.reason ??
               `Bygger på tidsviktad snittpuls för de sista ${estimate.minutesUsed} minuterna av passet.`}{" "}
             Klockans pulszoner räknas inte om av det här — värdet blir ett facit att jämföra
@@ -669,19 +669,19 @@ function ThresholdTestCard({
             <input type="hidden" name="athlete" value={athleteId} />
             <button
               type="submit"
-              className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+              className="w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
             >
               {currentLt2 != null
                 ? `Ersätt sparat LT2 (${currentLt2}) med ${estimate.lt2}`
                 : "Spara som LT2"}
             </button>
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+            <span className="text-xs text-[var(--ink-3)]">
               Sparas som fälttest — en uppskattning, inte ett laktattest.
             </span>
           </form>
         </>
       ) : (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">{estimate.reason}</p>
+        <p className="text-sm text-[var(--ink-2)]">{estimate.reason}</p>
       )}
     </section>
   );
@@ -691,7 +691,7 @@ function CategoryBadge({ category }: { category: string | null }) {
   if (!category || !isActivityCategory(category)) return null;
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5 text-xs font-normal text-zinc-700 dark:border-zinc-700 dark:text-zinc-300"
+      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] px-2 py-0.5 text-xs font-normal text-[var(--ink-2)]"
     >
       <span
         className="h-2 w-2 rounded-full"
@@ -744,7 +744,7 @@ export async function SharedPlannedDay({
   if (groups.size === 0) {
     return (
       <DaySection title="Planerat pass" hasData={false} summary="Inget planerat">
-        <p className="text-sm text-zinc-400 dark:text-zinc-600">Inget planerat pass den här dagen.</p>
+        <p className="text-sm text-[var(--ink-3)]">Inget planerat pass den här dagen.</p>
       </DaySection>
     );
   }
@@ -771,12 +771,12 @@ export async function SharedPlannedDay({
         return (
           <div key={group[0].id} className="flex flex-col gap-2">
             {names.length > 0 && (
-              <div className="flex flex-wrap items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+              <div className="flex flex-wrap items-center gap-1 text-xs text-[var(--ink-3)]">
                 <span>Gäller:</span>
                 {names.map((n) => (
                   <span
                     key={n}
-                    className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+                    className="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[var(--ink-2)] dark:bg-zinc-700"
                   >
                     {n}
                   </span>

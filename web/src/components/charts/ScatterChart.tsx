@@ -24,7 +24,7 @@ export function ScatterChart({
 
   if (data.length === 0) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-[var(--ink-3)]">
         Inte tillräckligt med data ännu.
       </p>
     );
@@ -95,7 +95,7 @@ export function ScatterChart({
           x={paddingLeft + plotWidth / 2}
           y={height - 6}
           textAnchor="middle"
-          className="fill-zinc-500 dark:fill-zinc-400"
+          className="fill-[var(--ink-3)]"
           style={{ fontSize: 10 }}
         >
           {xLabel}
@@ -104,7 +104,7 @@ export function ScatterChart({
           x={12}
           y={paddingTop + plotHeight / 2}
           textAnchor="middle"
-          className="fill-zinc-500 dark:fill-zinc-400"
+          className="fill-[var(--ink-3)]"
           style={{ fontSize: 10 }}
           transform={`rotate(-90, 12, ${paddingTop + plotHeight / 2})`}
         >
@@ -112,7 +112,7 @@ export function ScatterChart({
         </text>
       </svg>
       {hovered !== null && (
-        <div className="text-xs text-zinc-600 dark:text-zinc-400">
+        <div className="text-xs text-[var(--ink-2)]">
           {data[hovered].label}: {formatX(data[hovered].x)} · {formatY(data[hovered].y)}
         </div>
       )}

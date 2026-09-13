@@ -106,8 +106,8 @@ export function NavLinks({
         aria-current={active ? "page" : undefined}
         className={
           active
-            ? "text-zinc-950 dark:text-zinc-50"
-            : "text-zinc-700 hover:text-zinc-950 dark:text-zinc-300 dark:hover:text-zinc-50"
+            ? "text-[var(--foreground)]"
+            : "text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-zinc-300 dark:hover:text-zinc-50"
         }
       >
         {link.label}
@@ -121,7 +121,7 @@ export function NavLinks({
     <div role="group" aria-labelledby={id} className="flex items-baseline gap-3">
       <span
         id={id}
-        className="text-[0.6875rem] font-semibold tracking-wider text-zinc-400 uppercase dark:text-zinc-500"
+        className="text-[0.6875rem] font-semibold tracking-wider text-[var(--ink-3)] uppercase dark:text-[var(--ink-3)]"
       >
         {label}
         {note && (

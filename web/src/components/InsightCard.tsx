@@ -40,7 +40,7 @@ export function InsightCard({
 }) {
   return (
     <details
-      className="group rounded border border-zinc-200 px-4 py-3 dark:border-zinc-800"
+      className="group rounded border border-[var(--line)] px-4 py-3"
       style={{ backgroundColor: "var(--surface-insight)" }}
     >
       <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">
@@ -50,13 +50,13 @@ export function InsightCard({
           style={{ backgroundColor: TONE_MARKER_VAR[tone] }}
           title={TONE_LABEL[tone]}
         />
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{headline}</span>
+        <span className="text-sm font-medium text-[var(--foreground)]">{headline}</span>
       </summary>
       <div className="mt-2 flex flex-col items-start gap-2 pl-3.5">
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">{detail}</p>
+        <p className="text-xs text-[var(--ink-3)]">{detail}</p>
         <Link
           href={href}
-          className="text-xs underline text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+          className="text-xs underline text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
         >
           Läs mer →
         </Link>

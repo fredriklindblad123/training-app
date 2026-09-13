@@ -188,11 +188,11 @@ export default async function MonthPage({
         className="-mb-2"
       />
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-zinc-200 bg-zinc-200 text-xs dark:border-zinc-800 dark:bg-zinc-800">
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-[var(--line)] bg-zinc-200 text-xs dark:bg-zinc-800">
         {SV_WEEKDAYS_SHORT.map((wd) => (
           <div
             key={wd}
-            className="bg-zinc-50 px-2 py-1 text-center font-medium text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400"
+            className="bg-zinc-50 px-2 py-1 text-center font-medium text-[var(--ink-3)] dark:bg-zinc-900 dark:text-[var(--ink-3)]"
           >
             {wd}
           </div>
@@ -223,9 +223,9 @@ export default async function MonthPage({
             <Link
               key={key}
               href={`/calendar/${year}/${month}/${day}${athleteQuery}`}
-              className="flex min-h-24 flex-col gap-1 bg-white p-2 hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+              className="flex min-h-24 flex-col gap-1 bg-white p-2 hover:bg-[var(--surface-raised)]"
             >
-              <span className="text-zinc-500 dark:text-zinc-400">{day}</span>
+              <span className="text-[var(--ink-3)]">{day}</span>
 
               {comps.map((c, ci) => (
                 <span
@@ -247,7 +247,7 @@ export default async function MonthPage({
               {done.map((s) => (
                 <span
                   key={s.id}
-                  className="flex items-center gap-1.5 text-[11px] text-zinc-900 dark:text-zinc-100"
+                  className="flex items-center gap-1.5 text-[11px] text-[var(--foreground)]"
                 >
                   <PassMarker type={s.category} planned={false} />
                   {typeLabel(s.category)}
@@ -258,7 +258,7 @@ export default async function MonthPage({
                 planned.map((p) => (
                   <span
                     key={p.id}
-                    className="flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400"
+                    className="flex items-center gap-1.5 text-[11px] text-[var(--ink-3)]"
                   >
                     <PassMarker type={p.workout_type} planned />
                     {typeLabel(p.workout_type)}

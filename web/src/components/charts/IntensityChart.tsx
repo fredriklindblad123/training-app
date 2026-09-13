@@ -117,10 +117,7 @@ export function IntensityChart({
   const totals = useMemo(() => weeks.map((w) => zoneTotal(w.zoneSeconds)), [weeks]);
   const periodZones = useMemo(() => sumWeeks(weeks), [weeks]);
   const periodTotal = zoneTotal(periodZones);
-  const weeksWithData = useMemo(
-    () => weeks.filter((w) => zoneTotal(w.zoneSeconds) > 0),
-    [weeks],
-  );
+  const weeksWithData = useMemo(() => weeks.filter((w) => zoneTotal(w.zoneSeconds) > 0), [weeks]);
 
   /** Mittenzonens riktning: senaste fyra veckorna med data mot de fyra
    * dessförinnan. Fyra veckor är kort nog att fånga en glidning och långt nog
@@ -159,35 +156,37 @@ export function IntensityChart({
       <div
         className={`rounded border p-3 text-sm ${
           personalZones
-            ? "border-zinc-200 dark:border-zinc-800"
+            ? "border-[var(--line)]"
             : "border-amber-400/60 bg-amber-50/60 dark:border-amber-500/40 dark:bg-amber-950/20"
         }`}
       >
-        <div className="font-medium text-zinc-900 dark:text-zinc-100">
-          {personalZones ? "Zongränser: personligt kalibrerade" : "Zongränser: Garmins autogissning"}
+        <div className="font-medium text-[var(--foreground)]">
+          {personalZones
+            ? "Zongränser: personligt kalibrerade"
+            : "Zongränser: Garmins autogissning"}
         </div>
         {personalZones ? (
-          <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+          <p className="mt-1 text-[var(--ink-2)]">
             Ditt tröskelband är satt till {profile.thresholdHrLow}–{profile.thresholdHrHigh}{" "}
             slag/min
             {profile.lt1Hr != null && ` (LT1 ${profile.lt1Hr})`}
             {profile.lt2Hr != null && ` (LT2 ${profile.lt2Hr})`}
-            {profile.maxHr != null && `, maxpuls ${profile.maxHr}`}. Zontiderna nedan kommer
-            ändå från Garmins egna zonindelning — klockan levererar bara sekunder per zon,
-            aldrig pulsintervallen den räknat mot. Ditt band är alltså facit att jämföra mot,
-            inte den indelning staplarna är byggda av.
+            {profile.maxHr != null && `, maxpuls ${profile.maxHr}`}. Zontiderna nedan kommer ändå
+            från Garmins egna zonindelning — klockan levererar bara sekunder per zon, aldrig
+            pulsintervallen den räknat mot. Ditt band är alltså facit att jämföra mot, inte den
+            indelning staplarna är byggda av.
           </p>
         ) : (
-          <p className="mt-1 text-zinc-700 dark:text-zinc-300">
-            Inget personligt tröskelband är ifyllt, så zonerna nedan kommer från Garmins
-            automatiska gissning utifrån ålder och autodetekterad maxpuls.{" "}
-            <strong className="font-medium">Siffrorna är därför osäkra</strong> — de mäter
-            klockans modell av dig, inte din fysiologi. Almgren styr mot ett personligt band
-            på {ALMGREN_THRESHOLD_BAND.low}–{ALMGREN_THRESHOLD_BAND.high} slag/min, inte mot
-            &rdquo;zon 4&rdquo;. Fyll i tröskelpuls så blir den här sektionen meningsfull. Ett
-            kalibrerat LT2 gör siffrorna jämförbara mot din egen fysiologi i stället för
-            klockans gissning — lägg in ett{" "}
-            <Link href="/detaljplan" className="underline hover:text-zinc-950 dark:hover:text-zinc-50">
+          <p className="mt-1 text-[var(--ink-2)]">
+            Inget personligt tröskelband är ifyllt, så zonerna nedan kommer från Garmins automatiska
+            gissning utifrån ålder och autodetekterad maxpuls.{" "}
+            <strong className="font-medium">Siffrorna är därför osäkra</strong> — de mäter klockans
+            modell av dig, inte din fysiologi. Almgren styr mot ett personligt band på{" "}
+            {ALMGREN_THRESHOLD_BAND.low}–{ALMGREN_THRESHOLD_BAND.high} slag/min, inte mot &rdquo;zon
+            4&rdquo;. Fyll i tröskelpuls så blir den här sektionen meningsfull. Ett kalibrerat LT2
+            gör siffrorna jämförbara mot din egen fysiologi i stället för klockans gissning — lägg
+            in ett{" "}
+            <Link href="/detaljplan" className="underline hover:text-[var(--foreground)]">
               tröskeltest under Detaljplan
             </Link>{" "}
             för att komma igång.
@@ -196,7 +195,7 @@ export function IntensityChart({
       </div>
 
       {periodTotal === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>
+        <p className="text-sm text-[var(--ink-3)]">{emptyLabel}</p>
       ) : (
         <>
           {/* --------------------- stackade kolumner över tid ------------- */}
@@ -288,7 +287,7 @@ export function IntensityChart({
                   x={xCenter(i)}
                   y={HEIGHT - 5}
                   textAnchor="middle"
-                  className="fill-zinc-500 dark:fill-zinc-400"
+                  className="fill-[var(--ink-3)]"
                   style={{ fontSize: 10 }}
                 >
                   {week.label}
@@ -314,7 +313,7 @@ export function IntensityChart({
             ))}
           </svg>
 
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--ink-2)]">
             {ZONE_INDEXES.map((z) => (
               <span key={z} className="inline-flex items-center gap-1.5">
                 <span
@@ -322,37 +321,33 @@ export function IntensityChart({
                   style={{ backgroundColor: zoneColorVar(z) }}
                 />
                 {ZONE_LABELS[z]}
-                <span className="text-zinc-400 dark:text-zinc-500">
-                  · {ZONE_DESCRIPTIONS[z]}
-                </span>
+                <span className="text-[var(--ink-3)]">· {ZONE_DESCRIPTIONS[z]}</span>
               </span>
             ))}
           </div>
 
           {hoveredWeek && (
-            <div className="flex flex-col gap-2 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-              <div className="font-medium text-zinc-900 dark:text-zinc-100">
-                {hoveredWeek.fullLabel}
-              </div>
+            <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3 text-sm">
+              <div className="font-medium text-[var(--foreground)]">{hoveredWeek.fullLabel}</div>
               {hoveredTotal > 0 ? (
                 <>
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <div className="text-xs text-[var(--ink-3)]">
                     {formatHoursMinutesShort(hoveredTotal)} med pulsdata
                   </div>
                   <dl className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
                     {ZONE_INDEXES.map((z) => (
                       <div key={z} className="flex flex-wrap items-baseline gap-x-2">
-                        <dt className="inline-flex items-center gap-1.5 text-zinc-500 dark:text-zinc-400">
+                        <dt className="inline-flex items-center gap-1.5 text-[var(--ink-3)]">
                           <span
                             className="h-2 w-2 shrink-0 rounded-sm"
                             style={{ backgroundColor: zoneColorVar(z) }}
                           />
                           {ZONE_LABELS[z]}
                         </dt>
-                        <dd className="font-medium tabular-nums text-zinc-900 dark:text-zinc-100">
+                        <dd className="font-medium tabular-nums text-[var(--foreground)]">
                           {formatPercent(percent(hoveredWeek.zoneSeconds[z], hoveredTotal))}
                         </dd>
-                        <dd className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+                        <dd className="text-xs tabular-nums text-[var(--ink-3)]">
                           {formatHoursMinutesShort(hoveredWeek.zoneSeconds[z])}
                         </dd>
                       </div>
@@ -360,7 +355,7 @@ export function IntensityChart({
                   </dl>
                 </>
               ) : (
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                <p className="text-xs text-[var(--ink-3)]">
                   Ingen pulsdata den här veckan — antingen ingen träning, eller träning utan
                   pulsband.
                 </p>
@@ -369,23 +364,23 @@ export function IntensityChart({
           )}
 
           {/* ------------------- mittenzonen ------------------------------ */}
-          <div className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-            <div className="text-sm text-zinc-500 dark:text-zinc-400">
+          <div className="rounded border border-[var(--line)] p-4">
+            <div className="text-sm text-[var(--ink-3)]">
               Mittenzonen (zon 3) — varken lugnt eller tröskel
             </div>
             <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
-              <span className="text-3xl font-semibold text-zinc-900 dark:text-zinc-50">
+              <span className="text-3xl font-semibold text-[var(--foreground)]">
                 {formatPercent(percent(periodZones[2], periodTotal))}
               </span>
               {middleTrend && (
-                <span className="text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
-                  {formatSignedPercent(middleTrend.delta)} senaste 4 veckorna mot de 4
-                  dessförinnan ({middleTrend.previousShare.toFixed(1)} %{" "}
-                  {"→"} {middleTrend.recentShare.toFixed(1)} %)
+                <span className="text-sm tabular-nums text-[var(--ink-2)]">
+                  {formatSignedPercent(middleTrend.delta)} senaste 4 veckorna mot de 4 dessförinnan
+                  ({middleTrend.previousShare.toFixed(1)} % {"→"}{" "}
+                  {middleTrend.recentShare.toFixed(1)} %)
                 </span>
               )}
             </div>
-            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="mt-2 text-sm text-[var(--ink-2)]">
               {middleTrend == null
                 ? "Kräver minst 8 veckor med pulsdata för att kunna säga något om riktningen."
                 : middleTrend.delta > 3
@@ -399,7 +394,7 @@ export function IntensityChart({
           {/* ------------------- fördelning mot målmodell ----------------- */}
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-zinc-500 dark:text-zinc-400">Jämför mot modell:</span>
+              <span className="text-sm text-[var(--ink-3)]">Jämför mot modell:</span>
               {INTENSITY_MODELS.map((m) => (
                 <button
                   key={m.id}
@@ -408,8 +403,8 @@ export function IntensityChart({
                   onClick={() => setModelId(m.id)}
                   className={`rounded border px-2 py-1 text-xs transition-colors ${
                     m.id === modelId
-                      ? "border-zinc-400 text-zinc-900 dark:border-zinc-500 dark:text-zinc-50"
-                      : "border-zinc-200 text-zinc-500 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600"
+                      ? "border-zinc-400 text-[var(--foreground)]"
+                      : "border-[var(--line)] text-[var(--ink-3)] hover:border-zinc-400 dark:text-[var(--ink-3)]"
                   }`}
                 >
                   {m.label}
@@ -420,12 +415,15 @@ export function IntensityChart({
             <div className="flex flex-col gap-2">
               {(
                 [
-                  { title: "Din fördelning i perioden", values: bandKeys.map((k) => percent(actualBands[k], periodTotal) ?? 0) },
+                  {
+                    title: "Din fördelning i perioden",
+                    values: bandKeys.map((k) => percent(actualBands[k], periodTotal) ?? 0),
+                  },
                   { title: model.label, values: bandKeys.map((k) => model.target[k]) },
                 ] as const
               ).map((row) => (
                 <div key={row.title} className="flex flex-col gap-1">
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400">{row.title}</div>
+                  <div className="text-xs text-[var(--ink-3)]">{row.title}</div>
                   <div className="flex h-5 w-full max-w-full gap-[2px] overflow-hidden">
                     {bandKeys.map((band, i) => (
                       <div
@@ -446,7 +444,7 @@ export function IntensityChart({
             <div className="w-full max-w-full overflow-x-auto">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
-                  <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <tr className="text-xs text-[var(--ink-3)]">
                     <th scope="col" className="py-1 pr-4 font-normal">
                       Band
                     </th>
@@ -468,7 +466,7 @@ export function IntensityChart({
                   {bandKeys.map((band) => {
                     const actual = percent(actualBands[band], periodTotal) ?? 0;
                     return (
-                      <tr key={band} className="border-t border-zinc-100 dark:border-zinc-800">
+                      <tr key={band} className="border-t border-[var(--line)]">
                         <th scope="row" className="py-1 pr-4 font-normal">
                           <span className="inline-flex items-center gap-1.5">
                             <span
@@ -493,18 +491,18 @@ export function IntensityChart({
               </table>
             </div>
 
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              {model.source} Modellen är en referenspunkt, inte ett facit — appen påstår inte
-              att någon av dem är rätt för dig. Översättningen från klockans fem zoner till
-              litteraturens tre band (zon 1–2 / zon 3 / zon 4–5) är dessutom en approximation
-              som ärver samma osäkerhet som zongränserna.
+            <p className="text-xs text-[var(--ink-3)]">
+              {model.source} Modellen är en referenspunkt, inte ett facit — appen påstår inte att
+              någon av dem är rätt för dig. Översättningen från klockans fem zoner till
+              litteraturens tre band (zon 1–2 / zon 3 / zon 4–5) är dessutom en approximation som
+              ärver samma osäkerhet som zongränserna.
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => setShowTable((v) => !v)}
-            className="w-fit text-xs text-zinc-500 underline hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+            className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
           >
             {showTable ? "Dölj veckotabell" : "Visa veckotabell"}
           </button>
@@ -513,7 +511,7 @@ export function IntensityChart({
             <div className="w-full max-w-full overflow-x-auto">
               <table className="w-full min-w-max text-left text-sm">
                 <thead>
-                  <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <tr className="text-xs text-[var(--ink-3)]">
                     <th scope="col" className="py-1 pr-4 font-normal">
                       Vecka
                     </th>
@@ -529,7 +527,7 @@ export function IntensityChart({
                 </thead>
                 <tbody>
                   {weeks.map((week, i) => (
-                    <tr key={week.key} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <tr key={week.key} className="border-t border-[var(--line)]">
                       <th scope="row" className="py-1 pr-4 font-normal">
                         {week.fullLabel}
                       </th>

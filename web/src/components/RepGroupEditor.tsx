@@ -19,8 +19,8 @@
  */
 
 const smallInput =
-  "rounded border border-zinc-300 px-1.5 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900";
-const smallLabel = "pb-1.5 text-xs text-zinc-400 dark:text-zinc-600";
+  "rounded border border-[var(--line)] px-1.5 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900";
+const smallLabel = "pb-1.5 text-xs text-[var(--ink-3)]";
 
 export type RepGroupRow = {
   id: string;
@@ -155,14 +155,14 @@ export function RepGroupEditor({
             />
             <button
               type="submit"
-              className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              className="rounded border border-[var(--line)] px-2 py-1 text-xs hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
             >
               Spara
             </button>
             <button
               type="submit"
               formAction={deleteAction}
-              className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+              className="text-xs text-[var(--ink-3)] hover:text-red-600 dark:hover:text-red-400"
             >
               Ta bort
             </button>
@@ -199,7 +199,7 @@ export function RepGroupEditor({
         />
         <button
           type="submit"
-          className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+          className="rounded border border-[var(--line)] px-2 py-1 text-xs hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
         >
           Lägg till grupp
         </button>

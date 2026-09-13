@@ -41,10 +41,10 @@ export function AthleteSwitcher({
   const active = athletes.find((a) => a.id === activeId);
 
   return (
-    <div className="flex flex-col gap-2 rounded border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3">
       <div
         className={`text-sm font-medium ${
-          !isOverview && !isSelf ? "text-sky-700 dark:text-sky-400" : "text-zinc-700 dark:text-zinc-300"
+          !isOverview && !isSelf ? "text-sky-700 dark:text-sky-400" : "text-[var(--ink-2)]"
         }`}
       >
         {isOverview
@@ -60,8 +60,8 @@ export function AthleteSwitcher({
             aria-current={isOverview ? "page" : undefined}
             className={`rounded px-3 py-1 ${
               isOverview
-                ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                ? "bg-[var(--foreground)] text-[var(--background)]"
+                : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
             }`}
           >
             Alla
@@ -77,10 +77,10 @@ export function AthleteSwitcher({
               aria-current={isActive ? "page" : undefined}
               className={`rounded px-3 py-1 ${
                 isActive
-                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
                   : self
-                    ? "border border-dashed border-zinc-400 hover:bg-zinc-100 dark:border-zinc-600 dark:hover:bg-zinc-900"
-                    : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                    ? "border border-dashed border-zinc-400 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
+                    : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
               }`}
             >
               {a.fullName ?? "Namnlös löpare"}

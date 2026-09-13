@@ -37,21 +37,21 @@ function OccurrenceRow({
   const times = occurrence.signature.groups.flatMap((g) => g.times);
 
   return (
-    <tr className="border-t border-zinc-100 dark:border-zinc-800">
+    <tr className="border-t border-[var(--line)]">
       <td className="py-1.5 pr-3 whitespace-nowrap">
         {/* Länk till dagvyn — därifrån finns hela passet: varvtabell,
             dagbokstext och nattens sömndata. */}
         <Link
           href={dayHref(occurrence.date)}
-          className="text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
+          className="text-[var(--ink-2)] underline-offset-2 hover:text-[var(--foreground)] hover:underline dark:text-[var(--ink-3)]"
         >
           {occurrence.date}
         </Link>
       </td>
-      <td className="py-1.5 pr-3 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
+      <td className="py-1.5 pr-3 whitespace-nowrap text-[var(--ink-2)]">
         {occurrence.signature.label}
       </td>
-      <td className="py-1.5 pr-3 text-right tabular-nums font-medium text-zinc-900 dark:text-zinc-100">
+      <td className="py-1.5 pr-3 text-right tabular-nums font-medium text-[var(--foreground)]">
         {fmtTime(occurrence.meanRepSeconds)}
         {isBest && (
           <span className="ml-1 text-xs font-normal text-emerald-600 dark:text-emerald-400">
@@ -59,13 +59,13 @@ function OccurrenceRow({
           </span>
         )}
       </td>
-      <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+      <td className="py-1.5 pr-3 text-right tabular-nums text-[var(--ink-3)]">
         {delta <= 0.05 ? "—" : `+${delta.toFixed(1)}s`}
       </td>
-      <td className="py-1.5 pr-3 text-right tabular-nums text-zinc-600 dark:text-zinc-400">
+      <td className="py-1.5 pr-3 text-right tabular-nums text-[var(--ink-2)]">
         {occurrence.meanRepHr ? Math.round(occurrence.meanRepHr) : "—"}
       </td>
-      <td className="py-1.5 tabular-nums text-xs text-zinc-500 dark:text-zinc-400">
+      <td className="py-1.5 tabular-nums text-xs text-[var(--ink-3)]">
         {times.map((t) => fmtTime(t)).join("  ")}
       </td>
     </tr>
@@ -84,10 +84,10 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
     ((latest.meanRepSeconds - first.meanRepSeconds) / first.meanRepSeconds) * 100;
 
   return (
-    <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800" open={false}>
+    <details className="rounded border border-[var(--line)] p-4" open={false}>
       <summary className="cursor-pointer list-none">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <span className="flex items-center gap-2 font-medium text-zinc-900 dark:text-zinc-100">
+          <span className="flex items-center gap-2 font-medium text-[var(--foreground)]">
             {isActivityCategory(category ?? "") && (
               <span
                 className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
@@ -99,12 +99,12 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
               ? `${CATEGORY_LABELS[category as never]} · ${distanceMeters} m`
               : `${distanceMeters} m`}
           </span>
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">
+          <span className="text-sm text-[var(--ink-3)]">
             {occurrences.length} genomföranden · bäst {fmtTime(best.meanRepSeconds)}{" "}
             {best.meanRepHr ? `vid puls ${Math.round(best.meanRepHr)}` : ""}
           </span>
         </div>
-        <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+        <div className="mt-1 text-xs text-[var(--ink-3)]">
           {first.date} → {latest.date}:{" "}
           <span
             className={
@@ -124,7 +124,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
-            <tr className="text-left text-xs text-zinc-500 dark:text-zinc-400">
+            <tr className="text-left text-xs text-[var(--ink-3)]">
               <th className="pb-1 font-normal">Datum</th>
               <th className="pb-1 font-normal">Upplägg</th>
               <th className="pb-1 text-right font-normal">Snitt/rep</th>
@@ -146,7 +146,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
         </table>
       </div>
       {occurrences.length > shown.length && (
-        <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mt-2 text-xs text-[var(--ink-3)]">
           Visar de {shown.length} senaste av {occurrences.length}.
         </p>
       )}
@@ -157,7 +157,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
 export function SessionQuality({ groups }: { groups: SignatureGroup[] }) {
   if (groups.length === 0) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-[var(--ink-3)]">
         Inga återkommande nyckelpass i perioden. Vyn kräver varvdata, som hämtas med{" "}
         <code className="text-xs">scripts/backfill_activity_splits.py</code>.
       </p>
@@ -166,7 +166,7 @@ export function SessionQuality({ groups }: { groups: SignatureGroup[] }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-[var(--ink-3)]">
         Pass grupperas på passtyp och på den repdistans som dominerar
         kvalitetsarbetet — inte på passets namn, som varierar för samma session, och inte
         på exakt upplägg: av 106 intervallpass fanns 102 olika upplägg, så exakta

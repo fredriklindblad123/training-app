@@ -84,8 +84,18 @@ const PLOT_W = WIDTH - PAD_LEFT - PAD_RIGHT;
 const DAY_MS = 24 * 3600 * 1000;
 
 const MONTHS_SHORT = [
-  "jan", "feb", "mar", "apr", "maj", "jun",
-  "jul", "aug", "sep", "okt", "nov", "dec",
+  "jan",
+  "feb",
+  "mar",
+  "apr",
+  "maj",
+  "jun",
+  "jul",
+  "aug",
+  "sep",
+  "okt",
+  "nov",
+  "dec",
 ];
 
 function dayMs(date: string): number {
@@ -173,9 +183,7 @@ export function RaceProgressionChart({
   emptyLabel?: string;
 }) {
   const [hovered, setHovered] = useState<
-    | { kind: "race"; id: string }
-    | { kind: "training"; seriesId: string; date: string }
-    | null
+    { kind: "race"; id: string } | { kind: "training"; seriesId: string; date: string } | null
   >(null);
   const [visibleTraining, setVisibleTraining] = useState<Set<string>>(
     () => new Set(trainingSeries[0] ? [trainingSeries[0].id] : []),
@@ -221,7 +229,10 @@ export function RaceProgressionChart({
     for (const s of trainingSeries) {
       if (!visibleTraining.has(s.id)) continue;
       const visible = toTrainingPct(s).filter((p) => dayMs(p.date) >= period.cutoffMs);
-      map.set(s.id, visible.sort((a, b) => dayMs(a.date) - dayMs(b.date)));
+      map.set(
+        s.id,
+        visible.sort((a, b) => dayMs(a.date) - dayMs(b.date)),
+      );
     }
     return map;
   }, [trainingSeries, visibleTraining, period]);
@@ -249,8 +260,8 @@ export function RaceProgressionChart({
           aria-pressed={period.years === opt.years}
           className={`rounded px-3 py-1 ${
             period.years === opt.years
-              ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-              : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              ? "bg-[var(--foreground)] text-[var(--background)]"
+              : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
           }`}
         >
           {opt.label}
@@ -260,14 +271,14 @@ export function RaceProgressionChart({
   );
 
   if (!hasAnyRaceData) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
+    return <p className="text-sm text-[var(--ink-3)]">{emptyLabel}</p>;
   }
 
   if (allPoints.length === 0) {
     return (
       <div className="flex flex-col gap-3">
         {periodSelector}
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-[var(--ink-3)]">
           Inga lopp i den valda perioden — testa ett bredare tidsfönster.
         </p>
       </div>
@@ -277,10 +288,7 @@ export function RaceProgressionChart({
   /* ------------------------------- skalor -------------------------------- */
 
   const allTrainingPoints = [...trainingPctBySeriesId.values()].flat();
-  const allDates = [
-    ...allPoints.map((p) => p.date),
-    ...allTrainingPoints.map((p) => p.date),
-  ];
+  const allDates = [...allPoints.map((p) => p.date), ...allTrainingPoints.map((p) => p.date)];
   const rawFromMs = Math.min(...allDates.map(dayMs));
   const rawToMs = Math.max(Math.max(...allDates.map(dayMs)), rawFromMs + DAY_MS);
   const span = rawToMs - rawFromMs;
@@ -304,9 +312,8 @@ export function RaceProgressionChart({
     hovered?.kind === "race" ? (allPoints.find((p) => p.id === hovered.id) ?? null) : null;
   const hoveredTrainingPoint =
     hovered?.kind === "training"
-      ? ((trainingPctBySeriesId.get(hovered.seriesId) ?? []).find(
-          (p) => p.date === hovered.date,
-        ) ?? null)
+      ? ((trainingPctBySeriesId.get(hovered.seriesId) ?? []).find((p) => p.date === hovered.date) ??
+        null)
       : null;
 
   /** Samma "hela plotytan är träffyta"-mönster som EfficiencyChart — med ett
@@ -380,12 +387,7 @@ export function RaceProgressionChart({
             </text>
           </g>
         ))}
-        <text
-          x={PAD_LEFT}
-          y={PAD_TOP - 2}
-          className="fill-zinc-500 dark:fill-zinc-400"
-          style={{ fontSize: 10 }}
-        >
+        <text x={PAD_LEFT} y={PAD_TOP - 2} className="fill-[var(--ink-3)]" style={{ fontSize: 10 }}>
           Andel av eget personbästa — tävling: lägre bättre, träning: närmare 100 % bättre
         </text>
 
@@ -407,7 +409,10 @@ export function RaceProgressionChart({
           const pb = Math.min(...s.points.map((p) => p.resultSeconds));
           const sorted = [...s.points].sort((a, b) => dayMs(a.date) - dayMs(b.date));
           const path = sorted
-            .map((p, i) => `${i === 0 ? "M" : "L"} ${xFor(p.date)} ${yFor((p.resultSeconds / pb) * 100)}`)
+            .map(
+              (p, i) =>
+                `${i === 0 ? "M" : "L"} ${xFor(p.date)} ${yFor((p.resultSeconds / pb) * 100)}`,
+            )
             .join(" ");
           return (
             <path
@@ -445,7 +450,10 @@ export function RaceProgressionChart({
         })}
 
         {[...trainingPctBySeriesId.values()].flat().map((p) => {
-          const isHovered = hovered?.kind === "training" && hovered.seriesId === p.seriesId && hovered.date === p.date;
+          const isHovered =
+            hovered?.kind === "training" &&
+            hovered.seriesId === p.seriesId &&
+            hovered.date === p.date;
           const cx = xFor(p.date);
           const cy = yFor(p.pct);
           const r = isHovered ? 4.5 : 3;
@@ -486,11 +494,7 @@ export function RaceProgressionChart({
                 cx={cx}
                 cy={cy}
                 r={r}
-                style={
-                  isIndoor
-                    ? { fill: "transparent", stroke: p.color }
-                    : { fill: p.color }
-                }
+                style={isIndoor ? { fill: "transparent", stroke: p.color } : { fill: p.color }}
                 strokeWidth={2}
                 className={isIndoor ? "" : "stroke-white dark:stroke-zinc-950"}
                 paintOrder="stroke"
@@ -510,7 +514,7 @@ export function RaceProgressionChart({
             x={PAD_LEFT + ((tick.ms - fromMs) / (toMs - fromMs)) * PLOT_W}
             y={HEIGHT - 5}
             textAnchor="middle"
-            className="fill-zinc-500 dark:fill-zinc-400"
+            className="fill-[var(--ink-3)]"
             style={{ fontSize: 10 }}
           >
             {tick.label}
@@ -518,7 +522,7 @@ export function RaceProgressionChart({
         ))}
       </svg>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--ink-2)]">
         {series.map((s) => (
           <span key={s.event} className="inline-flex items-center gap-1.5">
             <span
@@ -553,8 +557,8 @@ export function RaceProgressionChart({
 
       {/* --- Träningslager: kryssrutor, av som standard utom den första --- */}
       {trainingSeries.length > 0 && (
-        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-          <legend className="px-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        <fieldset className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded border border-[var(--line)] p-3 text-sm">
+          <legend className="px-1 text-xs font-medium text-[var(--ink-3)]">
             Träningskurvor (streckade)
           </legend>
           {trainingSeries.map((s) => {
@@ -581,9 +585,7 @@ export function RaceProgressionChart({
                 />
                 {s.label}
                 {on && tooFewPoints && (
-                  <span className="text-xs text-zinc-400 dark:text-zinc-600">
-                    ({s.insufficientDataNote})
-                  </span>
+                  <span className="text-xs text-[var(--ink-3)]">({s.insufficientDataNote})</span>
                 )}
               </label>
             );
@@ -594,31 +596,31 @@ export function RaceProgressionChart({
       )}
 
       {(hoveredRacePoint || hoveredTrainingPoint) && (
-        <div className="flex flex-col gap-1 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
+        <div className="flex flex-col gap-1 rounded border border-[var(--line)] p-3 text-sm">
           {hoveredRacePoint && (
             <>
-              <div className="font-medium text-zinc-900 dark:text-zinc-100">
+              <div className="font-medium text-[var(--foreground)]">
                 {hoveredRacePoint.seriesEvent} — {formatShortDate(hoveredRacePoint.date)} —{" "}
                 {hoveredRacePoint.competitionName}
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-2)]">
                 <span className="tabular-nums">
                   {hoveredRacePoint.resultLabel} ({formatRaceTime(hoveredRacePoint.resultSeconds)})
                 </span>
                 <span>{venueLabel(hoveredRacePoint.venue)}</span>
                 <span className="tabular-nums">{hoveredRacePoint.pctOfPb.toFixed(1)}% av PB</span>
                 {hoveredRacePoint.isPb && (
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">Personbästa</span>
+                  <span className="font-medium text-[var(--foreground)]">Personbästa</span>
                 )}
               </div>
             </>
           )}
           {hoveredTrainingPoint && (
             <>
-              <div className="font-medium text-zinc-900 dark:text-zinc-100">
+              <div className="font-medium text-[var(--foreground)]">
                 {hoveredTrainingPoint.label} — {formatShortDate(hoveredTrainingPoint.date)}
               </div>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-2)]">
                 <span className="tabular-nums">
                   {hoveredTrainingPoint.value.toFixed(2)} {hoveredTrainingPoint.unit}
                 </span>
@@ -640,10 +642,12 @@ function renderSparseDataNote(
   active: TrainingSeries[],
   bySeriesId: Map<string, PlottedTrainingPoint[]>,
 ) {
-  const sparse = active.filter((s) => (bySeriesId.get(s.id) ?? []).length < 2 && s.insufficientDataNote);
+  const sparse = active.filter(
+    (s) => (bySeriesId.get(s.id) ?? []).length < 2 && s.insufficientDataNote,
+  );
   if (sparse.length === 0) return null;
   return (
-    <span className="w-full text-xs text-zinc-400 dark:text-zinc-600">
+    <span className="w-full text-xs text-[var(--ink-3)]">
       {sparse.map((s) => s.insufficientDataNote).join(" ")}
     </span>
   );

@@ -8,12 +8,7 @@ import {
   type ActivityCategory,
 } from "@/lib/categories";
 import { formatMetricValue, type MetricFormatKind } from "@/lib/format";
-import {
-  baselineDeviation,
-  niceCeil,
-  rollingBaseline,
-  type Baseline,
-} from "@/lib/stats-utils";
+import { baselineDeviation, niceCeil, rollingBaseline, type Baseline } from "@/lib/stats-utils";
 
 /* ------------------------------------------------------------------------ *
  * ComboChart — "Belastning vs återhämtning" (P1.1 i docs/insikter-roadmap.md)
@@ -216,9 +211,7 @@ function markerPath(shape: SeriesStyle["marker"], cx: number, cy: number, r: num
       return `M ${cx} ${cy - r * 1.25} L ${cx + r * 1.2} ${cy + r} L ${cx - r * 1.2} ${cy + r} Z`;
     default: {
       // Cirkel som path, så alla markörer kan renderas av samma element.
-      return (
-        `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0`
-      );
+      return `M ${cx - r} ${cy} a ${r} ${r} 0 1 0 ${r * 2} 0 a ${r} ${r} 0 1 0 ${-r * 2} 0`;
     }
   }
 }
@@ -288,10 +281,7 @@ export function ComboChart({
   }, [load, allowed]);
 
   const totals = useMemo(
-    () =>
-      periods.map((_, i) =>
-        presentCategories.reduce((sum, c) => sum + (load[i]?.[c] ?? 0), 0),
-      ),
+    () => periods.map((_, i) => presentCategories.reduce((sum, c) => sum + (load[i]?.[c] ?? 0), 0)),
     [periods, load, presentCategories],
   );
 
@@ -328,7 +318,7 @@ export function ComboChart({
   }, [events]);
 
   if (periods.length === 0) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
+    return <p className="text-sm text-[var(--ink-3)]">{emptyLabel}</p>;
   }
 
   /* ----------------------------- skalor & geometri ------------------------ */
@@ -391,8 +381,8 @@ export function ComboChart({
                 onClick={() => toggleSeries(serie.id)}
                 className={`inline-flex items-center gap-1.5 rounded border px-2 py-1 text-xs transition-colors ${
                   isOn
-                    ? "border-zinc-400 text-zinc-900 dark:border-zinc-500 dark:text-zinc-50"
-                    : "border-zinc-200 text-zinc-500 hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-400 dark:hover:border-zinc-600"
+                    ? "border-zinc-400 text-[var(--foreground)]"
+                    : "border-[var(--line)] text-[var(--ink-3)] hover:border-zinc-400 dark:text-[var(--ink-3)]"
                 }`}
               >
                 {/* Legendnyckeln speglar märket: en linje med samma streckmönster. */}
@@ -418,7 +408,7 @@ export function ComboChart({
               </button>
             );
           })}
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="text-xs text-[var(--ink-3)]">
             max {maxVisibleSeries} lager samtidigt
           </span>
         </div>
@@ -458,12 +448,7 @@ export function ComboChart({
             </g>
           );
         })}
-        <text
-          x={PAD_LEFT}
-          y={loadTop - 1}
-          className="fill-zinc-500 dark:fill-zinc-400"
-          style={{ fontSize: 10 }}
-        >
+        <text x={PAD_LEFT} y={loadTop - 1} className="fill-[var(--ink-3)]" style={{ fontSize: 10 }}>
           {loadLabel}
         </text>
 
@@ -534,7 +519,7 @@ export function ComboChart({
               y={yDeviation(1)}
               width={plotWidth}
               height={yDeviation(-1) - yDeviation(1)}
-              className="fill-zinc-400 dark:fill-zinc-500"
+              className="fill-[var(--ink-3)]"
               opacity={0.14}
             />
             <line
@@ -560,7 +545,7 @@ export function ComboChart({
             <text
               x={PAD_LEFT}
               y={recoveryTop - 4}
-              className="fill-zinc-500 dark:fill-zinc-400"
+              className="fill-[var(--ink-3)]"
               style={{ fontSize: 10 }}
             >
               Avvikelse mot baslinje (SD)
@@ -671,7 +656,7 @@ export function ComboChart({
               x={xCenter(i)}
               y={height - 5}
               textAnchor="middle"
-              className="fill-zinc-500 dark:fill-zinc-400"
+              className="fill-[var(--ink-3)]"
               style={{ fontSize: 10 }}
             >
               {period.label}
@@ -701,7 +686,7 @@ export function ComboChart({
 
       {/* --- legend för staplarna: identitet får aldrig vila på färg ensam --- */}
       {presentCategories.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--ink-2)]">
           {presentCategories.map((category) => (
             <span key={category} className="inline-flex items-center gap-1.5">
               <span
@@ -728,25 +713,25 @@ export function ComboChart({
       {/* --- detaljpanel: veckans siffror, förändring mot föregående vecka,
               och dagbokens egna ord --- */}
       {hoveredPeriod && hovered != null && (
-        <div className="flex flex-col gap-2 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-          <div className="font-medium text-zinc-900 dark:text-zinc-100">
+        <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3 text-sm">
+          <div className="font-medium text-[var(--foreground)]">
             {hoveredPeriod.fullLabel ?? hoveredPeriod.label}
           </div>
 
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-zinc-500 dark:text-zinc-400">{loadLabel}</span>
-            <span className="font-medium tabular-nums text-zinc-900 dark:text-zinc-100">
+            <span className="text-[var(--ink-3)]">{loadLabel}</span>
+            <span className="font-medium tabular-nums text-[var(--foreground)]">
               {formatLoad(totals[hovered])}
             </span>
             {hovered > 0 && (
-              <span className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+              <span className="text-xs tabular-nums text-[var(--ink-3)]">
                 ({formatSigned(totals[hovered] - totals[hovered - 1], 0)} mot föregående)
               </span>
             )}
           </div>
 
           {presentCategories.some((c) => (load[hovered]?.[c] ?? 0) > 0) && (
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--ink-2)]">
               {presentCategories
                 .filter((c) => (load[hovered]?.[c] ?? 0) > 0)
                 .map((c) => (
@@ -768,11 +753,11 @@ export function ComboChart({
                 const dev = deviations[hovered];
                 return (
                   <div key={serie.id} className="flex flex-wrap items-baseline gap-x-2">
-                    <dt className="text-zinc-500 dark:text-zinc-400">{serie.label}</dt>
-                    <dd className="font-medium tabular-nums text-zinc-900 dark:text-zinc-100">
+                    <dt className="text-[var(--ink-3)]">{serie.label}</dt>
+                    <dd className="font-medium tabular-nums text-[var(--foreground)]">
                       {raw != null ? formatMetricValue(serie.formatKind, raw) : "–"}
                     </dd>
-                    <dd className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+                    <dd className="text-xs tabular-nums text-[var(--ink-3)]">
                       {dev != null
                         ? `${formatSigned(dev)} SD${Math.abs(dev) > 1 ? " — utanför ditt normala" : ""}`
                         : "baslinje saknas"}
@@ -793,7 +778,7 @@ export function ComboChart({
                       style={{ fill: EVENT_STYLES[event.kind].color }}
                     />
                   </svg>
-                  <span className="text-zinc-700 dark:text-zinc-300">
+                  <span className="text-[var(--ink-2)]">
                     {EVENT_STYLES[event.kind].label}: {event.label}
                   </span>
                 </li>
@@ -802,7 +787,7 @@ export function ComboChart({
           )}
 
           {hoveredPeriod.note && (
-            <p className="border-l-2 border-zinc-200 pl-3 text-sm text-zinc-600 italic dark:border-zinc-700 dark:text-zinc-400">
+            <p className="border-l-2 border-[var(--line)] pl-3 text-sm text-[var(--ink-2)] italic dark:text-[var(--ink-3)]">
               {hoveredPeriod.note}
             </p>
           )}
@@ -812,7 +797,7 @@ export function ComboChart({
       <button
         type="button"
         onClick={() => setShowTable((v) => !v)}
-        className="w-fit text-xs text-zinc-500 underline hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
       >
         {showTable ? "Dölj tabell" : "Visa som tabell"}
       </button>
@@ -823,7 +808,7 @@ export function ComboChart({
         <div className="w-full max-w-full overflow-x-auto">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
-              <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+              <tr className="text-xs text-[var(--ink-3)]">
                 <th scope="col" className="py-1 pr-4 font-normal">
                   Period
                 </th>
@@ -847,7 +832,7 @@ export function ComboChart({
             </thead>
             <tbody>
               {periods.map((period, i) => (
-                <tr key={period.key} className="border-t border-zinc-100 dark:border-zinc-800">
+                <tr key={period.key} className="border-t border-[var(--line)]">
                   <th scope="row" className="py-1 pr-4 font-normal">
                     {period.fullLabel ?? period.label}
                   </th>
@@ -864,10 +849,7 @@ export function ComboChart({
                       <td key={serie.id} className="py-1 pr-4 tabular-nums">
                         {raw != null ? formatMetricValue(serie.formatKind, raw) : "–"}
                         {dev != null && (
-                          <span className="text-zinc-500 dark:text-zinc-400">
-                            {" "}
-                            ({formatSigned(dev)} SD)
-                          </span>
+                          <span className="text-[var(--ink-3)]"> ({formatSigned(dev)} SD)</span>
                         )}
                       </td>
                     );

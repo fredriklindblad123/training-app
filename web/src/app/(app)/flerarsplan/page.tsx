@@ -17,14 +17,14 @@ import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
  * väljaren. */
 
 const input =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 const primaryBtn =
-  "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200";
+  "w-fit rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="text-zinc-600 dark:text-zinc-400">{label}</span>
+      <span className="text-[var(--ink-2)]">{label}</span>
       {children}
     </label>
   );
@@ -78,8 +78,8 @@ export default async function FlerarsplanPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Flerårsplan</h1>
-          <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Flerårsplan</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Mål, volym och tävlingar/läger per år — motsvarar Flerårsplan-fliken i mallen
             från Svensk Friidrott. Kan laddas ner ifylld nedan.
           </p>
@@ -105,17 +105,17 @@ export default async function FlerarsplanPage({
 
       <section className="flex flex-col gap-3">
         {yearPlans.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-600">
+          <p className="text-sm text-[var(--ink-3)] dark:text-[var(--ink-2)]">
             Inga år inlagda än — lägg till det första nedan.
           </p>
         ) : (
           <div className="flex flex-col gap-2">
             {yearPlans.map((y) => (
-              <details key={y.id} className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
+              <details key={y.id} className="rounded border border-[var(--line)] p-4">
                 <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="font-medium text-zinc-900 dark:text-zinc-100">{y.year_label}</span>
+                  <span className="font-medium text-[var(--foreground)]">{y.year_label}</span>
                   {y.overall_goal && (
-                    <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                    <span className="text-sm text-[var(--ink-3)]">
                       {y.overall_goal}
                     </span>
                   )}
@@ -123,7 +123,7 @@ export default async function FlerarsplanPage({
 
                 <form
                   action={updateYearPlan}
-                  className="mt-4 flex flex-col gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800"
+                  className="mt-4 flex flex-col gap-3 border-t border-[var(--line)] pt-3"
                 >
                   <input type="hidden" name="id" value={y.id} />
                   <div className="flex flex-wrap gap-3">
@@ -223,7 +223,7 @@ export default async function FlerarsplanPage({
                     <button
                       type="submit"
                       formAction={deleteYearPlan}
-                      className="w-fit rounded border border-zinc-300 px-3 py-1 text-sm text-red-700 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:bg-red-950/40"
+                      className="w-fit rounded border border-[var(--line)] px-3 py-1 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
                     >
                       Ta bort
                     </button>
@@ -234,8 +234,8 @@ export default async function FlerarsplanPage({
           </div>
         )}
 
-        <details className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
+        <details className="rounded border border-[var(--line)] p-4">
+          <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till år
           </summary>
           <form action={createYearPlan} className="mt-3 flex flex-wrap items-end gap-3">

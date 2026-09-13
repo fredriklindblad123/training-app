@@ -23,7 +23,7 @@ export function LineChart({
 
   const values = data.map((d) => d.value).filter((v): v is number => v != null);
   if (values.length === 0) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
+    return <p className="text-sm text-[var(--ink-3)]">{emptyLabel}</p>;
   }
 
   const width = 800;
@@ -87,7 +87,7 @@ export function LineChart({
                 y={y}
                 textAnchor="end"
                 dominantBaseline="middle"
-                className="fill-zinc-500 dark:fill-zinc-400"
+                className="fill-[var(--ink-3)]"
                 style={{ fontSize: 10 }}
               >
                 {v.toFixed(decimals)}
@@ -146,7 +146,7 @@ export function LineChart({
                   x={xFor(i)}
                   y={height - 4}
                   textAnchor="middle"
-                  className="fill-zinc-500 dark:fill-zinc-400"
+                  className="fill-[var(--ink-3)]"
                   style={{ fontSize: 10 }}
                 >
                   {d.label}
@@ -158,8 +158,8 @@ export function LineChart({
       </svg>
 
       {hovered !== null && data[hovered].value != null && (
-        <div className="text-sm text-zinc-700 dark:text-zinc-300">
-          <span className="font-medium text-zinc-900 dark:text-zinc-100">
+        <div className="text-sm text-[var(--ink-2)]">
+          <span className="font-medium text-[var(--foreground)]">
             {formatValue(data[hovered].value as number)}
           </span>{" "}
           — {data[hovered].label}
@@ -169,7 +169,7 @@ export function LineChart({
       <button
         type="button"
         onClick={() => setShowTable((v) => !v)}
-        className="w-fit text-xs text-zinc-500 underline hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
       >
         {showTable ? "Dölj tabell" : "Visa som tabell"}
       </button>
@@ -177,7 +177,7 @@ export function LineChart({
         <table className="w-full max-w-md text-sm">
           <tbody>
             {data.map((d, i) => (
-              <tr key={i} className="border-t border-zinc-100 dark:border-zinc-800">
+              <tr key={i} className="border-t border-[var(--line)]">
                 <td className="py-1 pr-4">{d.label}</td>
                 <td>{d.value != null ? formatValue(d.value) : "–"}</td>
               </tr>

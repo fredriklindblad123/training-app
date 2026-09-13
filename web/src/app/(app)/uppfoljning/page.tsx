@@ -222,8 +222,8 @@ export default async function UppfoljningPage({
   const tab = (active: boolean) =>
     `rounded px-3 py-1 text-sm ${
       active
-        ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-        : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+        ? "bg-[var(--foreground)] text-[var(--background)]"
+        : "border border-[var(--line)] hover:bg-zinc-100 dark:border-zinc-700 hover:bg-[var(--surface-raised)]"
     }`;
 
   return (
@@ -254,29 +254,29 @@ export default async function UppfoljningPage({
             {period.prevAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.prevAnchor }) : href({ datum: period.prevAnchor })}
-                className="rounded border border-zinc-300 px-2 py-1 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
                 aria-label="Föregående period"
               >
                 ←
               </Link>
             ) : (
-              <span className="px-2 py-1 text-zinc-300 dark:text-zinc-700" aria-hidden>
+              <span className="px-2 py-1 text-zinc-300 dark:text-[var(--ink-2)]" aria-hidden>
                 ←
               </span>
             )}
-            <span className="min-w-48 text-center font-medium text-zinc-900 dark:text-zinc-100">
+            <span className="min-w-48 text-center font-medium text-[var(--foreground)]">
               {period.label}
             </span>
             {period.nextAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.nextAnchor }) : href({ datum: period.nextAnchor })}
-                className="rounded border border-zinc-300 px-2 py-1 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
                 aria-label="Nästa period"
               >
                 →
               </Link>
             ) : (
-              <span className="px-2 py-1 text-zinc-300 dark:text-zinc-700" aria-hidden>
+              <span className="px-2 py-1 text-zinc-300 dark:text-[var(--ink-2)]" aria-hidden>
                 →
               </span>
             )}
@@ -288,7 +288,7 @@ export default async function UppfoljningPage({
       </div>
 
       {kind === "block" && period == null && (
-        <p className="text-sm text-zinc-400 dark:text-zinc-600">
+        <p className="text-sm text-[var(--ink-3)]">
           Inga block upplagda än — lägg upp säsongen på{" "}
           <Link href="/blockplan" className="underline">
             Blockplan
@@ -298,7 +298,7 @@ export default async function UppfoljningPage({
       )}
 
       {athletes.length === 0 && (
-        <p className="text-sm text-zinc-400 dark:text-zinc-600">
+        <p className="text-sm text-[var(--ink-3)]">
           Inga löpare kopplade än — lägg till en under Inställningar.
         </p>
       )}

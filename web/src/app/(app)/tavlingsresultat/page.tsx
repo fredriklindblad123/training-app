@@ -66,7 +66,7 @@ const ghostBtn =
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
-      <span className="text-zinc-600 dark:text-zinc-400">{label}</span>
+      <span className="text-[var(--ink-2)]">{label}</span>
       {children}
     </label>
   );
@@ -627,7 +627,7 @@ export default async function TavlingsresultatPage({
 
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
-      <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Tävlingsresultat</h1>
+      <h1 className="text-2xl font-semibold text-[var(--foreground)]">Tävlingsresultat</h1>
 
       {scoped.role === "coach" && (
         <AthleteSwitcher
@@ -640,8 +640,8 @@ export default async function TavlingsresultatPage({
 
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Grenutveckling</h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <h2 className="text-lg font-medium text-[var(--foreground)]">Grenutveckling</h2>
+          <p className="text-sm text-[var(--ink-3)]">
             Välj en eller flera grenar för att se dem som egna kurvor i samma graf — minst en
             måste vara vald. Y-axeln är
             andel av respektive grens eget personbästa, inte råtid — grenar med olika längd går
@@ -655,7 +655,7 @@ export default async function TavlingsresultatPage({
         </div>
 
         {allCompetitions.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-[var(--ink-3)]">
             Inga tävlingar inlagda ännu. Lägg till dem under{" "}
             <a href="#tavlingar" className="underline">
               Tävlingar
@@ -663,7 +663,7 @@ export default async function TavlingsresultatPage({
             nedan.
           </p>
         ) : eventOptions.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-[var(--ink-3)]">
             Ingen gren har minst två tidtagna resultat ännu (hopp och kast mäts i meter
             och räknas inte hit). Fyll i fler resultat under{" "}
             <a href="#tavlingar" className="underline">
@@ -748,7 +748,7 @@ export default async function TavlingsresultatPage({
                   href={banaHref(b.key)}
                   className={`rounded px-3 py-1 ${
                     banaFilter === b.key
-                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                      ? "bg-[var(--foreground)] text-[var(--background)]"
                       : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
                   }`}
                 >
@@ -772,7 +772,7 @@ export default async function TavlingsresultatPage({
                 blockjämförelsen på /blockplan, men bara lopp i någon av de
                 valda grenarna. */}
             {racesInSelectedEvents.length < 2 ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-[var(--ink-3)]">
                 Upptrappningsjämförelsen kräver minst två lopp med registrerat resultat i de
                 valda grenarna.
               </p>
@@ -789,7 +789,7 @@ export default async function TavlingsresultatPage({
                   {banaParam && <input type="hidden" name="bana" value={banaParam} />}
                   {athleteQuery && <input type="hidden" name="athlete" value={athleteQuery} />}
                   <label className="flex flex-col gap-1">
-                    <span className="text-zinc-600 dark:text-zinc-400">Lopp A</span>
+                    <span className="text-[var(--ink-2)]">Lopp A</span>
                     <select
                       name="raceA"
                       defaultValue={raceAParam ?? ""}
@@ -806,7 +806,7 @@ export default async function TavlingsresultatPage({
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-zinc-600 dark:text-zinc-400">Lopp B</span>
+                    <span className="text-[var(--ink-2)]">Lopp B</span>
                     <select
                       name="raceB"
                       defaultValue={raceBParam ?? ""}
@@ -828,7 +828,7 @@ export default async function TavlingsresultatPage({
                 </form>
 
                 {raceAParam && raceBParam && !(raceAggregateA && raceAggregateB) && (
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                  <p className="text-sm text-[var(--ink-3)]">
                     Kunde inte jämföra — välj två olika lopp med resultat.
                   </p>
                 )}
@@ -845,14 +845,14 @@ export default async function TavlingsresultatPage({
                       tabellen upp här.
                     </p>
                   ) : (
-                    <details className="rounded border border-zinc-200 dark:border-zinc-800" open>
-                      <summary className="cursor-pointer p-4 text-sm text-zinc-600 dark:text-zinc-400">
+                    <details className="rounded border border-[var(--line)]" open>
+                      <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
                         Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
                       </summary>
                       <div className="w-full max-w-full overflow-x-auto border-t border-zinc-200 p-4 dark:border-zinc-800">
                         <table className="w-full min-w-max text-left text-sm">
                           <thead>
-                            <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                            <tr className="text-xs text-[var(--ink-3)]">
                               <th scope="col" className="py-1 pr-4 font-normal">
                                 Mått
                               </th>
@@ -869,7 +869,7 @@ export default async function TavlingsresultatPage({
                               <tr key={row.label}>
                                 <th
                                   scope="row"
-                                  className="py-1.5 pr-4 font-normal text-zinc-600 dark:text-zinc-400"
+                                  className="py-1.5 pr-4 font-normal text-[var(--ink-2)]"
                                 >
                                   {row.label}
                                 </th>
@@ -890,14 +890,14 @@ export default async function TavlingsresultatPage({
 
       {/* ---------------- Tävlingar ---------------- */}
       <section id="tavlingar" className="flex flex-col gap-3">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Tävlingar</h2>
+        <h2 className="text-lg font-medium text-[var(--foreground)]">Tävlingar</h2>
         {/* Texten lovade tidigare att "prioriteten styr hur planeringen toppar" och att
             en A-tävling "får en nedtrappning före sig". Det gjorde den aldrig: priority
             förekommer inte i template-sync.ts, planning.ts, plan-matching.ts eller
             block-stats.ts, utan färgar bara markörer och väljer nästa A-tävling. Löftet
             togs bort 2026-09-13 i stället för att byggas — planeringen ska styras av
             tränaren, inte av ett antagande appen gör åt honom. */}
-        <p className="max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Prioriteten märker upp säsongen: A är huvudmålen, C träningstävlingar. Den visas i
           tidslinjen och väljer &quot;Nästa A-tävling&quot;, men styr ingen planering — hur
           veckorna ser ut inför ett lopp bestämmer du i Blockplan och Detaljplan.
@@ -916,7 +916,7 @@ export default async function TavlingsresultatPage({
                 aria-current={tavlingsAr === year ? "page" : undefined}
                 className={`rounded px-3 py-1 ${
                   tavlingsAr === year
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    ? "bg-[var(--foreground)] text-[var(--background)]"
                     : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
                 }`}
               >
@@ -928,7 +928,7 @@ export default async function TavlingsresultatPage({
               aria-current={tavlingsAr === "alla" ? "page" : undefined}
               className={`rounded px-3 py-1 ${
                 tavlingsAr === "alla"
-                  ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                  ? "bg-[var(--foreground)] text-[var(--background)]"
                   : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
               }`}
             >
@@ -950,7 +950,7 @@ export default async function TavlingsresultatPage({
                 aria-current={tavlingsBana === opt.key ? "page" : undefined}
                 className={`rounded px-3 py-1 ${
                   tavlingsBana === opt.key
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
+                    ? "bg-[var(--foreground)] text-[var(--background)]"
                     : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
                 }`}
               >
@@ -961,7 +961,7 @@ export default async function TavlingsresultatPage({
         </div>
 
         {managedCompetitions.length === 0 && (
-          <p className="text-sm text-zinc-400 dark:text-zinc-600">
+          <p className="text-sm text-[var(--ink-3)]">
             Inga tävlingar {tavlingsAr === "alla" ? "" : `${tavlingsAr} `}
             {tavlingsBana !== "alla" ? `(${tavlingsBana === "inne" ? "inomhus" : "utomhus"}) ` : ""}
             än.
@@ -990,8 +990,8 @@ export default async function TavlingsresultatPage({
                       >
                         {c.priority}
                       </span>
-                      <span className="font-medium text-zinc-900 dark:text-zinc-100">{c.name}</span>
-                      <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                      <span className="font-medium text-[var(--foreground)]">{c.name}</span>
+                      <span className="text-sm text-[var(--ink-3)]">
                         {c.competition_date}
                         {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
                         {c.location ? ` · ${c.location}` : ""}
@@ -1001,7 +1001,7 @@ export default async function TavlingsresultatPage({
                       {c.competition_events.length > 0 && (
                         <Link
                           href={editCompetitionHref(editing ? null : c.id)}
-                          className="text-xs text-zinc-500 underline hover:text-zinc-900 dark:hover:text-zinc-100"
+                          className="text-xs text-zinc-500 underline hover:text-[var(--foreground)]"
                         >
                           {editing ? "Klar" : "Redigera"}
                         </Link>
@@ -1031,10 +1031,10 @@ export default async function TavlingsresultatPage({
                               className="flex flex-wrap items-end gap-2 text-sm"
                             >
                               <input type="hidden" name="event_id" value={e.id} />
-                              <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
+                              <span className="w-28 font-medium text-[var(--foreground)]">
                                 {e.event}
                               </span>
-                              <span className="text-zinc-500 dark:text-zinc-400">
+                              <span className="text-[var(--ink-3)]">
                                 mål {e.target_result ?? "—"}
                               </span>
                               <input
@@ -1057,15 +1057,15 @@ export default async function TavlingsresultatPage({
                             </form>
                           ) : (
                             <div key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-                              <span className="w-28 font-medium text-zinc-900 dark:text-zinc-100">
+                              <span className="w-28 font-medium text-[var(--foreground)]">
                                 {e.event}
                               </span>
-                              <span className="text-zinc-600 dark:text-zinc-400">
+                              <span className="text-[var(--ink-2)]">
                                 {e.actual_result ?? "inget resultat inlagt"}
                                 {e.placement != null ? ` · ${e.placement}:a plats` : ""}
                               </span>
                               {e.target_result && (
-                                <span className="text-xs text-zinc-400 dark:text-zinc-600">
+                                <span className="text-xs text-[var(--ink-3)]">
                                   mål {e.target_result}
                                 </span>
                               )}
@@ -1081,7 +1081,7 @@ export default async function TavlingsresultatPage({
         )}
 
         <details id="lagg-till-tavling" className="rounded border border-zinc-200 p-4 dark:border-zinc-800">
-          <summary className="cursor-pointer text-sm font-medium text-zinc-900 dark:text-zinc-100">
+          <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till tävling
           </summary>
           <form action={createCompetition} className="mt-3 flex flex-wrap items-end gap-3">
@@ -1097,7 +1097,7 @@ export default async function TavlingsresultatPage({
                 klick som förut. */}
             {scoped.role === "coach" && viewableAthletes(scoped).length > 0 && (
               <fieldset className="flex flex-col gap-1">
-                <legend className="text-sm text-zinc-600 dark:text-zinc-400">Löpare</legend>
+                <legend className="text-sm text-[var(--ink-2)]">Löpare</legend>
                 <div className="flex flex-wrap gap-3">
                   {viewableAthletes(scoped).map((a) => (
                     <label key={a.id} className="flex items-center gap-1 text-sm">

@@ -26,7 +26,7 @@ export const RING_STATUS_TEXT: Record<RingStatus, string> = {
   watch: "text-amber-700 dark:text-amber-400",
   concern: "text-red-700 dark:text-red-400",
   neutral: "text-indigo-700 dark:text-indigo-400",
-  unknown: "text-zinc-400 dark:text-zinc-500",
+  unknown: "text-[var(--ink-3)]",
 };
 
 const RING_STATUS_LABEL: Record<RingStatus, string> = {
@@ -75,9 +75,9 @@ export function KpiRing({
   const label_ = statusLabel ?? RING_STATUS_LABEL[status];
 
   return (
-    <details className="group flex flex-col items-center gap-1.5 rounded-lg p-2 text-center hover:bg-zinc-50 dark:hover:bg-zinc-900">
+    <details className="group flex flex-col items-center gap-1.5 rounded-lg p-2 text-center hover:bg-[var(--surface-raised)]">
       <summary className="flex cursor-pointer list-none flex-col items-center gap-1.5 [&::-webkit-details-marker]:hidden">
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{label}</span>
+        <span className="text-sm font-medium text-[var(--foreground)]">{label}</span>
         <div className="relative flex shrink-0" style={{ width: RING_SIZE, height: RING_SIZE }}>
           <svg
             width={RING_SIZE}
@@ -107,11 +107,11 @@ export function KpiRing({
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">
+            <span className="text-xl font-semibold tabular-nums text-[var(--foreground)]">
               {valueText}
             </span>
             {unit && (
-              <span className="text-[10px] text-zinc-500 dark:text-zinc-400">{unit}</span>
+              <span className="text-[10px] text-[var(--ink-3)]">{unit}</span>
             )}
           </div>
         </div>
@@ -125,15 +125,15 @@ export function KpiRing({
         )}
       </summary>
 
-      <div className="mt-2 w-full max-w-[14rem] overflow-hidden rounded border border-zinc-200 text-left text-xs dark:border-zinc-800">
+      <div className="mt-2 w-full max-w-[14rem] overflow-hidden rounded border border-[var(--line)] text-left text-xs">
         <table className="w-full">
           <tbody>
             {detailRows.map((row) => (
-              <tr key={row.label} className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800">
-                <th scope="row" className="px-2 py-1.5 font-normal text-zinc-500 dark:text-zinc-400">
+              <tr key={row.label} className="border-b border-[var(--line)] last:border-b-0">
+                <th scope="row" className="px-2 py-1.5 font-normal text-[var(--ink-3)]">
                   {row.label}
                 </th>
-                <td className="px-2 py-1.5 text-right tabular-nums text-zinc-900 dark:text-zinc-100">
+                <td className="px-2 py-1.5 text-right tabular-nums text-[var(--foreground)]">
                   {row.value}
                 </td>
               </tr>
@@ -141,7 +141,7 @@ export function KpiRing({
           </tbody>
         </table>
         {hint && (
-          <p className="border-t border-zinc-100 p-2 text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+          <p className="border-t border-[var(--line)] p-2 text-[var(--ink-3)] dark:text-[var(--ink-3)]">
             {hint}
           </p>
         )}

@@ -11,10 +11,7 @@ import {
   type ComboPeriod,
   type ComboSeries,
 } from "@/components/charts/ComboChart";
-import {
-  IntensityChart,
-  type IntensityWeek,
-} from "@/components/charts/IntensityChart";
+import { IntensityChart, type IntensityWeek } from "@/components/charts/IntensityChart";
 import { EfficiencyChart, type EfficiencyRace } from "@/components/charts/EfficiencyChart";
 import { computeEfficiencyPoints } from "@/lib/efficiency";
 import {
@@ -29,20 +26,10 @@ import {
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
-import {
-  coefficientOfVariation,
-  isoWeekStart,
-  mean,
-  median,
-  weekLabel,
-} from "@/lib/stats-utils";
+import { coefficientOfVariation, isoWeekStart, mean, median, weekLabel } from "@/lib/stats-utils";
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
-import {
-  addDays as planAddDays,
-  PHASE_LABELS,
-  type PhaseType,
-} from "@/lib/planning";
+import { addDays as planAddDays, PHASE_LABELS, type PhaseType } from "@/lib/planning";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { ComplianceCard } from "@/components/ComplianceCard";
 import {
@@ -130,10 +117,7 @@ function dateRange(days: Iterable<string>): { from: string | null; to: string | 
 
 /** Veckovisa medelvärden ur dagsvärden. `null` där veckan saknar mätning —
  * aldrig 0, aldrig interpolerat. */
-function weeklyMeans(
-  weekSeries: string[],
-  byDay: Map<string, number[]>,
-): (number | null)[] {
+function weeklyMeans(weekSeries: string[], byDay: Map<string, number[]>): (number | null)[] {
   const byWeek = new Map<string, number[]>();
   for (const [day, values] of byDay) {
     const wk = isoWeekStart(day);
@@ -404,7 +388,9 @@ export default async function TrendsPage({
   if (activityIds.length > 0) {
     const { data: lapRows } = await supabase
       .from("activity_splits")
-      .select("activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr")
+      .select(
+        "activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr",
+      )
       .in("activity_id", activityIds)
       .order("split_index");
 
@@ -415,7 +401,12 @@ export default async function TrendsPage({
 
     const occurrences = [...lapsByActivity.entries()]
       .map(([id, laps]) =>
-        toOccurrence(id, dateByActivityId.get(id) ?? "", laps, categoryByActivityId.get(id) ?? null),
+        toOccurrence(
+          id,
+          dateByActivityId.get(id) ?? "",
+          laps,
+          categoryByActivityId.get(id) ?? null,
+        ),
       )
       .filter((o): o is NonNullable<typeof o> => o != null && o.date !== "");
 
@@ -649,22 +640,19 @@ export default async function TrendsPage({
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Trender</h1>
+          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Trender</h1>
           {activeBlock ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              <strong className="font-medium text-zinc-900 dark:text-zinc-100">
-                {activeBlock.name}
-              </strong>{" "}
-              ({PHASE_LABELS[activeBlock.phase]}), {activeBlock.start_date} –{" "}
-              {activeBlock.end_date}
+            <p className="text-sm text-[var(--ink-3)]">
+              <strong className="font-medium text-[var(--foreground)]">{activeBlock.name}</strong> (
+              {PHASE_LABELS[activeBlock.phase]}), {activeBlock.start_date} – {activeBlock.end_date}
               {activeBlock.focus ? ` — ${activeBlock.focus}` : ""}. Räknas per{" "}
               <strong className="font-medium">pass</strong>, inte per Garmin-aktivitet.
             </p>
           ) : (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-[var(--ink-3)]">
               Allt på den här sidan räknas per <strong className="font-medium">pass</strong>, inte
-              per Garmin-aktivitet: uppvärmning, huvudpass och nerjogg slås ihop till ett pass
-              innan något summeras.
+              per Garmin-aktivitet: uppvärmning, huvudpass och nerjogg slås ihop till ett pass innan
+              något summeras.
             </p>
           )}
         </div>
@@ -676,8 +664,8 @@ export default async function TrendsPage({
                 href={`/trender?weeks=${w}${athleteQuery}`}
                 className={`rounded px-3 py-1 ${
                   !activeBlock && weeks === w
-                    ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                    : "border border-zinc-300 dark:border-zinc-700"
+                    ? "bg-[var(--foreground)] text-[var(--background)]"
+                    : "border border-[var(--line)]"
                 }`}
               >
                 {w} veckor
@@ -693,8 +681,8 @@ export default async function TrendsPage({
                   title={`${PHASE_LABELS[b.phase]}, ${b.start_date} – ${b.end_date}`}
                   className={`rounded px-3 py-1 ${
                     activeBlock?.id === b.id
-                      ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-                      : "border border-zinc-300 dark:border-zinc-700"
+                      ? "bg-[var(--foreground)] text-[var(--background)]"
+                      : "border border-[var(--line)]"
                   }`}
                 >
                   {b.name}
@@ -711,14 +699,10 @@ export default async function TrendsPage({
           inte på dashboarden, så den är kvar här. */}
       {loadCv != null && (
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="flex flex-col gap-1 rounded border border-zinc-200 p-4 dark:border-zinc-800">
-            <dt className="text-sm text-zinc-500 dark:text-zinc-400">Konsekvens (CV)</dt>
-            <dd className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-              {loadCv.toFixed(2)}
-            </dd>
-            <dd className="text-xs text-zinc-500 dark:text-zinc-400">
-              lägre = jämnare vecka för vecka
-            </dd>
+          <div className="flex flex-col gap-1 rounded border border-[var(--line)] p-4">
+            <dt className="text-sm text-[var(--ink-3)]">Konsekvens (CV)</dt>
+            <dd className="text-2xl font-semibold text-[var(--foreground)]">{loadCv.toFixed(2)}</dd>
+            <dd className="text-xs text-[var(--ink-3)]">lägre = jämnare vecka för vecka</dd>
           </div>
         </dl>
       )}
@@ -740,7 +724,13 @@ export default async function TrendsPage({
       {blockInsights.length > 0 && (
         <section className="flex flex-col gap-2">
           {blockInsights.map((i) => (
-            <InsightCard key={i.id} headline={i.headline} detail={i.detail} href={i.href} tone={i.tone} />
+            <InsightCard
+              key={i.id}
+              headline={i.headline}
+              detail={i.detail}
+              href={i.href}
+              tone={i.tone}
+            />
           ))}
         </section>
       )}
@@ -748,19 +738,19 @@ export default async function TrendsPage({
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          <h2 className="text-lg font-medium text-[var(--foreground)]">
             Belastning och återhämtning
           </h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Staplarna är veckans summerade träningsbelastning, stackad på passkategori.
-            Linjerna nedanför visar avvikelse mot din egen baslinje i SD-enheter — 0 är ditt
-            normala, ±1 kanten på ditt normalintervall. Håll pekaren över en vecka för
-            siffrorna och dina egna dagboksord. Baslinjen är rullande åtta veckor bakåt, så
-            linjerna svarar på <em>&quot;högre eller lägre än de senaste veckorna?&quot;</em> — inte
-            &quot;var ligger nivån?&quot;. Därför kan Formkurvan här peka uppåt samtidigt som
-            Formkurva-diagrammet längre ner pekar nedåt: efter en svacka kan formen vara på väg
-            upp mot den egna senaste tiden och ändå ligga lågt för säsongen. Det diagrammet
-            visar råvärden och en glidande trend, och svarar på den andra frågan.
+          <p className="text-sm text-[var(--ink-3)]">
+            Staplarna är veckans summerade träningsbelastning, stackad på passkategori. Linjerna
+            nedanför visar avvikelse mot din egen baslinje i SD-enheter — 0 är ditt normala, ±1
+            kanten på ditt normalintervall. Håll pekaren över en vecka för siffrorna och dina egna
+            dagboksord. Baslinjen är rullande åtta veckor bakåt, så linjerna svarar på{" "}
+            <em>&quot;högre eller lägre än de senaste veckorna?&quot;</em> — inte &quot;var ligger
+            nivån?&quot;. Därför kan Formkurvan här peka uppåt samtidigt som Formkurva-diagrammet
+            längre ner pekar nedåt: efter en svacka kan formen vara på väg upp mot den egna senaste
+            tiden och ändå ligga lågt för säsongen. Det diagrammet visar råvärden och en glidande
+            trend, och svarar på den andra frågan.
           </p>
         </div>
 
@@ -779,15 +769,15 @@ export default async function TrendsPage({
         />
 
         {/* Datatäckning: en serie som saknas ska förklaras, inte tigas ihjäl. */}
-        <details className="rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-          <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400">
+        <details className="rounded border border-[var(--line)] p-3 text-sm">
+          <summary className="cursor-pointer text-[var(--ink-2)]">
             Datatäckning för lagren ({series.length} av {candidateSeries.length} har data i
             perioden)
           </summary>
           <div className="mt-3 w-full max-w-full overflow-x-auto">
             <table className="w-full min-w-max text-left text-sm">
               <thead>
-                <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+                <tr className="text-xs text-[var(--ink-3)]">
                   <th scope="col" className="py-1 pr-4 font-normal">
                     Lager
                   </th>
@@ -801,7 +791,7 @@ export default async function TrendsPage({
               </thead>
               <tbody>
                 {coverage.map((row) => (
-                  <tr key={row.label} className="border-t border-zinc-100 dark:border-zinc-800">
+                  <tr key={row.label} className="border-t border-[var(--line)]">
                     <th scope="row" className="py-1 pr-4 font-normal">
                       {row.label}
                     </th>
@@ -816,12 +806,12 @@ export default async function TrendsPage({
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-zinc-600 dark:text-zinc-400">
-            Sömn-, HRV- och vilopulsserierna börjar den dag Garmin-synken började hämta
-            dagsdata — allt före det är tomt, inte noll. Luckor ritas som brutna linjer och
-            fylls aldrig i genom interpolation. Baslinjen kräver dessutom minst fyra
-            mätvärden i ett åtta veckor långt fönster, så de första veckorna med data får
-            ingen punkt alls: en baslinje byggd på ett par mätningar är brus.
+          <p className="mt-3 text-[var(--ink-2)]">
+            Sömn-, HRV- och vilopulsserierna börjar den dag Garmin-synken började hämta dagsdata —
+            allt före det är tomt, inte noll. Luckor ritas som brutna linjer och fylls aldrig i
+            genom interpolation. Baslinjen kräver dessutom minst fyra mätvärden i ett åtta veckor
+            långt fönster, så de första veckorna med data får ingen punkt alls: en baslinje byggd på
+            ett par mätningar är brus.
             {missingSeries.length > 0 && (
               <>
                 {" "}
@@ -836,10 +826,8 @@ export default async function TrendsPage({
       {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-            Intensitetsfördelning
-          </h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <h2 className="text-lg font-medium text-[var(--foreground)]">Intensitetsfördelning</h2>
+          <p className="text-sm text-[var(--ink-3)]">
             Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
             {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
             Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
@@ -856,14 +844,14 @@ export default async function TrendsPage({
       {/* ================= C. Formkurva (P1.4) ============================= */}
       <section className="flex flex-col gap-4">
         <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+          <h2 className="text-lg font-medium text-[var(--foreground)]">
             Formkurva (Efficiency Factor)
           </h2>
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt
-            rätt håll. Bara lugna pass och långpass på minst 20 minuter med registrerad
-            snittpuls räknas — intervaller går inte att jämföra med distanslöpning.{" "}
-            {efPoints.length} pass i perioden klarar filtret.
+          <p className="text-sm text-[var(--ink-3)]">
+            Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt rätt håll.
+            Bara lugna pass och långpass på minst 20 minuter med registrerad snittpuls räknas —
+            intervaller går inte att jämföra med distanslöpning. {efPoints.length} pass i perioden
+            klarar filtret.
           </p>
         </div>
 
@@ -875,21 +863,18 @@ export default async function TrendsPage({
           emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
         />
 
-        <p className="rounded border border-zinc-200 p-3 text-sm text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
-          <strong className="font-medium text-zinc-900 dark:text-zinc-100">
-            Läs kurvan försiktigt.
-          </strong>{" "}
-          Efficiency Factor påverkas kraftigt av värme, uttorkning, stress, höjd och
-          underlag. En dipp i juli är sannolikt vädret, inte formen. Kurvan är dessutom
-          räknad på rå fart — ett kuperat pass ser sämre ut än ett platt även när
-          ansträngningen är densamma. Använd den för att se riktningen över månader, aldrig
-          för att bedöma ett enskilt pass.
+        <p className="rounded border border-[var(--line)] p-3 text-sm text-[var(--ink-2)] dark:text-[var(--ink-3)]">
+          <strong className="font-medium text-[var(--foreground)]">Läs kurvan försiktigt.</strong>{" "}
+          Efficiency Factor påverkas kraftigt av värme, uttorkning, stress, höjd och underlag. En
+          dipp i juli är sannolikt vädret, inte formen. Kurvan är dessutom räknad på rå fart — ett
+          kuperat pass ser sämre ut än ett platt även när ansträngningen är densamma. Använd den för
+          att se riktningen över månader, aldrig för att bedöma ett enskilt pass.
         </p>
       </section>
 
       {/* ============ P2.1: passkvalitet ============ */}
       <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+        <h2 className="text-lg font-medium text-[var(--foreground)]">
           Passkvalitet: återkommande nyckelpass
         </h2>
         <SessionQuality groups={signatureGroups} />
@@ -901,12 +886,12 @@ export default async function TrendsPage({
           börjar dagen efter det nuvarande slutar, i stället för att man
           landar på ett tomt formulär och får räkna själv. */}
       {activeBlock && (
-        <div className="flex flex-wrap items-center gap-4 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+        <div className="flex flex-wrap items-center gap-4 rounded border border-[var(--line)] p-4">
           <div className="flex-1">
-            <p className="font-medium text-zinc-900 dark:text-zinc-100">Nästa block</p>
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              {activeBlock.name} slutar {activeBlock.end_date}. Utvärderingen ovan är
-              underlaget för hur nästa ska se ut.
+            <p className="font-medium text-[var(--foreground)]">Nästa block</p>
+            <p className="text-sm text-[var(--ink-3)]">
+              {activeBlock.name} slutar {activeBlock.end_date}. Utvärderingen ovan är underlaget för
+              hur nästa ska se ut.
             </p>
           </div>
           <Link
@@ -915,14 +900,12 @@ export default async function TrendsPage({
                 ? `/blockplan?athlete=alla&nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
                 : `/blockplan?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
             }
-            className="rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+            className="rounded bg-zinc-950 px-4 py-2 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
           >
             Skapa nästa block →
           </Link>
         </div>
       )}
-
-
     </div>
   );
 }

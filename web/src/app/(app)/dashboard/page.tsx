@@ -602,9 +602,9 @@ export default async function DashboardPage({
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-[var(--foreground)]">Dagens pass</h2>
         {sessions.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="text-sm text-[var(--ink-3)]">
             Inget pass loggat idag ännu.{" "}
-            <Link href={todayHref} className="underline hover:text-zinc-950 dark:hover:text-zinc-50">
+            <Link href={todayHref} className="underline hover:text-[var(--foreground)]">
               Lägg till för hand
             </Link>
             .
@@ -622,15 +622,15 @@ export default async function DashboardPage({
                     style={{ backgroundColor: categoryColorVar(s.category) }}
                   />
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                    <span className="text-sm font-medium text-[var(--foreground)]">
                       {s.dominantActivity.name?.trim() || CATEGORY_LABELS[s.category]}
                     </span>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                    <span className="text-xs text-[var(--ink-3)]">
                       {CATEGORY_LABELS[s.category]}
                     </span>
                   </div>
                 </div>
-                <div className="text-right text-sm tabular-nums text-zinc-600 dark:text-zinc-400">
+                <div className="text-right text-sm tabular-nums text-[var(--ink-2)]">
                   {formatKm(s.distanceMeters)} · {formatDuration(s.durationSeconds)}
                 </div>
               </li>
@@ -639,7 +639,7 @@ export default async function DashboardPage({
         )}
         <Link
           href={todayHref}
-          className="w-fit text-sm underline text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+          className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
         >
           Till dagvyn →
         </Link>
@@ -650,7 +650,7 @@ export default async function DashboardPage({
           i stället. ---------------------------------------------------- */}
       <Link
         href={`/calendar/vecka/${todayKey}${athleteQuery}`}
-        className="w-fit text-sm underline text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+        className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
       >
         Veckans genomgång →
       </Link>

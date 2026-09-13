@@ -42,8 +42,8 @@ export function HorizonToggle({
           aria-current={current === item.key ? "page" : undefined}
           className={`rounded px-3 py-1 ${
             current === item.key
-              ? "bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950"
-              : "border border-zinc-300 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              ? "bg-[var(--foreground)] text-[var(--background)]"
+              : "border border-[var(--line)] hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
           }`}
         >
           {item.label}
@@ -90,14 +90,14 @@ export function CalendarNav({
       <div className="flex items-center gap-3">
         <Link
           href={prevHref}
-          className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:border-zinc-700 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
+          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-zinc-100 hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
         >
           ←
         </Link>
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">{title}</h1>
+        <h1 className="text-2xl font-semibold text-[var(--foreground)]">{title}</h1>
         <Link
           href={nextHref}
-          className="rounded border border-zinc-300 px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:border-zinc-700 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
+          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-zinc-100 hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
         >
           →
         </Link>
@@ -111,11 +111,11 @@ export function CalendarNav({
             name="date"
             defaultValue={jumpDate}
             aria-label="Hoppa till datum"
-            className="rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded border border-[var(--line)] px-2 py-1 dark:bg-zinc-900"
           />
           <button
             type="submit"
-            className="rounded border border-zinc-300 px-3 py-1 hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            className="rounded border border-[var(--line)] px-3 py-1 hover:bg-zinc-100 hover:bg-[var(--surface-raised)]"
           >
             Hoppa
           </button>

@@ -51,13 +51,13 @@ function NotCompletedItem({
   const dayType = dayTypeByDate.get(planned.scheduled_date);
   const cancelled = dayType === "sick" || dayType === "injured";
   return (
-    <li className="text-zinc-700 dark:text-zinc-300">
-      <span className="text-zinc-500 dark:text-zinc-400">
+    <li className="text-[var(--ink-2)]">
+      <span className="text-[var(--ink-3)]">
         {weekdayShort(planned.scheduled_date)}:{" "}
       </span>
       {plannedLabel(planned)}
       {cancelled && (
-        <span className="text-zinc-500 dark:text-zinc-400">
+        <span className="text-[var(--ink-3)]">
           {" — inställt (dagboken: "}
           {dayType === "sick" ? "sjuk" : "skadad"})
         </span>
@@ -70,8 +70,8 @@ function UnplannedItem({ match }: { match: PlanMatch }) {
   const session = match.session;
   if (!session) return null;
   return (
-    <li className="text-zinc-700 dark:text-zinc-300">
-      <span className="text-zinc-500 dark:text-zinc-400">{weekdayShort(session.date)}: </span>
+    <li className="text-[var(--ink-2)]">
+      <span className="text-[var(--ink-3)]">{weekdayShort(session.date)}: </span>
       {sessionLabel(session)}
     </li>
   );
@@ -111,31 +111,31 @@ export function ComplianceCard({
       : null;
 
   return (
-    <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="flex flex-col gap-3 rounded border border-[var(--line)] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">{title}</h2>
-        <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
+        <h2 className="text-lg font-medium text-[var(--foreground)]">{title}</h2>
+        <span className="text-sm font-semibold text-[var(--ink-2)]">
           {completedCount} av {plannedCount} planerade pass genomförda
         </span>
       </div>
 
       {(qualityPlanned > 0 || plannedKm != null) && (
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 border-t border-zinc-100 pt-3 text-sm dark:border-zinc-800/60 sm:grid-cols-2">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-2 border-t border-[var(--line)] pt-3 text-sm/60 sm:grid-cols-2">
           {qualityPlanned > 0 && (
             <div className="flex items-baseline justify-between gap-2 sm:justify-start">
-              <dt className="text-zinc-500 dark:text-zinc-400">Kvalitetspass</dt>
-              <dd className="text-zinc-900 dark:text-zinc-100 sm:ml-2">
+              <dt className="text-[var(--ink-3)]">Kvalitetspass</dt>
+              <dd className="text-[var(--foreground)] sm:ml-2">
                 {qualityCompleted} av {qualityPlanned}
               </dd>
             </div>
           )}
           {plannedKm != null && (
             <div className="flex items-baseline justify-between gap-2 sm:justify-start">
-              <dt className="text-zinc-500 dark:text-zinc-400">Volym</dt>
-              <dd className="text-zinc-900 dark:text-zinc-100 sm:ml-2">
+              <dt className="text-[var(--ink-3)]">Volym</dt>
+              <dd className="text-[var(--foreground)] sm:ml-2">
                 {Math.round(actualKm)} km av planerade {Math.round(plannedKm)} km
                 {volumeDiffPct != null && (
-                  <span className="text-zinc-500 dark:text-zinc-400">
+                  <span className="text-[var(--ink-3)]">
                     {" "}
                     ({volumeDiffPct > 0 ? "+" : ""}
                     {volumeDiffPct} %)
@@ -148,8 +148,8 @@ export function ComplianceCard({
       )}
 
       {notCompleted.length > 0 && (
-        <div className="border-t border-zinc-100 pt-3 text-sm dark:border-zinc-800/60">
-          <span className="text-zinc-500 dark:text-zinc-400">Ej genomfört</span>
+        <div className="border-t border-[var(--line)] pt-3 text-sm/60">
+          <span className="text-[var(--ink-3)]">Ej genomfört</span>
           <ul className="mt-1 flex flex-col gap-0.5">
             {notCompleted.map((m) => (
               <NotCompletedItem key={m.planned!.id} match={m} dayTypeByDate={dayTypeByDate} />
@@ -159,8 +159,8 @@ export function ComplianceCard({
       )}
 
       {unplanned.length > 0 && (
-        <div className="border-t border-zinc-100 pt-3 text-sm dark:border-zinc-800/60">
-          <span className="text-zinc-500 dark:text-zinc-400">Oplanerat</span>
+        <div className="border-t border-[var(--line)] pt-3 text-sm/60">
+          <span className="text-[var(--ink-3)]">Oplanerat</span>
           <ul className="mt-1 flex flex-col gap-0.5">
             {unplanned.map((m) => (
               <UnplannedItem key={m.session!.id} match={m} />

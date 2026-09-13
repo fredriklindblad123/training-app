@@ -17,10 +17,20 @@ import type { AvailabilityPeriod } from "@/lib/planning";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { PassMarker } from "@/components/PassMarker";
 import { formatKm } from "@/lib/format";
-import { SV_WEEKDAYS_SHORT, STATUS_COLOR, STATUS_LABEL, type DayStatus } from "@/lib/calendar-utils";
+import {
+  SV_WEEKDAYS_SHORT,
+  STATUS_COLOR,
+  STATUS_LABEL,
+  type DayStatus,
+} from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
 import { mentionsStrength } from "@/lib/diary-text";
-import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR, COMPETED_LABEL } from "@/lib/day-outcome";
+import {
+  typeLabel,
+  unmatchedCompetitions,
+  COMPETED_BADGE_COLOR,
+  COMPETED_LABEL,
+} from "@/lib/day-outcome";
 
 /* Veckokalendern: rutnätet, sju dagar i taget — uppslagsverket för att slå
  * upp en specifik dag (vad var planerat, vad blev det, tävling, dagbokstext).
@@ -152,7 +162,6 @@ export default async function WeekPage({
     ]),
   );
 
-
   // K2: plan mot utfall. Både rutnätets "annan typ än planerat"-markering
   // och nyckeltalens jämförelse mot plan (statTiles nedan) bygger på samma
   // matchning.
@@ -191,7 +200,7 @@ export default async function WeekPage({
         title={
           <>
             {weekLabel(from)}{" "}
-            <span className="text-sm font-normal text-zinc-500 dark:text-zinc-400">
+            <span className="text-sm font-normal text-[var(--ink-3)]">
               {from} – {to}
             </span>
           </>
@@ -223,8 +232,7 @@ export default async function WeekPage({
           // Historik visar bara vad som faktiskt gjordes; framåt i tiden
           // (fram till och med idag, om inget redan är genomfört) visas i
           // stället vad som är planerat — samma gräns som månads-/årsvyn.
-          const planned =
-            done.length === 0 && key >= todayKey ? (plannedByDay.get(key) ?? []) : [];
+          const planned = done.length === 0 && key >= todayKey ? (plannedByDay.get(key) ?? []) : [];
           // "Ledig" visas inte som egen status — se lib/day-status.ts.
           const diaryStatus = (
             diary?.day_type === "rest" ? null : (diary?.day_type ?? null)
@@ -257,20 +265,18 @@ export default async function WeekPage({
             <Link
               key={key}
               href={`/calendar/${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}${athleteQuery}`}
-              className={`flex min-h-28 flex-col gap-1.5 rounded border p-2 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-900 ${
+              className={`flex min-h-28 flex-col gap-1.5 rounded border p-2 transition-colors hover:bg-[var(--surface-raised)] ${
                 isToday
-                  ? "border-zinc-900 dark:border-zinc-100"
+                  ? "border-zinc-900 dark:border-[var(--line)]"
                   : isEmpty
-                    ? "border-zinc-100 dark:border-zinc-800/60"
-                    : "border-zinc-200 dark:border-zinc-800"
+                    ? "border-[var(--line)]/60"
+                    : "border-[var(--line)]"
               }`}
             >
               <div className="flex items-baseline justify-between gap-1">
                 <span
                   className={`text-xs font-semibold ${
-                    isEmpty
-                      ? "text-zinc-400 dark:text-zinc-600"
-                      : "text-zinc-900 dark:text-zinc-100"
+                    isEmpty ? "text-[var(--ink-3)]" : "text-[var(--foreground)]"
                   }`}
                 >
                   {SV_WEEKDAYS_SHORT[i]} {d.getDate()}
@@ -302,13 +308,13 @@ export default async function WeekPage({
               {planned.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400"
+                  className="flex items-start gap-1.5 text-[11px] leading-snug text-[var(--ink-3)]"
                   title="Planerat"
                 >
                   <PassMarker type={p.workout_type} planned />
                   <span>
                     {(p.slot ?? 1) > 1 && (
-                      <span className="text-zinc-400 dark:text-zinc-500">
+                      <span className="text-[var(--ink-3)]">
                         {(SLOT_LABELS[p.slot as number] ?? "").slice(0, 2).toLowerCase()}{" "}
                       </span>
                     )}
@@ -324,7 +330,7 @@ export default async function WeekPage({
               {done.map((sess) => (
                 <div
                   key={sess.id}
-                  className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-900 dark:text-zinc-100"
+                  className="flex items-start gap-1.5 text-[11px] leading-snug text-[var(--foreground)]"
                   title="Genomfört"
                 >
                   <PassMarker type={sess.category} planned={false} />
@@ -342,7 +348,7 @@ export default async function WeekPage({
                   den nedtonade stilen och parentesen. */}
               {mentionsStrength(diary?.session_log) && (
                 <div
-                  className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400"
+                  className="flex items-start gap-1.5 text-[11px] leading-snug text-[var(--ink-3)]"
                   title="Styrka nämnd i träningsloggen — inget pass loggat med volym"
                 >
                   <span
@@ -362,7 +368,7 @@ export default async function WeekPage({
               )}
 
               {diary?.notes && (
-                <p className="mt-auto line-clamp-3 text-[10px] leading-snug text-zinc-500 dark:text-zinc-400">
+                <p className="mt-auto line-clamp-3 text-[10px] leading-snug text-[var(--ink-3)]">
                   {diary.notes}
                 </p>
               )}
@@ -371,7 +377,7 @@ export default async function WeekPage({
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-zinc-500 dark:text-zinc-400">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[var(--ink-3)]">
         <span className="flex items-center gap-1.5">
           <span
             className="inline-block h-2.5 w-2.5 rounded-full"
@@ -405,13 +411,11 @@ export default async function WeekPage({
         </span>
       </div>
 
-
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-        Utfallet visas per pass, inte per Garmin-aktivitet: uppvärmning, huvudpass och
-        nerjogg slås ihop till ett pass. Två pass samma dag hålls isär när det skiljer mer
-        än ett par timmar mellan dem.
+      <p className="text-xs text-[var(--ink-3)]">
+        Utfallet visas per pass, inte per Garmin-aktivitet: uppvärmning, huvudpass och nerjogg slås
+        ihop till ett pass. Två pass samma dag hålls isär när det skiljer mer än ett par timmar
+        mellan dem.
       </p>
     </div>
   );
 }
-

@@ -168,7 +168,7 @@ export function SeasonTimelineLegend({
   hasCompetitions: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500 dark:text-zinc-400">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--ink-3)]">
       {phases.map((t) => (
         <span key={t} className="flex items-center gap-1.5">
           <span
@@ -231,7 +231,7 @@ export function SeasonTimeline({
 }) {
   if (!rangeStart && blocks.length === 0 && competitions.length === 0) {
     return (
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-[var(--ink-3)]">
         {compact
           ? "Ingen planering ännu."
           : "Ingen planering ännu. Lägg till en A-tävling och låt appen föreslå en periodisering, eller skapa block för hand nedan."}
@@ -268,7 +268,7 @@ export function SeasonTimeline({
       <div className="relative overflow-x-auto">
         <div className={compact ? "min-w-[12rem]" : "min-w-[32rem]"}>
           {/* Blockband */}
-          <div className={`relative ${bandHeight} rounded bg-zinc-100 dark:bg-zinc-900`}>
+          <div className={`relative ${bandHeight} rounded bg-[var(--surface-raised)]`}>
             {sortedBlocks.map((b) => {
               const left = pct(b.start_date);
               const width = Math.max(1.5, pct(b.end_date) - left);
@@ -325,7 +325,7 @@ export function SeasonTimeline({
               >
                 <span className="h-1 w-px bg-zinc-300 dark:bg-zinc-700" aria-hidden />
                 {t.showLabel && (
-                  <span className="-translate-x-1/2 whitespace-nowrap text-[10px] text-zinc-500 dark:text-zinc-400">
+                  <span className="-translate-x-1/2 whitespace-nowrap text-[10px] text-[var(--ink-3)]">
                     {t.label}
                   </span>
                 )}
@@ -363,14 +363,14 @@ export function SeasonTimeline({
                     />
                     {many && (
                       <span
-                        className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium text-zinc-500 dark:text-zinc-400`}
+                        className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium text-[var(--ink-3)]`}
                       >
                         {cluster.items.length}
                       </span>
                     )}
                   </div>
                   {!compact && (
-                    <span className="mt-0.5 whitespace-nowrap text-[10px] text-zinc-500 dark:text-zinc-400">
+                    <span className="mt-0.5 whitespace-nowrap text-[10px] text-[var(--ink-3)]">
                       {many
                         ? `${cluster.items.length} tävlingar`
                         : `${PRIORITY_SHORT[cluster.items[0].priority]} ${shortDate(cluster.items[0].competition_date)}`}

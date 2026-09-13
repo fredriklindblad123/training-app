@@ -102,10 +102,10 @@ export function PeriodStatTiles({
   return (
     <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
       {tiles.map((t) => (
-        <div key={t.label} className="rounded border border-zinc-200 px-3 py-2 dark:border-zinc-800">
-          <dt className="text-xs text-zinc-500 dark:text-zinc-400">{t.label}</dt>
+        <div key={t.label} className="rounded border border-[var(--line)] px-3 py-2">
+          <dt className="text-xs text-[var(--ink-3)]">{t.label}</dt>
           <dd className="mt-0.5 flex items-baseline gap-1.5">
-            <span className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+            <span className="text-lg font-semibold text-[var(--foreground)]">
               {t.valueText}
             </span>
             {t.targetText && <span className={`text-xs ${t.statusClass}`}>{t.targetText}</span>}

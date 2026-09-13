@@ -108,13 +108,13 @@ function BlockWeekSection({
   return (
     <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800" open>
       <summary className="cursor-pointer">
-        <span className="font-medium text-zinc-900 dark:text-zinc-100">{block.name}</span>
-        <span className="ml-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <span className="font-medium text-[var(--foreground)]">{block.name}</span>
+        <span className="ml-2 text-sm text-[var(--ink-3)]">
           {PERIOD_LABELS[block.period]} · {PHASE_LABELS[block.phase]} · {block.start_date} –{" "}
           {block.end_date} · {items.length} pass/vecka
         </span>
         {blockAthletes.length > 0 && (
-          <span className="ml-2 text-sm text-zinc-400 dark:text-zinc-500">
+          <span className="ml-2 text-sm text-[var(--ink-3)]">
             · {blockAthletes.map((a) => a.fullName ?? "namnlös").join(", ")}
           </span>
         )}
@@ -186,7 +186,7 @@ function WeekPassCard({
       >
         {WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType}
         {pass.title && (
-          <span className="block font-normal text-zinc-600 dark:text-zinc-400">{pass.title}</span>
+          <span className="block font-normal text-[var(--ink-2)]">{pass.title}</span>
         )}
       </Link>
       {pass.trainingFactor && (
@@ -422,7 +422,7 @@ function WeekGrid({
   athleteFilter: string;
 }) {
   if (weeks.length === 0) {
-    return <p className="mt-3 text-xs text-zinc-400 dark:text-zinc-600">Inga veckor i blocket.</p>;
+    return <p className="mt-3 text-xs text-[var(--ink-3)]">Inga veckor i blocket.</p>;
   }
   return (
     <div className="mt-3 overflow-x-auto">
@@ -453,7 +453,7 @@ function WeekGrid({
           {weeks.map((week) => (
             <tr key={week.weekStart} className="align-top">
               <td className="border-b border-zinc-100 px-1 py-2 dark:border-zinc-900">
-                <div className="font-medium text-zinc-700 dark:text-zinc-300">v{week.isoWeekNumber}</div>
+                <div className="font-medium text-[var(--ink-2)]">v{week.isoWeekNumber}</div>
                 <div className="text-[10px] text-zinc-500 dark:text-zinc-500">{week.weekStart}</div>
               </td>
               {week.days.map((day, di) => {
@@ -462,7 +462,7 @@ function WeekGrid({
                 <td
                   key={day.date}
                   className={`border-b border-zinc-100 px-1 py-2 dark:border-zinc-900 ${
-                    week.outside[di] ? "bg-zinc-50 dark:bg-zinc-900/40" : ""
+                    week.outside[di] ? "bg-[var(--surface-raised)]/40" : ""
                   }`}
                 >
                   <div className="flex flex-col gap-1">
@@ -554,7 +554,7 @@ async function DetaljplanOverview({
   );
 
   if (blockList.length === 0) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga block i år ännu.</p>;
+    return <p className="text-sm text-[var(--ink-3)]">Inga block i år ännu.</p>;
   }
 
   const { passesByBlock, competitionsByBlock, outcomes } = await loadWeekData(supabase, blockList);
@@ -718,8 +718,8 @@ export default async function DetaljplanPage({
     return (
       <div className="flex flex-1 flex-col gap-10 px-6 py-8">
         <div>
-          <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Detaljplan</h1>
-          <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+          <h1 className="text-2xl font-semibold text-[var(--foreground)]">Detaljplan</h1>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
             Alla blockens veckor, tidigaste först. Öppna ett pass för att fylla på detaljer, eller
             tagga på och av löpare direkt i rutan. Tävlingar läggs in på{" "}
             <Link href="/tavlingsresultat#lagg-till-tavling" className="underline">
@@ -790,8 +790,8 @@ export default async function DetaljplanPage({
   return (
     <div className="flex flex-1 flex-col gap-10 px-6 py-8">
       <div>
-        <h1 className="text-2xl font-semibold text-zinc-950 dark:text-zinc-50">Detaljplan</h1>
-        <p className="mt-1 max-w-3xl text-sm text-zinc-500 dark:text-zinc-400">
+        <h1 className="text-2xl font-semibold text-[var(--foreground)]">Detaljplan</h1>
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
           Varje blocks eget dag-för-dag-veckomönster — precis som Excel-mallens Detaljplan-flik.
           Ett pass läggs till direkt på blocket och syns i kalendern omedelbart, utan ett
           separat &quot;rulla ut&quot;-steg. Block och standardvecka skapas på{" "}
@@ -813,7 +813,7 @@ export default async function DetaljplanPage({
       )}
 
       {relevantPhases.length === 0 && (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-[var(--ink-3)]">
           Inga block skapade ännu. Lägg upp ett block för säsongens första fas på{" "}
           <Link href="/blockplan" className="underline">
             Årsplan
@@ -868,17 +868,17 @@ export default async function DetaljplanPage({
 
               {canEdit && repEditableItems.length > 0 && (
                 <details className="rounded border border-zinc-200 p-3 dark:border-zinc-800">
-                  <summary className="cursor-pointer text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  <summary className="cursor-pointer text-xs font-medium text-[var(--ink-3)]">
                     Repgrupper i standardveckan — {repEditableItems.length} pass
                   </summary>
-                  <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  <p className="mt-2 text-xs text-[var(--ink-3)]">
                     Gäller blockets veckomönster, alltså framtida utrullningar. Ett pass som redan
                     ligger i kalendern ändras i veckovyn ovan.
                   </p>
                   <div className="mt-3 flex flex-col gap-3">
                     {repEditableItems.map((it) => (
                       <div key={it.id}>
-                        <div className="mb-1 text-xs text-zinc-500 dark:text-zinc-400">
+                        <div className="mb-1 text-xs text-[var(--ink-3)]">
                           {WEEKDAY_LABELS[it.weekday - 1]} ·{" "}
                           {WORKOUT_LABELS[it.workout_type as keyof typeof WORKOUT_LABELS] ??
                             it.workout_type}

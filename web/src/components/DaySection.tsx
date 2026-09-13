@@ -32,28 +32,28 @@ export function DaySection({
     hasData === true
       ? "border-emerald-300/70 dark:border-emerald-800/70"
       : hasData === false
-        ? "border-zinc-100 dark:border-zinc-800/60"
-        : "border-zinc-200 dark:border-zinc-800";
+        ? "border-[var(--line)] dark:border-zinc-800/60"
+        : "border-[var(--line)]";
   const titleClass =
     hasData === false
-      ? "font-medium text-zinc-400 dark:text-zinc-600"
-      : "font-medium text-zinc-900 dark:text-zinc-100";
+      ? "font-medium text-[var(--ink-3)]"
+      : "font-medium text-[var(--foreground)]";
 
   return (
     <details open={defaultOpen} className={`group rounded border ${borderClass}`}>
-      <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-900">
+      <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 hover:bg-[var(--surface-raised)]">
         <span
-          className="text-zinc-400 transition-transform group-open:rotate-90 dark:text-zinc-500"
+          className="text-[var(--ink-3)] transition-transform group-open:rotate-90 dark:text-[var(--ink-3)]"
           aria-hidden="true"
         >
           ▸
         </span>
         <span className={titleClass}>{title}</span>
         {summary != null && (
-          <span className="text-sm text-zinc-500 dark:text-zinc-400">{summary}</span>
+          <span className="text-sm text-[var(--ink-3)]">{summary}</span>
         )}
       </summary>
-      <div className="flex flex-col gap-3 border-t border-zinc-100 px-4 py-4 dark:border-zinc-800">
+      <div className="flex flex-col gap-3 border-t border-[var(--line)] px-4 py-4">
         {children}
       </div>
     </details>

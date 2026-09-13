@@ -40,7 +40,7 @@ export type PlannedRow = {
 };
 
 const inputClass =
-  "rounded border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+  "rounded border border-[var(--line)] px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
 
 function label(type: string): string {
   if (isActivityCategory(type)) return CATEGORY_LABELS[type];
@@ -96,7 +96,7 @@ export function PlannedSessions({
   return (
     <div className="flex flex-col gap-2">
       {sorted.length === 0 && (
-        <p className="text-sm text-zinc-400 dark:text-zinc-600">
+        <p className="text-sm text-[var(--ink-3)]">
           Inget planerat pass den här dagen.
         </p>
       )}
@@ -125,7 +125,7 @@ export function PlannedSessions({
           QUALITY_WORKOUT_TYPES.includes(p.workout_type as WorkoutType) || repGroups.length > 0;
 
         return (
-        <details key={p.id} className="rounded border border-zinc-200 dark:border-zinc-800">
+        <details key={p.id} className="rounded border border-[var(--line)]">
           <summary className="flex cursor-pointer flex-wrap items-baseline gap-3 p-3 text-sm">
             <span
               className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
@@ -145,18 +145,18 @@ export function PlannedSessions({
               aria-hidden="true"
             />
             {(p.slot ?? 1) > 1 && (
-              <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              <span className="text-xs text-[var(--ink-3)]">
                 {SLOT_LABELS[p.slot as number] ?? `Pass ${p.slot}`}
               </span>
             )}
-            <span className="font-medium text-zinc-900 dark:text-zinc-100">
+            <span className="font-medium text-[var(--foreground)]">
               {label(p.workout_type)}
             </span>
-            {p.title && <span className="text-zinc-700 dark:text-zinc-300">{p.title}</span>}
+            {p.title && <span className="text-[var(--ink-2)]">{p.title}</span>}
             {sigLabel && (
-              <span className="text-zinc-700 dark:text-zinc-300">{sigLabel}</span>
+              <span className="text-[var(--ink-2)]">{sigLabel}</span>
             )}
-            <span className="text-zinc-500 dark:text-zinc-400">
+            <span className="text-[var(--ink-3)]">
               {[
                 p.target_distance_meters ? formatKm(p.target_distance_meters) : null,
                 p.target_duration_seconds ? formatDuration(p.target_duration_seconds) : null,
@@ -165,12 +165,12 @@ export function PlannedSessions({
                 .join(" · ")}
             </span>
             {factorLabel(p.training_factor) && (
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-[var(--ink-2)] dark:bg-zinc-800 dark:text-[var(--ink-3)]">
                 {factorLabel(p.training_factor)}
               </span>
             )}
             {p.season_blocks?.name && (
-              <span className="ml-auto rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+              <span className="ml-auto rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-[var(--ink-2)] dark:bg-zinc-800 dark:text-[var(--ink-3)]">
                 {p.season_blocks.name}
               </span>
             )}
@@ -178,7 +178,7 @@ export function PlannedSessions({
 
           <form
             action={updateAction}
-            className="flex flex-wrap items-end gap-3 border-t border-zinc-100 p-3 dark:border-zinc-800"
+            className="flex flex-wrap items-end gap-3 border-t border-[var(--line)] p-3"
           >
             <input type="hidden" name="workout_id" value={p.id} />
             <label className="flex flex-col gap-1 text-sm">
@@ -245,15 +245,15 @@ export function PlannedSessions({
             <TrainingFactorField defaultValue={p.training_factor} />
             <button
               type="submit"
-              className="w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-950 dark:hover:bg-zinc-200"
+              className="w-fit rounded bg-zinc-950 px-4 py-1.5 text-sm text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-[var(--foreground)] dark:hover:bg-zinc-200"
             >
               Spara
             </button>
           </form>
 
           {showRepGroups && (
-            <div className="border-t border-zinc-100 p-3 dark:border-zinc-800">
-              <div className="mb-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            <div className="border-t border-[var(--line)] p-3">
+              <div className="mb-1.5 text-xs font-medium text-[var(--ink-3)]">
                 Repgrupper
               </div>
               <RepGroupEditor
@@ -271,7 +271,7 @@ export function PlannedSessions({
             <input type="hidden" name="workout_id" value={p.id} />
             <button
               type="submit"
-              className="text-xs text-zinc-400 hover:text-red-600 dark:hover:text-red-400"
+              className="text-xs text-[var(--ink-3)] hover:text-red-600 dark:hover:text-red-400"
             >
               Ta bort
             </button>

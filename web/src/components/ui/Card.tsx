@@ -44,13 +44,7 @@ export function Card({ children, raised = false, className = "" }: CardProps) {
  * rubrikerna hamnar på olika höjd mellan korten. `items-baseline` är
  * medvetet: titel och detalj har olika storlek och ska ändå stå på samma
  * grundlinje. */
-export function CardHeader({
-  title,
-  detail,
-}: {
-  title: ReactNode;
-  detail?: ReactNode;
-}) {
+export function CardHeader({ title, detail }: { title: ReactNode; detail?: ReactNode }) {
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
       <h3 className="text-sm font-semibold text-[var(--foreground)]">{title}</h3>

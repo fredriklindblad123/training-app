@@ -124,7 +124,7 @@ export function EfficiencyChart({
   );
 
   if (sorted.length === 0) {
-    return <p className="text-sm text-zinc-500 dark:text-zinc-400">{emptyLabel}</p>;
+    return <p className="text-sm text-[var(--ink-3)]">{emptyLabel}</p>;
   }
 
   /* ------------------------------- skalor -------------------------------- */
@@ -234,7 +234,7 @@ export function EfficiencyChart({
         <text
           x={PAD_LEFT}
           y={PAD_TOP - 2}
-          className="fill-zinc-500 dark:fill-zinc-400"
+          className="fill-[var(--ink-3)]"
           style={{ fontSize: 10 }}
         >
           Meter per hjärtslag
@@ -304,7 +304,7 @@ export function EfficiencyChart({
             x={PAD_LEFT + ((tick.ms - fromMs) / (toMs - fromMs)) * PLOT_W}
             y={HEIGHT - 5}
             textAnchor="middle"
-            className="fill-zinc-500 dark:fill-zinc-400"
+            className="fill-[var(--ink-3)]"
             style={{ fontSize: 10 }}
           >
             {tick.label}
@@ -313,7 +313,7 @@ export function EfficiencyChart({
       </svg>
 
       {clippedCount > 0 && (
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="text-xs text-[var(--ink-3)]">
           Skalan är zoomad till den samlade variationen. {clippedCount} pass sticker ut
           kraftigt (troligen mätfel eller en avvikande förutsättning) och visas nedtonade mot
           kanten i stället för att dra ut hela axeln — hovra över dem eller se tabellen för de
@@ -321,7 +321,7 @@ export function EfficiencyChart({
         </p>
       )}
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--ink-2)]">
         {CATEGORIES.filter((c) => sorted.some((p) => p.category === c)).map((c) => (
           <span key={c} className="inline-flex items-center gap-1.5">
             <span
@@ -357,11 +357,11 @@ export function EfficiencyChart({
       </div>
 
       {hoveredPoint && (
-        <div className="flex flex-col gap-1 rounded border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-          <div className="font-medium text-zinc-900 dark:text-zinc-100">
+        <div className="flex flex-col gap-1 rounded border border-[var(--line)] p-3 text-sm">
+          <div className="font-medium text-[var(--foreground)]">
             {formatShortDate(hoveredPoint.date)} — {hoveredPoint.label}
           </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-2)]">
             <span className="tabular-nums">
               {(hoveredPoint.ef * METERS_PER_BEAT).toFixed(2)} m per hjärtslag (EF{" "}
               {hoveredPoint.ef.toFixed(4)})
@@ -379,7 +379,7 @@ export function EfficiencyChart({
       <button
         type="button"
         onClick={() => setShowTable((v) => !v)}
-        className="w-fit text-xs text-zinc-500 underline hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
+        className="w-fit text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)] dark:text-[var(--ink-3)]"
       >
         {showTable ? "Dölj tabell" : `Visa som tabell (${sorted.length} pass)`}
       </button>
@@ -388,7 +388,7 @@ export function EfficiencyChart({
         <div className="max-h-96 w-full max-w-full overflow-auto">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
-              <tr className="text-xs text-zinc-500 dark:text-zinc-400">
+              <tr className="text-xs text-[var(--ink-3)]">
                 <th scope="col" className="py-1 pr-4 font-normal">
                   Datum
                 </th>
@@ -417,7 +417,7 @@ export function EfficiencyChart({
             </thead>
             <tbody>
               {sorted.map((p) => (
-                <tr key={p.id} className="border-t border-zinc-100 dark:border-zinc-800">
+                <tr key={p.id} className="border-t border-[var(--line)]">
                   <th scope="row" className="py-1 pr-4 font-normal tabular-nums">
                     {p.date}
                   </th>

@@ -54,17 +54,17 @@ export default async function AppLayout({
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-6 py-3 dark:border-zinc-800">
-        <Suspense fallback={<span className="text-sm text-zinc-400">Laddar meny…</span>}>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-6 py-3">
+        <Suspense fallback={<span className="text-sm text-[var(--ink-3)]">Laddar meny…</span>}>
           <NavLinks
             isCoach={scoped?.role === "coach"}
             planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
           />
         </Suspense>
-        <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+        <div className="flex items-center gap-3 text-sm text-[var(--ink-3)]">
           <span>{user.email}</span>
           <form action={signOut}>
-            <button type="submit" className="hover:text-zinc-950 dark:hover:text-zinc-50">
+            <button type="submit" className="hover:text-[var(--foreground)]">
               Logga ut
             </button>
           </form>

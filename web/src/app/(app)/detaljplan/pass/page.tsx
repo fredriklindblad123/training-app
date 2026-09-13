@@ -47,14 +47,14 @@ function AthleteColumn({
 }) {
   const [y, m, d] = dateKey.split("-").map(Number);
   return (
-    <div className="flex min-w-[26rem] flex-1 flex-col gap-3 rounded border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="flex min-w-[26rem] flex-1 flex-col gap-3 rounded border border-[var(--line)] p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
+        <span className="text-lg font-medium text-[var(--foreground)]">
           {athlete.fullName ?? "Namnlös löpare"}
         </span>
         <Link
           href={`/calendar/${y}/${m}/${d}?athlete=${athlete.id}`}
-          className="text-xs text-zinc-500 underline underline-offset-2 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+          className="text-xs text-[var(--ink-3)] underline underline-offset-2 hover:text-zinc-800 dark:text-[var(--ink-3)]"
         >
           Hennes kalenderdag →
         </Link>
@@ -123,14 +123,14 @@ export default async function PassDayPage({
       <div>
         <Link
           href={backHref}
-          className="text-sm text-zinc-500 underline underline-offset-2 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+          className="text-sm text-[var(--ink-3)] underline underline-offset-2 hover:text-zinc-800 dark:text-[var(--ink-3)]"
         >
           ← Detaljplan
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold text-zinc-950 dark:text-zinc-50">
+        <h1 className="mt-2 text-2xl font-semibold text-[var(--foreground)]">
           {weekdayLabel(dateKey)} {dateKey}
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-[var(--ink-3)]">
           {columns.length === 1
             ? columns[0].fullName ?? "Namnlös löpare"
             : `${columns.length} löpare sida vid sida`}
@@ -139,7 +139,7 @@ export default async function PassDayPage({
       </div>
 
       {columns.length === 0 ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">Inga löpare att visa.</p>
+        <p className="text-sm text-[var(--ink-3)]">Inga löpare att visa.</p>
       ) : (
         <>
           {columns.length > 1 && (

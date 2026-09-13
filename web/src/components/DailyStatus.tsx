@@ -80,25 +80,25 @@ export function DailyStatus({
 
   if (evaluated === 0) {
     headline = "Bygger baslinje";
-    headlineClass = "text-zinc-500 dark:text-zinc-400";
+    headlineClass = "text-[var(--ink-3)]";
   } else if (shouldEaseOff) {
     headline = `${concerning.length} markörer under ditt normala`;
     headlineClass = "text-amber-700 dark:text-amber-400";
   } else if (concerning.length === 1) {
     headline = `${concerning[0].spec.label} avviker`;
-    headlineClass = "text-zinc-700 dark:text-zinc-300";
+    headlineClass = "text-[var(--ink-2)]";
   } else {
     headline = "Allt inom ditt normala";
     headlineClass = "text-emerald-700 dark:text-emerald-400";
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded border border-zinc-200 p-4 dark:border-zinc-800">
+    <div className="flex flex-col gap-3 rounded border border-[var(--line)] p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-100">Status</h2>
+          <h2 className="text-lg font-medium text-[var(--foreground)]">Status</h2>
           {periodLabel && (
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">{periodLabel}</p>
+            <p className="text-xs text-[var(--ink-3)]">{periodLabel}</p>
           )}
         </div>
         <span className={`text-sm font-semibold ${headlineClass}`}>{headline}</span>
@@ -120,7 +120,7 @@ export function DailyStatus({
       )}
 
       {evaluated > 0 && !shouldEaseOff && concerning.length === 1 && (
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-[var(--ink-2)]">
           En markör avviker. Det är information, inte en varning — det är först när
           flera rör sig åt samma håll som det brukar betyda något.
         </p>
