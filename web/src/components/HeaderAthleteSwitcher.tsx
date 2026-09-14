@@ -63,29 +63,69 @@ export function HeaderAthleteSwitcher({
         : "text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
     }`;
 
+  const activeName =
+    active === "alla"
+      ? "Alla"
+      : (athletes.find((a) => a.id === active)?.fullName ?? "Löpare");
+
   return (
-    <div
-      role="group"
-      aria-label="Välj löpare"
-      className="display flex flex-wrap items-center gap-1.5 text-sm"
-    >
-      {showOverview && (
-        <Link href={hrefFor("alla")} aria-current={active === "alla" ? "page" : undefined} className={pill(active === "alla")}>
-          Alla
-          <LinkPending />
-        </Link>
-      )}
-      {athletes.map((a) => (
-        <Link
-          key={a.id}
-          href={hrefFor(a.id)}
-          aria-current={active === a.id ? "page" : undefined}
-          className={pill(active === a.id)}
-        >
-          {a.fullName ?? "Namnlös"}
-          <LinkPending />
-        </Link>
-      ))}
-    </div>
+    <>
+      {/* ---- Bred skärm: alla löpare utskrivna ---- */}
+      <div
+        role="group"
+        aria-label="Välj löpare"
+        className="display hidden flex-wrap items-center gap-1.5 text-sm lg:flex"
+      >
+        {showOverview && (
+          <Link
+            href={hrefFor("alla")}
+            aria-current={active === "alla" ? "page" : undefined}
+            className={pill(active === "alla")}
+          >
+            Alla
+            <LinkPending />
+          </Link>
+        )}
+        {athletes.map((a) => (
+          <Link
+            key={a.id}
+            href={hrefFor(a.id)}
+            aria-current={active === a.id ? "page" : undefined}
+            className={pill(active === a.id)}
+          >
+            {a.fullName ?? "Namnlös"}
+            <LinkPending />
+          </Link>
+        ))}
+      </div>
+
+      {/* ---- Smalare skärm: hopfälld, med den valda löparen i knappen ----
+          Fem namnpills bredvid meny, uppdatering och lägesväxel spränger
+          bredden långt före telefonstorlek. Hopfälld visar den ändå det enda
+          man behöver veta i vilostadiet: VEM man tittar på. Samma
+          <details>-lösning som menyn, av samma skäl — native, ingen JS, och
+          nollställs av navigeringen. */}
+      <details className="display group relative text-sm lg:hidden">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border border-[var(--line)] px-2.5 py-1 font-medium text-[var(--foreground)]">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 rotate-45 border-r-2 border-b-2 border-current transition-transform group-open:-rotate-135"
+          />
+          {activeName}
+        </summary>
+        <div className="absolute right-0 z-50 mt-2 flex w-44 flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg">
+          {showOverview && (
+            <Link href={hrefFor("alla")} className={pill(active === "alla")}>
+              Alla
+            </Link>
+          )}
+          {athletes.map((a) => (
+            <Link key={a.id} href={hrefFor(a.id)} className={pill(active === a.id)}>
+              {a.fullName ?? "Namnlös"}
+            </Link>
+          ))}
+        </div>
+      </details>
+    </>
   );
 }

@@ -93,7 +93,15 @@ export default async function AppLayout({
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-6 py-3">
+      {/* Fast header.
+          Sidorna är långa — Trender har sex diagramsektioner, Detaljplan ett
+          rutnät per block — och valen man gör oftast låg längst upp, utanför
+          skärmen. Nu följer de med.
+          Halvgenomskinlig botten med backdrop-blur i stället för en solid:
+          innehållet som passerar under ska synas skymta, annars ser raden ut
+          som ett avhugget lock. z-40 räcker med marginal — inget i appen
+          lägger sig högre än dropdownernas z-50, som ligger INUTI headern. */}
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--line)] bg-[var(--background)]/90 px-4 py-2 backdrop-blur sm:px-6">
         {/* Fallbacken renderar SAMMA meny, bara utan löparvalet i länkarna.
             Tidigare stod det "Laddar meny…" här, vilket betydde att menyn
             försvann och ersattes av en textrad vid varje navigering — det såg
@@ -115,7 +123,7 @@ export default async function AppLayout({
             runnerMode={runnerMode}
           />
         </Suspense>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--ink-3)]">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--ink-3)]">
           {/* Löparväljaren har EN plats i hela appen, och det är här.
               Den låg tidigare inuti varje sida och hamnade därför på olika
               djup överallt — direkt under rubriken på kalendersidorna, tre
@@ -141,7 +149,10 @@ export default async function AppLayout({
           {/* Växeln närmast kontot: den byter vem DU är i appen, inte vad du
               tittar på. Bara för en coach — en adept är bara löpare. */}
           {isCoach && <ViewModeToggle mode={mode} />}
-          <span className="hidden sm:inline">{user.email}</span>
+          {/* Adressen är identitet, inte ett val. Den viker först när det blir
+              trångt — xl och uppåt — eftersom lägesväxeln redan svarar på
+              "vem är jag just nu" på de smalare skärmarna. */}
+          <span className="hidden xl:inline">{user.email}</span>
           <form action={signOut}>
             <button type="submit" className="hover:text-[var(--foreground)]">
               Logga ut

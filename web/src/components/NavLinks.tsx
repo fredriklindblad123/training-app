@@ -169,23 +169,67 @@ export function NavLinksView({
     </div>
   );
 
+  /* Alla länkar i en platt lista — mobilmenyn visar dem staplade och behöver
+     inte grupperingens vågräta avdelare. */
+  const flat: { group: string; items: NavItem[] }[] = [
+    { group: "Logg", items: LOGG },
+    ...(showPlan ? [{ group: "Plan", items: plan }] : []),
+    { group: "", items: [SETTINGS] },
+  ];
+  const current =
+    flat.flatMap((g) => g.items).find((l) => pathname === l.href || pathname.startsWith(`${l.href}/`))
+      ?.label ?? "Meny";
+
   return (
-    <nav className="display flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium">
-      {renderGroup("nav-logg", "Logg", LOGG)}
+    <>
+      {/* ---- Bred skärm: allt utskrivet ---- */}
+      <nav className="display hidden flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium sm:flex">
+        {renderGroup("nav-logg", "Logg", LOGG)}
 
-      {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
-          role="group", så den ska inte läsas upp. */}
-      <span aria-hidden className="hidden h-4 w-px bg-[var(--line)] sm:block" />
+        {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
+            role="group", så den ska inte läsas upp. */}
+        <span aria-hidden className="h-4 w-px bg-[var(--line)]" />
 
-      {showPlan && (
-        <>
-          {renderGroup("nav-plan", "Plan", plan)}
-          <span aria-hidden className="hidden h-4 w-px bg-[var(--line)] sm:block" />
-        </>
-      )}
+        {showPlan && (
+          <>
+            {renderGroup("nav-plan", "Plan", plan)}
+            <span aria-hidden className="h-4 w-px bg-[var(--line)]" />
+          </>
+        )}
 
-      {renderLink(SETTINGS)}
-    </nav>
+        {renderLink(SETTINGS)}
+      </nav>
+
+      {/* ---- Smal skärm: en hopfälld meny ----
+          Nio länkar får inte plats på en telefon, och att låta dem scrolla i
+          sidled gör att hälften aldrig syns — man vet inte ens att de finns.
+          <details> i stället för en klientstyrd meny: den är native, fungerar
+          utan JavaScript, och behöver ingen kod för att stängas eftersom varje
+          val navigerar bort och därmed nollställer den.
+          Sammanfattningen visar var man ÄR, så den hopfällda menyn fortfarande
+          svarar på frågan den öppna gjorde. */}
+      <details className="display group relative text-sm font-medium sm:hidden">
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border border-[var(--line)] px-3 py-1.5 text-[var(--foreground)]">
+          <span
+            aria-hidden
+            className="inline-block h-2 w-2 rotate-45 border-r-2 border-b-2 border-current transition-transform group-open:-rotate-135"
+          />
+          {current}
+        </summary>
+        <div className="absolute left-0 z-50 mt-2 flex w-56 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-lg">
+          {flat.map((g, i) => (
+            <div key={g.group || `x${i}`} className="flex flex-col gap-1">
+              {g.group && (
+                <span className="text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                  {g.group}
+                </span>
+              )}
+              {g.items.map(renderLink)}
+            </div>
+          ))}
+        </div>
+      </details>
+    </>
   );
 }
 
