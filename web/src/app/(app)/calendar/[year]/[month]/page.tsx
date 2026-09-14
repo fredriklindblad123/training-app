@@ -170,6 +170,24 @@ export default async function MonthPage({
   ];
   while (cells.length % 7 !== 0) cells.push(null);
 
+  /* Horisontväxlarna pekar alltid på INNEVARANDE period (uttrycklig begäran
+     2026-09-14). Tidigare följde de den period man råkade titta på: från mars
+     2027 landade "Dag" på 1 mars 2027 och "Vecka" på veckan däromkring — ett
+     datum man varken valt eller hade någon anledning att stå på.
+     Växlaren byter tidshorisont, inte tidpunkt; vill man bläddra bakåt finns
+     pilarna och "hoppa till datum". */
+
+  // Innevarande dag/vecka/månad/år — se kommentaren vid horisontväxlaren.
+  const nowForHorizon = new Date();
+  const hY = nowForHorizon.getFullYear();
+  const hM = nowForHorizon.getMonth() + 1;
+  const hD = nowForHorizon.getDate();
+  const hKey = `${hY}-${String(hM).padStart(2, "0")}-${String(hD).padStart(2, "0")}`;
+  const todayDayHref = `/calendar/${hY}/${hM}/${hD}${athleteQuery}`;
+  const todayWeekHref = `/calendar/vecka/${hKey}${athleteQuery}`;
+  const todayMonthHref = `/calendar/${hY}/${hM}${athleteQuery}`;
+  const todayYearHref = `/calendar/${hY}${athleteQuery}`;
+
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
 
@@ -179,10 +197,10 @@ export default async function MonthPage({
         prevHref={`/calendar/${prevMonth.year}/${prevMonth.month}${athleteQuery}`}
         nextHref={`/calendar/${nextMonth.year}/${nextMonth.month}${athleteQuery}`}
         jumpDate={todayKey}
-        dayHref={`/calendar/${year}/${month}/1${athleteQuery}`}
-        weekHref={`/calendar/vecka/${monthStart}${athleteQuery}`}
-        monthHref={`/calendar/${year}/${month}${athleteQuery}`}
-        yearHref={`/calendar/${year}${athleteQuery}`}
+        dayHref={todayDayHref}
+        weekHref={todayWeekHref}
+        monthHref={todayMonthHref}
+        yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 

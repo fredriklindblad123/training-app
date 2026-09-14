@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -12,6 +13,7 @@ import { NavLinks, NavLinksView } from "@/components/NavLinks";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { HeaderAthleteSwitcher } from "@/components/HeaderAthleteSwitcher";
 import { getViewMode } from "@/lib/view-mode";
+import { syncTargetsFromScope, triggerGarminSyncForAll } from "@/lib/garmin-sync";
 
 /* Menyn grupperas sedan 2026-08-27 i Logg och Plan — se motiveringen i
  * components/NavLinks.tsx, som äger både grupperna och ordningen. Historiken
@@ -62,6 +64,31 @@ export default async function AppLayout({
   const isCoach = scoped?.role === "coach";
   const mode = await getViewMode();
   const runnerMode = isCoach && mode === "runner";
+
+  /* Garmin-synk på VARJE sidvisning, inte bara vid inloggning.
+   *
+   * Tidigare triggades den bara av login-formuläret. En tränare som stannar
+   * inloggad hela dagen och klickar mellan sina adepter fick därmed data som
+   * i värsta fall var ett dygn gammal (nattens cron) — och det är precis när
+   * man öppnar en adepts sida som man vill ha färskt.
+   *
+   * Kostar noll extra frågor: listan härleds ur `scoped`, som layouten redan
+   * hämtat. Och den är strypt i Python (AUTO_SYNC_MIN_INTERVAL_MINUTES = 15),
+   * så tät klickning ger inte täta Garmin-anrop — det är strypningen som gör
+   * att det här går att göra per sidvisning över huvud taget.
+   *
+   * after() så att inget av det syns i svarstiden. */
+  if (scoped) {
+    const targets = syncTargetsFromScope(scoped);
+    after(async () => {
+      try {
+        await triggerGarminSyncForAll(targets);
+      } catch {
+        // Synkas ändå på schemat eller vid nästa sidvisning. En misslyckad
+        // bakgrundssynk får aldrig synas för den som bara bläddrar.
+      }
+    });
+  }
 
   return (
     <div className="flex flex-1 flex-col">

@@ -81,6 +81,24 @@ export async function resolveSyncTargets(
 }
 
 /**
+ * Samma lista, men utan en enda extra fråga.
+ *
+ * Layouten har redan hämtat profilen och coach-kopplingarna via
+ * getScopedProfile — att låta resolveSyncTargets fråga om dem igen vore två
+ * nätverksrundor per sidvisning, och det var precis sådana dubbletter som
+ * gjorde menyn trög. Den här varianten härleder listan ur det som redan
+ * ligger i minnet.
+ */
+export function syncTargetsFromScope(scoped: {
+  userId: string;
+  role: "athlete" | "coach";
+  linkedAthletes: { id: string }[];
+}): string[] {
+  if (scoped.role !== "coach") return [scoped.userId];
+  return [...new Set([scoped.userId, ...scoped.linkedAthletes.map((a) => a.id)])];
+}
+
+/**
  * Kör bakgrundssynk för en lista användare. Parallellt och med allSettled,
  * av två skäl:
  *

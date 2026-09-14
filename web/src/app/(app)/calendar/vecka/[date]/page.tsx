@@ -193,8 +193,23 @@ export default async function WeekPage({
   }
   const compliance = summarizeCompliance(planMatches);
 
-  const monthHref = `/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}${athleteQuery}`;
-  const yearHref = `/calendar/${monday.getFullYear()}${athleteQuery}`;
+  /* Horisontväxlarna pekar alltid på INNEVARANDE period (uttrycklig begäran
+     2026-09-14). Tidigare följde de den period man råkade titta på: från mars
+     2027 landade "Dag" på 1 mars 2027 och "Vecka" på veckan däromkring — ett
+     datum man varken valt eller hade någon anledning att stå på.
+     Växlaren byter tidshorisont, inte tidpunkt; vill man bläddra bakåt finns
+     pilarna och "hoppa till datum". */
+
+  // Innevarande dag/vecka/månad/år — se kommentaren vid horisontväxlaren.
+  const nowForHorizon = new Date();
+  const hY = nowForHorizon.getFullYear();
+  const hM = nowForHorizon.getMonth() + 1;
+  const hD = nowForHorizon.getDate();
+  const hKey = `${hY}-${String(hM).padStart(2, "0")}-${String(hD).padStart(2, "0")}`;
+  const todayDayHref = `/calendar/${hY}/${hM}/${hD}${athleteQuery}`;
+  const todayWeekHref = `/calendar/vecka/${hKey}${athleteQuery}`;
+  const todayMonthHref = `/calendar/${hY}/${hM}${athleteQuery}`;
+  const todayYearHref = `/calendar/${hY}${athleteQuery}`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -218,10 +233,10 @@ export default async function WeekPage({
         prevHref={`/calendar/vecka/${toKey(addDays(monday, -7))}${athleteQuery}`}
         nextHref={`/calendar/vecka/${toKey(addDays(monday, 7))}${athleteQuery}`}
         jumpDate={todayKey}
-        dayHref={`/calendar/${monday.getFullYear()}/${monday.getMonth() + 1}/${monday.getDate()}${athleteQuery}`}
-        weekHref={`/calendar/vecka/${todayKey}${athleteQuery}`}
-        monthHref={monthHref}
-        yearHref={yearHref}
+        dayHref={todayDayHref}
+        weekHref={todayWeekHref}
+        monthHref={todayMonthHref}
+        yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 

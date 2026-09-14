@@ -178,14 +178,23 @@ export default async function YearPage({
     }
   }
 
-  const isCurrentYear = year === now.getFullYear();
-  const dayHref =
-    (isCurrentYear
-      ? `/calendar/${year}/${now.getMonth() + 1}/${now.getDate()}`
-      : `/calendar/${year}/1/1`) + athleteQuery;
-  const weekHref =
-    `/calendar/vecka/${isCurrentYear ? now.toISOString().slice(0, 10) : `${year}-01-01`}` + athleteQuery;
-  const monthHref = `/calendar/${year}/${isCurrentYear ? now.getMonth() + 1 : 1}${athleteQuery}`;
+  /* Horisontväxlarna pekar alltid på INNEVARANDE period (uttrycklig begäran
+     2026-09-14). Tidigare följde de den period man råkade titta på: från mars
+     2027 landade "Dag" på 1 mars 2027 och "Vecka" på veckan däromkring — ett
+     datum man varken valt eller hade någon anledning att stå på.
+     Växlaren byter tidshorisont, inte tidpunkt; vill man bläddra bakåt finns
+     pilarna och "hoppa till datum". */
+
+  // Innevarande dag/vecka/månad/år — se kommentaren vid horisontväxlaren.
+  const nowForHorizon = new Date();
+  const hY = nowForHorizon.getFullYear();
+  const hM = nowForHorizon.getMonth() + 1;
+  const hD = nowForHorizon.getDate();
+  const hKey = `${hY}-${String(hM).padStart(2, "0")}-${String(hD).padStart(2, "0")}`;
+  const todayDayHref = `/calendar/${hY}/${hM}/${hD}${athleteQuery}`;
+  const todayWeekHref = `/calendar/vecka/${hKey}${athleteQuery}`;
+  const todayMonthHref = `/calendar/${hY}/${hM}${athleteQuery}`;
+  const todayYearHref = `/calendar/${hY}${athleteQuery}`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -196,10 +205,10 @@ export default async function YearPage({
         prevHref={`/calendar/${year - 1}${athleteQuery}`}
         nextHref={`/calendar/${year + 1}${athleteQuery}`}
         jumpDate={dateKey(now.getFullYear(), now.getMonth() + 1, now.getDate())}
-        dayHref={dayHref}
-        weekHref={weekHref}
-        monthHref={monthHref}
-        yearHref={`/calendar/${year}${athleteQuery}`}
+        dayHref={todayDayHref}
+        weekHref={todayWeekHref}
+        monthHref={todayMonthHref}
+        yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 
