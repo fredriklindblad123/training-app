@@ -12,6 +12,7 @@ import {
   isValidMonth,
   isValidDay,
 } from "@/lib/calendar-utils";
+import { BlockBand, type BandBlock } from "@/components/BlockBand";
 
 export default async function DayPage({
   params,
@@ -44,6 +45,17 @@ export default async function DayPage({
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
   const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 
+  /* Dagens block. Dagvyn hämtar annars ingenting själv — allt innehåll bor i
+     DayContent — men vilken PERIOD dagen ligger i är en sidnivå-uppgift, inte
+     en egenskap hos ett enskilt pass. Se BlockBand. */
+  const { data: blockRows } = await supabase
+    .from("season_blocks")
+    .select("id, name, period, phase, start_date, end_date, season_block_athletes!inner(athlete_id)")
+    .eq("season_block_athletes.athlete_id", scopedUserId)
+    .lte("start_date", dateStr)
+    .gte("end_date", dateStr)
+    .order("start_date");
+
   const todayStr = dateKey(
     new Date().getFullYear(),
     new Date().getMonth() + 1,
@@ -60,6 +72,12 @@ export default async function DayPage({
           buildHref={(id) => `/calendar/${year}/${month}/${day}?athlete=${id}`}
         />
       )}
+
+      <BlockBand
+        blocks={(blockRows ?? []) as unknown as BandBlock[]}
+        from={dateStr}
+        to={dateStr}
+      />
 
       <CalendarNav
         current="day"

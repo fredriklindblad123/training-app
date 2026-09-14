@@ -65,6 +65,7 @@ export default async function AppLayout({
             <NavLinksView
               isCoach={scoped?.role === "coach"}
               planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
+              viewerId={user.id}
               athlete={null}
             />
           }
@@ -72,6 +73,7 @@ export default async function AppLayout({
           <NavLinks
             isCoach={scoped?.role === "coach"}
             planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
+            viewerId={user.id}
           />
         </Suspense>
         <div className="flex items-center gap-3 text-sm text-[var(--ink-3)]">

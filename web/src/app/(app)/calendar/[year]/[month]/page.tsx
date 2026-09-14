@@ -32,6 +32,7 @@ import {
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { PassMarker } from "@/components/PassMarker";
 import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/day-outcome";
+import { BlockBand, type BandBlock } from "@/components/BlockBand";
 
 export default async function MonthPage({
   params,
@@ -67,6 +68,7 @@ export default async function MonthPage({
     { data: plannedWorkouts },
     { data: availabilityRows },
     { data: competitionRows },
+    { data: blockRows },
   ] = await Promise.all([
     supabase
       .from("activities")
@@ -108,6 +110,16 @@ export default async function MonthPage({
       .eq("user_id", scopedUserId)
       .gte("competition_date", monthStart)
       .lt("competition_date", monthEndExclusive),
+    /* Blocken som överlappar perioden. Hämtas med !inner-filtret på
+       season_block_athletes, samma enda-fråga-mönster som planeringssidorna
+       använder — se BlockBand för varför kalendern behöver det alls. */
+    supabase
+      .from("season_blocks")
+      .select("id, name, period, phase, start_date, end_date, season_block_athletes!inner(athlete_id)")
+      .eq("season_block_athletes.athlete_id", scopedUserId)
+      .lte("start_date", monthEndExclusive)
+      .gte("end_date", monthStart)
+      .order("start_date"),
   ]);
 
   // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
@@ -179,6 +191,12 @@ export default async function MonthPage({
         monthHref={`/calendar/${year}/${month}${athleteQuery}`}
         yearHref={`/calendar/${year}${athleteQuery}`}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
+      />
+
+      <BlockBand
+        blocks={(blockRows ?? []) as unknown as BandBlock[]}
+        from={monthStart}
+        to={monthEndExclusive}
       />
 
       <PeriodStatTiles sessions={monthSessions} compliance={monthCompliance} />

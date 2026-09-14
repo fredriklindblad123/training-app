@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
+  assignableAthletes,
   canEditPlanning,
   getScopedProfile,
   resolveScopedUserId,
@@ -1599,7 +1600,7 @@ export default async function ArsplanPage({
                 key={b.id}
                 block={b}
                 canEdit={canEdit}
-                athletes={scoped.role === "coach" ? viewableAthletes(scoped) : []}
+                athletes={scoped.role === "coach" ? assignableAthletes(scoped) : []}
                 selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
                 // Räknas ur samma planerade pass och sessioner som
                 // veckorutnätet ovanför bygger på — inga extra frågor, och

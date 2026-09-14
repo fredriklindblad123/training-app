@@ -122,17 +122,55 @@ export function canEditPlanning(scoped: ScopedProfile): boolean {
 }
 
 /**
- * Alla "vyer" en coach kan växla mellan i löparväljaren: sig själv (Fredrik
- * tränar ju också, utan egen tränare — se `canEditPlanning`, det gör hans
- * egen planering fullt redigerbar precis som innan Fas 0) plus alla länkade
- * löpare (Alice, Nike, ...). Skild från `linkedAthletes` med flit: den
- * listan är fortfarande den strikta coach_athletes-kopplingen (t.ex.
- * "löpare du coachar"-listan i Inställningar, där "ta bort dig själv" inte
- * skulle betyda något), den här är bara till för väljar-UI:t och för vilka
- * löpare ett block kan gälla för. En löpare (utan coach-roll) har ingen
- * växlare alls — bara sig själv.
+ * Löparna en coach kan växla mellan i väljaren.
+ *
+ * Innehöll fram till 2026-09-14 även coachen själv, som "Jag själv". Det
+ * blandade ihop två olika saker: att coacha någon och att träna själv är inte
+ * två adepter, utan två aktiviteter. Följden var att en tränare fick sin egen
+ * löprunda liggande bredvid fyra sjuttonåringars, och ständigt behövde
+ * kontrollera vem som var vald innan hen skrev något.
+ *
+ * Coachens egen träning nås i stället via en egen ingång i menyn ("Min
+ * träning", se components/NavLinks.tsx) — ett konto, men två tydligt skilda
+ * lägen. Alternativet som övervägdes var två separata inloggningar, vilket
+ * hade tvingat fram en dubblerad Garmin-koppling och en utloggning varje gång
+ * man vill se sin egen runda.
+ *
+ * Skild från `linkedAthletes` med flit — den listan är den strikta
+ * coach_athletes-kopplingen och används där kopplingen SOM SÅDAN är
+ * poängen (t.ex. "löpare du coachar" i Inställningar). Den här är till för
+ * väljar-UI:t och för vilka löpare ett block kan gälla. En löpare (utan
+ * coach-roll) har ingen växlare alls — bara sig själv.
  */
 export function viewableAthletes(scoped: ScopedProfile): AthleteOption[] {
+  if (scoped.role !== "coach") return [];
+  return scoped.linkedAthletes;
+}
+
+/**
+ * Får coachen se sin EGEN träning via `?athlete=<eget id>`?
+ *
+ * Ja — den vägen är hur "Min träning" fungerar. `viewableAthletes` listar
+ * inte längre coachen, så `resolveScopedUserId` måste släppa igenom det egna
+ * id:t separat; annars hade menyingången landat på första adepten i stället.
+ */
+function isSelfOrViewable(scoped: ScopedProfile, id: string): boolean {
+  return id === scoped.userId || scoped.linkedAthletes.some((a) => a.id === id);
+}
+
+/**
+ * Löpare ett block eller en tävling kan TILLDELAS.
+ *
+ * Skild från `viewableAthletes` sedan 2026-09-14, och skillnaden är hela
+ * poängen: väljaren är ett coachningsverktyg och ska bara innehålla adepter,
+ * men en tränare som själv tränar måste fortfarande kunna lägga ett block
+ * eller en tävling på sig själv. Slås de ihop förlorar man antingen den
+ * förmågan eller får tillbaka sin egen löprunda i adeptlistan.
+ *
+ * "Jag själv" står först — det är den enda raden som inte är en adept, och
+ * ordningen gör att den inte glöms bort bland namnen.
+ */
+export function assignableAthletes(scoped: ScopedProfile): AthleteOption[] {
   if (scoped.role !== "coach") return [];
   return [{ id: scoped.userId, fullName: "Jag själv" }, ...scoped.linkedAthletes];
 }
@@ -152,7 +190,7 @@ export function viewableAthletes(scoped: ScopedProfile): AthleteOption[] {
  */
 export function resolveScopedUserId(scoped: ScopedProfile, athleteParam?: string): string {
   if (scoped.role !== "coach") return scoped.userId;
-  if (athleteParam && viewableAthletes(scoped).some((a) => a.id === athleteParam)) {
+  if (athleteParam && isSelfOrViewable(scoped, athleteParam)) {
     return athleteParam;
   }
   return scoped.linkedAthletes[0]?.id ?? scoped.userId;

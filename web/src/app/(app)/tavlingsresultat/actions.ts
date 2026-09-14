@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
+import { assignableAthletes, getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { parseResultSeconds } from "@/lib/race-results";
 
 /* Tävlingar: lägga till, prioritera och logga resultat — flyttat hit från
@@ -74,7 +74,7 @@ async function targetAthleteIds(
   if (!scoped) return [];
   if (scoped.role !== "coach") return [scoped.userId];
 
-  const valid = viewableAthletes(scoped);
+  const valid = assignableAthletes(scoped);
   const checked = formData
     .getAll("athletes")
     .map(String)

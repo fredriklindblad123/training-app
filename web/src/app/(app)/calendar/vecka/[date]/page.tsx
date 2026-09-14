@@ -31,6 +31,7 @@ import {
   COMPETED_BADGE_COLOR,
   COMPETED_LABEL,
 } from "@/lib/day-outcome";
+import { BlockBand, type BandBlock } from "@/components/BlockBand";
 
 /* Veckokalendern: rutnätet, sju dagar i taget — uppslagsverket för att slå
  * upp en specifik dag (vad var planerat, vad blev det, tävling, dagbokstext).
@@ -90,6 +91,7 @@ export default async function WeekPage({
     { data: diaryRows },
     { data: competitionRows },
     { data: availabilityRows },
+    { data: blockRows },
   ] = await Promise.all([
     // Rutnätet visar inga varvtider och ingen fotrad — varvdata, repgrupper,
     // incheckning och sömn/HRV hämtas därför inte här längre. Allt det hör
@@ -131,6 +133,15 @@ export default async function WeekPage({
       .eq("user_id", scopedUserId)
       .lte("start_date", to)
       .gte("end_date", from),
+    /* Blocken som överlappar perioden — se BlockBand. Samma !inner-mönster som
+       planeringssidorna, alltså en fråga i stället för två. */
+    supabase
+      .from("season_blocks")
+      .select("id, name, period, phase, start_date, end_date, season_block_athletes!inner(athlete_id)")
+      .eq("season_block_athletes.athlete_id", scopedUserId)
+      .lte("start_date", nextExclusive)
+      .gte("end_date", from)
+      .order("start_date"),
   ]);
 
   const sessions = groupActivitiesIntoSessions(
@@ -194,6 +205,12 @@ export default async function WeekPage({
           buildHref={(id) => `/calendar/vecka/${date}?athlete=${id}`}
         />
       )}
+
+      <BlockBand
+        blocks={(blockRows ?? []) as unknown as BandBlock[]}
+        from={from}
+        to={nextExclusive}
+      />
 
       <CalendarNav
         current="week"

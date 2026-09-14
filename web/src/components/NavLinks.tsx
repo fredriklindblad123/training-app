@@ -82,12 +82,22 @@ const PLAN: NavItem[] = [
  * sidans "Dag"-läge, med tre grovare kadenser och efterlevnad därtill. */
 const COACH_FOLLOWUP: NavItem = { href: "/uppfoljning", label: "Uppföljning" };
 
+/** Coachens EGEN träning (2026-09-14). Ligger i Logg och inte i
+ * löparväljaren, eftersom att träna själv och att coacha någon är två
+ * aktiviteter och inte två adepter — se viewableAthletes i lib/auth-scope.ts
+ * för hela resonemanget. `?athlete=<eget id>` är samma URL-mönster som
+ * adepterna använder, så ingen ny kodväg behövs; bara en egen ingång. */
+const COACH_SELF: NavItem = { href: "/dashboard", label: "Min träning" };
+
 const SETTINGS: NavItem = { href: "/settings", label: "Inställningar" };
 
 type NavProps = {
   isCoach: boolean;
-  /** Adept med en länkad tränare — dvs. `!canEditPlanning(scoped)`. */
+  /** Adept med en länkad tränare — dvs. `!canEditPlanning(scoped)`. Styr om
+   * Plan-gruppen visas alls. */
   planOwnedByCoach: boolean;
+  /** Den inloggades eget id — bara till "Min träning"-länken för en coach. */
+  viewerId: string;
 };
 
 /**
@@ -108,11 +118,23 @@ type NavProps = {
 export function NavLinksView({
   isCoach,
   planOwnedByCoach,
+  viewerId,
   athlete,
 }: NavProps & { athlete: string | null }) {
   const pathname = usePathname();
 
   const plan = isCoach ? [...PLAN, COACH_FOLLOWUP] : PLAN;
+
+  /* En adept med tränare ser INTE Plan-gruppen (uttrycklig begäran
+     2026-09-14). Tidigare visades den skrivskyddad med motiveringen att
+     löparen ska se vad som väntar — men fyra länkar till sidor där varje
+     knapp är borttagen är mest förvirrande, och sedan samma dag bär
+     kalendern blockbandet i månad, vecka och dag. Planen syns alltså där hon
+     ändå tittar, i stället för på sidor hon inte får röra.
+     En SJÄLVCOACHAD löpare äger sin egen planering och behåller gruppen. */
+  const showPlan = isCoach || !planOwnedByCoach;
+
+  const logg = isCoach ? [...LOGG, { ...COACH_SELF, href: `/dashboard?athlete=${viewerId}` }] : LOGG;
 
   const renderLink = (link: NavItem) => {
     const href = athlete ? `${link.href}?athlete=${athlete}` : link.href;
@@ -153,20 +175,18 @@ export function NavLinksView({
 
   return (
     <nav className="display flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium">
-      {renderGroup("nav-logg", "Logg", LOGG)}
+      {renderGroup("nav-logg", "Logg", logg)}
 
       {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
           role="group", så den ska inte läsas upp. */}
       <span aria-hidden className="hidden h-4 w-px bg-[var(--line)] sm:block" />
 
-      {renderGroup(
-        "nav-plan",
-        "Plan",
-        plan,
-        planOwnedByCoach ? "från din tränare" : undefined,
+      {showPlan && (
+        <>
+          {renderGroup("nav-plan", "Plan", plan)}
+          <span aria-hidden className="hidden h-4 w-px bg-[var(--line)] sm:block" />
+        </>
       )}
-
-      <span aria-hidden className="hidden h-4 w-px bg-[var(--line)] sm:block" />
 
       {renderLink(SETTINGS)}
     </nav>

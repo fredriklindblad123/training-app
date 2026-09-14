@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
+import { assignableAthletes, getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { createCompetition, deleteCompetition, saveEventResult } from "./actions";
@@ -1147,11 +1147,11 @@ export default async function TavlingsresultatPage({
                 har ingen junction-tabell, se targetAthleteIds i actions.ts.
                 Den löpare vyn står på är förkryssad, så enkelfallet är ett
                 klick som förut. */}
-            {scoped.role === "coach" && viewableAthletes(scoped).length > 0 && (
+            {scoped.role === "coach" && assignableAthletes(scoped).length > 0 && (
               <fieldset className="flex flex-col gap-1">
                 <legend className="text-sm text-[var(--ink-2)]">Löpare</legend>
                 <div className="flex flex-wrap gap-3">
-                  {viewableAthletes(scoped).map((a) => (
+                  {assignableAthletes(scoped).map((a) => (
                     <label key={a.id} className="flex items-center gap-1 text-sm">
                       <input
                         type="checkbox"

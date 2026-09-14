@@ -3,9 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
+  assignableAthletes,
   getScopedProfile,
   resolveScopedUserId,
-  viewableAthletes,
   type ScopedProfile,
 } from "@/lib/auth-scope";
 import { type AvailabilityKind, type PeriodType, type PhaseType } from "@/lib/planning";
@@ -98,7 +98,7 @@ async function resolvedAthleteId(
  * season_block_athletes, det här är bara att inte spara skräp. */
 function targetAthletesFromForm(scoped: ScopedProfile, formData: FormData): string[] {
   if (scoped.role !== "coach") return [scoped.userId];
-  const valid = viewableAthletes(scoped);
+  const valid = assignableAthletes(scoped);
   return formData
     .getAll("athletes")
     .map(String)
