@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { assignableAthletes, getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
+import { assignableAthletes, getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { createCompetition, deleteCompetition, saveEventResult } from "./actions";
 import {
   addDays as planAddDays,
@@ -619,28 +618,10 @@ export default async function TavlingsresultatPage({
 
   /** Byter vilken löpare en coach tittar på, behåller grenval/bana-filter
    * samt tävlingslistans eget år-/bana-filter. */
-  function athleteHref(id: string): string {
-    const params = new URLSearchParams();
-    for (const e of selectedEvents) params.append("gren", e);
-    if (banaParam) params.set("bana", banaParam);
-    params.set("tavlingsAr", tavlingsAr);
-    params.set("tavlingsBana", tavlingsBana);
-    params.set("athlete", id);
-    return `/tavlingsresultat?${params.toString()}`;
-  }
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Tävlingsresultat</h1>
-
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          viewerUserId={scoped.userId}
-          activeId={scopedUserId}
-          buildHref={athleteHref}
-        />
-      )}
 
       {/* Karriären i fyra tal. Sidan öppnade tidigare direkt i grenväljaren,
           så omfattningen — hur många lopp, hur länge, vad som väntar — fanns

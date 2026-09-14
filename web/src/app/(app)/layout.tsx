@@ -1,10 +1,16 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { canEditPlanning, getScopedProfile } from "@/lib/auth-scope";
+import {
+  canEditPlanning,
+  getScopedProfile,
+  resolveScopedUserId,
+  viewableAthletes,
+} from "@/lib/auth-scope";
 import { signOut } from "@/app/login/actions";
 import { NavLinks, NavLinksView } from "@/components/NavLinks";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
+import { HeaderAthleteSwitcher } from "@/components/HeaderAthleteSwitcher";
 import { getViewMode } from "@/lib/view-mode";
 
 /* Menyn grupperas sedan 2026-08-27 i Logg och Plan — se motiveringen i
@@ -81,7 +87,24 @@ export default async function AppLayout({
             runnerMode={runnerMode}
           />
         </Suspense>
-        <div className="flex items-center gap-3 text-sm text-[var(--ink-3)]">
+        <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--ink-3)]">
+          {/* Löparväljaren har EN plats i hela appen, och det är här.
+              Den låg tidigare inuti varje sida och hamnade därför på olika
+              djup överallt — direkt under rubriken på kalendersidorna, tre
+              element in på Blockplan. Att den flyttade sig när man bytte sida
+              gjorde att man fick leta efter det man använder oftast.
+              Dold i löparläge: då tittar man på sig själv, och det finns
+              inget att växla mellan. Suspense av samma skäl som menyn —
+              komponenten läser searchParams. */}
+          {isCoach && !runnerMode && scoped != null && (
+            <Suspense fallback={null}>
+              <HeaderAthleteSwitcher
+                athletes={viewableAthletes(scoped)}
+                defaultAthleteId={resolveScopedUserId(scoped)}
+              />
+            </Suspense>
+          )}
+
           {/* Växeln närmast kontot: den byter vem DU är i appen, inte vad du
               tittar på. Bara för en coach — en adept är bara löpare. */}
           {isCoach && <ViewModeToggle mode={mode} />}

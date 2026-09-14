@@ -8,7 +8,6 @@ import {
   viewableAthletes,
   type ScopedProfile,
 } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   SeasonTimeline,
   SeasonTimelineLegend,
@@ -1038,13 +1037,6 @@ export default async function ArsplanPage({
             löparens block och veckomönster.
           </p>
         </div>
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          activeId="alla"
-          viewerUserId={scoped.userId}
-          buildHref={(id) => `/blockplan?athlete=${id}`}
-          overviewHref="/blockplan?athlete=alla"
-        />
         <ArsplanOverview supabase={supabase} scoped={scoped} nyttBlockFranParam={nyttBlockFranParam} />
       </div>
     );
@@ -1170,11 +1162,6 @@ export default async function ArsplanPage({
   /** Byter vilken löpare en coach tittar på, behåller övriga val oförändrade.
    * No-op-länk (samma URL) för en löpare, som aldrig ser väljaren över
    * huvud taget. */
-  function athleteHref(id: string): string {
-    const params = new URLSearchParams();
-    params.set("athlete", id);
-    return `/blockplan?${params.toString()}`;
-  }
 
   // TimelineBlock beskriver bara det tidslinjen behöver; sidan visar även
   // fokustexten, därav den utökade typen här. Samma form täcker också
@@ -1336,15 +1323,6 @@ export default async function ArsplanPage({
 
       {/* Fas 0: löparväljare, bara synlig för en coach. En löpare ser aldrig
           det här — hen är alltid sig själv (se lib/auth-scope.ts). */}
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          activeId={scopedUserId}
-          viewerUserId={scoped.userId}
-          buildHref={athleteHref}
-          overviewHref="/blockplan?athlete=alla"
-        />
-      )}
 
       {/* ---------------- Läget just nu ----------------
           Tre kort som tidigare satte etiketten i text-xs och värdet i text-lg,

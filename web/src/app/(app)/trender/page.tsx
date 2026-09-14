@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
@@ -631,16 +630,6 @@ export default async function TrendsPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          viewerUserId={scoped.userId}
-          activeId={scopedUserId}
-          buildHref={(id) =>
-            `/trender?${activeBlock ? `block=${activeBlock.id}` : `weeks=${weeks}`}&athlete=${id}`
-          }
-        />
-      )}
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>

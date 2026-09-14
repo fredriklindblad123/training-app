@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import {
   SV_MONTHS,
   SV_WEEKDAYS_SHORT,
@@ -173,14 +172,6 @@ export default async function MonthPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          viewerUserId={scoped.userId}
-          activeId={scopedUserId}
-          buildHref={(id) => `/calendar/${year}/${month}?athlete=${id}`}
-        />
-      )}
 
       <CalendarNav
         current="month"

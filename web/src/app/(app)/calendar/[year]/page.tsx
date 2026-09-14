@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { getDayStatuses } from "@/lib/day-status";
 import { CalendarNav, type BandBlock } from "@/components/CalendarHorizon";
 import { dateKey, isValidYear } from "@/lib/calendar-utils";
@@ -190,14 +189,6 @@ export default async function YearPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          viewerUserId={scoped.userId}
-          activeId={scopedUserId}
-          buildHref={(id) => `/calendar/${year}?athlete=${id}`}
-        />
-      )}
 
       <CalendarNav
         current="year"

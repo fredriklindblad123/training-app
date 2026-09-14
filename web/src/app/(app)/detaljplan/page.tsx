@@ -8,7 +8,6 @@ import {
   type AthleteOption,
   type ScopedProfile,
 } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
   PERIOD_LABELS,
@@ -731,13 +730,6 @@ export default async function DetaljplanPage({
             — flera löpare kan taggas på samma tävling — och dyker upp här automatiskt.
           </p>
         </div>
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          activeId="alla"
-          viewerUserId={scoped.userId}
-          buildHref={(id) => `/detaljplan?athlete=${id}`}
-          overviewHref="/detaljplan?athlete=alla"
-        />
         <DetaljplanOverview supabase={supabase} scoped={scoped} canEdit={canEditPlanning(scoped)} />
       </div>
     );
@@ -785,11 +777,6 @@ export default async function DetaljplanPage({
   // finns i Blockplan i stället för att lista hela taxonomin i förväg.
   const relevantPhases = PHASE_TYPES.filter((phase) => blockList.some((b) => b.phase === phase));
 
-  function athleteHref(id: string): string {
-    const params = new URLSearchParams();
-    params.set("athlete", id);
-    return `/detaljplan?${params.toString()}`;
-  }
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -805,16 +792,6 @@ export default async function DetaljplanPage({
           — nya block dyker upp här automatiskt.
         </p>
       </div>
-
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          activeId={scopedUserId}
-          viewerUserId={scoped.userId}
-          buildHref={athleteHref}
-          overviewHref="/detaljplan?athlete=alla"
-        />
-      )}
 
       {/* Planens omfattning i tre tal. Sidan öppnade tidigare direkt i en lista
           av block, så "hur mycket är planerat" gick bara att få genom att räkna

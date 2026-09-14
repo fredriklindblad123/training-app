@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
 import { Card } from "@/components/ui/Card";
@@ -534,15 +533,6 @@ export default async function DashboardPage({
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Dashboard</h1>
-
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          viewerUserId={scoped.userId}
-          activeId={scopedUserId}
-          buildHref={(id) => `/dashboard?athlete=${id}`}
-        />
-      )}
 
       {/* --- Dagens återhämtning, överst och i stort format.
           Det här är adeptens första fråga varje morgon — "hur mår jag idag" —

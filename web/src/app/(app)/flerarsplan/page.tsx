@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
 import { dangerButtonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
@@ -67,9 +66,6 @@ export default async function FlerarsplanPage({
   const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
   const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
 
-  function athleteHref(id: string): string {
-    return `/flerarsplan?athlete=${id}`;
-  }
 
   const { data: plans } = await supabase
     .from("multi_year_plans")
@@ -97,15 +93,6 @@ export default async function FlerarsplanPage({
           </Link>
         )}
       </div>
-
-      {scoped.role === "coach" && !runnerMode && (
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          activeId={scopedUserId}
-          viewerUserId={scoped.userId}
-          buildHref={athleteHref}
-        />
-      )}
 
       {/* Flerårsplanens omfattning. Sidan är en lista av hopfällda år, så utan
           det här fick man öppna dem ett och ett för att se hur långt planen
