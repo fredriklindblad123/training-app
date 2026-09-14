@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useLinkStatus } from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { LinkPending } from "@/components/ui/LinkPending";
 
 /* Huvudmenyn, utbruten till en klientkomponent av ett enda skäl: en coach som
  * växlat löpare via ?athlete=-parametern (se lib/auth-scope.ts) ska inte
@@ -52,28 +52,6 @@ import { usePathname, useSearchParams } from "next/navigation";
  * inte en fråga om träningen. */
 
 type NavItem = { href: string; label: string };
-
-/** Pendel-markören inuti en <Link>.
- *
- * useLinkStatus fungerar bara som BARN till länken — den läser länkens egen
- * övergångsstatus via context. Därför en egen liten komponent i stället för
- * ett villkor i renderLink.
- *
- * Next rekommenderar loading.js i första hand (finns nu, se
- * app/(app)/loading.tsx) och useLinkStatus som komplement för de millisekunder
- * innan skelettet hinner ta över. Det är precis det fönstret som gjorde att
- * appen kändes död vid klick: man tryckte, och ingenting hände. */
-function Pending() {
-  const { pending } = useLinkStatus();
-  return (
-    <span
-      aria-hidden
-      className={`ml-1.5 inline-block h-1 w-1 rounded-full bg-current transition-opacity duration-150 ${
-        pending ? "opacity-70" : "opacity-0"
-      }`}
-    />
-  );
-}
 
 const LOGG: NavItem[] = [
   { href: "/dashboard", label: "Dashboard" },
@@ -151,7 +129,7 @@ export function NavLinksView({
         }`}
       >
         {link.label}
-        <Pending />
+        <LinkPending />
       </Link>
     );
   };
