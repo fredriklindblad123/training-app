@@ -689,10 +689,10 @@ export default async function TavlingsresultatPage({
         </StatCell>
       </StatRow>
 
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Grenutveckling</h2>
-          <p className="text-sm text-[var(--ink-3)]">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Välj en eller flera grenar för att se dem som egna kurvor i samma graf — minst en
             måste vara vald. Y-axeln är
             andel av respektive grens eget personbästa, inte råtid — grenar med olika längd går

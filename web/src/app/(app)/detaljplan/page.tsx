@@ -720,7 +720,7 @@ export default async function DetaljplanPage({
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Detaljplan</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Alla blockens veckor, tidigaste först. Öppna ett pass för att fylla på detaljer, eller
             tagga på och av löpare direkt i rutan. Tävlingar läggs in på{" "}
             <Link href="/tavlingsresultat#lagg-till-tavling" className="underline">
@@ -791,7 +791,7 @@ export default async function DetaljplanPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Detaljplan</h1>
-        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Varje blocks eget dag-för-dag-veckomönster — precis som Excel-mallens Detaljplan-flik.
           Ett pass läggs till direkt på blocket och syns i kalendern omedelbart, utan ett
           separat &quot;rulla ut&quot;-steg. Block och standardvecka skapas på{" "}

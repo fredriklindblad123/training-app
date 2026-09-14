@@ -21,6 +21,7 @@ import {
   PERIOD_LABELS,
   PERIOD_TYPES,
   PHASE_INTENT,
+  PHASE_COLOR_VARS,
   PHASE_LABELS,
   PHASE_TYPES,
   SEASON_LABELS,
@@ -305,13 +306,32 @@ function BlockCard({
   stats?: RangeStats;
 }) {
   return (
-    <details className="rounded border border-[var(--line)] p-4">
-      <summary className="flex cursor-pointer flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="font-medium text-[var(--foreground)]">{b.name}</span>
-        <span className="text-sm text-[var(--ink-3)]">
+    /* Fasfärgen som vänsterkant, samma grepp som passkorten i dagsvyn: i en
+       lista av tio block är fasen det man letar efter, och en färgad kant
+       läses utan att man flyttar blicken till texten. Färgerna är desamma som
+       tidslinjen ovanför använder (PHASE_COLOR_VARS), så ett block ser
+       likadant ut var man än möter det. */
+    <details
+      className="rounded-lg border border-l-[3px] border-[var(--line)] bg-[var(--surface)] p-4"
+      style={{ borderLeftColor: PHASE_COLOR_VARS[b.phase] }}
+    >
+      {/* Rubriken i två nivåer. Låg tidigare som namnet plus EN mening med
+          period, fas, säsong, båda datumen och antal veckor — sju uppgifter i
+          samma storlek på samma rad, vilket gjorde att ingen av dem syntes.
+          Nu namnet överst, datumspannet högerställt som det man jämför block
+          på, och resten under i dämpad text. */}
+      <summary className="flex cursor-pointer flex-col gap-1">
+        <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <span className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">
+            {b.name}
+          </span>
+          <span className="tabular text-xs text-[var(--ink-3)]">
+            {b.start_date} – {b.end_date} · {weeksBetween(b.start_date, b.end_date)} v
+          </span>
+        </span>
+        <span className="text-xs text-[var(--ink-3)]">
           {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
-          {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""} · {b.start_date} – {b.end_date} ·{" "}
-          {weeksBetween(b.start_date, b.end_date)} veckor
+          {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""}
         </span>
       </summary>
 
@@ -1010,7 +1030,7 @@ export default async function ArsplanPage({
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
             löparens block och veckomönster.
           </p>
@@ -1299,7 +1319,7 @@ export default async function ArsplanPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Årsplan</h1>
-        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-3)]">
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
           kommer. Dag-för-dag-innehållet i varje veckomall redigeras på{" "}
           <Link href="/detaljplan" className="underline">
@@ -1363,7 +1383,7 @@ export default async function ArsplanPage({
       </StatRow>
 
       {/* ---------------- Säsongsöversikt ---------------- */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Säsongsöversikt</h2>
         <SeasonTimeline blocks={timelineYearBlocks} competitions={timelineYearCompetitions} />
       </section>
@@ -1373,7 +1393,7 @@ export default async function ArsplanPage({
         <section className="flex flex-col gap-3">
           <div>
             <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Veckorutnät</h2>
-            <p className="max-w-3xl text-sm text-[var(--ink-3)]">
+            <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
               En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
               räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
               visar ett sant noll. Utfall visar hur många av veckans planerade pass som
@@ -1561,7 +1581,7 @@ export default async function ArsplanPage({
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Block</h2>
-        <p className="max-w-3xl text-sm text-[var(--ink-3)]">
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Klicka på ett block för att redigera det. Nya block skapas från{" "}
           <Link href="/blockplan?athlete=alla" className="underline">
             Översikt
@@ -1599,8 +1619,8 @@ export default async function ArsplanPage({
          * den aggregerade nivån blockskapande hör hemma på. Kvar bara här
          * för en självcoachad löpare (ingen Översikt att skapa via). */}
         {canEdit && scoped.role !== "coach" && (
-        <details className="rounded border border-[var(--line)] p-4">
-          <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
+        <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+          <summary className="display cursor-pointer text-[0.9375rem] font-semibold text-[var(--foreground)]">
             Lägg till block för hand
           </summary>
           <form action={createBlock} className="mt-3 flex flex-col gap-3">
@@ -1672,12 +1692,12 @@ export default async function ArsplanPage({
 
       {/* ---------------- Jämför block (P1.5) ---------------- */}
       {blockList.length >= 2 && (
-        <section className="flex flex-col gap-4">
+        <section className="flex flex-col gap-3">
           <div>
             <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
               Jämför block
             </h2>
-            <p className="text-sm text-[var(--ink-3)]">
+            <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
               Ställ två block mot varandra, t.ex. samma blocktyp mellan två säsonger — volym,
               intensitetsfördelning, sömn, sjuk-/skadedagar och tävlingsresultat.
             </p>
@@ -1766,7 +1786,7 @@ export default async function ArsplanPage({
       {/* ---------------- Tillgänglighet (K7) ---------------- */}
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Tillgänglighet</h2>
-        <p className="max-w-3xl text-sm text-[var(--ink-3)]">
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Tentaveckor, lov, läger och resor styr träningen minst lika mycket som
           periodiseringen, men syns ingen annanstans i appen. Det här är bara kontext som gör
           en avvikande vecka förklarlig i efterhand — ingen logik, inga justerade riktvärden,
@@ -1808,8 +1828,8 @@ export default async function ArsplanPage({
           </div>
         )}
 
-        <details className="rounded border border-[var(--line)] p-4">
-          <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
+        <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+          <summary className="display cursor-pointer text-[0.9375rem] font-semibold text-[var(--foreground)]">
             Lägg till period
           </summary>
           <form action={createAvailabilityPeriod} className="mt-3 flex flex-wrap items-end gap-3">
@@ -1844,7 +1864,7 @@ export default async function ArsplanPage({
           skadeperiod, aldrig vad som orsakade den (fallgrop 2): med i
           storleksordningen tre perioder per år räcker underlaget aldrig till
           ett samband, bara till vad som brukade synas samtidigt. */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3">
         <details className="rounded border border-[var(--line)]">
           <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-4 text-[var(--foreground)]">
             <span className="text-lg font-medium">Avbrott</span>

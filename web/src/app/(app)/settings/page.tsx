@@ -55,7 +55,7 @@ export default async function SettingsPage({
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Garmin-koppling
         </h2>
-        <p className="text-sm text-[var(--ink-3)]">
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Anslut ditt Garmin-konto för att automatiskt synka träningspass. Passen
           hämtas dagligen, eller när du klickar &quot;Synka nu&quot;.
         </p>
@@ -139,7 +139,7 @@ export default async function SettingsPage({
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Personligt tröskelband
         </h2>
-        <p className="max-w-2xl text-sm text-[var(--ink-3)]">
+        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Garmins autozoner är en gissning baserad på ålder och maxpuls —
           Andreas Almgren styr istället tröskelträning mot ett eget kalibrerat
           pulsband (för honom 167–178 slag/min), satt utifrån vad ett
@@ -219,7 +219,7 @@ export default async function SettingsPage({
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             Löpare du coachar
           </h2>
-          <p className="max-w-2xl text-sm text-[var(--ink-3)]">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Lägg till en löpares e-post. Har hen redan ett konto kopplas ni direkt; annars
             sparas en inbjudan — lägg till samma e-post igen när löparen har signat upp, så
             kopplas ni då.

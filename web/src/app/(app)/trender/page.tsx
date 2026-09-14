@@ -779,7 +779,7 @@ export default async function TrendsPage({
           ytan säger vad som är värt att titta på, i stället för att man ska
           skumma alla för att upptäcka det själv. */}
       {blockInsights.length > 0 && (
-        <section className="flex flex-col gap-2">
+        <section className="flex flex-col gap-3">
           {blockInsights.map((i) => (
             <InsightCard
               key={i.id}
@@ -793,12 +793,12 @@ export default async function TrendsPage({
       )}
 
       {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             Belastning och återhämtning
           </h2>
-          <p className="text-sm text-[var(--ink-3)]">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Staplarna är veckans summerade träningsbelastning, stackad på passkategori. Linjerna
             nedanför visar avvikelse mot din egen baslinje i SD-enheter — 0 är ditt normala, ±1
             kanten på ditt normalintervall. Håll pekaren över en vecka för siffrorna och dina egna
@@ -881,10 +881,10 @@ export default async function TrendsPage({
       </section>
 
       {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h2>
-          <p className="text-sm text-[var(--ink-3)]">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
             {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
             Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
@@ -899,12 +899,12 @@ export default async function TrendsPage({
       </section>
 
       {/* ================= C. Formkurva (P1.4) ============================= */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             Formkurva (Efficiency Factor)
           </h2>
-          <p className="text-sm text-[var(--ink-3)]">
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt rätt håll.
             Bara lugna pass och långpass på minst 20 minuter med registrerad snittpuls räknas —
             intervaller går inte att jämföra med distanslöpning. {efPoints.length} pass i perioden
@@ -930,7 +930,7 @@ export default async function TrendsPage({
       </section>
 
       {/* ============ P2.1: passkvalitet ============ */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Passkvalitet: återkommande nyckelpass
         </h2>
