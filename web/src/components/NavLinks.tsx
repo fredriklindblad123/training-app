@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LinkPending } from "@/components/ui/LinkPending";
+import { Dropdown } from "@/components/ui/Dropdown";
 
 /* Huvudmenyn, utbruten till en klientkomponent av ett enda skäl: en coach som
  * växlat löpare via ?athlete=-parametern (se lib/auth-scope.ts) ska inte
@@ -203,32 +204,39 @@ export function NavLinksView({
       {/* ---- Smal skärm: en hopfälld meny ----
           Nio länkar får inte plats på en telefon, och att låta dem scrolla i
           sidled gör att hälften aldrig syns — man vet inte ens att de finns.
-          <details> i stället för en klientstyrd meny: den är native, fungerar
-          utan JavaScript, och behöver ingen kod för att stängas eftersom varje
-          val navigerar bort och därmed nollställer den.
           Sammanfattningen visar var man ÄR, så den hopfällda menyn fortfarande
-          svarar på frågan den öppna gjorde. */}
-      <details className="display group relative text-sm font-medium sm:hidden">
-        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border border-[var(--line)] px-3 py-1.5 text-[var(--foreground)]">
-          <span
-            aria-hidden
-            className="inline-block h-2 w-2 rotate-45 border-r-2 border-b-2 border-current transition-transform group-open:-rotate-135"
-          />
-          {current}
-        </summary>
-        <div className="absolute left-0 z-50 mt-2 flex w-56 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 shadow-lg">
-          {flat.map((g, i) => (
+          svarar på frågan den öppna gav gratis.
+          Dropdown sköter stängningen vid val: <details> gör det inte själv,
+          och en klientnavigering nollställer den inte — vilket jag felaktigt
+          antog när den här byggdes. */}
+      <Dropdown label={current} width="w-56" className="sm:hidden">
+        {flat.map((g, i) => {
+          const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+          return (
             <div key={g.group || `x${i}`} className="flex flex-col gap-1">
               {g.group && (
-                <span className="text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                <span className="px-2.5 pt-1 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
                   {g.group}
                 </span>
               )}
-              {g.items.map(renderLink)}
+              {g.items.map((link) => (
+                <Link
+                  key={link.href}
+                  href={athlete ? `${link.href}?athlete=${athlete}` : link.href}
+                  aria-current={isActive(link.href) ? "page" : undefined}
+                  className={`block rounded-md px-2.5 py-1.5 font-medium transition-colors ${
+                    isActive(link.href)
+                      ? "bg-[var(--surface-raised)] text-[var(--foreground)]"
+                      : "text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
             </div>
-          ))}
-        </div>
-      </details>
+          );
+        })}
+      </Dropdown>
     </>
   );
 }

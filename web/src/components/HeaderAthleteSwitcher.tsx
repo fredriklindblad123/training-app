@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LinkPending } from "@/components/ui/LinkPending";
+import { Dropdown } from "@/components/ui/Dropdown";
 
 /* Löparväljaren i sidhuvudet.
  *
@@ -102,30 +103,21 @@ export function HeaderAthleteSwitcher({
       {/* ---- Smalare skärm: hopfälld, med den valda löparen i knappen ----
           Fem namnpills bredvid meny, uppdatering och lägesväxel spränger
           bredden långt före telefonstorlek. Hopfälld visar den ändå det enda
-          man behöver veta i vilostadiet: VEM man tittar på. Samma
-          <details>-lösning som menyn, av samma skäl — native, ingen JS, och
-          nollställs av navigeringen. */}
-      <details className="display group relative text-sm lg:hidden">
-        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md border border-[var(--line)] px-2.5 py-1 font-medium text-[var(--foreground)]">
-          <span
-            aria-hidden
-            className="inline-block h-2 w-2 rotate-45 border-r-2 border-b-2 border-current transition-transform group-open:-rotate-135"
-          />
-          {activeName}
-        </summary>
-        <div className="absolute right-0 z-50 mt-2 flex w-44 flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg">
-          {showOverview && (
-            <Link href={hrefFor("alla")} className={pill(active === "alla")}>
-              Alla
-            </Link>
-          )}
-          {athletes.map((a) => (
-            <Link key={a.id} href={hrefFor(a.id)} className={pill(active === a.id)}>
-              {a.fullName ?? "Namnlös"}
-            </Link>
-          ))}
-        </div>
-      </details>
+          man behöver veta i vilostadiet: VEM man tittar på.
+          Dropdown sköter stängningen vid val — <details> gör det inte själv,
+          och en klientnavigering nollställer den inte. */}
+      <Dropdown label={activeName} align="right" width="w-48" className="lg:hidden">
+        {showOverview && (
+          <Link href={hrefFor("alla")} className={`${pill(active === "alla")} block`}>
+            Alla
+          </Link>
+        )}
+        {athletes.map((a) => (
+          <Link key={a.id} href={hrefFor(a.id)} className={`${pill(active === a.id)} block`}>
+            {a.fullName ?? "Namnlös"}
+          </Link>
+        ))}
+      </Dropdown>
     </>
   );
 }
