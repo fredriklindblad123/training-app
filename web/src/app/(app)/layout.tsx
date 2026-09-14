@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { canEditPlanning, getScopedProfile } from "@/lib/auth-scope";
 import { signOut } from "@/app/login/actions";
-import { NavLinks } from "@/components/NavLinks";
+import { NavLinks, NavLinksView } from "@/components/NavLinks";
 
 /* Menyn grupperas sedan 2026-08-27 i Logg och Plan — se motiveringen i
  * components/NavLinks.tsx, som äger både grupperna och ordningen. Historiken
@@ -55,7 +55,20 @@ export default async function AppLayout({
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-6 py-3">
-        <Suspense fallback={<span className="text-sm text-[var(--ink-3)]">Laddar meny…</span>}>
+        {/* Fallbacken renderar SAMMA meny, bara utan löparvalet i länkarna.
+            Tidigare stod det "Laddar meny…" här, vilket betydde att menyn
+            försvann och ersattes av en textrad vid varje navigering — det såg
+            ut som att appen laddade om sig själv. Suspense behövs bara för att
+            NavLinks läser useSearchParams(); resten av menyn är känd direkt. */}
+        <Suspense
+          fallback={
+            <NavLinksView
+              isCoach={scoped?.role === "coach"}
+              planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
+              athlete={null}
+            />
+          }
+        >
           <NavLinks
             isCoach={scoped?.role === "coach"}
             planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}

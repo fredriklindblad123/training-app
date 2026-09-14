@@ -83,16 +83,33 @@ const COACH_FOLLOWUP: NavItem = { href: "/uppfoljning", label: "Uppföljning" };
 
 const SETTINGS: NavItem = { href: "/settings", label: "Inställningar" };
 
-export function NavLinks({
-  isCoach,
-  planOwnedByCoach,
-}: {
+type NavProps = {
   isCoach: boolean;
   /** Adept med en länkad tränare — dvs. `!canEditPlanning(scoped)`. */
   planOwnedByCoach: boolean;
-}) {
+};
+
+/**
+ * Menyn utan beroende på query-strängen.
+ *
+ * Utbruten från NavLinks för att Suspense-fallbacken ska kunna rendera EN
+ * FÄRDIG MENY i stället för en laddtext. useSearchParams() är det enda som
+ * suspendar här; usePathname gör det inte. Tidigare stod det "Laddar meny…"
+ * under tiden, vilket fick menyn att försvinna och komma tillbaka vid varje
+ * navigering — det såg ut som att appen laddade om sig själv, och var en stor
+ * del av upplevelsen att den var långsam.
+ *
+ * Fallbacken tappar bara ?athlete= i länkarna under den korta stunden innan
+ * den riktiga versionen tar över. En coach som hunnit klicka exakt då landar
+ * på sin egen vy i stället för adeptens — mätbart bättre än att menyn blinkar
+ * bort på varje navigering.
+ */
+export function NavLinksView({
+  isCoach,
+  planOwnedByCoach,
+  athlete,
+}: NavProps & { athlete: string | null }) {
   const pathname = usePathname();
-  const athlete = useSearchParams().get("athlete");
 
   const plan = isCoach ? [...PLAN, COACH_FOLLOWUP] : PLAN;
 
@@ -104,11 +121,11 @@ export function NavLinks({
         key={link.href}
         href={href}
         aria-current={active ? "page" : undefined}
-        className={
+        className={`rounded-md px-2 py-1 transition-colors ${
           active
-            ? "text-[var(--foreground)]"
-            : "text-[var(--ink-2)] hover:text-[var(--foreground)]"
-        }
+            ? "bg-[var(--surface-raised)] text-[var(--foreground)]"
+            : "text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
+        }`}
       >
         {link.label}
       </Link>
@@ -118,10 +135,10 @@ export function NavLinks({
   /* Gruppetiketten är både synlig och den tillgängliga etiketten — samma
    * text, ett id, ingen dubblering via aria-label. */
   const renderGroup = (id: string, label: string, items: NavItem[], note?: string) => (
-    <div role="group" aria-labelledby={id} className="flex items-baseline gap-3">
+    <div role="group" aria-labelledby={id} className="flex items-center gap-2">
       <span
         id={id}
-        className="text-[0.6875rem] font-semibold tracking-wider text-[var(--ink-3)] uppercase"
+        className="text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase"
       >
         {label}
         {note && (
@@ -133,7 +150,7 @@ export function NavLinks({
   );
 
   return (
-    <nav className="flex flex-wrap items-baseline gap-x-5 gap-y-2 text-sm font-medium">
+    <nav className="display flex flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium">
       {renderGroup("nav-logg", "Logg", LOGG)}
 
       {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
@@ -152,4 +169,11 @@ export function NavLinks({
       {renderLink(SETTINGS)}
     </nav>
   );
+}
+
+/** Menyn med löparvalet från URL:en. Wrappas i Suspense av layouten, som ger
+ * NavLinksView som fallback — se motiveringen där. */
+export function NavLinks(props: NavProps) {
+  const athlete = useSearchParams().get("athlete");
+  return <NavLinksView {...props} athlete={athlete} />;
 }

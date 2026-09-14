@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { createClient } from "@/lib/supabase/server";
 
 /* Fas 0 (2026-08-14): grunden för att en coach ska kunna se/redigera flera
@@ -32,7 +33,15 @@ export type ScopedProfile = {
   coachId: string | null;
 };
 
-export async function getScopedProfile(
+/* Memoiserad per render-pass. Layouten OCH sidan anropar den här på varje
+ * navigering, och varje anrop kostade tre sekventiella nätverksrundor mot
+ * Supabase (auth.getUser + profiles + coach_athletes). Med middleware och
+ * layoutens egen getUser blev det runt åtta rundor innan något renderades —
+ * vilket är vad som faktiskt kändes som en långsam meny.
+ *
+ * cache() nycklar på argumentet, så det här fungerar bara därför att
+ * createClient numera returnerar samma instans hela requesten igenom. */
+export const getScopedProfile = cache(async function getScopedProfile(
   supabase: Awaited<ReturnType<typeof createClient>>,
 ): Promise<ScopedProfile | null> {
   const {
@@ -82,7 +91,7 @@ export async function getScopedProfile(
   }
 
   return { userId: user.id, role, linkedAthletes, coachId: null };
-}
+});
 
 /**
  * Vem som äger säsongsplaneringen (block, veckomallar) för den här personen
