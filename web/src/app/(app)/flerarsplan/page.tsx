@@ -5,6 +5,7 @@ import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
 import { dangerButtonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Flerårsplan (fas 0): mål, volym och tävlingar/läger per år, en rad per
  * årsetikett ("16 år", "2027", vad tränaren råkar kalla den). Motsvarar
@@ -63,7 +64,8 @@ export default async function FlerarsplanPage({
 
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null; // Layouten redirectar redan utan inloggning.
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
 
   function athleteHref(id: string): string {
     return `/flerarsplan?athlete=${id}`;
@@ -96,7 +98,7 @@ export default async function FlerarsplanPage({
         )}
       </div>
 
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           activeId={scopedUserId}

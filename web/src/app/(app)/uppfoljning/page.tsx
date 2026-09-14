@@ -36,6 +36,7 @@ import {
   type WorkoutType,
 } from "@/lib/planning";
 import { buttonClass } from "@/components/ui/controls";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Uppföljning (uttrycklig begäran 2026-08-27): tränarens statistiksida —
  * antal pass, typ av pass och planerat mot genomfört, för alla löpare
@@ -103,6 +104,15 @@ export default async function UppfoljningPage({
   if (scoped.role !== "coach") {
     // Samma spärr som /oversikt hade: en löpare har inga adepter att följa
     // upp, och hennes egen uppföljning bor på /dashboard och /trender.
+    redirect("/dashboard");
+  }
+
+  /* Även en coach skickas härifrån i LÖPARLÄGE. Sidan är ren coachning — den
+   * listar adepternas efterlevnad — och att nå den via en gammal länk medan
+   * växeln står på "Löpare" hade visat andras data i ett läge som utger sig
+   * för att vara ens eget. Menyn döljer redan länken; det här täpper till
+   * bokmärket. */
+  if ((await getViewMode()) === "runner") {
     redirect("/dashboard");
   }
 

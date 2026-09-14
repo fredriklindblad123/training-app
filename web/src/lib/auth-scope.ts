@@ -188,8 +188,16 @@ export function assignableAthletes(scoped: ScopedProfile): AthleteOption[] {
  * inga season_blocks/competitions själv) — ett medvetet ofarligt tomt läge,
  * inte en krasch.
  */
-export function resolveScopedUserId(scoped: ScopedProfile, athleteParam?: string): string {
-  if (scoped.role !== "coach") return scoped.userId;
+export function resolveScopedUserId(
+  scoped: ScopedProfile,
+  athleteParam?: string,
+  /** Löparläge (lib/view-mode.ts): coachen tittar på sin egen träning. Då
+   * ignoreras athleteParam helt, precis som för en adept — annars hade en
+   * gammal länk med ?athlete= i sig kunnat dra in en adepts data i en vy som
+   * utger sig för att vara ens egen. */
+  runnerMode = false,
+): string {
+  if (scoped.role !== "coach" || runnerMode) return scoped.userId;
   if (athleteParam && isSelfOrViewable(scoped, athleteParam)) {
     return athleteParam;
   }

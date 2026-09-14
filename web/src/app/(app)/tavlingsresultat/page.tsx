@@ -34,6 +34,7 @@ import {
   type TrainingSeries,
 } from "@/components/charts/RaceProgressionChart";
 import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Tävlingsresultat: analys och jämförelse av redan inlagda tävlingar —
  * grenutveckling över tid och upptrappningen inför två valda lopp.
@@ -313,7 +314,8 @@ export default async function TavlingsresultatPage({
   const supabase = await createClient();
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   const athleteQuery = scoped.role === "coach" ? scopedUserId : null;
 
   // Träningsdatan (Garmin-synken) börjar 2025-07-25, men de importerade
@@ -631,7 +633,7 @@ export default async function TavlingsresultatPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Tävlingsresultat</h1>
 
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           viewerUserId={scoped.userId}

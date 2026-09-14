@@ -19,6 +19,7 @@ import {
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { YearGrid, type YearOutcome, type PlannedDay, type BlockDay } from "@/components/YearGrid";
 import { typeLabel } from "@/lib/day-outcome";
+import { getViewMode } from "@/lib/view-mode";
 
 export default async function YearPage({
   params,
@@ -37,7 +38,8 @@ export default async function YearPage({
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
   const { athlete: athleteParam } = await searchParams;
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 
   // Block är kopplade till löpare via season_block_athletes (samma block
@@ -188,7 +190,7 @@ export default async function YearPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           viewerUserId={scoped.userId}

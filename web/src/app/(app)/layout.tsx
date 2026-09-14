@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { canEditPlanning, getScopedProfile } from "@/lib/auth-scope";
 import { signOut } from "@/app/login/actions";
 import { NavLinks, NavLinksView } from "@/components/NavLinks";
+import { ViewModeToggle } from "@/components/ViewModeToggle";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Menyn grupperas sedan 2026-08-27 i Logg och Plan — se motiveringen i
  * components/NavLinks.tsx, som äger både grupperna och ordningen. Historiken
@@ -51,6 +53,9 @@ export default async function AppLayout({
   // Plan-gruppen ska märkas som tränarens (en adept med länkad coach ser
   // planeringen skrivskyddad, se canEditPlanning).
   const scoped = await getScopedProfile(supabase);
+  const isCoach = scoped?.role === "coach";
+  const mode = await getViewMode();
+  const runnerMode = isCoach && mode === "runner";
 
   return (
     <div className="flex flex-1 flex-col">
@@ -63,21 +68,24 @@ export default async function AppLayout({
         <Suspense
           fallback={
             <NavLinksView
-              isCoach={scoped?.role === "coach"}
+              isCoach={isCoach}
               planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
-              viewerId={user.id}
+              runnerMode={runnerMode}
               athlete={null}
             />
           }
         >
           <NavLinks
-            isCoach={scoped?.role === "coach"}
+            isCoach={isCoach}
             planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
-            viewerId={user.id}
+            runnerMode={runnerMode}
           />
         </Suspense>
         <div className="flex items-center gap-3 text-sm text-[var(--ink-3)]">
-          <span>{user.email}</span>
+          {/* Växeln närmast kontot: den byter vem DU är i appen, inte vad du
+              tittar på. Bara för en coach — en adept är bara löpare. */}
+          {isCoach && <ViewModeToggle mode={mode} />}
+          <span className="hidden sm:inline">{user.email}</span>
           <form action={signOut}>
             <button type="submit" className="hover:text-[var(--foreground)]">
               Logga ut

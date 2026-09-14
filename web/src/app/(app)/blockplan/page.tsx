@@ -82,6 +82,7 @@ import {
 import { buildArsplanWeeks, computeMergeRuns, type ArsplanCompetitionInput } from "@/lib/blockplan-grid";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { fieldClass, primaryButtonClass } from "@/components/ui/controls";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Hette /arsplan ("Årsplan") till 2026-08-27, då den döptes om på uttrycklig
  * begäran: sidan handlar om BLOCK — skapa dem, se dem på tidslinjen, jämföra
@@ -1049,7 +1050,9 @@ export default async function ArsplanPage({
     );
   }
 
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   // canEdit styr om redigeringsformulären visas alls (RLS är den faktiska
   // spärren, se migration 20260816100000).
   const canEdit = canEditPlanning(scoped);
@@ -1333,7 +1336,7 @@ export default async function ArsplanPage({
 
       {/* Fas 0: löparväljare, bara synlig för en coach. En löpare ser aldrig
           det här — hen är alltid sig själv (se lib/auth-scope.ts). */}
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           activeId={scopedUserId}

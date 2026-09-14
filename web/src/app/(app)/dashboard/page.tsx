@@ -29,6 +29,7 @@ import {
   type InterruptionDay,
 } from "@/lib/continuity";
 import { STATUS_LABEL } from "@/lib/calendar-utils";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
  * sidan efter inloggning (se app/page.tsx, login/actions.ts,
@@ -317,7 +318,8 @@ export default async function DashboardPage({
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null; // Layouten redirectar redan utan inloggning.
   const { athlete: athleteParam } = await searchParams;
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   // Bifogas på sidans egna länkar (till dagvyn/veckovyn) så växlingen
   // följer med dit också — huvudmenyn (NavLinks) gör samma sak för
   // menylänkarna.
@@ -533,7 +535,7 @@ export default async function DashboardPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Dashboard</h1>
 
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           viewerUserId={scoped.userId}

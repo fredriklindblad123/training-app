@@ -32,6 +32,7 @@ import {
   COMPETED_LABEL,
 } from "@/lib/day-outcome";
 import { BlockBand, type BandBlock } from "@/components/BlockBand";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Veckokalendern: rutnätet, sju dagar i taget — uppslagsverket för att slå
  * upp en specifik dag (vad var planerat, vad blev det, tävling, dagbokstext).
@@ -82,7 +83,8 @@ export default async function WeekPage({
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
   const { athlete: athleteParam } = await searchParams;
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 
   const [
@@ -197,7 +199,7 @@ export default async function WeekPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           viewerUserId={scoped.userId}

@@ -52,6 +52,7 @@ import {
 } from "@/lib/sessions";
 import { TRAINING_FACTORS } from "@/lib/training-factors";
 import { fieldClass } from "@/components/ui/controls";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Detaljplan: varje blocks eget dag-för-dag-veckomönster, en fas i taget —
  * speglar Excel-mallens Detaljplan-flik. Flyttad hit ur /sasongen
@@ -742,7 +743,9 @@ export default async function DetaljplanPage({
     );
   }
 
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   const canEdit = canEditPlanning(scoped);
 
   /* En fråga i stället för två i rad. Blockets eget mönster hämtas nästlat —
@@ -803,7 +806,7 @@ export default async function DetaljplanPage({
         </p>
       </div>
 
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           activeId={scopedUserId}

@@ -39,6 +39,7 @@ import {
   toDateKey,
   weekRangeLabel,
 } from "@/lib/week-series";
+import { getViewMode } from "@/lib/view-mode";
 
 const WEEK_OPTIONS = [12, 26, 52] as const;
 type WeekOption = (typeof WEEK_OPTIONS)[number];
@@ -151,7 +152,8 @@ export default async function TrendsPage({
   const supabase = await createClient();
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   const athleteQuery = scoped.role === "coach" ? `&athlete=${scopedUserId}` : "";
   const todayKey = toDateKey(new Date());
 
@@ -629,7 +631,7 @@ export default async function TrendsPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           viewerUserId={scoped.userId}

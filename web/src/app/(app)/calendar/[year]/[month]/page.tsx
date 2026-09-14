@@ -33,6 +33,7 @@ import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { PassMarker } from "@/components/PassMarker";
 import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/day-outcome";
 import { BlockBand, type BandBlock } from "@/components/BlockBand";
+import { getViewMode } from "@/lib/view-mode";
 
 export default async function MonthPage({
   params,
@@ -59,7 +60,8 @@ export default async function MonthPage({
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
   const { athlete: athleteParam } = await searchParams;
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam);
+  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
+  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 
   const [
@@ -171,7 +173,7 @@ export default async function MonthPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      {scoped.role === "coach" && (
+      {scoped.role === "coach" && !runnerMode && (
         <AthleteSwitcher
           athletes={viewableAthletes(scoped)}
           viewerUserId={scoped.userId}
