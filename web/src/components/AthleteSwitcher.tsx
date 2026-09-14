@@ -1,4 +1,6 @@
-import Link from "next/link";
+"use client";
+
+import Link, { useLinkStatus } from "next/link";
 
 /* Löparväljare, samma knapprads-stil som redan fanns inline i /sasongen och
  * /flerarsplan — utbruten hit så att de coach-medvetna sidorna (dashboard,
@@ -20,6 +22,21 @@ import Link from "next/link";
  * sida i stället för att klicka igenom en i taget. Valfri prop, ingen annan
  * sida (dashboard, kalender, trender, tävlingsresultat, flerårsplan) har
  * någon översiktsvy att länka till och skickar därför inte med den. */
+/** Samma pendel-markör som huvudmenyn — se NavLinks. Att byta löpare är den
+ * dyraste navigeringen i appen (hela sidan hämtas om för en annan person), så
+ * det är just här man annars hinner klicka två gånger. */
+function Pending() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      aria-hidden
+      className={`ml-1.5 inline-block h-1 w-1 rounded-full bg-current transition-opacity duration-150 ${
+        pending ? "opacity-70" : "opacity-0"
+      }`}
+    />
+  );
+}
+
 export function AthleteSwitcher({
   athletes,
   activeId,
@@ -73,6 +90,7 @@ export function AthleteSwitcher({
             }`}
           >
             Alla
+            <Pending />
           </Link>
         )}
         {athletes.map((a) => {
@@ -95,6 +113,7 @@ export function AthleteSwitcher({
               }`}
             >
               {a.fullName ?? "Namnlös löpare"}
+              <Pending />
             </Link>
           );
         })}
