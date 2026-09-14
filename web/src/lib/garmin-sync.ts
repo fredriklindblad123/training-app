@@ -109,8 +109,43 @@ export function syncTargetsFromScope(scoped: {
  * 2. En adept med utgången Garmin-token får aldrig hindra att de andra
  *    synkas — därför allSettled, inte all.
  */
+/* Senaste gången vi ens FÖRSÖKTE synka en användare, i den här
+ * serverinstansens minne.
+ *
+ * Strypningen i Python (AUTO_SYNC_MIN_INTERVAL_MINUTES) är fortfarande facit —
+ * den är det enda som fungerar över flera instanser. Men utan den här
+ * grinden skickar vi ett HTTP-anrop per användare vid VARJE sidvisning, bara
+ * för att Python ska läsa last_synced_at och svara "nej". Det är osynligt för
+ * den som klickar (after() kör efter svaret) men fullständigt onödigt arbete.
+ *
+ * En Map i modulscope överlever så länge serverinstansen är varm, vilket är
+ * det normala under ett aktivt arbetspass — och det är precis då det klickas
+ * mycket. Kall instans betyder bara att vi frågar Python en gång extra, vilket
+ * strypningen där ändå fångar. Korrektheten hänger alltså aldrig på den här
+ * cachen; den tar bara bort det uppenbart bortkastade.
+ */
+const lastAttempt = new Map<string, number>();
+
+/** Nollställer grinden för givna användare.
+ *
+ * Används av den manuella uppdateringsknappen: utan det skulle en användare
+ * som nyss synkades automatiskt hoppas över, och knappen hade känts trasig
+ * trots att allt fungerade som tänkt. */
+export function clearSyncGate(userIds: string[]): void {
+  for (const id of userIds) lastAttempt.delete(id);
+}
+
+/** Samma fönster som Python använder, i millisekunder. */
+const ATTEMPT_WINDOW_MS = AUTO_SYNC_MIN_INTERVAL_MINUTES * 60 * 1000;
+
 export async function triggerGarminSyncForAll(userIds: string[]): Promise<void> {
-  await Promise.allSettled(
-    userIds.map((id) => triggerGarminSync(id, AUTO_SYNC_MIN_INTERVAL_MINUTES)),
-  );
+  const now = Date.now();
+  const due = userIds.filter((id) => {
+    const prev = lastAttempt.get(id);
+    return prev == null || now - prev >= ATTEMPT_WINDOW_MS;
+  });
+  if (due.length === 0) return;
+  for (const id of due) lastAttempt.set(id, now);
+
+  await Promise.allSettled(due.map((id) => triggerGarminSync(id, AUTO_SYNC_MIN_INTERVAL_MINUTES)));
 }

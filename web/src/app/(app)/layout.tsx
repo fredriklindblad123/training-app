@@ -12,6 +12,7 @@ import { signOut } from "@/app/login/actions";
 import { NavLinks, NavLinksView } from "@/components/NavLinks";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { HeaderAthleteSwitcher } from "@/components/HeaderAthleteSwitcher";
+import { RefreshGarmin } from "@/components/RefreshGarmin";
 import { getViewMode } from "@/lib/view-mode";
 import { syncTargetsFromScope, triggerGarminSyncForAll } from "@/lib/garmin-sync";
 
@@ -131,6 +132,11 @@ export default async function AppLayout({
               />
             </Suspense>
           )}
+
+          {/* Manuell hämtning. Automatiken går på varje sidvisning men är
+              strypt till femton minuter; den här struntar i strypningen, för
+              den som just kommit hem från ett pass vill se det nu. */}
+          <RefreshGarmin />
 
           {/* Växeln närmast kontot: den byter vem DU är i appen, inte vad du
               tittar på. Bara för en coach — en adept är bara löpare. */}
