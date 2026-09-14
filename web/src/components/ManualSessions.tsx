@@ -1,5 +1,6 @@
 import { CATEGORY_LABELS, CATEGORY_VALUES, categoryColorVar, isActivityCategory } from "@/lib/categories";
 import { formatDuration, formatKm } from "@/lib/format";
+import { buttonClass, fieldClass } from "@/components/ui/controls";
 
 /* Egna pass: träning som inte kommer från Garmin.
  *
@@ -19,7 +20,7 @@ export type ManualActivity = {
 };
 
 const inputClass =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm bg-[var(--surface)]";
+  fieldClass;
 
 /** Klockslag ur en tidsstämpel, i den form ett <input type="time"> vill ha. */
 function timeValue(startTime: string): string {
@@ -119,7 +120,7 @@ export function ManualSessions({
 
           <button
             type="submit"
-            className="mb-0.5 w-fit rounded border border-[var(--line)] px-3 py-1 text-sm hover:bg-[var(--surface-raised)]"
+            className={`mb-0.5 ${buttonClass}`}
           >
             Spara
           </button>

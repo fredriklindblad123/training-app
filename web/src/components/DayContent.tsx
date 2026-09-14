@@ -39,6 +39,7 @@ import { analyzeDiaryNote } from "@/lib/diary-text";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
 import { estimateLt2, LT2_SOURCE_LABELS, type Lt2Estimate } from "@/lib/threshold-test";
 import type { SignatureLap } from "@/lib/session-signature";
+import { fieldClass, primaryButtonClass, smallButtonClass } from "@/components/ui/controls";
 
 /* Hela innehållet i en dagvy för EN löpare: nyckeltal, tröskeltestkort,
  * planerade pass, genomförda pass med varvtabeller, träningsdagbok och
@@ -354,7 +355,7 @@ export async function DayContent({
                 <select
                   name="category"
                   defaultValue={isActivityCategory(a.category ?? "") ? a.category! : ""}
-                  className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-xs"
+                  className={fieldClass}
                 >
                   {CATEGORY_VALUES.map((c) => (
                     <option key={c} value={c}>
@@ -364,7 +365,7 @@ export async function DayContent({
                 </select>
                 <button
                   type="submit"
-                  className="rounded border border-[var(--line)] px-2 py-1 text-xs text-[var(--ink-2)] hover:border-[var(--foreground)] hover:text-[var(--foreground)]"
+                  className={smallButtonClass}
                 >
                   Spara kategori
                 </button>
@@ -514,7 +515,7 @@ export async function DayContent({
 
           <button
             type="submit"
-            className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
+            className={primaryButtonClass}
           >
             Spara
           </button>
@@ -681,7 +682,7 @@ function ThresholdTestCard({
             <input type="hidden" name="athlete" value={athleteId} />
             <button
               type="submit"
-              className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
+              className={primaryButtonClass}
             >
               {currentLt2 != null
                 ? `Ersätt sparat LT2 (${currentLt2}) med ${estimate.lt2}`

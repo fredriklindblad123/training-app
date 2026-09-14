@@ -80,6 +80,7 @@ import {
 } from "@/lib/interruption-timeline";
 import { buildArsplanWeeks, computeMergeRuns, type ArsplanCompetitionInput } from "@/lib/blockplan-grid";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
+import { fieldClass, primaryButtonClass } from "@/components/ui/controls";
 
 /* Hette /arsplan ("Årsplan") till 2026-08-27, då den döptes om på uttrycklig
  * begäran: sidan handlar om BLOCK — skapa dem, se dem på tidslinjen, jämföra
@@ -103,9 +104,9 @@ import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@
  * och lib/blockplan-grid.ts. */
 
 const input =
-  "rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-sm";
+  fieldClass;
 const primaryBtn =
-  "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
+  primaryButtonClass;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -178,7 +179,7 @@ function ReadOnlyBlockSummary({ block }: { block: { focus: string | null } }) {
  * Detaljplan. */
 function DayPatternFields() {
   return (
-    <div className="flex flex-col gap-2 rounded border border-[var(--line)] p-3">
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] p-3">
       <div className="text-xs font-medium text-[var(--ink-3)]">
         Veckomönster — typ av pass och träningsfaktor per dag. Rubrik, tid/distans och repgrupper
         fylls i sedan på Detaljplan.
@@ -923,7 +924,7 @@ async function ArsplanOverview({
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Lägg till block för hand
         </h2>
-        <form action={createBlock} className="flex flex-col gap-3 rounded border border-[var(--line)] p-4">
+        <form action={createBlock} className="flex flex-col gap-3 rounded-lg border border-[var(--line)] p-4">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Namn">
               <input name="name" required placeholder="Grundträning 1" className={input} />
@@ -1798,7 +1799,7 @@ export default async function ArsplanPage({
             {availabilityList.map((p) => (
               <div
                 key={p.id}
-                className="flex flex-wrap items-baseline justify-between gap-2 rounded border border-[var(--line)] p-4"
+                className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-[var(--line)] p-4"
               >
                 <div className="flex items-baseline gap-2">
                   <span
@@ -1865,7 +1866,7 @@ export default async function ArsplanPage({
           storleksordningen tre perioder per år räcker underlaget aldrig till
           ett samband, bara till vad som brukade synas samtidigt. */}
       <section className="flex flex-col gap-3">
-        <details className="rounded border border-[var(--line)]">
+        <details className="rounded-lg border border-[var(--line)]">
           <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 p-4 text-[var(--foreground)]">
             <span className="text-lg font-medium">Avbrott</span>
             <span className="text-xs font-normal text-[var(--ink-3)]">
@@ -1891,7 +1892,7 @@ export default async function ArsplanPage({
                 {interruptionPrecursors.map((p) => (
                   <li
                     key={`${p.period.dayType}-${p.period.startDate}`}
-                    className="rounded border border-[var(--line)] p-3"
+                    className="rounded-lg border border-[var(--line)] p-3"
                   >
                     <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                       <span className="font-medium text-[var(--foreground)]">

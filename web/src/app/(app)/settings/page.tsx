@@ -3,6 +3,7 @@ import { connectGarmin, syncGarminNow, saveThresholds, addAthlete, removeAthlete
 import { getScopedProfile } from "@/lib/auth-scope";
 import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
 import { formatDateTime } from "@/lib/format";
+import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 
 const ATHLETE_ADDED_LABEL: Record<string, string> = {
   linked: "Löparen kopplad — hittar redan ett konto på den e-posten.",
@@ -87,7 +88,7 @@ export default async function SettingsPage({
             <form action={syncGarminNow}>
               <button
                 type="submit"
-                className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
+                className={primaryButtonClass}
               >
                 Synka nu
               </button>
@@ -110,7 +111,7 @@ export default async function SettingsPage({
               type="email"
               name="garmin_email"
               required
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -119,7 +120,7 @@ export default async function SettingsPage({
               type="password"
               name="garmin_password"
               required
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className={fieldClass}
             />
           </label>
           <p className="text-xs text-[var(--ink-3)]">
@@ -128,7 +129,7 @@ export default async function SettingsPage({
           </p>
           <button
             type="submit"
-            className="w-fit rounded border border-[var(--line)] px-4 py-2 text-sm hover:bg-[var(--surface-raised)]"
+            className={buttonClass}
           >
             {connection ? "Anslut på nytt" : "Anslut Garmin"}
           </button>
@@ -157,7 +158,7 @@ export default async function SettingsPage({
               min="0"
               name="threshold_hr_low"
               defaultValue={profile?.threshold_hr_low ?? ""}
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -167,7 +168,7 @@ export default async function SettingsPage({
               min="0"
               name="threshold_hr_high"
               defaultValue={profile?.threshold_hr_high ?? ""}
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -177,7 +178,7 @@ export default async function SettingsPage({
               min="0"
               name="max_hr"
               defaultValue={profile?.max_hr ?? ""}
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -187,7 +188,7 @@ export default async function SettingsPage({
               min="0"
               name="lt1_hr"
               defaultValue={profile?.lt1_hr ?? ""}
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1 text-sm">
@@ -197,7 +198,7 @@ export default async function SettingsPage({
               min="0"
               name="lt2_hr"
               defaultValue={profile?.lt2_hr ?? ""}
-              className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+              className={fieldClass}
             />
             {lt2SourceLabel && (
               <span className="text-xs text-[var(--ink-3)]">{lt2SourceLabel}</span>
@@ -206,7 +207,7 @@ export default async function SettingsPage({
           <div className="col-span-2 sm:col-span-3">
             <button
               type="submit"
-              className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
+              className={primaryButtonClass}
             >
               Spara tröskelband
             </button>
@@ -236,7 +237,7 @@ export default async function SettingsPage({
               {scoped.linkedAthletes.map((a) => (
                 <li
                   key={a.id}
-                  className="flex items-center justify-between gap-3 rounded border border-[var(--line)] px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] px-3 py-2 text-sm"
                 >
                   <span className="text-[var(--foreground)]">
                     {a.fullName ?? "Namnlös löpare"}
@@ -265,12 +266,12 @@ export default async function SettingsPage({
                 type="email"
                 name="athlete_email"
                 required
-                className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+                className={fieldClass}
               />
             </label>
             <button
               type="submit"
-              className="w-fit rounded border border-[var(--line)] px-4 py-2 text-sm hover:bg-[var(--surface-raised)]"
+              className={buttonClass}
             >
               Lägg till
             </button>

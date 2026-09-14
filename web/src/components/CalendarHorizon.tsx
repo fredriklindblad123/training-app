@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { type PhaseType } from "@/lib/planning";
+import { buttonClass, fieldClass } from "@/components/ui/controls";
 
 /* Delad navigering mellan kalenderns tidshorisonter, plus BandBlock-typen
  * som veckans/månadens/årets vyer använder för att integrera säsongsblocken
@@ -90,14 +91,14 @@ export function CalendarNav({
       <div className="flex items-center gap-3">
         <Link
           href={prevHref}
-          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
+          className={buttonClass}
         >
           ←
         </Link>
         <h1 className="text-2xl font-semibold text-[var(--foreground)]">{title}</h1>
         <Link
           href={nextHref}
-          className="rounded border border-[var(--line)] px-2 py-1 text-sm text-[var(--ink-3)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
+          className={buttonClass}
         >
           →
         </Link>
@@ -111,11 +112,11 @@ export function CalendarNav({
             name="date"
             defaultValue={jumpDate}
             aria-label="Hoppa till datum"
-            className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1"
+            className={fieldClass}
           />
           <button
             type="submit"
-            className="rounded border border-[var(--line)] px-3 py-1 hover:bg-[var(--surface-raised)]"
+            className={buttonClass}
           >
             Hoppa
           </button>

@@ -33,6 +33,7 @@ import {
   type RaceProgressionSeries,
   type TrainingSeries,
 } from "@/components/charts/RaceProgressionChart";
+import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 
 /* Tävlingsresultat: analys och jämförelse av redan inlagda tävlingar —
  * grenutveckling över tid och upptrappningen inför två valda lopp.
@@ -58,11 +59,11 @@ import {
  * "Nästa A-tävling"-rad och Blockplans veckorutnäts tävlingsrad. */
 
 const input =
-  "rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-sm";
+  fieldClass;
 const primaryBtn =
-  "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
+  primaryButtonClass;
 const ghostBtn =
-  "w-fit rounded border border-[var(--line)] px-3 py-1 text-sm hover:bg-[var(--surface-raised)]";
+  buttonClass;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -844,7 +845,7 @@ export default async function TavlingsresultatPage({
                     <select
                       name="raceA"
                       defaultValue={raceAParam ?? ""}
-                      className="rounded border border-[var(--line)] px-2 py-1 bg-[var(--surface)]"
+                      className={fieldClass}
                     >
                       <option value="" disabled>
                         Välj lopp
@@ -861,7 +862,7 @@ export default async function TavlingsresultatPage({
                     <select
                       name="raceB"
                       defaultValue={raceBParam ?? ""}
-                      className="rounded border border-[var(--line)] px-2 py-1 bg-[var(--surface)]"
+                      className={fieldClass}
                     >
                       <option value="" disabled>
                         Välj lopp
@@ -873,7 +874,7 @@ export default async function TavlingsresultatPage({
                       ))}
                     </select>
                   </label>
-                  <button type="submit" className="w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90">
+                  <button type="submit" className={primaryButtonClass}>
                     Jämför
                   </button>
                 </form>
@@ -887,7 +888,7 @@ export default async function TavlingsresultatPage({
                 {raceAggregateA &&
                   raceAggregateB &&
                   (buildupDataGapApplies ? (
-                    <p className="rounded border border-[var(--line)] p-3 text-sm text-[var(--ink-2)]">
+                    <p className="rounded-lg border border-[var(--line)] p-3 text-sm text-[var(--ink-2)]">
                       Träningsdatan börjar 2025-07-25, men de importerade tävlingsresultaten
                       slutar 2024-07-21. De {BUILDUP_WINDOW_DAYS} dagarna före de här två
                       loppen ligger därför före träningsdatans start, och upptrappningen går
@@ -896,7 +897,7 @@ export default async function TavlingsresultatPage({
                       tabellen upp här.
                     </p>
                   ) : (
-                    <details className="rounded border border-[var(--line)]" open>
+                    <details className="rounded-lg border border-[var(--line)]" open>
                       <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
                         Upptrappning de {BUILDUP_WINDOW_DAYS} dagarna före respektive lopp
                       </summary>
@@ -1026,7 +1027,7 @@ export default async function TavlingsresultatPage({
               return (
                 <div
                   key={c.id}
-                  className="rounded border border-[var(--line)] p-4"
+                  className="rounded-lg border border-[var(--line)] p-4"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div className="flex items-baseline gap-2">
@@ -1131,7 +1132,7 @@ export default async function TavlingsresultatPage({
           </div>
         )}
 
-        <details id="lagg-till-tavling" className="rounded border border-[var(--line)] p-4">
+        <details id="lagg-till-tavling" className="rounded-lg border border-[var(--line)] p-4">
           <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
             Lägg till tävling
           </summary>

@@ -4,6 +4,7 @@ import { getScopedProfile, resolveScopedUserId, viewableAthletes } from "@/lib/a
 import { AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
+import { dangerButtonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 
 /* Flerårsplan (fas 0): mål, volym och tävlingar/läger per år, en rad per
  * årsetikett ("16 år", "2027", vad tränaren råkar kalla den). Motsvarar
@@ -18,9 +19,9 @@ import { createYearPlan, updateYearPlan, deleteYearPlan } from "./actions";
  * väljaren. */
 
 const input =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm bg-[var(--surface)]";
+  fieldClass;
 const primaryBtn =
-  "w-fit rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90";
+  primaryButtonClass;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -253,7 +254,7 @@ export default async function FlerarsplanPage({
                     <button
                       type="submit"
                       formAction={deleteYearPlan}
-                      className="w-fit rounded border border-[var(--line)] px-3 py-1 text-sm text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                      className={dangerButtonClass}
                     >
                       Ta bort
                     </button>

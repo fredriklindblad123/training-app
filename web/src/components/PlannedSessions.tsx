@@ -14,6 +14,7 @@ import {
 import { formatDuration, formatKm } from "@/lib/format";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
+import { fieldClass } from "@/components/ui/controls";
 
 /* Planerade pass för en dag — en ren översiktsvy av planerat vs. genomfört.
  *
@@ -40,7 +41,7 @@ export type PlannedRow = {
 };
 
 const inputClass =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm bg-[var(--surface)]";
+  fieldClass;
 
 function label(type: string): string {
   if (isActivityCategory(type)) return CATEGORY_LABELS[type];

@@ -40,7 +40,7 @@ export function InsightCard({
 }) {
   return (
     <details
-      className="group rounded border border-[var(--line)] px-4 py-3"
+      className="group rounded-lg border border-[var(--line)] px-4 py-3"
       style={{ backgroundColor: "var(--surface-insight)" }}
     >
       <summary className="flex cursor-pointer list-none items-start gap-2 [&::-webkit-details-marker]:hidden">

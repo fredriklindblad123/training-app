@@ -4,9 +4,10 @@ import {
   TRAINING_FACTOR_SUBGROUP_LABELS,
   type TrainingFactorGroup,
 } from "@/lib/training-factors";
+import { fieldClass } from "@/components/ui/controls";
 
 const input =
-  "rounded border border-[var(--line)] px-2 py-1 text-sm bg-[var(--surface)]";
+  fieldClass;
 
 /** Träningsfaktor-väljare — grupperad precis som Excel-mallens Detaljplan-
  * flik (grupp via optgroup, undergrupp som ett prefix på radens text eftersom

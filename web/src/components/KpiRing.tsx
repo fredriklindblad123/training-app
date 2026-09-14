@@ -125,7 +125,7 @@ export function KpiRing({
         )}
       </summary>
 
-      <div className="mt-2 w-full max-w-[14rem] overflow-hidden rounded border border-[var(--line)] text-left text-xs">
+      <div className="mt-2 w-full max-w-[14rem] overflow-hidden rounded-lg border border-[var(--line)] text-left text-xs">
         <table className="w-full">
           <tbody>
             {detailRows.map((row) => (

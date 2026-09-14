@@ -34,7 +34,7 @@ export default async function LoginPage({
           name="email"
           type="email"
           required
-          className="rounded border border-[var(--line)] px-3 py-2"
+          className="rounded-lg border border-[var(--line)] px-3 py-2"
         />
 
         <label
@@ -49,7 +49,7 @@ export default async function LoginPage({
           type="password"
           required
           minLength={6}
-          className="rounded border border-[var(--line)] px-3 py-2"
+          className="rounded-lg border border-[var(--line)] px-3 py-2"
         />
 
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
@@ -61,7 +61,7 @@ export default async function LoginPage({
           </button>
           <button
             formAction={signup}
-            className="flex-1 rounded border border-[var(--line)] px-4 py-2 hover:bg-[var(--surface-raised)]"
+            className="flex-1 rounded-lg border border-[var(--line)] px-4 py-2 hover:bg-[var(--surface-raised)]"
           >
             Skapa konto
           </button>

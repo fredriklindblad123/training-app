@@ -51,6 +51,7 @@ import {
   type SessionActivity,
 } from "@/lib/sessions";
 import { TRAINING_FACTORS } from "@/lib/training-factors";
+import { fieldClass } from "@/components/ui/controls";
 
 /* Detaljplan: varje blocks eget dag-för-dag-veckomönster, en fas i taget —
  * speglar Excel-mallens Detaljplan-flik. Flyttad hit ur /sasongen
@@ -63,7 +64,7 @@ import { TRAINING_FACTORS } from "@/lib/training-factors";
  * "man får skapa ett nytt varje gång istället, lättare att begripa". */
 
 const input =
-  "rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-sm";
+  fieldClass;
 
 type TemplateItemRow = {
   id: string;
@@ -107,7 +108,7 @@ function BlockWeekSection({
 }) {
   const items = block.week_template_items ?? [];
   return (
-    <details className="rounded border border-[var(--line)] p-3" open>
+    <details className="rounded-lg border border-[var(--line)] p-3" open>
       <summary className="cursor-pointer">
         <span className="font-medium text-[var(--foreground)]">{block.name}</span>
         <span className="ml-2 text-sm text-[var(--ink-3)]">
@@ -893,7 +894,7 @@ export default async function DetaljplanPage({
               />
 
               {canEdit && repEditableItems.length > 0 && (
-                <details className="rounded border border-[var(--line)] p-3">
+                <details className="rounded-lg border border-[var(--line)] p-3">
                   <summary className="cursor-pointer text-xs font-medium text-[var(--ink-3)]">
                     Repgrupper i standardveckan — {repEditableItems.length} pass
                   </summary>

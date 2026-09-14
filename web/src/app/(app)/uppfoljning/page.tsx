@@ -35,6 +35,7 @@ import {
   workoutTypeColorVar,
   type WorkoutType,
 } from "@/lib/planning";
+import { buttonClass } from "@/components/ui/controls";
 
 /* Uppföljning (uttrycklig begäran 2026-08-27): tränarens statistiksida —
  * antal pass, typ av pass och planerat mot genomfört, för alla löpare
@@ -254,7 +255,7 @@ export default async function UppfoljningPage({
             {period.prevAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.prevAnchor }) : href({ datum: period.prevAnchor })}
-                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-[var(--surface-raised)]"
+                className={buttonClass}
                 aria-label="Föregående period"
               >
                 ←
@@ -270,7 +271,7 @@ export default async function UppfoljningPage({
             {period.nextAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.nextAnchor }) : href({ datum: period.nextAnchor })}
-                className="rounded border border-[var(--line)] px-2 py-1 hover:bg-[var(--surface-raised)]"
+                className={buttonClass}
                 aria-label="Nästa period"
               >
                 →

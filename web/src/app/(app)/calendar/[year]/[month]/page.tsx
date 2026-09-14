@@ -188,7 +188,7 @@ export default async function MonthPage({
         className="-mb-2"
       />
 
-      <div className="grid grid-cols-7 gap-px overflow-hidden rounded border border-[var(--line)] bg-[var(--line)] text-xs">
+      <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] text-xs">
         {SV_WEEKDAYS_SHORT.map((wd) => (
           <div
             key={wd}

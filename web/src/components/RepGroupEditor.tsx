@@ -18,8 +18,10 @@
  * ska inte visas som ett huvudspår förrän det finns ett facit att styra mot.
  */
 
+import { fieldClass, smallButtonClass } from "@/components/ui/controls";
+
 const smallInput =
-  "rounded border border-[var(--line)] px-1.5 py-1 text-xs bg-[var(--surface)]";
+  `${fieldClass} px-1.5 text-xs`;
 const smallLabel = "pb-1.5 text-xs text-[var(--ink-3)]";
 
 export type RepGroupRow = {
@@ -155,7 +157,7 @@ export function RepGroupEditor({
             />
             <button
               type="submit"
-              className="rounded border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--surface-raised)]"
+              className={smallButtonClass}
             >
               Spara
             </button>
@@ -199,7 +201,7 @@ export function RepGroupEditor({
         />
         <button
           type="submit"
-          className="rounded border border-[var(--line)] px-2 py-1 text-xs hover:bg-[var(--surface-raised)]"
+          className={smallButtonClass}
         >
           Lägg till grupp
         </button>

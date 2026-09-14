@@ -50,7 +50,7 @@ export function YearGrid({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded border border-[var(--line)] p-0.5 text-xs font-medium">
+        <div className="inline-flex rounded-lg border border-[var(--line)] p-0.5 text-xs font-medium">
           {(["traning", "block"] as const).map((v) => (
             <button
               key={v}
