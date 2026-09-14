@@ -125,52 +125,61 @@ export function PlannedSessions({
           QUALITY_WORKOUT_TYPES.includes(p.workout_type as WorkoutType) || repGroups.length > 0;
 
         return (
-        <details key={p.id} className="rounded border border-[var(--line)]">
-          <summary className="flex cursor-pointer flex-wrap items-baseline gap-3 p-3 text-sm">
+        <details key={p.id} className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+          {/* Raden följer prototypens listrad: färgstapel i full höjd till
+              vänster, passets namn överst och detaljerna under i dämpad text,
+              etiketterna högerställda. Låg tidigare som allt på EN baslinje
+              med en 10 px prick — typ, titel, distans och två etiketter i
+              samma storlek, vilket gjorde raden till en ordremsa man fick
+              läsa i stället för skumma.
+
+              Stapeln bär kategorin i full höjd i stället för en prick, av
+              samma skäl som i Swatch: en prick vid en tvåradig rad svävar vid
+              den översta raden och ser ut att höra till bara den. */}
+          <summary className="flex cursor-pointer items-stretch gap-3 p-3 text-sm">
             <span
-              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+              className="w-[3px] shrink-0 self-stretch rounded-full"
               style={{
                 // 'rest' och 'test' har ingen kategorifärg — vila är ingen
                 // träning, ett test är ett testtillfälle, inte en kategori
-                // (se workoutTypeColorVar i lib/planning.ts). Båda får samma
-                // streckade ring i stället för en osynlig, genomskinlig prick.
+                // (se workoutTypeColorVar i lib/planning.ts). Båda får linjens
+                // färg i stället för en osynlig, genomskinlig stapel.
                 backgroundColor: isActivityCategory(p.workout_type)
                   ? categoryColorVar(p.workout_type)
-                  : "transparent",
-                border:
-                  p.workout_type === "rest" || p.workout_type === "test"
-                    ? "1.5px dashed currentColor"
-                    : undefined,
+                  : "var(--line)",
+                minHeight: "1.75rem",
               }}
               aria-hidden="true"
             />
-            {(p.slot ?? 1) > 1 && (
-              <span className="text-xs text-[var(--ink-3)]">
-                {SLOT_LABELS[p.slot as number] ?? `Pass ${p.slot}`}
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                <span className="display font-semibold text-[var(--foreground)]">
+                  {label(p.workout_type)}
+                </span>
+                {p.title && <span className="text-[var(--ink-2)]">{p.title}</span>}
+                {sigLabel && <span className="text-[var(--ink-2)]">{sigLabel}</span>}
               </span>
-            )}
-            <span className="font-medium text-[var(--foreground)]">
-              {label(p.workout_type)}
-            </span>
-            {p.title && <span className="text-[var(--ink-2)]">{p.title}</span>}
-            {sigLabel && (
-              <span className="text-[var(--ink-2)]">{sigLabel}</span>
-            )}
-            <span className="text-[var(--ink-3)]">
-              {[
-                p.target_distance_meters ? formatKm(p.target_distance_meters) : null,
-                p.target_duration_seconds ? formatDuration(p.target_duration_seconds) : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-[var(--ink-3)]">
+                {(p.slot ?? 1) > 1 && (
+                  <span>{SLOT_LABELS[p.slot as number] ?? `Pass ${p.slot}`}</span>
+                )}
+                <span className="tabular">
+                  {[
+                    p.target_distance_meters ? formatKm(p.target_distance_meters) : null,
+                    p.target_duration_seconds ? formatDuration(p.target_duration_seconds) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              </span>
             </span>
             {factorLabel(p.training_factor) && (
-              <span className="rounded bg-[var(--surface-raised)] px-1.5 py-0.5 text-xs text-[var(--ink-2)]">
+              <span className="display self-center rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-2)]">
                 {factorLabel(p.training_factor)}
               </span>
             )}
             {p.season_blocks?.name && (
-              <span className="ml-auto rounded bg-[var(--surface-raised)] px-1.5 py-0.5 text-xs text-[var(--ink-2)]">
+              <span className="display self-center rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-2)]">
                 {p.season_blocks.name}
               </span>
             )}

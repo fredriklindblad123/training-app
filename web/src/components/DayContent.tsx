@@ -32,6 +32,7 @@ import {
 import {
   CATEGORY_LABELS,
   CATEGORY_VALUES,
+  categoryColorVar,
   isActivityCategory,
 } from "@/lib/categories";
 import { analyzeDiaryNote } from "@/lib/diary-text";
@@ -327,13 +328,24 @@ export async function DayContent({
         {garminActivities.map((a) => (
           <div
             key={a.id}
-            className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm sm:grid-cols-4"
+            /* Kategorifärgen som en 3 px stapel längs kortets vänsterkant.
+               Passets typ är det första man vill veta i en lista av pass, och
+               en färgad kant läses utan att man flyttar blicken till en
+               etikett — samma grepp som listraderna i PlannedSessions.
+               `borderLeftColor` i stället för en egen <span>: kortet är ett
+               grid, och ett extra barn hade hamnat i en cell. */
+            className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-l-[3px] border-[var(--line)] bg-[var(--surface)] p-4 text-sm sm:grid-cols-4"
+            style={{
+              borderLeftColor: isActivityCategory(a.category ?? "")
+                ? (categoryColorVar(a.category as never) as string)
+                : "var(--line)",
+            }}
           >
-            <div className="col-span-2 flex flex-wrap items-center gap-3 text-base font-medium text-[var(--foreground)] sm:col-span-4">
-              <span>
-                {a.name ?? "Pass"}{" "}
-                <span className="text-[var(--ink-3)]">({a.activity_type})</span>
+            <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:col-span-4">
+              <span className="display text-base font-semibold text-[var(--foreground)]">
+                {a.name ?? "Pass"}
               </span>
+              <span className="text-xs text-[var(--ink-3)]">{a.activity_type}</span>
               <CategoryBadge category={a.category} />
             </div>
             <div className="col-span-2 flex flex-wrap items-center gap-3 sm:col-span-4">
@@ -342,7 +354,7 @@ export async function DayContent({
                 <select
                   name="category"
                   defaultValue={isActivityCategory(a.category ?? "") ? a.category! : ""}
-                  className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-xs bg-[var(--surface)]"
+                  className="rounded border border-[var(--line)] bg-[var(--surface)] px-2 py-1 text-xs"
                 >
                   {CATEGORY_VALUES.map((c) => (
                     <option key={c} value={c}>

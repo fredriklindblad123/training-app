@@ -14,7 +14,11 @@
 /coverage
 
 # next.js
-/.next/
+# Oankrat mönster med flit. `/.next/` matchar bara web/-roten, och en
+# dev-server som startats från fel katalog (t.ex. web/src) lägger sin
+# byggcache där i stället — blind fläck. Det hände 2026-09-14 och 112
+# artefaktfiler hann checkas in innan det upptäcktes.
+.next/
 /out/
 
 # production
