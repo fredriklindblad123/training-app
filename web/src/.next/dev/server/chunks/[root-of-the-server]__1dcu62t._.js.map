@@ -1,6 +1,0 @@
-{
-  "version": 3,
-  "sources": [],
-  "sections": [
-    {"offset": {"line": 70, "column": 0}, "map": {"version":3,"sources":["file:///Users/fredriklindblad/traningsapp/web/src/proxy.ts"],"sourcesContent":["import { type NextRequest } from \"next/server\";\nimport { updateSession } from \"@/lib/supabase/middleware\";\n\nexport async function proxy(request: NextRequest) {\n  return await updateSession(request);\n}\n\nexport const config = {\n  matcher: [\n    \"/((?!_next/static|_next/image|favicon.ico|.*\\\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)\",\n  ],\n};\n"],"names":["proxy","request","updateSession","config","matcher"],"mappings":";;;;;;;;;;;;AAGO,eAAeA,MAAMC,OAAoB;IAC9C,OAAO,MAAMC,cAAcD;AAC7B;AAEO,MAAME,SAAS;IACpBC,SAAS;QACP;KACD;AACH"}}]
-}
