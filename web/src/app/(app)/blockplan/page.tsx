@@ -1035,23 +1035,68 @@ export default async function ArsplanPage({
   // Block är kopplade till löpare via season_block_athletes, inte user_id
   // (samma block kan gälla flera löpare) — ett separat steg före
   // Promise.all nedan, eftersom season_blocks-frågan beror på resultatet.
-  const { data: blockAthleteRows } = await supabase
-    .from("season_block_athletes")
-    .select("block_id")
-    .eq("athlete_id", scopedUserId);
-  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
+  /* Tidslinjens tre frågor beror bara på `today` och löparen — inte på
+     blocken, inte på rutnätet. De låg ändå sist och blev därför en egen
+     sekventiell våg: sidan gjorde fem vågor i rad, och den här behövde inte
+     vänta på någon av de föregående.
+     Startas här i stället och inväntas där resultatet används, så de går
+     parallellt med allt annat. Byggaren kör inget förrän någon await:ar, så
+     Promise.all är det som faktiskt sätter dem i luften. */
+  // Lookback-bufferten (utöver de 365 dagarna) täcker det längsta en enskild
+  // period kan behöva bakåt: BASELINE_WINDOW_DAYS för sömn-/HRV-baslinjen
+  // (lib/daily-status.ts) plus ytterligare en vecka för jämförelseveckan
+  // precis före den.
+  const TIMELINE_WINDOW_DAYS = 365;
+  const timelineLookbackFrom = toDateKey(
+    planAddDays(new Date(`${today}T00:00:00`), -(TIMELINE_WINDOW_DAYS + BASELINE_WINDOW_DAYS + 14)),
+  );
+  const timelineEarliestPeriodStart = toDateKey(
+    planAddDays(new Date(`${today}T00:00:00`), -TIMELINE_WINDOW_DAYS),
+  );
+  const timelineQueries = Promise.all([
+    supabase
+      .from("diary_entries")
+      .select("entry_date, day_type, notes")
+      .eq("user_id", scopedUserId)
+      .gte("entry_date", timelineLookbackFrom)
+      .order("entry_date"),
+    supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
+      .gte("start_time", timelineLookbackFrom)
+      .order("start_time"),
+    supabase
+      .from("daily_metrics")
+      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
+      .eq("user_id", scopedUserId)
+      .gte("metric_date", timelineLookbackFrom)
+      .order("metric_date"),
+  ]);
 
+  /* Blocken hämtas i EN fråga, inte tre.
+   *
+   * Låg tidigare som season_block_athletes → .in("id", blockIds) →
+   * season_blocks, plus en tredje fråga för att veta vilka löpare varje block
+   * gäller. Den första var en egen sekventiell våg som allt annat väntade på.
+   *
+   * Nu två inbäddningar av season_block_athletes med olika roller:
+   * `blockFilter` med !inner väljer ut löparens block, den ofiltrerade ger
+   * hela medlemslistan som kryssrutorna behöver. Ett naivt !inner hade tyst
+   * reducerat listan till den inloggade — testat mot produktionsdatan: ett
+   * block med två löpare gav 1 med naiv variant och 2 med alias. */
   const [
     { data: blocks },
     { data: plannedCounts },
     { data: availabilityPeriods },
     { data: timelineCompetitionRows },
     { data: nextACompetition },
-    { data: blockMembership },
   ] = await Promise.all([
-    blockIds.length > 0
-      ? supabase.from("season_blocks").select("*").in("id", blockIds).order("start_date")
-      : Promise.resolve({ data: [] as never[] }),
+    supabase
+      .from("season_blocks")
+      .select("*, season_block_athletes(athlete_id), blockFilter:season_block_athletes!inner(athlete_id)")
+      .eq("blockFilter.athlete_id", scopedUserId)
+      .order("start_date"),
     supabase
       .from("planned_workouts")
       .select("scheduled_date")
@@ -1084,19 +1129,17 @@ export default async function ArsplanPage({
       .order("competition_date")
       .limit(1)
       .maybeSingle(),
-    // Vilka löpare varje block gäller för — bara relevant för
-    // kryssrutorna i redigeringsformuläret (bara en coach ser dem), men
-    // hämtas alltid, samma "tomt är ofarligt"-mönster som resten av sidan.
-    blockIds.length > 0
-      ? supabase.from("season_block_athletes").select("block_id, athlete_id").in("block_id", blockIds)
-      : Promise.resolve({ data: [] as { block_id: string; athlete_id: string }[] }),
   ]);
 
+  /* Vilka löpare varje block gäller för — bara relevant för kryssrutorna i
+     redigeringsformuläret (bara en coach ser dem). Kommer numera inbäddat i
+     blockfrågan ovan i stället för som en egen fråga. */
   const athleteIdsByBlockId = new Map<string, Set<string>>();
-  for (const row of blockMembership ?? []) {
-    const set = athleteIdsByBlockId.get(row.block_id as string) ?? new Set<string>();
-    set.add(row.athlete_id as string);
-    athleteIdsByBlockId.set(row.block_id as string, set);
+  for (const b of (blocks ?? []) as { id: string; season_block_athletes?: { athlete_id: string }[] }[]) {
+    athleteIdsByBlockId.set(
+      b.id,
+      new Set((b.season_block_athletes ?? []).map((r) => r.athlete_id)),
+    );
   }
 
   /** Byter vilken löpare en coach tittar på, behåller övriga val oförändrade.
@@ -1196,42 +1239,11 @@ export default async function ArsplanPage({
   // /blocket (docs/tranarloopen.md 3.1) ---------------------------------------
   // Helt fristående från årsfiltret ovan — perioderna som visas är alltid
   // "senaste året" oavsett vilket tävlingsår som råkar vara valt i
-  // tävlingslistan. Lookback-bufferten (utöver de 365 dagarna) täcker det
-  // längsta en enskild period kan behöva bakåt: BASELINE_WINDOW_DAYS för
-  // sömn-/HRV-baslinjen (lib/daily-status.ts) plus ytterligare en vecka för
-  // jämförelseveckan precis före den.
-  const TIMELINE_WINDOW_DAYS = 365;
-  const timelineLookbackFrom = toDateKey(
-    planAddDays(new Date(`${today}T00:00:00`), -(TIMELINE_WINDOW_DAYS + BASELINE_WINDOW_DAYS + 14)),
-  );
-  const timelineEarliestPeriodStart = toDateKey(
-    planAddDays(new Date(`${today}T00:00:00`), -TIMELINE_WINDOW_DAYS),
-  );
-
   const [
     { data: timelineDiaryRows },
     { data: timelineActivityRows },
     { data: timelineMetricRows },
-  ] = await Promise.all([
-    supabase
-      .from("diary_entries")
-      .select("entry_date, day_type, notes")
-      .eq("user_id", scopedUserId)
-      .gte("entry_date", timelineLookbackFrom)
-      .order("entry_date"),
-    supabase
-      .from("activities")
-      .select(SESSION_ACTIVITY_COLUMNS)
-      .eq("user_id", scopedUserId)
-      .gte("start_time", timelineLookbackFrom)
-      .order("start_time"),
-    supabase
-      .from("daily_metrics")
-      .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
-      .eq("user_id", scopedUserId)
-      .gte("metric_date", timelineLookbackFrom)
-      .order("metric_date"),
-  ]);
+  ] = await timelineQueries;
 
   const timelineSessions = groupActivitiesIntoSessions(
     (timelineActivityRows ?? []) as unknown as SessionActivity[],

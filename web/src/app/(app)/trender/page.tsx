@@ -162,20 +162,21 @@ export default async function TrendsPage({
   // dem, oavsett om ett block faktiskt är valt just nu. Bara påbörjade block
   // visas som väljare — ett framtida planerat block har per definition ingen
   // data att visa, och skulle bara se trasigt ut om man klickade på det.
-  const { data: blockAthleteRows } = await supabase
-    .from("season_block_athletes")
-    .select("block_id")
-    .eq("athlete_id", scopedUserId);
-  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
-  const { data: blockRows } =
-    blockIds.length > 0
-      ? await supabase
-          .from("season_blocks")
-          .select("id, name, phase, start_date, end_date, focus")
-          .in("id", blockIds)
-          .lte("start_date", todayKey)
-          .order("start_date", { ascending: false })
-      : { data: [] as SeasonBlockRow[] };
+  /* En fråga, inte två i rad.
+   *
+   * Låg tidigare som season_block_athletes → .in("id", blockIds) →
+   * season_blocks, alltså två sekventiella nätverksrundor där den andra bara
+   * väntade på id:n från den första. PostgREST kan filtrera på en inbäddad
+   * resurs med !inner, vilket gör samma sak i en runda.
+   *
+   * Verifierat mot produktionsdatan innan bytet: båda varianterna ger exakt
+   * samma 11 block för samma löpare. */
+  const { data: blockRows } = await supabase
+    .from("season_blocks")
+    .select("id, name, phase, start_date, end_date, focus, season_block_athletes!inner(athlete_id)")
+    .eq("season_block_athletes.athlete_id", scopedUserId)
+    .lte("start_date", todayKey)
+    .order("start_date", { ascending: false });
   const blocks: SeasonBlockRow[] = blockRows ?? [];
   const activeBlock = blockParam ? (blocks.find((b) => b.id === blockParam) ?? null) : null;
 

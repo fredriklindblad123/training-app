@@ -744,26 +744,25 @@ export default async function DetaljplanPage({
   const scopedUserId = resolveScopedUserId(scoped, athleteParam);
   const canEdit = canEditPlanning(scoped);
 
-  const { data: blockAthleteRows } = await supabase
-    .from("season_block_athletes")
-    .select("block_id")
-    .eq("athlete_id", scopedUserId);
-  const blockIds = [...new Set((blockAthleteRows ?? []).map((r) => r.block_id as string))];
-
-  // Blockets eget mönster hämtas nästlat direkt — inget separat mall-objekt
-  // att slå upp längre. template_rep_groups(*) hämtas två led ner (K1); en
-  // saknad tabell (migrationen inte körd) ger bara undefined, aldrig ett
-  // kastat fel.
-  const { data: blocks } =
-    blockIds.length > 0
-      ? await supabase
-          .from("season_blocks")
-          .select(
-            "id, name, period, phase, start_date, end_date, week_template_items(*, template_rep_groups(*)), season_block_athletes(athlete_id)",
-          )
-          .in("id", blockIds)
-          .order("start_date")
-      : { data: [] as BlockRow[] };
+  /* En fråga i stället för två i rad. Blockets eget mönster hämtas nästlat —
+   * inget separat mall-objekt att slå upp längre. template_rep_groups(*)
+   * hämtas två led ner (K1); en saknad tabell (migrationen inte körd) ger bara
+   * undefined, aldrig ett kastat fel.
+   *
+   * TVÅ inbäddningar av season_block_athletes, och det är avsiktligt:
+   * `blockFilter` med !inner finns bara för att filtrera fram löparens block,
+   * `season_block_athletes` utan filter är den fulla listan som löparchipsen
+   * behöver. Ett naivt !inner hade tyst reducerat listan till den inloggade —
+   * testat mot produktionsdatan: ett block med två löpare gav 1 med naiv
+   * variant och 2 med alias. Det hade sett ut som att blocket bara gällde en
+   * person. */
+  const { data: blocks } = await supabase
+    .from("season_blocks")
+    .select(
+      "id, name, period, phase, start_date, end_date, week_template_items(*, template_rep_groups(*)), season_block_athletes(athlete_id), blockFilter:season_block_athletes!inner(athlete_id)",
+    )
+    .eq("blockFilter.athlete_id", scopedUserId)
+    .order("start_date");
 
   const blockList = (blocks ?? []) as BlockRow[];
   // Namn för löparchips och väljare — bara coacher har fler än sig själv,
