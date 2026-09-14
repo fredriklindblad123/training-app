@@ -105,3 +105,83 @@ export function AthleteSwitcher({
     </div>
   );
 }
+
+/* ---------------------------------------------------------------------------
+ * Flerval — för planeringssidorna.
+ *
+ * En LOGG är per person: två löpares HRV, pass och tävlingsresultat går inte
+ * att slå ihop till en vy som betyder något. Därför enkelval där.
+ *
+ * En PLAN gäller däremot en grupp. Ett block läggs på flera löpare samtidigt,
+ * och tränaren vill se just de hen håller på med — inte alla, och inte en i
+ * taget. Fram till 2026-09-14 fanns bara "alla eller en", vilket tvingade fram
+ * det ena ytterläget.
+ *
+ * Urvalet ligger som upprepade ?athlete= i URL:en, samma mönster som
+ * grenväljaren på /tavlingsresultat. Tomt urval betyder ALLA — det är ett
+ * rimligare utgångsläge än ingen alls, och gör att en länk utan parametrar
+ * fortsätter fungera precis som förut.
+ * ------------------------------------------------------------------------ */
+export function AthleteMultiSelect({
+  athletes,
+  selected,
+  buildHref,
+}: {
+  athletes: { id: string; fullName: string | null }[];
+  /** Valda löpare. Tom lista = alla. */
+  selected: string[];
+  /** Bygger länken för ett givet urval — sidan avgör vilka övriga parametrar
+   * som ska följa med. */
+  buildHref: (athleteIds: string[]) => string;
+}) {
+  const all = selected.length === 0;
+
+  return (
+    <div className="display flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
+      <span className="text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+        {all ? "Alla löpare" : `${selected.length} av ${athletes.length}`}
+      </span>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* "Alla" nollställer i stället för att markera var och en — det är
+            samma tillstånd men en kortare väg tillbaka. */}
+        <Link
+          href={buildHref([])}
+          aria-current={all ? "page" : undefined}
+          className={`rounded-md px-2.5 py-1 font-medium transition-colors ${
+            all
+              ? "bg-[var(--foreground)] text-[var(--background)]"
+              : "text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          Alla
+          <LinkPending />
+        </Link>
+
+        {athletes.map((a) => {
+          const on = selected.includes(a.id);
+          /* Klick lägger till eller tar bort — inte ersätter. Det är hela
+             skillnaden mot enkelvalet, och anledningen till att knappen bär
+             aria-pressed i stället för aria-current: den är ett växlingsläge,
+             inte en plats man är på. */
+          const next = on ? selected.filter((id) => id !== a.id) : [...selected, a.id];
+          return (
+            <Link
+              key={a.id}
+              href={buildHref(next)}
+              aria-pressed={on}
+              className={`rounded-md border px-2.5 py-1 font-medium transition-colors ${
+                on
+                  ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
+                  : "border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
+              }`}
+            >
+              {a.fullName ?? "Namnlös löpare"}
+              <LinkPending />
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

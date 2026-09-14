@@ -8,7 +8,7 @@ import {
   viewableAthletes,
   type ScopedProfile,
 } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { AthleteMultiSelect, AthleteSwitcher } from "@/components/AthleteSwitcher";
 import {
   SeasonTimeline,
   SeasonTimelineLegend,
@@ -765,14 +765,18 @@ async function ArsplanOverview({
   supabase,
   scoped,
   nyttBlockFranParam,
+  athletes: athletesProp,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   scoped: ScopedProfile;
   nyttBlockFranParam?: string;
+  /** Vilka löpare översikten ska visa. Utelämnad = alla. Finns för
+   * flervalet: en tränare vill kunna se just de löpare hen håller på med. */
+  athletes?: { id: string; fullName: string | null }[];
 }) {
   const today = toDateKey(new Date());
   const currentYear = today.slice(0, 4);
-  const athletes = viewableAthletes(scoped);
+  const athletes = athletesProp ?? viewableAthletes(scoped);
   const athleteIds = athletes.map((a) => a.id);
 
   // Ett enda uppslag av season_block_athletes för hela rostern (i stället
@@ -1010,7 +1014,8 @@ export default async function ArsplanPage({
     compareB?: string;
     /** Fas 0: vilken löpare en coach tittar på just nu. Ignoreras helt för
      * en löpare (ser alltid bara sig själv) — se lib/auth-scope.ts. */
-    athlete?: string;
+    /** Flera värden = filtrerad översikt. Se urvalslogiken nedan. */
+    athlete?: string | string[];
   }>;
 }) {
   const supabase = await createClient();
@@ -1028,7 +1033,26 @@ export default async function ArsplanPage({
   // "Alla"-läget ersätter hela sidans innehåll med ett kort per löpare — se
   // motiveringen vid ArsplanOverview. Bara relevant för en coach; en
   // löpare ser aldrig ?athlete= över huvud taget.
-  if (athleteParam === "alla" && scoped.role === "coach") {
+  /* Urval av löpare. Flera ?athlete= ger en FILTRERAD översikt, en ger den
+     enskilda löparens sida, och "alla"/inget ger hela rostern. Fram till
+     2026-09-14 fanns bara ytterlägena — en plan gäller en grupp, och tränaren
+     ville kunna se just de hen håller på med. */
+  const rosterAll = viewableAthletes(scoped);
+  const requestedIds = (
+    athleteParam == null ? [] : Array.isArray(athleteParam) ? athleteParam : [athleteParam]
+  ).filter((id) => rosterAll.some((a) => a.id === id));
+  const isOverview =
+    scoped.role === "coach" &&
+    (athleteParam === "alla" || requestedIds.length === 0 || requestedIds.length > 1);
+  const overviewAthletes = requestedIds.length > 1
+    ? rosterAll.filter((a) => requestedIds.includes(a.id))
+    : rosterAll;
+  const overviewHrefFor = (ids: string[]) =>
+    ids.length === 0
+      ? "/blockplan?athlete=alla"
+      : `/blockplan?${ids.map((id) => `athlete=${id}`).join("&")}`;
+
+  if (isOverview) {
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
@@ -1038,21 +1062,27 @@ export default async function ArsplanPage({
             löparens block och veckomönster.
           </p>
         </div>
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          activeId="alla"
-          viewerUserId={scoped.userId}
-          buildHref={(id) => `/blockplan?athlete=${id}`}
-          overviewHref="/blockplan?athlete=alla"
+        <AthleteMultiSelect
+          athletes={rosterAll}
+          selected={requestedIds.length > 1 ? requestedIds : []}
+          buildHref={overviewHrefFor}
         />
-        <ArsplanOverview supabase={supabase} scoped={scoped} nyttBlockFranParam={nyttBlockFranParam} />
+        <ArsplanOverview
+          supabase={supabase}
+          scoped={scoped}
+          nyttBlockFranParam={nyttBlockFranParam}
+          athletes={overviewAthletes}
+        />
       </div>
     );
   }
 
   const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
 
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
+  /* Bortom översikten är vyn per löpare — ett värde, aldrig flera. Kommer det
+     ändå in flera (en delad länk, en bakåtknapp) har isOverview redan tagit
+     hand om det ovanför; här räcker det första. */
+  const scopedUserId = resolveScopedUserId(scoped, requestedIds[0], runnerMode);
   // canEdit styr om redigeringsformulären visas alls (RLS är den faktiska
   // spärren, se migration 20260816100000).
   const canEdit = canEditPlanning(scoped);

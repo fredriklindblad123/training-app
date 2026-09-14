@@ -8,7 +8,7 @@ import {
   type AthleteOption,
   type ScopedProfile,
 } from "@/lib/auth-scope";
-import { AthleteSwitcher } from "@/components/AthleteSwitcher";
+import { AthleteMultiSelect, AthleteSwitcher } from "@/components/AthleteSwitcher";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
   PERIOD_LABELS,
@@ -512,12 +512,15 @@ async function DetaljplanOverview({
   supabase,
   scoped,
   canEdit,
+  athletes: athletesProp,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   scoped: ScopedProfile;
   canEdit: boolean;
+  /** Vilka löpare översikten ska visa. Utelämnad = alla. Se flervalet. */
+  athletes?: { id: string; fullName: string | null }[];
 }) {
-  const athletes = viewableAthletes(scoped);
+  const athletes = athletesProp ?? viewableAthletes(scoped);
   const athleteIds = athletes.map((a) => a.id);
   const athletesById = new Map(athletes.map((a) => [a.id, a]));
   // Samma innevarande-år-avgränsning som ArsplanOverview — uttrycklig
@@ -704,7 +707,8 @@ export default async function DetaljplanPage({
   searchParams: Promise<{
     /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
      * mönster som /blockplan, se lib/auth-scope.ts. */
-    athlete?: string;
+    /** Flera värden = filtrerad översikt. Se urvalslogiken nedan. */
+    athlete?: string | string[];
   }>;
 }) {
   const supabase = await createClient();
@@ -717,7 +721,22 @@ export default async function DetaljplanPage({
   // inte behöva gå in på en löpare först för att se veckorna (uttrycklig
   // begäran 2026-08-21). `?athlete=<id>` går fortfarande till en enskild
   // löpares vy; det är bara startläget som ändrats.
-  if ((athleteParam == null || athleteParam === "alla") && scoped.role === "coach") {
+  /* Urval av löpare: flera ?athlete= ger en filtrerad översikt, en ger den
+     enskilda löparens vy, inget eller "alla" ger hela rostern. En plan gäller
+     en grupp — se AthleteMultiSelect för varför loggsidorna har enkelval. */
+  const rosterAll = viewableAthletes(scoped);
+  const requestedIds = (
+    athleteParam == null ? [] : Array.isArray(athleteParam) ? athleteParam : [athleteParam]
+  ).filter((id) => rosterAll.some((a) => a.id === id));
+  const overviewHrefFor = (ids: string[]) =>
+    ids.length === 0
+      ? "/detaljplan?athlete=alla"
+      : `/detaljplan?${ids.map((id) => `athlete=${id}`).join("&")}`;
+
+  if (
+    scoped.role === "coach" &&
+    (athleteParam == null || athleteParam === "alla" || requestedIds.length !== 1)
+  ) {
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
@@ -731,21 +750,30 @@ export default async function DetaljplanPage({
             — flera löpare kan taggas på samma tävling — och dyker upp här automatiskt.
           </p>
         </div>
-        <AthleteSwitcher
-          athletes={viewableAthletes(scoped)}
-          activeId="alla"
-          viewerUserId={scoped.userId}
-          buildHref={(id) => `/detaljplan?athlete=${id}`}
-          overviewHref="/detaljplan?athlete=alla"
+        <AthleteMultiSelect
+          athletes={rosterAll}
+          selected={requestedIds.length > 1 ? requestedIds : []}
+          buildHref={overviewHrefFor}
         />
-        <DetaljplanOverview supabase={supabase} scoped={scoped} canEdit={canEditPlanning(scoped)} />
+        <DetaljplanOverview
+          supabase={supabase}
+          scoped={scoped}
+          canEdit={canEditPlanning(scoped)}
+          athletes={
+            requestedIds.length > 1
+              ? rosterAll.filter((a) => requestedIds.includes(a.id))
+              : rosterAll
+          }
+        />
       </div>
     );
   }
 
   const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
 
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
+  /* Här nedanför är vyn per löpare — översikten har redan fångat allt annat,
+     så requestedIds innehåller exakt ett id. */
+  const scopedUserId = resolveScopedUserId(scoped, requestedIds[0], runnerMode);
   const canEdit = canEditPlanning(scoped);
 
   /* En fråga i stället för två i rad. Blockets eget mönster hämtas nästlat —

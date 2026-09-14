@@ -37,6 +37,7 @@ import {
 } from "@/lib/planning";
 import { buttonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
+import { AthleteMultiSelect } from "@/components/AthleteSwitcher";
 
 /* Uppföljning (uttrycklig begäran 2026-08-27): tränarens statistiksida —
  * antal pass, typ av pass och planerat mot genomfört, för alla löpare
@@ -96,7 +97,7 @@ function complianceShare(stats: RangeStats): number | null {
 export default async function UppfoljningPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; datum?: string; block?: string }>;
+  searchParams: Promise<{ period?: string; datum?: string; block?: string; athlete?: string | string[] }>;
 }) {
   const supabase = await createClient();
   const scoped = await getScopedProfile(supabase);
@@ -116,12 +117,27 @@ export default async function UppfoljningPage({
     redirect("/dashboard");
   }
 
-  const { period: periodParam, datum, block: blockParam } = await searchParams;
+  const {
+    period: periodParam,
+    datum,
+    block: blockParam,
+    athlete: athleteParam,
+  } = await searchParams;
   const kind: PeriodKind = isPeriodKind(periodParam) ? periodParam : "vecka";
   const todayKey = toDateKey(new Date());
   const anchorDate = datum && /^\d{4}-\d{2}-\d{2}$/.test(datum) ? datum : todayKey;
 
-  const athletes = viewableAthletes(scoped);
+  /* Urvalet av löpare. Upprepade ?athlete= (Next ger en sträng för en och en
+     array för flera), filtrerade mot vilka som faktiskt är ens adepter — en
+     handskriven URL ska inte kunna dra in någon annans siffror. Tomt urval
+     betyder ALLA, så en länk utan parametrar fungerar som förut. */
+  const allAthletes = viewableAthletes(scoped);
+  const requested =
+    athleteParam == null ? [] : Array.isArray(athleteParam) ? athleteParam : [athleteParam];
+  const selectedIds = requested.filter((id) => allAthletes.some((a) => a.id === id));
+  const athletes = selectedIds.length > 0
+    ? allAthletes.filter((a) => selectedIds.includes(a.id))
+    : allAthletes;
 
   // Blocken ägs av coachen (planningOwnerId), inte av löparna — se
   // season_block_athletes i migration 20260816100000. Hämtas alltid, inte
@@ -227,6 +243,7 @@ export default async function UppfoljningPage({
     if ((next.period ?? kind) !== "block") params.set("datum", nextDatum);
     const nextBlock = next.block ?? (kind === "block" ? blockParam : undefined);
     if ((next.period ?? kind) === "block" && nextBlock) params.set("block", nextBlock);
+    for (const id of selectedIds) params.append("athlete", id);
     return `/uppfoljning?${params.toString()}`;
   }
 
@@ -247,6 +264,24 @@ export default async function UppfoljningPage({
           siffrorna kan aldrig säga emot varandra.
         </p>
       </div>
+
+      {/* Flerval: en plan gäller en grupp, och tränaren vill se just de löpare
+          hen håller på med — inte alla, och inte en i taget. Enkelval hör till
+          loggsidorna, där två personers data inte går att slå ihop. */}
+      {allAthletes.length > 1 && (
+        <AthleteMultiSelect
+          athletes={allAthletes}
+          selected={selectedIds}
+          buildHref={(ids) => {
+            const params = new URLSearchParams();
+            params.set("period", kind);
+            if (kind !== "block") params.set("datum", anchorDate);
+            if (kind === "block" && blockParam) params.set("block", blockParam);
+            for (const id of ids) params.append("athlete", id);
+            return `/uppfoljning?${params.toString()}`;
+          }}
+        />
+      )}
 
       {/* Granularitet */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
