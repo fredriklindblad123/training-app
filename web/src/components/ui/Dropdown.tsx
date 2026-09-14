@@ -57,8 +57,14 @@ export function Dropdown({
         />
         <span className="truncate">{label}</span>
       </summary>
+      {/* max-w mot fönsterbredden är ett skyddsnät, inte finlir: en panel som
+          ankras med right-0 växer VÄNSTERUT, och sitter knappen nära vänstra
+          kanten hamnar panelen utanför skärmen. Det inträffade på riktigt i
+          mobilvyn, där headern radbryter så att löparväljaren hamnar längst
+          till vänster på sin rad. Klämman gör att den alltid syns även om
+          ankringen råkar bli fel för en viss skärmbredd. */}
       <div
-        className={`absolute ${align === "right" ? "right-0" : "left-0"} z-50 mt-2 flex ${width} flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg`}
+        className={`absolute ${align === "right" ? "right-0" : "left-0"} z-50 mt-2 flex ${width} max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg`}
       >
         {children}
       </div>

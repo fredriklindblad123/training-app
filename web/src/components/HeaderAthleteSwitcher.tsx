@@ -106,7 +106,7 @@ export function HeaderAthleteSwitcher({
           man behöver veta i vilostadiet: VEM man tittar på.
           Dropdown sköter stängningen vid val — <details> gör det inte själv,
           och en klientnavigering nollställer den inte. */}
-      <Dropdown label={activeName} align="right" width="w-48" className="lg:hidden">
+      <Dropdown label={activeName} align="left" width="w-48" className="lg:hidden">
         {showOverview && (
           <Link href={hrefFor("alla")} className={`${pill(active === "alla")} block`}>
             Alla
