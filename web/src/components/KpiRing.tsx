@@ -1,5 +1,6 @@
 import type { RingStatus } from "@/lib/kpi-ring";
 import { TrendMark, type TrendDirection } from "@/components/ui/TrendMark";
+import { DetailPanel, DetailsFooter, type DetailRow } from "@/components/ui/CardDetails";
 
 /* Generisk KPI-ring: en siffra i mitten, en ring runt som visar hur nära
  * riktvärdet man ligger (fyllnad) och hur det ska tolkas (färg). Text bär
@@ -44,7 +45,9 @@ const RING_STATUS_LABEL: Record<RingStatus, string> = {
 };
 
 
-export type KpiDetailRow = { label: string; value: string };
+/** Kvar som alias: KpiDetailRow används av anropare, raden bor nu i
+ * CardDetails eftersom statuskorten delar den. */
+export type KpiDetailRow = DetailRow;
 
 export function KpiRing({
   label,
@@ -150,34 +153,10 @@ export function KpiRing({
             förklaringen till var man ligger, och "Håll koll" utan referens går
             inte att göra något åt. Pilen längst till höger visar att det finns
             mer att fälla ut — tabellen nedanför är inte uppenbar annars. */}
-        <div className="flex items-baseline justify-between gap-2 text-xs text-[var(--ink-3)]">
-          <span className="tabular">{targetText ?? "\u00a0"}</span>
-          <span
-            aria-hidden
-            className="inline-block h-1.5 w-1.5 shrink-0 rotate-45 border-r border-b border-current transition-transform group-open:-rotate-135"
-          />
-        </div>
+        <DetailsFooter text={targetText} />
       </summary>
 
-      <div className="overflow-hidden rounded-lg border border-[var(--line)] text-left text-xs">
-        <table className="w-full">
-          <tbody>
-            {detailRows.map((row) => (
-              <tr key={row.label} className="border-b border-[var(--line)] last:border-b-0">
-                <th scope="row" className="px-2 py-1.5 font-normal text-[var(--ink-3)]">
-                  {row.label}
-                </th>
-                <td className="px-2 py-1.5 text-right tabular-nums text-[var(--foreground)]">
-                  {row.value}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {hint && (
-          <p className="border-t border-[var(--line)] p-2 text-[var(--ink-3)]">{hint}</p>
-        )}
-      </div>
+      <DetailPanel rows={detailRows} hint={hint} />
     </details>
   );
 }

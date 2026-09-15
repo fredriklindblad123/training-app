@@ -59,6 +59,31 @@ export function median(values: number[]): number | null {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+/** Percentil med linjär interpolation mellan de två närmaste värdena.
+ *
+ * Samma definition som Postgres percentile_cont, vilket är avsiktligt: bandens
+ * gränser räknades först fram i SQL mot produktionsdatan, och en avvikande
+ * definition här hade gjort att appen visade andra tal än de som validerades.
+ *
+ * Percentiler och inte standardavvikelser för markörernas normalintervall:
+ * SD antar en symmetrisk fördelning, och sömnpoäng är kraftigt vänsterskev —
+ * enstaka riktigt dåliga nätter blåser upp SD så att normalbandet blir för
+ * brett och nästan allt hamnar innanför. Percentiler beskriver fördelningen
+ * som den faktiskt ser ut, och anpassar sig dessutom till markörens egen
+ * spridning: vilopuls varierar några få slag, HRV tiotals procent.
+ *
+ * `p` anges som andel (0.25 för 25:e percentilen). */
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  if (sorted.length === 1) return sorted[0];
+  const rank = p * (sorted.length - 1);
+  const low = Math.floor(rank);
+  const high = Math.ceil(rank);
+  if (low === high) return sorted[low];
+  return sorted[low] + (rank - low) * (sorted[high] - sorted[low]);
+}
+
 /** Robust intervall kring datans median, byggt på MAD (medianabsolut-
  * avvikelse) i stället för SD — poängen är att kunna zooma en graf till den
  * meningsfulla klustringen utan att ett fåtal orimliga mätvärden (GPS-fel,

@@ -1,9 +1,13 @@
 import {
+  BASELINE_WINDOW_DAYS,
+  CURRENT_WINDOW_DAYS,
   MIN_BASELINE_DAYS,
   type DailyStatus as DailyStatusData,
+  type MarkerBand,
   type MarkerStatus,
 } from "@/lib/daily-status";
-import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
+import type { RingStatus } from "@/lib/kpi-ring";
+import { DetailPanel, DetailsFooter } from "@/components/ui/CardDetails";
 import { TrendMark, type TrendDirection } from "@/components/ui/TrendMark";
 
 /* Presentationen av P1.2. Språkkravet ur roadmapen är styrande: appen ska
@@ -22,6 +26,14 @@ function formatValue(marker: MarkerStatus): string {
   const v = marker.current;
   const decimals = marker.spec.key === "sleepHours" || marker.spec.key === "feeling" ? 1 : 0;
   return v.toFixed(decimals);
+}
+
+/** Ett godtyckligt tal i markörens egen skala och enhet — används för
+ * bandgränserna, som ligger i samma enhet som mätvärdet. */
+function formatWithUnit(marker: MarkerStatus, v: number | null): string {
+  if (v == null) return "–";
+  const decimals = marker.spec.key === "sleepHours" || marker.spec.key === "feeling" ? 1 : 0;
+  return `${v.toFixed(decimals)}${marker.spec.unit ? ` ${marker.spec.unit}` : ""}`;
 }
 
 function formatBaseline(marker: MarkerStatus): string {
@@ -43,77 +55,101 @@ function formatBaseline(marker: MarkerStatus): string {
  * baslinjen är en pil NEDÅT och samtidigt grön, och att låta färgen ensam
  * betyda "uppåt" hade gjort just den markören obegriplig.
  */
-function MarkerCard({ marker }: { marker: MarkerStatus }) {
-  const { status } = ringFillAndStatus(marker.current, marker.baseline, marker.spec.direction);
-  const effectiveStatus: RingStatus = marker.baseline == null ? "unknown" : status;
+/** Bandet översatt till den gemensamma statusfärgen. */
+const BAND_STATUS: Record<MarkerBand, RingStatus> = {
+  good: "good",
+  watch: "watch",
+  concern: "concern",
+};
 
-  /* Pilen visar läget mot baslinjen, inte en trend över tid. Underlaget
-   * (MarkerStatus) har senaste veckans median och baslinjens median — men
-   * inget föregående fönster, så en riktig tidstrend går inte att räkna fram
-   * här utan att hitta på den. Pilen säger därför "över/under ditt vanliga".
+const BAND_LABEL: Record<MarkerBand, string> = {
+  good: "Inom ditt normala",
+  watch: "Håll koll",
+  concern: "Utanför ditt normala",
+};
+
+function MarkerCard({ marker }: { marker: MarkerStatus }) {
+  /* Färgen kommer ur percentilbandet, inte ur kvoten mot baslinjen.
    *
-   * Procent och inte standardavvikelser (ändrat 2026-09-15 på begäran): de
-   * andra korten på dashboarden visar procentuell förändring, och "+0,8 SD"
-   * krävde att man kunde begreppet för att läsa kortet alls.
-   *
-   * Bytet gör kortet mer konsekvent även inuti sig självt. FÄRGEN har hela
-   * tiden räknats på kvoten current/baseline (ringFillAndStatus), inte på
-   * SD — så kortet visade ett SD-tal bredvid en färg som kom från en kvot.
-   * Nu kommer båda ur samma tal.
-   *
-   * Priset: SD-talet fanns ingen annanstans i gränssnittet, och det är
-   * SD-tröskeln (DEVIATION_THRESHOLD) som avgör om markören räknas in i
-   * "två eller fler utanför det normala". Den regeln syns fortfarande — men
-   * som eget stycke under rutnätet, inte som ett tal man kan följa här. */
+   * Den gamla regeln var "inom 10% av baslinjen är grönt", vilket blev fel åt
+   * båda hållen på en gång: en sömnpoäng på löparens 25:e percentil räknades
+   * som normal, medan vilopulsen — som varierar några få slag — hade behövt
+   * stiga mer än tre standardavvikelser innan kortet ens blev gult. Se
+   * WATCH_PERCENTILE i lib/daily-status för mätningarna. */
+  const status: RingStatus = marker.band == null ? "unknown" : BAND_STATUS[marker.band];
+
+  /* Procent mot baslinjen, som de andra korten på dashboarden. Pilen visar
+   * läget mot baslinjen, inte en trend över tid: underlaget har nuläget och
+   * baslinjen men inget föregående fönster, så en tidstrend går inte att
+   * räkna fram här utan att hitta på den. */
   const pct =
     marker.current != null && marker.baseline != null && marker.baseline !== 0
       ? (marker.current - marker.baseline) / marker.baseline
       : null;
 
-  // Strecket är knutet till det VISADE talet, inte till en egen tröskel: det
-  // kommer alltid och bara när kortet skriver 0.0%. En pil bredvid en nolla
-  // hade sett ut som ett fel.
+  // Strecket är knutet till det VISADE talet: det kommer alltid och bara när
+  // kortet skriver 0.0%. En pil bredvid en nolla hade sett ut som ett fel.
   const direction: TrendDirection =
     pct == null || Math.abs(pct * 100) < 0.05 ? "flat" : pct > 0 ? "up" : "down";
-  const devText =
-    pct == null ? null : `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(1)}%`;
+  const devText = pct == null ? null : `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(1)}%`;
+
+  const higher = marker.spec.direction === "higher_is_better";
+  const riktning = higher ? "under" : "över";
+
+  const rows = [
+    { label: `Senaste ${CURRENT_WINDOW_DAYS} dagarna`, value: formatWithUnit(marker, marker.current) },
+    { label: "Din baslinje (median)", value: formatWithUnit(marker, marker.baseline) },
+    { label: `Håll koll ${riktning}`, value: formatWithUnit(marker, marker.watchThreshold) },
+    { label: `Utanför normalt ${riktning}`, value: formatWithUnit(marker, marker.concernThreshold) },
+    { label: "Mätdagar bakom baslinjen", value: `${marker.baselineDays}` },
+  ];
+
+  const hint =
+    `${marker.spec.hint} ` +
+    `Gränserna är percentiler av dina egna senaste ${BASELINE_WINDOW_DAYS} dagarna: gult när veckan ` +
+    `är sämre än tre av fyra vanliga veckor, rött när den hör till den sämsta tiondelen. ` +
+    `Percentiler och inte standardavvikelser — ett medelvärdesmått antar en jämn fördelning, och ` +
+    `enstaka riktigt dåliga nätter gör annars normalintervallet så brett att nästan allt ryms i det.`;
 
   return (
-    <div className="flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
-      <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-        {marker.spec.label}
-      </span>
-
-      {/* Avvikelsen står på mätvärdets rad — samma flytt som KPI-korten, av
-          samma skäl: "48 ms, 6,7% över" är en avläsning, inte två. */}
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-        <span className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
-          {formatValue(marker)}
-          {marker.spec.unit && (
-            <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">
-              {marker.spec.unit}
-            </span>
-          )}
+    <details className="group flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
+      <summary className="flex cursor-pointer list-none flex-col gap-2 [&::-webkit-details-marker]:hidden">
+        <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+          {marker.spec.label}
         </span>
-        {devText && (
-          <TrendMark
-            status={effectiveStatus}
-            direction={direction}
-            text={devText}
-            srLabel={`${devText} ${direction === "up" ? "över" : direction === "down" ? "under" : "vid"} baslinjen`}
-          />
-        )}
-      </div>
 
-      {/* Baslinjen står alltid utskriven. Utan den är "+6,7%" ett tal utan
-          referens — man vet att man avviker men inte från vad. */}
-      <div className="tabular text-xs text-[var(--ink-3)]">
-        {marker.baseline != null
-          ? `Baslinje ${formatBaseline(marker)} · ${marker.baselineDays} dagar`
-          : `Bygger baslinje — ${marker.baselineDays} av ${MIN_BASELINE_DAYS} dagar`}
-      </div>
+        {/* Avvikelsen står på mätvärdets rad — samma flytt som KPI-korten, av
+            samma skäl: "48 ms, 6,7% över" är en avläsning, inte två. */}
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
+            {formatValue(marker)}
+            {marker.spec.unit && (
+              <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">
+                {marker.spec.unit}
+              </span>
+            )}
+          </span>
+          {devText && (
+            <TrendMark
+              status={status}
+              direction={direction}
+              text={devText}
+              srLabel={`${devText} ${direction === "up" ? "över" : direction === "down" ? "under" : "vid"} baslinjen${marker.band ? `, ${BAND_LABEL[marker.band].toLowerCase()}` : ""}`}
+            />
+          )}
+        </div>
 
-    </div>
+        <DetailsFooter
+          text={
+            marker.baseline != null
+              ? `Baslinje ${formatBaseline(marker)} · ${marker.baselineDays} dagar`
+              : `Bygger baslinje — ${marker.baselineDays} av ${MIN_BASELINE_DAYS} dagar`
+          }
+        />
+      </summary>
+
+      <DetailPanel rows={rows} hint={hint} />
+    </details>
   );
 }
 
