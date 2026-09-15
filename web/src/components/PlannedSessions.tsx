@@ -186,6 +186,19 @@ export function PlannedSessions({
             )}
           </summary>
 
+          {/* Tränarens text till löparen, synlig utan att fälla ut
+              redigeringsformuläret (2026-09-15).
+              Fältet fanns redan — det är samma "Beskrivning" som formuläret
+              nedan skriver — men stod ingenstans i läsläget. En kommentar som
+              bara syns för den som öppnar ett formulär och tittar i en
+              textruta når inte löparen, vilket är hela syftet med att skriva
+              den. */}
+          {(p.description ?? "").trim() && (
+            <p className="border-t border-[var(--line)] px-3 py-2 text-sm whitespace-pre-line text-[var(--ink-2)]">
+              {p.description}
+            </p>
+          )}
+
           <form
             action={updateAction}
             className="flex flex-wrap items-end gap-3 border-t border-[var(--line)] p-3"

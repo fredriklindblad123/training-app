@@ -70,6 +70,7 @@ const LOGG: NavItem[] = [
 const PLAN: NavItem[] = [
   { href: "/arsplan", label: "Årsplan" },
   { href: "/blockplan", label: "Blockplan" },
+  { href: "/detaljplan", label: "Detaljplan" },
 ];
 
 /** "Uppföljning" (2026-08-27): tränarens statistiksida — alla löpare sida
