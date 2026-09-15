@@ -37,10 +37,6 @@ const RING_STATUS_LABEL: Record<RingStatus, string> = {
   unknown: "Väntar på data",
 };
 
-const RING_SIZE = 88;
-const STROKE_WIDTH = 8;
-const RADIUS = (RING_SIZE - STROKE_WIDTH) / 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export type KpiDetailRow = { label: string; value: string };
 
@@ -48,7 +44,6 @@ export function KpiRing({
   label,
   valueText,
   unit,
-  fill,
   status,
   statusLabel,
   targetText,
@@ -58,8 +53,14 @@ export function KpiRing({
   label: string;
   valueText: string;
   unit?: string;
-  /** 0–1. Hur stor andel av ringen som ska vara fylld. */
-  fill: number;
+  /** 0–1. Ritas inte längre — ringen togs bort 2026-09-15 till förmån för
+   * statusordet, som säger entydigt vad en fyllnadsgrad bara kunde antyda.
+   * Propen står kvar därför att ringFillAndStatus (lib/kpi-ring.ts) returnerar
+   * fill och status tillsammans, och samtliga anropare skickar hela objektet
+   * vidare med spread. Att ta bort den hade betytt åtta ändringar utan någon
+   * vinst — och fyllnaden är fortfarande rätt uträknad om ringen någon gång
+   * ska tillbaka. */
+  fill?: number;
   status: RingStatus;
   /** Åsidosätter standardordet för statusen, t.ex. "Måttlig" för en
    * neutral markör som inte är bra/dålig utan bara beskrivande. */
@@ -79,61 +80,57 @@ export function KpiRing({
    *
    * h-fit i klasslistan: utan den sträcker rutnätet en uppfälld rings grannar
    * till samma höjd, så att ett klick på en ring tomväxer tre andra kort. */
-  const dashOffset = CIRCUMFERENCE * (1 - Math.min(Math.max(fill, 0), 1));
   const label_ = statusLabel ?? RING_STATUS_LABEL[status];
 
   return (
-    <details className="group flex h-fit flex-col items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-center transition-colors hover:border-[var(--ink-3)]">
-      <summary className="flex cursor-pointer list-none flex-col items-center gap-1.5 [&::-webkit-details-marker]:hidden">
-        <span className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">{label}</span>
-        <div className="relative flex shrink-0" style={{ width: RING_SIZE, height: RING_SIZE }}>
-          <svg
-            width={RING_SIZE}
-            height={RING_SIZE}
-            viewBox={`0 0 ${RING_SIZE} ${RING_SIZE}`}
-            className="-rotate-90"
-          >
-            <circle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={RADIUS}
-              fill="none"
-              strokeWidth={STROKE_WIDTH}
-              className="stroke-[var(--line)]"
-            />
-            <circle
-              cx={RING_SIZE / 2}
-              cy={RING_SIZE / 2}
-              r={RADIUS}
-              fill="none"
-              strokeWidth={STROKE_WIDTH}
-              strokeLinecap="round"
-              strokeDasharray={CIRCUMFERENCE}
-              strokeDashoffset={dashOffset}
-              className="transition-[stroke-dashoffset] duration-500"
-              style={{ stroke: RING_STROKE_VAR[status] }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-semibold tabular-nums text-[var(--foreground)]">
-              {valueText}
-            </span>
-            {unit && (
-              <span className="text-[10px] text-[var(--ink-3)]">{unit}</span>
-            )}
-          </div>
-        </div>
-        {label_ && (
-          <span className={`text-xs font-medium ${RING_STATUS_TEXT[status]}`}>{label_}</span>
-        )}
-        {targetText && (
-          <span className="text-[11px] font-medium text-cyan-700 dark:text-cyan-400">
-            {targetText}
+    /* Cell i ett kort med skiljelinjer, inte ett fristående kort och inte en
+     * ring (uttrycklig begäran 2026-09-15, samma form som Status fick).
+     *
+     * Ringen är borta av samma skäl som i Status: en fyllnadsgrad kan bara
+     * visa "mycket eller lite", och för hälften av måtten här är lägre bättre.
+     * Statusordet med färg säger vad fyllnaden försökte säga, och gör det
+     * entydigt.
+     *
+     * Egen yta utan ram — ramen bor på behållaren, och gap-px mellan cellerna
+     * ritar linjerna. Ytterkanterna får därmed aldrig dubbla streck när raden
+     * bryts på smal skärm. */
+    <details className="group flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
+      <summary className="flex cursor-pointer list-none flex-col gap-2 [&::-webkit-details-marker]:hidden">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+            {label}
           </span>
-        )}
+          {label_ && (
+            <span
+              className="display text-xs font-semibold"
+              style={{ color: RING_STROKE_VAR[status] }}
+            >
+              {label_}
+            </span>
+          )}
+        </div>
+
+        <div className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
+          {valueText}
+          {unit && (
+            <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">{unit}</span>
+          )}
+        </div>
+
+        {/* Riktvärdet står alltid framme. Utan det är statusordet den enda
+            förklaringen till var man ligger, och "Håll koll" utan referens går
+            inte att göra något åt. Pilen längst till höger visar att det finns
+            mer att fälla ut — tabellen nedanför är inte uppenbar annars. */}
+        <div className="flex items-baseline justify-between gap-2 text-xs text-[var(--ink-3)]">
+          <span className="tabular">{targetText ?? "\u00a0"}</span>
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-1.5 shrink-0 rotate-45 border-r border-b border-current transition-transform group-open:-rotate-135"
+          />
+        </div>
       </summary>
 
-      <div className="mt-2 w-full max-w-[14rem] overflow-hidden rounded-lg border border-[var(--line)] text-left text-xs">
+      <div className="overflow-hidden rounded-lg border border-[var(--line)] text-left text-xs">
         <table className="w-full">
           <tbody>
             {detailRows.map((row) => (
@@ -149,9 +146,7 @@ export function KpiRing({
           </tbody>
         </table>
         {hint && (
-          <p className="border-t border-[var(--line)] p-2 text-[var(--ink-3)]">
-            {hint}
-          </p>
+          <p className="border-t border-[var(--line)] p-2 text-[var(--ink-3)]">{hint}</p>
         )}
       </div>
     </details>

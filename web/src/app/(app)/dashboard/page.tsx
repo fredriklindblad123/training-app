@@ -575,7 +575,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {formRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
@@ -590,7 +590,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
@@ -630,7 +630,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {continuityRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
