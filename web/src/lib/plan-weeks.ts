@@ -1,8 +1,8 @@
 import { buildWeekSeriesForRange } from "@/lib/week-series";
 import type { PlanOutcome } from "@/lib/plan-matching";
-import { isoWeekNumber } from "@/lib/blockplan-grid";
+import { isoWeekNumber } from "@/lib/arsplan-grid";
 
-/* Detaljplanens veckovy (uttrycklig begäran 2026-08-21): riktiga
+/* Blockplanens veckovy (uttrycklig begäran 2026-08-21): riktiga
  * kalenderveckor inom blocket, inte den abstrakta "standardveckan".
  *
  * Den viktiga modell-insikten: vilka löpare som är taggade till ett enskilt
@@ -14,7 +14,7 @@ import { isoWeekNumber } from "@/lib/blockplan-grid";
  * löpare är att skapa/ta bort hennes rad.
  *
  * Ren datamodul: inga Supabase- eller JSX-beroenden, samma princip som
- * lib/blockplan-grid.ts och lib/detaljplan-grid.ts. */
+ * lib/arsplan-grid.ts och lib/blockplan-grid.ts. */
 
 export type PlannedPassRow = {
   id: string;
@@ -55,7 +55,7 @@ export type PassGroup = {
    * beräknats. OBS att detta INTE kommer ur planned_workouts.status — den
    * kolumnen skrivs aldrig (verifierat 2026-08-22: samtliga rader är
    * `planned`, ingen har linked_activity_id). Utfallet räknas i läsvägen av
-   * matchPlanToSessions, samma funktion som kalendern, /blockplan och
+   * matchPlanToSessions, samma funktion som kalendern, /arsplan och
    * /trender använder, och matas in här utifrån. */
   outcomeByAthlete: Record<string, PlanOutcome>;
 };
@@ -83,18 +83,18 @@ export type CompetitionGroup = {
   athleteIds: string[];
 };
 
-export type DetaljplanDay = {
+export type PlanDay = {
   date: string;
   passes: PassGroup[];
   competitions: CompetitionGroup[];
 };
 
-export type DetaljplanWeek = {
+export type PlanWeek = {
   weekStart: string;
   isoWeekNumber: number;
   /** Alltid 7 poster, måndag → söndag. Dagar utanför blockets datumspann
    * finns med som tomma celler så veckoraden behåller sin form. */
-  days: DetaljplanDay[];
+  days: PlanDay[];
   /** Ligger dagen utanför [blockStart, blockEnd]? Samma index som `days`. */
   outside: boolean[];
 };
@@ -191,13 +191,13 @@ function groupCompetitions(rows: CompetitionRow[]): Map<string, CompetitionGroup
  * blocket börjar är precis den kontext tränaren behöver se när han planerar
  * blockets första vecka, inte något som ska döljas för att datumet råkar
  * ligga utanför. */
-export function buildDetaljplanWeeks(
+export function buildPlanWeeks(
   blockStart: string,
   blockEnd: string,
   rows: PlannedPassRow[],
   competitions: CompetitionRow[] = [],
   outcomes: Map<string, PlanOutcome> = new Map(),
-): DetaljplanWeek[] {
+): PlanWeek[] {
   const groups = groupPasses(rows, outcomes);
   const passesByDate = new Map<string, PassGroup[]>();
   for (const g of groups.values()) {
@@ -208,7 +208,7 @@ export function buildDetaljplanWeeks(
   const competitionsByDate = groupCompetitions(competitions);
 
   return buildWeekSeriesForRange(blockStart, blockEnd).map((weekStart) => {
-    const days: DetaljplanDay[] = [];
+    const days: PlanDay[] = [];
     const outside: boolean[] = [];
     for (let i = 0; i < 7; i++) {
       const date = addDaysKey(weekStart, i);

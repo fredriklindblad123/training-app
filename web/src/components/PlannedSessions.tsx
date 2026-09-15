@@ -18,7 +18,7 @@ import { fieldClass } from "@/components/ui/controls";
 
 /* Planerade pass för en dag — en ren översiktsvy av planerat vs. genomfört.
  *
- * Alla pass skapas i /detaljplan (veckomallar, en fas i taget) — kalendern
+ * Alla pass skapas i /blockplan (veckomallar, en fas i taget) — kalendern
  * är sedan 2026-08-17 medvetet inte längre en plats att lägga upp NYA pass
  * på, varken för coach eller adept (uttrycklig begäran). Ett redan
  * utrullat pass går fortfarande att justera i efterhand härifrån (formuläret

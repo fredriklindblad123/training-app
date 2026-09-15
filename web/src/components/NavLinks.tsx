@@ -11,7 +11,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
  * — layouten själv får aldrig searchParams (bara page.tsx gör det i App
  * Router), så det kräver antingen en klientkomponent eller en cookie. Detta
  * är det enklaste alternativet: samma URL-param-drivna mönster som redan
- * finns i /blockplan, bara återanvänt av menyn också. Sidor utan
+ * finns i /arsplan, bara återanvänt av menyn också. Sidor utan
  * löparväljare (en vanlig löpare, eller ingen coach) berörs inte — utan
  * `athlete` i URL:en blir länkarna identiska med innan.
  *
@@ -21,7 +21,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
  * Menyn låg tidigare som en enda rad av åtta jämnstora länkar. Problemet var
  * inte att någon sida var överflödig — det utreddes och avfärdades med data:
  * 94 % av aktiviteterna och 96 % av dagboksinläggen ligger utanför varje
- * säsongsblock, och eftersom /blockplan och /detaljplan bara spänner blockens
+ * säsongsblock, och eftersom /arsplan och /blockplan bara spänner blockens
  * datum kan de strukturellt inte nå den historiken. Kalendern är alltså inte
  * en dubblett av planeringen.
  *
@@ -61,14 +61,15 @@ const LOGG: NavItem[] = [
   { href: "/tavlingsresultat", label: "Tävlingsresultat" },
 ];
 
-/** Längst horisont först — flerårsplanen sätter ramen som säsongen bryts ner
- * i, som i sin tur bryts ner i veckornas innehåll. Låg tidigare i ordningen
- * Årsplan · Detaljplan · Flerårsplan, vilket läste som att flerårsplanen var
- * en detalj av detaljplanen. */
+/* Längst horisont först: året sätter ramen, blocket bryter ner året i veckor,
+ * detaljplanen är den vecka som gäller nu.
+ *
+ * Flerårsplanen är dold sedan 2026-09-15 (begärd). Sidan och dess
+ * Excel-export finns kvar och svarar på sin adress — den är borta ur menyn,
+ * inte borttagen. Därför heller ingen redirect: en sparad länk fungerar. */
 const PLAN: NavItem[] = [
-  { href: "/flerarsplan", label: "Flerårsplan" },
+  { href: "/arsplan", label: "Årsplan" },
   { href: "/blockplan", label: "Blockplan" },
-  { href: "/detaljplan", label: "Detaljplan" },
 ];
 
 /** "Uppföljning" (2026-08-27): tränarens statistiksida — alla löpare sida

@@ -9,7 +9,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
  *
  * Låg fram till 2026-09-14 inuti varje sida, och hamnade därför på olika djup
  * överallt: direkt under rubriken på kalendersidorna, efter rubrik och text på
- * Dashboard, och tre element in på Blockplan — bakom både rubrik och
+ * Dashboard, och tre element in på Årsplan — bakom både rubrik och
  * nyckeltalsrad. Att den flyttade sig när man bytte sida gjorde att man fick
  * leta efter den, trots att den är det man använder oftast.
  *
@@ -28,9 +28,17 @@ import { Dropdown } from "@/components/ui/Dropdown";
 
 type Athlete = { id: string; fullName: string | null };
 
-/** Sidor där "Alla" betyder något: planeringsvyer som kan visa hela rostern
- * sida vid sida. En logg är per person och har ingen sådan vy. */
-const OVERVIEW_PATHS = ["/blockplan", "/detaljplan"];
+/* Sidor som INTE har någon löparväljare alls (2026-09-15).
+ *
+ * Planeringsvyerna visar redan alla löpare sida vid sida — varje pass bär
+ * sina egna löparchips, och veckorutnätet är byggt för att läsas på tvären
+ * över hela gruppen. Väljaren erbjöd då att smalna av till en löpare, vilket
+ * gör vyn sämre på det den finns för, och den kostade ett omladdat sidbygge
+ * per klick.
+ *
+ * Löparen själv ser aldrig väljaren ändå (viewableAthletes ger bara en
+ * coach mer än sig själv), så det här rör bara tränarens vy. */
+const NO_SWITCHER_PATHS = ["/arsplan", "/blockplan", "/detaljplan", "/uppfoljning"];
 
 export function HeaderAthleteSwitcher({
   athletes,
@@ -46,9 +54,12 @@ export function HeaderAthleteSwitcher({
 
   if (athletes.length === 0) return null;
 
+  if (NO_SWITCHER_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return null;
+  }
+
   const raw = params.get("athlete");
   const active = raw ?? defaultAthleteId;
-  const showOverview = OVERVIEW_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   /** Samma sida, samma filter, annan löpare. */
   const hrefFor = (id: string) => {
@@ -64,10 +75,8 @@ export function HeaderAthleteSwitcher({
         : "text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
     }`;
 
-  const activeName =
-    active === "alla"
-      ? "Alla"
-      : (athletes.find((a) => a.id === active)?.fullName ?? "Löpare");
+  // "Alla" fanns bara för planeringsvyerna, som inte har någon väljare kvar.
+  const activeName = athletes.find((a) => a.id === active)?.fullName ?? "Löpare";
 
   return (
     <>
@@ -77,16 +86,6 @@ export function HeaderAthleteSwitcher({
         aria-label="Välj löpare"
         className="display hidden flex-wrap items-center gap-1.5 text-sm lg:flex"
       >
-        {showOverview && (
-          <Link
-            href={hrefFor("alla")}
-            aria-current={active === "alla" ? "page" : undefined}
-            className={pill(active === "alla")}
-          >
-            Alla
-            <LinkPending />
-          </Link>
-        )}
         {athletes.map((a) => (
           <Link
             key={a.id}
@@ -107,11 +106,6 @@ export function HeaderAthleteSwitcher({
           Dropdown sköter stängningen vid val — <details> gör det inte själv,
           och en klientnavigering nollställer den inte. */}
       <Dropdown label={activeName} align="left" width="w-48" className="lg:hidden">
-        {showOverview && (
-          <Link href={hrefFor("alla")} className={`${pill(active === "alla")} block`}>
-            Alla
-          </Link>
-        )}
         {athletes.map((a) => (
           <Link key={a.id} href={hrefFor(a.id)} className={`${pill(active === a.id)} block`}>
             {a.fullName ?? "Namnlös"}

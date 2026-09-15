@@ -103,8 +103,8 @@ export default async function DayPage({
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 
-      {/* Allt dagsinnehåll bor i DayContent, delat med Detaljplans dagsvy
-          för flera löpare (/detaljplan/pass) — se motiveringen där. */}
+      {/* Allt dagsinnehåll bor i DayContent, delat med Blockplans dagsvy
+          för flera löpare (/blockplan/pass) — se motiveringen där. */}
       <DayContent userId={scopedUserId} dateStr={dateStr} nextDateStr={nextDateStr} />
     </div>
   );

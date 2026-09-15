@@ -24,26 +24,26 @@ import {
   type ArsplanBlockInput,
   type ArsplanCompetitionInput,
   type ArsplanPlannedWorkoutInput,
-} from "@/lib/blockplan-grid";
+} from "@/lib/arsplan-grid";
 import {
-  detaljplanItemsFor,
-  detaljplanRowCountByGroup,
-  hasUngroupedDetaljplanItems,
-  usedDetaljplanFactorRows,
-  type DetaljplanItemInput,
-} from "@/lib/detaljplan-grid";
+  blockplanItemsFor,
+  blockplanRowCountByGroup,
+  hasUngroupedBlockplanItems,
+  usedBlockplanFactorRows,
+  type BlockplanItemInput,
+} from "@/lib/blockplan-grid";
 
-/* Excel-export: Flerårsplan, Årsplan och (sedan 2026-08-21) Detaljplan — de
+/* Excel-export: Flerårsplan, Årsplan och (sedan 2026-08-21) Blockplan — de
  * flikar som speglar appens planeringsdata. Målgrupp och övningsbiblioteken
  * skrivs medvetet inte hit (avgränsning bekräftad med användaren), och
  * Utfall (plan mot faktiskt genomfört) likaså — det förblir en ren app-vy på
- * /blockplan tills vidare, uttryckligt val 2026-08-21. Radetiketterna speglar
+ * /arsplan tills vidare, uttryckligt val 2026-08-21. Radetiketterna speglar
  * originalmallens rubriker men det här är en ny arbetsbok, inte en ifylld
  * kopia av källfilen.
  *
- * Årsplan-fliken byggs sedan 2026-08-17 ur lib/blockplan-grid.ts och
- * Detaljplan-fliken ur lib/detaljplan-grid.ts — samma datamoduler som
- * /blockplan och /detaljplan använder in-app, så Excel-filen och appvyerna
+ * Årsplan-fliken byggs sedan 2026-08-17 ur lib/arsplan-grid.ts och
+ * Blockplan-fliken ur lib/blockplan-grid.ts — samma datamoduler som
+ * /arsplan och /blockplan använder in-app, så Excel-filen och appvyerna
  * aldrig kan visa olika siffror eller rader för samma data. Antal pass/
  * dagar/timmar räknas alltid live ur faktiskt utrullade planned_workouts
  * (blockets egna manuella "standardvecka"-fält togs bort 2026-08-18 —
@@ -179,22 +179,22 @@ function buildArsplanSheet(
   for (let i = 2; i <= weeks.length + 1; i++) sheet.getColumn(i).width = 14;
 }
 
-type DetaljplanBlockInput = {
+type BlockplanBlockInput = {
   id: string;
   name: string;
   period: PeriodType;
   phase: PhaseType;
   start_date: string;
   end_date: string;
-  week_template_items: (DetaljplanItemInput & { id: string })[] | null;
+  week_template_items: (BlockplanItemInput & { id: string })[] | null;
 };
 
-/** Cellinnehållet för ett pass i Detaljplan-fliken: samma tre uppgifter som
+/** Cellinnehållet för ett pass i Blockplan-fliken: samma tre uppgifter som
  * PatternItemCard visar i appen (typ, rubrik, pass-nummer), men som en
  * textrad eftersom en Excel-cell inte kan bära ett kort. Repgrupper utelämnas
  * medvetet — de gör cellerna oläsligt långa i Excel, och originalmallens
- * Detaljplan-flik har dem inte heller. */
-function detaljplanCellText(items: (DetaljplanItemInput & { id: string })[]): string {
+ * Blockplan-flik har dem inte heller. */
+function blockplanCellText(items: (BlockplanItemInput & { id: string })[]): string {
   return items
     .map((it) => {
       const type = WORKOUT_LABELS[it.workout_type as WorkoutType] ?? it.workout_type;
@@ -206,12 +206,12 @@ function detaljplanCellText(items: (DetaljplanItemInput & { id: string })[]): st
     .join("\n");
 }
 
-/* Detaljplan-fliken: ett dag × träningsfaktor-rutnät per block, grupperat per
- * fas precis som /detaljplan-sidan. Raduppsättningen kommer ur
- * lib/detaljplan-grid.ts, delad med sidan — samma "en datamodul, aldrig olika
+/* Blockplan-fliken: ett dag × träningsfaktor-rutnät per block, grupperat per
+ * fas precis som /blockplan-sidan. Raduppsättningen kommer ur
+ * lib/blockplan-grid.ts, delad med sidan — samma "en datamodul, aldrig olika
  * rader för samma data"-princip som Årsplan-fliken redan följer. */
-function buildDetaljplanSheet(workbook: ExcelJS.Workbook, blocks: DetaljplanBlockInput[]) {
-  const sheet = workbook.addWorksheet("Detaljplan");
+function buildBlockplanSheet(workbook: ExcelJS.Workbook, blocks: BlockplanBlockInput[]) {
+  const sheet = workbook.addWorksheet("Blockplan");
   sheet.getColumn(1).width = 34;
   for (let i = 2; i <= WEEKDAY_LABELS.length + 1; i++) sheet.getColumn(i).width = 22;
 
@@ -238,8 +238,8 @@ function buildDetaljplanSheet(workbook: ExcelJS.Workbook, blocks: DetaljplanBloc
 
       sheet.addRow(["Träningsfaktor", ...WEEKDAY_LABELS]).font = { bold: true };
 
-      const usedRows = usedDetaljplanFactorRows(items);
-      const rowCountByGroup = detaljplanRowCountByGroup(usedRows);
+      const usedRows = usedBlockplanFactorRows(items);
+      const rowCountByGroup = blockplanRowCountByGroup(usedRows);
 
       usedRows.forEach((row, i) => {
         const splitBySubgroup = (rowCountByGroup[row.group] ?? 0) > 1;
@@ -257,17 +257,17 @@ function buildDetaljplanSheet(workbook: ExcelJS.Workbook, blocks: DetaljplanBloc
             : TRAINING_FACTOR_GROUP_LABELS[row.group];
         const dataRow = sheet.addRow([
           label,
-          ...WEEKDAY_LABELS.map((_, wi) => detaljplanCellText(detaljplanItemsFor(items, wi + 1, row))),
+          ...WEEKDAY_LABELS.map((_, wi) => blockplanCellText(blockplanItemsFor(items, wi + 1, row))),
         ]);
         if (splitBySubgroup) dataRow.getCell(1).alignment = { indent: 1 };
         dataRow.alignment = { vertical: "top", wrapText: true };
       });
 
-      if (hasUngroupedDetaljplanItems(items)) {
+      if (hasUngroupedBlockplanItems(items)) {
         const dataRow = sheet.addRow([
           "Ej kopplat",
           ...WEEKDAY_LABELS.map((_, wi) =>
-            detaljplanCellText(detaljplanItemsFor(items, wi + 1, { group: null })),
+            blockplanCellText(blockplanItemsFor(items, wi + 1, { group: null })),
           ),
         ]);
         dataRow.alignment = { vertical: "top", wrapText: true };
@@ -293,7 +293,7 @@ export async function GET(request: Request) {
   // blocket" (coachen för ett delat block) sedan multi-löpar-omdesignen
   // (migration 20260816100000), inte "vem det gäller". Att filtrera på
   // user_id här gjorde att exporten tyst returnerade noll block för varje
-  // löpare vars block skapats av en coach; /blockplan-sidan gjorde redan rätt.
+  // löpare vars block skapats av en coach; /arsplan-sidan gjorde redan rätt.
   const { data: blockAthleteRows } = await supabase
     .from("season_block_athletes")
     .select("block_id")
@@ -314,11 +314,11 @@ export async function GET(request: Request) {
           )
           .in("id", blockIds)
           .order("start_date")
-      : Promise.resolve({ data: [] as DetaljplanBlockInput[] }),
+      : Promise.resolve({ data: [] as BlockplanBlockInput[] }),
   ]);
 
-  const detaljplanBlocks = (blockRows ?? []) as DetaljplanBlockInput[];
-  const blocks = detaljplanBlocks as ArsplanBlockInput[];
+  const blockplanBlocks = (blockRows ?? []) as BlockplanBlockInput[];
+  const blocks = blockplanBlocks as ArsplanBlockInput[];
 
   // planned_workouts/competitions behövs bara för blockens eget datumspann
   // (samma spann buildArsplanWeeks räknar fram) — frågas parallellt, tomt
@@ -355,7 +355,7 @@ export async function GET(request: Request) {
     (workoutRows ?? []) as ArsplanPlannedWorkoutInput[],
     (competitionRows ?? []) as ArsplanCompetitionInput[],
   );
-  buildDetaljplanSheet(workbook, detaljplanBlocks);
+  buildBlockplanSheet(workbook, blockplanBlocks);
 
   const buffer = await workbook.xlsx.writeBuffer();
 

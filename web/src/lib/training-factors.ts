@@ -88,7 +88,7 @@ export const TRAINING_FACTORS: readonly TrainingFactor[] = [
 export type TrainingFactorValues = Record<string, string>;
 
 /** Vilken träningsfaktor-GRUPP en satt `training_factor`-nyckel tillhör —
- * `null` för ett pass utan satt faktor. Delad mellan Detaljplans rutnät
+ * `null` för ett pass utan satt faktor. Delad mellan Blockplans rutnät
  * (radgruppering) och andra ställen som behöver samma uppslag, så det bara
  * finns på ett ställe. */
 export function factorGroupOf(key: string | null): TrainingFactorGroup | null {

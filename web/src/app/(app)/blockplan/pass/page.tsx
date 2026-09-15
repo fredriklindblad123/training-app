@@ -11,7 +11,7 @@ import { WEEKDAY_LABELS } from "@/lib/planning";
 import { DayContent, SharedPlannedDay } from "@/components/DayContent";
 
 /* Dagsvy för flera löpare samtidigt (uttrycklig begäran 2026-08-22): klick
- * på ett pass i Detaljplans veckovy landar här, med en kolumn per löpare i
+ * på ett pass i Blockplans veckovy landar här, med en kolumn per löpare i
  * det urval man stod på. Kalenderns dagvy visar samma sak för EN löpare —
  * den här sidan finns för att kunna läsa flera mot varandra utan att klicka
  * fram och tillbaka.
@@ -116,7 +116,7 @@ export default async function PassDayPage({
     .map((id) => athletesById.get(id))
     .filter((a): a is AthleteOption => a != null);
 
-  const backHref = `/detaljplan${showAll ? "?athlete=alla" : focusId ? `?athlete=${focusId}` : ""}`;
+  const backHref = `/blockplan${showAll ? "?athlete=alla" : focusId ? `?athlete=${focusId}` : ""}`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -125,7 +125,7 @@ export default async function PassDayPage({
           href={backHref}
           className="text-sm text-[var(--ink-3)] underline underline-offset-2 hover:text-[var(--foreground)]"
         >
-          ← Detaljplan
+          ← Blockplan
         </Link>
         <h1 className="display mt-2 text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
           {weekdayLabel(dateKey)} {dateKey}

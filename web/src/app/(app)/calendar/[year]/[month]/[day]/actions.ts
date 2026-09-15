@@ -116,10 +116,10 @@ export async function deletePlannedWorkout(formData: FormData) {
   await supabase.from("planned_workouts").delete().eq("id", workoutId);
 
   revalidatePath("/calendar", "layout");
-  // Planerade pass redigeras även från Detaljplans dagsvy för flera
-  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // Planerade pass redigeras även från Blockplans dagsvy för flera
+  // löpare (/blockplan/pass), som återanvänder just de här actions —
   // utan den här raden skulle en ändring där se ut att inte hända.
-  revalidatePath("/detaljplan", "layout");
+  revalidatePath("/blockplan", "layout");
 }
 
 export async function resetActivityCategory(formData: FormData) {
@@ -296,7 +296,7 @@ export async function deleteManualActivity(formData: FormData) {
 }
 
 // --- Planerade pass --------------------------------------------------------
-// Alla pass skapas i /detaljplan (veckomallar) sedan 2026-08-17 — kalendern
+// Alla pass skapas i /blockplan (veckomallar) sedan 2026-08-17 — kalendern
 // är medvetet inte längre en plats att lägga upp NYA pass på. Redigering av
 // redan utrullade pass sker fortfarande här, se updatePlannedWorkout nedan.
 
@@ -405,10 +405,10 @@ export async function updatePlannedWorkout(formData: FormData) {
     .in("id", ids);
 
   revalidatePath("/calendar", "layout");
-  // Planerade pass redigeras även från Detaljplans dagsvy för flera
-  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // Planerade pass redigeras även från Blockplans dagsvy för flera
+  // löpare (/blockplan/pass), som återanvänder just de här actions —
   // utan den här raden skulle en ändring där se ut att inte hända.
-  revalidatePath("/detaljplan", "layout");
+  revalidatePath("/blockplan", "layout");
 }
 
 // --- Repgrupper på ett planerat pass (K1) -----------------------------------
@@ -483,10 +483,10 @@ export async function addPlannedRepGroup(formData: FormData) {
   );
 
   revalidatePath("/calendar", "layout");
-  // Planerade pass redigeras även från Detaljplans dagsvy för flera
-  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // Planerade pass redigeras även från Blockplans dagsvy för flera
+  // löpare (/blockplan/pass), som återanvänder just de här actions —
   // utan den här raden skulle en ändring där se ut att inte hända.
-  revalidatePath("/detaljplan", "layout");
+  revalidatePath("/blockplan", "layout");
 }
 
 export async function updatePlannedRepGroup(formData: FormData) {
@@ -520,10 +520,10 @@ export async function updatePlannedRepGroup(formData: FormData) {
     .eq("sort_order", group.sort_order);
 
   revalidatePath("/calendar", "layout");
-  // Planerade pass redigeras även från Detaljplans dagsvy för flera
-  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // Planerade pass redigeras även från Blockplans dagsvy för flera
+  // löpare (/blockplan/pass), som återanvänder just de här actions —
   // utan den här raden skulle en ändring där se ut att inte hända.
-  revalidatePath("/detaljplan", "layout");
+  revalidatePath("/blockplan", "layout");
 }
 
 export async function deletePlannedRepGroup(formData: FormData) {
@@ -553,8 +553,8 @@ export async function deletePlannedRepGroup(formData: FormData) {
     .eq("sort_order", group.sort_order);
 
   revalidatePath("/calendar", "layout");
-  // Planerade pass redigeras även från Detaljplans dagsvy för flera
-  // löpare (/detaljplan/pass), som återanvänder just de här actions —
+  // Planerade pass redigeras även från Blockplans dagsvy för flera
+  // löpare (/blockplan/pass), som återanvänder just de här actions —
   // utan den här raden skulle en ändring där se ut att inte hända.
-  revalidatePath("/detaljplan", "layout");
+  revalidatePath("/blockplan", "layout");
 }

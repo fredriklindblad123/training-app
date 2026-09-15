@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
    *
    *   /trends    → /blocket   — men /blocket blev /trender 2026-08-13
    *   /planering → /sasongen  — men /sasongen togs bort 2026-08-17 och
-   *                             delades i /arsplan + /detaljplan
+   *                             delades i /arsplan + /blockplan
    *
    * Samma fälla som kommentaren här redan varnade för i augusti (regeln
    * dashboard → idag pekade åt fel håll och gav 404 på "Till appen"), utan
@@ -25,9 +25,19 @@ const nextConfig: NextConfig = {
    * Historiken, så nästa läsare slipper gräva i git-loggen:
    *   idag      → dashboard  (2026-08-12, namnet togs tillbaka)
    *   blocket   → trender    (2026-08-13, sidan visade redan trendanalys)
-   *   sasongen  → arsplan + detaljplan (2026-08-17, delad i två)
+   *   sasongen  → arsplan + blockplan (2026-08-17, delad i två)
    *   oversikt  → uppfoljning (2026-08-27, ersatt av en bredare vy)
-   *   arsplan   → blockplan  (2026-08-27, sidan handlar om block)
+   *   arsplan   → blockplan  (2026-08-27) — OCH TILLBAKA 2026-09-15, se nedan
+   *
+   * 2026-09-15 roterade planeringens tre namn ett steg:
+   *   blockplan (block och tidslinje)  → arsplan
+   *   detaljplan (blockens veckor)     → blockplan
+   *   /detaljplan är nu en NY sida: innevarande veckas planering.
+   *
+   * Därför finns INGEN regel för /detaljplan: adressen lever vidare och
+   * svarar, den visar bara något annat. Och regeln arsplan → blockplan är
+   * borttagen — efter rotationen pekade den på sig själv, vilket är en
+   * oändlig omdirigering och exakt den fälla som beskrivs ovan.
    */
   async redirects() {
     return [
@@ -38,11 +48,10 @@ const nextConfig: NextConfig = {
       { source: "/blocket", destination: "/trender", permanent: true },
 
       /* Planeringen. /sasongen delades i två sidor, så det finns inget exakt
-       * mål — blockplanen är den halva som ärvde sidans identitet (block,
-       * tidslinje, veckorutnät); detaljplanen var det nya. */
-      { source: "/planering", destination: "/blockplan", permanent: true },
-      { source: "/sasongen", destination: "/blockplan", permanent: true },
-      { source: "/arsplan", destination: "/blockplan", permanent: true },
+       * mål — årsplanen är den halva som ärvde sidans identitet (block,
+       * tidslinje, veckorutnät). */
+      { source: "/planering", destination: "/arsplan", permanent: true },
+      { source: "/sasongen", destination: "/arsplan", permanent: true },
 
       // Översikt ersattes av Uppföljning, som gör samma sak i "Dag"-läget.
       { source: "/oversikt", destination: "/uppfoljning", permanent: true },

@@ -9,8 +9,8 @@ import { parseResultSeconds } from "@/lib/race-results";
 /* Tävlingar: lägga till, prioritera och logga resultat — flyttat hit från
  * /sasongen 2026-08-16 (uttrycklig begäran). Att logga ETT RESULTAT efter
  * ett lopp är retrospektivt, inte säsongsplanering, och hörde inte hemma på
- * en framåtblickande sida. /blockplan (tidigare /sasongen) behåller bara en
- * läsande "Nästa A-tävling"-rad, Blockplans veckorutnäts tävlingsrad och
+ * en framåtblickande sida. /arsplan (tidigare /sasongen) behåller bara en
+ * läsande "Nästa A-tävling"-rad, Årsplans veckorutnäts tävlingsrad och
  * tävlingsmarkörer i tidslinjen — all redigering (den här filen) hör nu
  * ihop med analysen av samma data på den här sidan. */
 
@@ -31,10 +31,10 @@ function num(form: FormData, key: string): number | null {
 
 function refresh() {
   revalidatePath("/tavlingsresultat");
-  revalidatePath("/blockplan");
-  // Tävlingarna visas numera i Detaljplans veckovy (med deltagarna), så en
+  revalidatePath("/arsplan");
+  // Tävlingarna visas numera i Blockplans veckovy (med deltagarna), så en
   // ny/borttagen tävling måste slå igenom där också.
-  revalidatePath("/detaljplan");
+  revalidatePath("/blockplan");
 }
 
 /** Bara "är någon inloggad" — RLS avgör om raden faktiskt går att nå. Samma
@@ -61,8 +61,8 @@ async function resolvedAthleteId(
 
 /** Vilka löpare tävlingen ska läggas in för. `competitions` har ingen
  * junction-tabell — en tävling flera löpare kör är flera rader med samma
- * namn och datum (det är också så veckovyn på /detaljplan grupperar dem, se
- * lib/detaljplan-weeks.ts). En coach kryssar i en delmängd via fältet
+ * namn och datum (det är också så veckovyn på /blockplan grupperar dem, se
+ * lib/plan-weeks.ts). En coach kryssar i en delmängd via fältet
  * `athletes`; en löpare utan coach får alltid bara sin egen rad. Ogiltiga
  * id:n filtreras bort — säkerheten ligger i RLS, det här är att inte spara
  * skräp. Samma mönster som targetAthletesFromForm i arsplan/actions.ts. */

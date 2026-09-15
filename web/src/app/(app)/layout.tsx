@@ -94,7 +94,7 @@ export default async function AppLayout({
   return (
     <div className="flex flex-1 flex-col">
       {/* Fast header.
-          Sidorna är långa — Trender har sex diagramsektioner, Detaljplan ett
+          Sidorna är långa — Trender har sex diagramsektioner, Blockplan ett
           rutnät per block — och valen man gör oftast låg längst upp, utanför
           skärmen. Nu följer de med.
           Halvgenomskinlig botten med backdrop-blur i stället för en solid:
@@ -127,7 +127,7 @@ export default async function AppLayout({
           {/* Löparväljaren har EN plats i hela appen, och det är här.
               Den låg tidigare inuti varje sida och hamnade därför på olika
               djup överallt — direkt under rubriken på kalendersidorna, tre
-              element in på Blockplan. Att den flyttade sig när man bytte sida
+              element in på Årsplan. Att den flyttade sig när man bytte sida
               gjorde att man fick leta efter det man använder oftast.
               Dold i löparläge: då tittar man på sig själv, och det finns
               inget att växla mellan. Suspense av samma skäl som menyn —

@@ -112,7 +112,7 @@ function axisTicks(
  *
  * Klustret ärver den HÖGSTA prioriteten i gruppen (A före B före C). Det är
  * medvetet: döljer man en A-tävling bakom färgen för en träningstävling
- * försvinner just det man behöver se. Samma rangordning som Detaljplanens
+ * försvinner just det man behöver se. Samma rangordning som Blockplanens
  * veckovy redan använder för sina tävlingsetiketter.
  *
  * `minGapPct` är i procent av bandets bredd och därmed beroende av hur brett
@@ -217,7 +217,7 @@ export function SeasonTimeline({
   blocks: TimelineBlock[];
   competitions: TimelineCompetition[];
   /** Mindre band, inga tävlingsetiketter/förklaring under — för
-   * översiktskorten (Alla-läget på /blockplan) där flera löpares tidslinjer
+   * översiktskorten (Alla-läget på /arsplan) där flera löpares tidslinjer
    * visas sida vid sida. */
   compact?: boolean;
   /** Fast datumintervall för skalan, i stället för att härleda min/max ur

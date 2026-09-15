@@ -186,8 +186,8 @@ export function IntensityChart({
             4&rdquo;. Fyll i tröskelpuls så blir den här sektionen meningsfull. Ett kalibrerat LT2
             gör siffrorna jämförbara mot din egen fysiologi i stället för klockans gissning — lägg
             in ett{" "}
-            <Link href="/detaljplan" className="underline hover:text-[var(--foreground)]">
-              tröskeltest under Detaljplan
+            <Link href="/blockplan" className="underline hover:text-[var(--foreground)]">
+              tröskeltest under Blockplan
             </Link>{" "}
             för att komma igång.
           </p>
