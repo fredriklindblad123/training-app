@@ -14,7 +14,7 @@ import {
 import { formatDuration, formatKm } from "@/lib/format";
 import { plannedSignatureLabel, type PlannedRepGroup } from "@/lib/session-signature";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
-import { fieldClass } from "@/components/ui/controls";
+import { primaryButtonClass, fieldClass } from "@/components/ui/controls";
 
 /* Planerade pass för en dag — en ren översiktsvy av planerat vs. genomfört.
  *
@@ -268,7 +268,7 @@ export function PlannedSessions({
             <TrainingFactorField defaultValue={p.training_factor} />
             <button
               type="submit"
-              className="w-fit rounded bg-[var(--foreground)] px-4 py-1.5 text-sm text-white hover:opacity-90"
+              className={primaryButtonClass}
             >
               Spara
             </button>

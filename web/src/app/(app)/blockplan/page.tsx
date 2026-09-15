@@ -25,6 +25,7 @@ import {
   type WorkoutType,
 } from "@/lib/planning";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
+import { ScrollToAnchor } from "@/components/ScrollToAnchor";
 import {
   addAthleteToPass,
   addPassOnDate,
@@ -408,6 +409,23 @@ function CompetitionCard({
  * standardveckan sätts numera vid blockskapandet på /arsplan, så det här
  * är platsen där tränaren arbetar med de pass som faktiskt ligger i
  * kalendern. */
+/** Ankaret ScrollToAnchor siktar på. Bara EN rad i hela sidan får det — den
+ * vecka som pågår, i det block som råkar täcka den. */
+const CURRENT_WEEK_ANCHOR = "innevarande-vecka";
+
+/** Måndagen i innevarande vecka, i svensk tid.
+ *
+ * Räknas per rendering och inte en gång i modulen: en serverprocess lever
+ * över dygnsskiften, och ett modulvärde hade frusit "nu" vid uppstart.
+ * Svensk tid och inte serverns UTC, av samma skäl som i /detaljplan — strax
+ * före midnatt är UTC fortfarande gårdagen och pekar då ut fel vecka. */
+function currentMondayKey(): string {
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+  const d = new Date(`${today}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return d.toISOString().slice(0, 10);
+}
+
 function WeekGrid({
   weeks,
   blockId,
@@ -426,6 +444,7 @@ function WeekGrid({
   if (weeks.length === 0) {
     return <p className="mt-3 text-xs text-[var(--ink-3)]">Inga veckor i blocket.</p>;
   }
+  const currentMonday = currentMondayKey();
   return (
     <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
       {/* `table-fixed` + fast veckokolumn gör att alla sju dagkolumner blir
@@ -453,9 +472,23 @@ function WeekGrid({
         </thead>
         <tbody>
           {weeks.map((week) => (
-            <tr key={week.weekStart} className="align-top">
+            /* Innevarande vecka får ett ankare (ScrollToAnchor rullar hit vid
+               laddning) och en tydligare ram. scroll-mt håller raden fri från
+               det klistrade sidhuvudet, som annars lägger sig över den. */
+            <tr
+              key={week.weekStart}
+              id={week.weekStart === currentMonday ? CURRENT_WEEK_ANCHOR : undefined}
+              className={`scroll-mt-28 align-top ${
+                week.weekStart === currentMonday ? "bg-[var(--surface-raised)]/60" : ""
+              }`}
+            >
               <td className="border-b border-[var(--line)] px-1 py-2">
-                <div className="font-medium text-[var(--ink-2)]">v{week.isoWeekNumber}</div>
+                <div className="font-medium text-[var(--ink-2)]">
+                  v{week.isoWeekNumber}
+                  {week.weekStart === currentMonday && (
+                    <span className="ml-1 text-[10px] font-normal text-[var(--ink-3)]">nu</span>
+                  )}
+                </div>
                 <div className="text-[10px] text-[var(--ink-3)]">{week.weekStart}</div>
               </td>
               {week.days.map((day, di) => {
@@ -719,6 +752,7 @@ export default async function BlockplanPage({
   if ((athleteParam == null || athleteParam === "alla") && scoped.role === "coach") {
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+        <ScrollToAnchor targetId={CURRENT_WEEK_ANCHOR} />
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
@@ -780,6 +814,7 @@ export default async function BlockplanPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+      <ScrollToAnchor targetId={CURRENT_WEEK_ANCHOR} />
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">

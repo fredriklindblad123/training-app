@@ -1027,7 +1027,15 @@ export default async function ArsplanPage({
   // "Alla"-läget ersätter hela sidans innehåll med ett kort per löpare — se
   // motiveringen vid ArsplanOverview. Bara relevant för en coach; en
   // löpare ser aldrig ?athlete= över huvud taget.
-  if (athleteParam === "alla" && scoped.role === "coach") {
+  /* Coachen landar i ALLA-vyn som standard (2026-09-15).
+   *
+   * Utan param föll sidan tidigare tillbaka på resolveScopedUserId, som ger
+   * första länkade löparen — sidan visade alltså EN löpares block utan att
+   * säga vems, godtyckligt vald. Det gick obemärkt så länge löparväljaren
+   * fanns i sidhuvudet, eftersom man alltid kom hit via ett medvetet val.
+   * När väljaren togs bort ur planeringsvyerna blev det enda man såg, utan
+   * väg vidare. Samma startläge som Blockplan redan har. */
+  if ((athleteParam == null || athleteParam === "alla") && scoped.role === "coach") {
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
@@ -1045,6 +1053,12 @@ export default async function ArsplanPage({
   const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
 
   const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
+  /* Namnet på löparen sidan visar. Null för en löpare som tittar på sin egen
+   * plan — då behöver rubriken inte säga vems den är. */
+  const viewedAthleteName =
+    scoped.role === "coach"
+      ? (viewableAthletes(scoped).find((a) => a.id === scopedUserId)?.fullName ?? null)
+      : null;
   // canEdit styr om redigeringsformulären visas alls (RLS är den faktiska
   // spärren, se migration 20260816100000).
   const canEdit = canEditPlanning(scoped);
@@ -1310,7 +1324,21 @@ export default async function ArsplanPage({
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
-        <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Årsplan</h1>
+        {/* Vems plan det är står i rubriken, inte bara i en väljare någon
+            annanstans. Sidan visar EN löpares block, och utan namnet gick det
+            inte att se vems — rapporterat. Tillbakalänken finns eftersom
+            väljaren i sidhuvudet inte längre erbjuder vägen. */}
+        {viewedAthleteName && (
+          <Link
+            href="/arsplan"
+            className="display text-xs text-[var(--ink-3)] underline underline-offset-2 hover:text-[var(--foreground)]"
+          >
+            ← Alla löpare
+          </Link>
+        )}
+        <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
+          Årsplan{viewedAthleteName ? ` — ${viewedAthleteName}` : ""}
+        </h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
           kommer. Dag-för-dag-innehållet i varje veckomall redigeras på{" "}
@@ -1320,9 +1348,6 @@ export default async function ArsplanPage({
           .
         </p>
       </div>
-
-      {/* Fas 0: löparväljare, bara synlig för en coach. En löpare ser aldrig
-          det här — hen är alltid sig själv (se lib/auth-scope.ts). */}
 
       {/* ---------------- Läget just nu ----------------
           Tre kort som tidigare satte etiketten i text-xs och värdet i text-lg,
@@ -1388,7 +1413,7 @@ export default async function ArsplanPage({
             <table className="w-max min-w-full text-left text-xs">
               <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
                 <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-medium bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-medium bg-[var(--surface)]">
                     Vecka #
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1398,7 +1423,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr className="text-[var(--ink-3)]">
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal bg-[var(--surface)]">
                     Månad
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1408,7 +1433,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Period / fas
                   </th>
                   {(() => {
@@ -1432,7 +1457,7 @@ export default async function ArsplanPage({
                   })()}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Pass
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1442,7 +1467,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Dagar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1452,7 +1477,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Timmar
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1462,7 +1487,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr>
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
                     Tävlingsstarter
                   </th>
                   {arsplanWeeks.map((w) => (
@@ -1472,7 +1497,7 @@ export default async function ArsplanPage({
                   ))}
                 </tr>
                 <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 py-1 pr-4 font-medium bg-[var(--surface)]">
+                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-medium bg-[var(--surface)]">
                     Utfall
                   </th>
                   {arsplanWeeks.map((w) => {
@@ -1509,13 +1534,20 @@ export default async function ArsplanPage({
                     if (factor.group !== lastGroup) {
                       rows.push(
                         <tr key={`group-${factor.group}`}>
+                          {/* Ingen colSpan över hela bredden. En fryst cell som
+                              täcker hela tabellen kan inte stå still när man
+                              rullar i sidled — den följer med, medan raderna
+                              under står kvar, vilket är precis den ojämna
+                              effekten som rapporterades. Rubriken får i
+                              stället bara första kolumnen (fryst som alla
+                              andra) och en tom cell för resten. */}
                           <th
                             scope="row"
-                            colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 py-1 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
+                            className="sticky left-0 z-10 py-1 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
                           >
                             {TRAINING_FACTOR_GROUP_LABELS[factor.group]}
                           </th>
+                          <td colSpan={arsplanWeeks.length} />
                         </tr>,
                       );
                       lastGroup = factor.group;
@@ -1524,13 +1556,20 @@ export default async function ArsplanPage({
                     if (factor.subgroup && factor.subgroup !== lastSubgroup) {
                       rows.push(
                         <tr key={`subgroup-${factor.group}-${factor.subgroup}`}>
+                          {/* Ingen colSpan över hela bredden. En fryst cell som
+                              täcker hela tabellen kan inte stå still när man
+                              rullar i sidled — den följer med, medan raderna
+                              under står kvar, vilket är precis den ojämna
+                              effekten som rapporterades. Rubriken får i
+                              stället bara första kolumnen (fryst som alla
+                              andra) och en tom cell för resten. */}
                           <th
                             scope="row"
-                            colSpan={arsplanWeeks.length + 1}
-                            className="sticky left-0 py-1 pl-3 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
+                            className="sticky left-0 z-10 py-1 pl-3 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
                           >
                             {TRAINING_FACTOR_SUBGROUP_LABELS[factor.subgroup]}
                           </th>
+                          <td colSpan={arsplanWeeks.length} />
                         </tr>,
                       );
                     }
@@ -1539,7 +1578,7 @@ export default async function ArsplanPage({
                       <tr key={factor.key}>
                         <th
                           scope="row"
-                          className={`sticky left-0 py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)] ${
+                          className={`sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)] ${
                             factor.subgroup ? "pl-6" : ""
                           }`}
                         >

@@ -1,6 +1,6 @@
 import { CATEGORY_LABELS, CATEGORY_VALUES, categoryColorVar, isActivityCategory } from "@/lib/categories";
 import { formatDuration, formatKm } from "@/lib/format";
-import { buttonClass, fieldClass } from "@/components/ui/controls";
+import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 
 /* Egna pass: träning som inte kommer från Garmin.
  *
@@ -184,7 +184,7 @@ export function ManualSessions({
           </label>
           <button
             type="submit"
-            className="mb-0.5 w-fit rounded bg-[var(--foreground)] px-4 py-1.5 text-sm text-white hover:opacity-90"
+            className={`mb-0.5 ${primaryButtonClass}`}
           >
             Lägg till
           </button>

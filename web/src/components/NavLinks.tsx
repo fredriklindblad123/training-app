@@ -61,16 +61,20 @@ const LOGG: NavItem[] = [
   { href: "/tavlingsresultat", label: "Tävlingsresultat" },
 ];
 
-/* Längst horisont först: året sätter ramen, blocket bryter ner året i veckor,
- * detaljplanen är den vecka som gäller nu.
+/* Kortast horisont först (omvänd ordning sedan 2026-09-15, begärd).
+ *
+ * Ordningen följer hur ofta man går dit, inte hur planeringen är uppbyggd.
+ * Veckan som gäller nu är det tränaren öppnar dagligen; årsplanen rör man
+ * några gånger per säsong. Att lista dem i uppbyggnadsordning — år, block,
+ * vecka — satte det man använder mest längst bort.
  *
  * Flerårsplanen är dold sedan 2026-09-15 (begärd). Sidan och dess
  * Excel-export finns kvar och svarar på sin adress — den är borta ur menyn,
  * inte borttagen. Därför heller ingen redirect: en sparad länk fungerar. */
 const PLAN: NavItem[] = [
-  { href: "/arsplan", label: "Årsplan" },
-  { href: "/blockplan", label: "Blockplan" },
   { href: "/detaljplan", label: "Detaljplan" },
+  { href: "/blockplan", label: "Blockplan" },
+  { href: "/arsplan", label: "Årsplan" },
 ];
 
 /** "Uppföljning" (2026-08-27): tränarens statistiksida — alla löpare sida
