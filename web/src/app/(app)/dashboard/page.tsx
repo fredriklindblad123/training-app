@@ -55,15 +55,21 @@ const MIN_COMPLETED_WEEKS_FOR_TARGET = 12;
  * egna personbästa — det finns inget externt "rätt" antal veckor utan avbrott
  * att sikta mot.
  *
- * Ringen använder medvetet `direction: "neutral"` i stället för
- * "higher_is_better": med higher_is_better skulle en kort svit efter en
- * sjukdomsperiod färgas röd ("Avviker") jämfört med personbästa, och det är
- * exakt den dömande läsningen fallgrop 1 i K6 varnar för — sjukdom händer,
- * och ringen ska aldrig se ut som ett misslyckande för det. "neutral" ger
- * samma icke-dömande stil som Ansträngning-ringen nedan: ingen grön/gul/röd
- * bedömning, bara hur nuvarande svit förhåller sig till den längsta hittills.
- * Vad som faktiskt bröt senaste sviten står i detaljraderna, beskrivande
- * (sjukdom/skada + datum), inte som en varning. */
+ * Bedöms sedan 2026-09-15 med "higher_is_better", alltså grönt/gult/rött mot
+ * personbästa — samma skala som alla andra kort.
+ *
+ * Det är en MEDVETEN OMSVÄNGNING, och den har en kostnad värd att känna till.
+ * Korten låg tidigare på `direction: "neutral"` just för att en kort svit
+ * efter en sjukdomsperiod inte skulle färgas röd — fallgrop 1 i K6 varnar för
+ * att kontinuitet läses som ett misslyckande, och sjukdom händer. Den
+ * neutrala tonen var indigo, och med grönt, gult och rött bredvid sig lästes
+ * den som en fjärde bedömning man inte kunde tyda. Rapporterat, och riktigt.
+ *
+ * Avvägningen blev: hellre en färg som betyder något entydigt än en som
+ * ingen kan tolka. Vad som bröt sviten står kvar i detaljraderna, beskrivande
+ * (sjukdom/skada + datum) och inte som en varning — den delen av fallgrop 1
+ * står fast. Vill man tillbaka till det icke-dömande läget är det ett ord:
+ * "higher_is_better" → "neutral" i ringFillAndStatus nedan. */
 function continuityRing({
   label,
   currentWeeks,
@@ -81,7 +87,7 @@ function continuityRing({
 }) {
   const hasEnoughHistory = totalCompletedWeeks >= MIN_COMPLETED_WEEKS_FOR_TARGET;
   const target = hasEnoughHistory ? bestWeeks : null;
-  const { fill, status } = ringFillAndStatus(currentWeeks, target, "neutral");
+  const { fill, status } = ringFillAndStatus(currentWeeks, target, "higher_is_better");
 
   return {
     label,
@@ -89,11 +95,10 @@ function continuityRing({
     unit: currentWeeks === 1 ? "vecka" : "veckor",
     fill,
     status: (target == null ? "unknown" : status) as RingStatus,
-    /* Aldrig grönt eller rött här. En kort svit efter en sjukdomsperiod är
-     * normal, och att färga den röd vore precis den dömande läsningen som
-     * fallgrop 1 i K6 varnar för — samma skäl som direction: "neutral" ovan.
-     * Symbolen får därför neutral ton och ett streck i stället för en pil,
-     * och bär referensen (personbästa) i stället för ett omdöme. */
+    /* Streck och inte pil, trots att färgen nu bedömer. En svit är ett LÄGE,
+     * inte en förändring — den har ingen riktning att peka åt, och en pil
+     * uppåt hade påstått att den växer just nu. Färgen säger hur läget står
+     * sig mot personbästa, texten säger mot vad. */
     trend: target != null ? { direction: "flat" as const, text: `Bästa ${target} v` } : null,
     targetText: `${totalCompletedWeeks} avslutade veckor`,
     detailRows: [

@@ -12,12 +12,17 @@ import { TrendMark, type TrendDirection } from "@/components/ui/TrendMark";
 // Tailwinds stroke-*-klasser — samma mönster som --cat-* (lib/categories.ts)
 // använder för stapelfärgerna i ComboChart, som är det beprövade sättet att
 // färglägga en SVG-stroke korrekt i båda teman i den här appen.
-const RING_STROKE_VAR: Record<RingStatus, string> = {
-  good: "var(--status-good)",
-  watch: "var(--status-watch)",
-  concern: "var(--status-concern)",
-  neutral: "var(--status-neutral)",
-  unknown: "var(--status-unknown)",
+/* Färgen på statusordet när kortet saknar symbol. Hette RING_STROKE_VAR när
+ * den färgade en ringlinje; som TEXT gäller andra krav, och två av värdena
+ * höll inte: --status-unknown (#d4d4d8) gav 1,40:1 mot vit yta, och
+ * --status-neutral var det lila som rapporterades som obegripligt. Båda pekar
+ * nu på --ink-2, som ger drygt 6:1 i båda teman. */
+const STATUS_TEXT_VAR: Record<RingStatus, string> = {
+  good: "var(--status-good-ink)",
+  watch: "var(--status-watch-ink)",
+  concern: "var(--status-concern-ink)",
+  neutral: "var(--ink-2)",
+  unknown: "var(--ink-2)",
 };
 
 /** Exporterad för kompakta statuslägen som inte ritar en hel ring (t.ex.
@@ -26,7 +31,7 @@ export const RING_STATUS_TEXT: Record<RingStatus, string> = {
   good: "text-emerald-700 dark:text-emerald-400",
   watch: "text-amber-700 dark:text-amber-400",
   concern: "text-red-700 dark:text-red-400",
-  neutral: "text-indigo-700 dark:text-indigo-400",
+  neutral: "text-[var(--ink-2)]",
   unknown: "text-[var(--ink-3)]",
 };
 
@@ -120,7 +125,7 @@ export function KpiRing({
             label_ && (
               <span
                 className="display text-xs font-semibold"
-                style={{ color: RING_STROKE_VAR[status] }}
+                style={{ color: STATUS_TEXT_VAR[status] }}
               >
                 {label_}
               </span>

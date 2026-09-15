@@ -31,16 +31,26 @@ const PLATE: Record<RingStatus, string> = {
   good: "var(--status-good)",
   watch: "var(--status-watch)",
   concern: "var(--status-concern)",
-  neutral: "var(--status-neutral)",
-  unknown: "var(--status-unknown)",
+  // Grått, inte lila (ändrat 2026-09-15 efter rapport). --status-neutral är
+  // indigo, och en läsare som ser grönt, gult, rött och lila bredvid varandra
+  // läser lila som en fjärde bedömning och letar efter vilken. Den betyder
+  // motsatsen: att det INTE finns någon bedömning att göra. Grått säger det
+  // direkt. Tonen sitter bara här och i KpiRing — /trender:s InsightCard
+  // använder fortfarande --status-neutral som avsett, där den är en av tre
+  // jämbördiga toner och inte konkurrerar med ett trafikljus.
+  neutral: "var(--ink-3)",
+  unknown: "var(--ink-3)",
 };
 
 const INK: Record<RingStatus, string> = {
   good: "var(--status-good-ink)",
   watch: "var(--status-watch-ink)",
   concern: "var(--status-concern-ink)",
-  neutral: "var(--status-neutral-ink)",
-  unknown: "var(--status-unknown-ink)",
+  // --ink-2 och inte --ink-3: uppmätt ger ink-3 på sin egen platta 3,23:1
+  // (ljust) och 4,10:1 (mörkt), båda under 4,5. Med ink-2 blir det 6,13 och
+  // 6,86.
+  neutral: "var(--ink-2)",
+  unknown: "var(--ink-2)",
 };
 
 function Glyph({ direction }: { direction: TrendDirection }) {

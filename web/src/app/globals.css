@@ -64,8 +64,6 @@
   --status-good-ink: #047857;
   --status-watch-ink: #92400e;
   --status-concern-ink: #b91c1c;
-  --status-neutral-ink: #4338ca;
-  --status-unknown-ink: var(--ink-3);
 
   /* Tillgänglighetsperioder (K7: skola, läger, resa, ledighet, annat) — en
      enda dämpad neutral gråton för alla fem sorter, medvetet utanför
@@ -124,8 +122,6 @@
     --status-good-ink: #34d399;
     --status-watch-ink: #fbbf24;
     --status-concern-ink: #f87171;
-    --status-neutral-ink: #818cf8;
-    --status-unknown-ink: var(--ink-3);
 
     --availability-band: #71717a;
 
