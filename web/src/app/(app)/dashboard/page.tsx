@@ -18,8 +18,6 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import { toDateKey } from "@/lib/week-series";
-import { formatKm, formatDuration } from "@/lib/format";
-import { CATEGORY_LABELS, categoryColorVar } from "@/lib/categories";
 import {
   computeContinuityStreaks,
   QUALITY_TARGET,
@@ -29,6 +27,7 @@ import {
 } from "@/lib/continuity";
 import { STATUS_LABEL } from "@/lib/calendar-utils";
 import { getViewMode } from "@/lib/view-mode";
+import { TodaySession, type TodayPlanned } from "@/components/TodaySession";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
  * sidan efter inloggning (se app/page.tsx, login/actions.ts,
@@ -347,6 +346,7 @@ export default async function DashboardPage({
     { data: allInterruptionEntries },
     { data: statusMetrics },
     { data: tomorrowQualityWorkouts },
+    { data: todayPlannedRows },
   ] = await Promise.all([
     // Bara dagens aktiviteter — sidan äger dagen, inget periodfönster.
     supabase
@@ -400,6 +400,19 @@ export default async function DashboardPage({
       .eq("user_id", scopedUserId)
       .eq("scheduled_date", tomorrowKey)
       .in("workout_type", QUALITY_WORKOUT_TYPES)
+      .order("slot", { ascending: true }),
+    /* Dagens planerade pass, till kortet överst. Alla typer — till skillnad
+       från morgondagens fråga ovanför, som bara vill ha kvalitetspass till
+       beredskapskortet. Här är ett lugnt distanspass precis lika mycket
+       "dagens pass" som ett intervallpass. */
+    supabase
+      .from("planned_workouts")
+      .select(
+        "id, slot, workout_type, title, target_distance_meters, target_duration_seconds, " +
+          "planned_rep_groups(reps, distance_meters, duration_seconds, sort_order)",
+      )
+      .eq("user_id", scopedUserId)
+      .eq("scheduled_date", todayKey)
       .order("slot", { ascending: true }),
   ]);
 
@@ -534,6 +547,24 @@ export default async function DashboardPage({
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Dashboard</h1>
 
+      {/* --- Dagens pass, allra överst.
+          Den första frågan en löpare har när hon öppnar appen är vad som
+          gäller idag — inte hur formkurvan ser ut över sex veckor. Kortet låg
+          tidigare längst NED, under tre ringsektioner och statusrutan.
+          Hela kortet länkar till dagen i kalendern, där passet loggas och
+          rättas. --------------------------------------------------------- */}
+      <TodaySession
+        planned={(todayPlannedRows ?? []) as unknown as TodayPlanned[]}
+        done={sessions.map((s) => ({
+          id: s.id,
+          category: s.category,
+          name: s.dominantActivity.name,
+          distanceMeters: s.distanceMeters,
+          durationSeconds: s.durationSeconds,
+        }))}
+        href={todayHref}
+      />
+
       {/* --- Dagens återhämtning, överst och i stort format.
           Det här är adeptens första fråga varje morgon — "hur mår jag idag" —
           och den ska gå att läsa utan att klicka. Råvärdena, inte en
@@ -637,51 +668,6 @@ export default async function DashboardPage({
       {/* --- Status mot baslinje (P1.2), fast 7-dagarsfönster -------------- */}
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Dagens pass</h2>
-        {sessions.length === 0 ? (
-          <p className="text-sm text-[var(--ink-3)]">
-            Inget pass loggat idag ännu.{" "}
-            <Link href={todayHref} className="underline hover:text-[var(--foreground)]">
-              Lägg till för hand
-            </Link>
-            .
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {sessions.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3"
-              >
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: categoryColorVar(s.category) }}
-                  />
-                  <div className="flex flex-col">
-                    <span className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">
-                      {s.dominantActivity.name?.trim() || CATEGORY_LABELS[s.category]}
-                    </span>
-                    <span className="text-xs text-[var(--ink-3)]">
-                      {CATEGORY_LABELS[s.category]}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right text-sm tabular-nums text-[var(--ink-2)]">
-                  {formatKm(s.distanceMeters)} · {formatDuration(s.durationSeconds)}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        <Link
-          href={todayHref}
-          className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)]"
-        >
-          Till dagvyn →
-        </Link>
-      </section>
 
       {/* --- Utgången: loopens nästa steg efter dagen är veckan. /veckan togs
           bort 2026-08-13 (dubblerade kalenderns veckovy) — länken pekar dit
