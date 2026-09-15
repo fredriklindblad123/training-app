@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
-import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
@@ -430,14 +429,6 @@ export default async function DashboardPage({
   }));
   const dailyStatus = computeDailyStatus(statusRows, todayKey, statusCurrentWindowDays);
 
-  /* Senaste raden som faktiskt har ett mätvärde — inte senaste datumet.
-     Klockan laddas inte varje dag, och en tom natt ska inte tömma kortet;
-     då visas gårdagens siffra, vilket är vad en klocka själv gör. */
-  const latestMetric = [...statusRows]
-    .reverse()
-    .find(
-      (r) => r.hrv != null || r.restingHr != null || r.sleepHours != null || r.sleepScore != null,
-    );
   const statusPeriodLabel = `Senaste 7 dagarna mot din ${BASELINE_WINDOW_DAYS}-dagars baslinje`;
 
   // --- K3: beredskap kopplad till morgondagens pass -----------------------
@@ -566,47 +557,14 @@ export default async function DashboardPage({
         href={todayHref}
       />
 
-      {/* --- Dagens återhämtning, överst och i stort format.
-          Det här är adeptens första fråga varje morgon — "hur mår jag idag" —
-          och den ska gå att läsa utan att klicka. Råvärdena, inte en
-          bedömning: DailyStatus längre ned tolkar dem mot baslinjen, och att
-          färga talen här hade gjort siffran till en dom innan man hunnit se
-          vad den står för. Tomt värde blir "—" hellre än en nolla, som skulle
-          läsas som ett mätvärde. --------------------------------------- */}
-      <StatRow columns={3}>
-        <StatCell>
-          <Stat
-            label="HRV"
-            value={latestMetric?.hrv != null ? Math.round(latestMetric.hrv) : "—"}
-            unit={latestMetric?.hrv != null ? "ms" : undefined}
-            sub="senaste natten"
-          />
-        </StatCell>
-        <StatCell>
-          <Stat
-            label="Vilopuls"
-            value={latestMetric?.restingHr != null ? Math.round(latestMetric.restingHr) : "—"}
-            unit={latestMetric?.restingHr != null ? "spm" : undefined}
-            sub="senaste natten"
-          />
-        </StatCell>
-        <StatCell>
-          {/* Sömnpoäng, inte timmar (uttrycklig begäran 2026-09-15). Poängen
-              väger in djupsömn, avbrott och återhämtning — åtta timmar orolig
-              sömn och åtta timmar djup är inte samma natt, men ser identiska
-              ut i timmar. Antalet timmar står kvar som underrad, eftersom det
-              är den siffra man känner igen. */}
-          <Stat
-            label="Sömnpoäng"
-            value={latestMetric?.sleepScore != null ? Math.round(latestMetric.sleepScore) : "—"}
-            sub={
-              latestMetric?.sleepHours != null
-                ? `${latestMetric.sleepHours.toFixed(1).replace(".", ",")} h`
-                : "senaste natten"
-            }
-          />
-        </StatCell>
-      </StatRow>
+
+      {/* --- Status mot baslinje (P1.2), plats två direkt efter dagens pass.
+          Ersätter den råa nyckeltalsraden som låg här: den visade samma tre
+          mått (HRV, vilopuls, sömnpoäng) men bara som dagens siffra. Samma
+          plats säger mer när talet ställs mot den egna baslinjen — "80 ms"
+          betyder ingenting utan "normalt 74". Två rader med samma mätvärden
+          strax under varandra var dessutom ren dubblering. ------------- */}
+      <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
       {/* --- Form och kondition: överst på sidan, egen sektion. Långa
           horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
@@ -678,9 +636,6 @@ export default async function DashboardPage({
           ))}
         </div>
       </section>
-
-      {/* --- Status mot baslinje (P1.2), fast 7-dagarsfönster -------------- */}
-      <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
 
       {/* --- Utgången: loopens nästa steg efter dagen är veckan. /veckan togs

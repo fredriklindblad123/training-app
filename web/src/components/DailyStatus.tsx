@@ -62,7 +62,7 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
     dev == null ? null : `${arrow} ${dev > 0 ? "+" : ""}${dev.toFixed(1).replace(".", ",")} SD`;
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+    <div className="flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
           {marker.spec.label}
@@ -91,11 +91,6 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
           : `Bygger baslinje — ${marker.baselineDays} av ${MIN_BASELINE_DAYS} dagar`}
       </div>
 
-      {/* Förklaringen följer med i stället för att gömmas i en uppfällning.
-          Korten är få och raderna korta; att klicka för att förstå vad en
-          markör betyder är ett steg för mycket på den sida man öppnar varje
-          morgon. */}
-      <p className="text-xs leading-snug text-[var(--ink-3)]">{marker.spec.hint}</p>
     </div>
   );
 }
@@ -144,13 +139,21 @@ export function DailyStatus({
         <span className={`text-sm font-semibold ${headlineClass}`}>{headline}</span>
       </div>
 
-      {/* Rutnät av lika breda kort, samma form som nyckeltalsringarna ovanför
-          fick — så att hela dashboarden läser som en uppsättning kort och inte
-          som omväxlande rader och rutor. */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {markers.map((m) => (
-          <MarkerCard key={m.spec.key} marker={m} />
-        ))}
+      {/* ETT kort med hårfina skiljelinjer mellan markörerna, inte tre fristående
+          kort. Linjerna är gap på en linjefärgad bakgrund — samma form som
+          StatRow — vilket gör att ytterkanterna inte får dubbla streck när
+          raden bryts på smal skärm.
+          Sömntimmarna filtreras bort: sömnpoängen säger samma sak fast bättre
+          (den väger in djupsömn och avbrott), och två sömnmarkörer av fyra gav
+          sömnen halva raden. Markören finns kvar i STATUS_MARKERS — den ingår
+          fortfarande i shouldEaseOff-bedömningen, som ska väga allt som mätts,
+          inte bara det som visas. */}
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-3">
+        {markers
+          .filter((m) => m.spec.key !== "sleepHours")
+          .map((m) => (
+            <MarkerCard key={m.spec.key} marker={m} />
+          ))}
       </div>
 
       {shouldEaseOff && (
