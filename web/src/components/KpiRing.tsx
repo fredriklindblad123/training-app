@@ -71,11 +71,19 @@ export function KpiRing({
   detailRows: KpiDetailRow[];
   hint?: string;
 }) {
+  /* Varje ring är ett EGET kort sedan 2026-09-15. De låg tidigare löst i en
+   * flexrad inuti ett gemensamt kort, vilket gjorde att tre mätvärden läste
+   * som en enda lång rad — man såg gruppen, inte de enskilda talen. Med egen
+   * yta och ram blir varje ring ett avgränsat objekt att vila blicken på, och
+   * uppfällningen får någonstans att öppna sig inuti.
+   *
+   * h-fit i klasslistan: utan den sträcker rutnätet en uppfälld rings grannar
+   * till samma höjd, så att ett klick på en ring tomväxer tre andra kort. */
   const dashOffset = CIRCUMFERENCE * (1 - Math.min(Math.max(fill, 0), 1));
   const label_ = statusLabel ?? RING_STATUS_LABEL[status];
 
   return (
-    <details className="group flex flex-col items-center gap-1.5 rounded-lg p-2 text-center hover:bg-[var(--surface-raised)]">
+    <details className="group flex h-fit flex-col items-center gap-1.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-center transition-colors hover:border-[var(--ink-3)]">
       <summary className="flex cursor-pointer list-none flex-col items-center gap-1.5 [&::-webkit-details-marker]:hidden">
         <span className="display text-[0.9375rem] font-semibold text-[var(--foreground)]">{label}</span>
         <div className="relative flex shrink-0" style={{ width: RING_SIZE, height: RING_SIZE }}>

@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
-import { Card } from "@/components/ui/Card";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
@@ -436,7 +435,9 @@ export default async function DashboardPage({
      då visas gårdagens siffra, vilket är vad en klocka själv gör. */
   const latestMetric = [...statusRows]
     .reverse()
-    .find((r) => r.hrv != null || r.restingHr != null || r.sleepHours != null);
+    .find(
+      (r) => r.hrv != null || r.restingHr != null || r.sleepHours != null || r.sleepScore != null,
+    );
   const statusPeriodLabel = `Senaste 7 dagarna mot din ${BASELINE_WINDOW_DAYS}-dagars baslinje`;
 
   // --- K3: beredskap kopplad till morgondagens pass -----------------------
@@ -590,15 +591,19 @@ export default async function DashboardPage({
           />
         </StatCell>
         <StatCell>
+          {/* Sömnpoäng, inte timmar (uttrycklig begäran 2026-09-15). Poängen
+              väger in djupsömn, avbrott och återhämtning — åtta timmar orolig
+              sömn och åtta timmar djup är inte samma natt, men ser identiska
+              ut i timmar. Antalet timmar står kvar som underrad, eftersom det
+              är den siffra man känner igen. */}
           <Stat
-            label="Sömn"
-            value={
+            label="Sömnpoäng"
+            value={latestMetric?.sleepScore != null ? Math.round(latestMetric.sleepScore) : "—"}
+            sub={
               latestMetric?.sleepHours != null
-                ? latestMetric.sleepHours.toFixed(1).replace(".", ",")
-                : "—"
+                ? `${latestMetric.sleepHours.toFixed(1).replace(".", ",")} h`
+                : "senaste natten"
             }
-            unit={latestMetric?.sleepHours != null ? "h" : undefined}
-            sub="senaste natten"
           />
         </StatCell>
       </StatRow>
@@ -607,26 +612,32 @@ export default async function DashboardPage({
           horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
           ändras inte dag för dag, så de hör hemma bredvid varandra, inte i
           "dagens" brus. --------------------------------------------------- */}
-      <Card className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Form och kondition</h2>
-        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
+        {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
+            stället för kort vars bredd styrs av hur långt mätvärdet råkar
+            vara. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {formRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
         </div>
-      </Card>
+      </section>
 
       {/* --- Volym och belastning: egen sektion, rullande 7 dagar mot årets
           snitt per vecka (P1.5) — flyttad hit från den borttagna /veckan
           2026-08-13. ---------------------------------------------------- */}
-      <Card className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Volym och belastning</h2>
-        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
+        {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
+            stället för kort vars bredd styrs av hur långt mätvärdet råkar
+            vara. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
         </div>
-      </Card>
+      </section>
 
       {/* --- K3: beredskap kopplad till morgondagens pass. Visas bara när
           avvikelsen (P1.2) och ett kvalitetspass imorgon båda är sanna —
@@ -656,14 +667,17 @@ export default async function DashboardPage({
 
       {/* --- Kontinuitet (K6): den enda långa horisonten på den här sidan,
           ett ankare mot dagens brus. --------------------------------------- */}
-      <Card className="flex flex-col gap-3">
+      <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Kontinuitet</h2>
-        <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
+        {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
+            stället för kort vars bredd styrs av hur långt mätvärdet råkar
+            vara. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {continuityRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
         </div>
-      </Card>
+      </section>
 
       {/* --- Status mot baslinje (P1.2), fast 7-dagarsfönster -------------- */}
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
