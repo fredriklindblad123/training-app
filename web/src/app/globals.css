@@ -53,6 +53,20 @@
   --status-neutral: #6366f1;
   --status-unknown: #d4d4d8;
 
+  /* Textvarianter av statusfärgerna, för små etiketter på tonad platta.
+     Grundtonerna ovan är valda för att fungera som SVG-stroke och som
+     platta — en 8 px linje behöver inte klara kontrastkravet för text. Som
+     12 px halvfet text gör de det inte: uppmätt mot sin egen 14%-platta ger
+     de 2,75–3,89:1, alltså under 4,5 som AA kräver för text under 18 px.
+     --status-watch var värst. Mätt, inte bedömt — samma metod som
+     zonpaletten validerades med. Mörkt läge klarar 4,85–7,90 med
+     grundtonerna och behåller dem därför oförändrade. */
+  --status-good-ink: #047857;
+  --status-watch-ink: #92400e;
+  --status-concern-ink: #b91c1c;
+  --status-neutral-ink: #4338ca;
+  --status-unknown-ink: var(--ink-3);
+
   /* Tillgänglighetsperioder (K7: skola, läger, resa, ledighet, annat) — en
      enda dämpad neutral gråton för alla fem sorter, medvetet utanför
      --cat-* och blockfärgerna. Se motiveringen vid AVAILABILITY_COLOR_VAR i
@@ -106,6 +120,12 @@
     --status-concern: #f87171;
     --status-neutral: #818cf8;
     --status-unknown: #3f3f46;
+
+    --status-good-ink: #34d399;
+    --status-watch-ink: #fbbf24;
+    --status-concern-ink: #f87171;
+    --status-neutral-ink: #818cf8;
+    --status-unknown-ink: var(--ink-3);
 
     --availability-band: #71717a;
 

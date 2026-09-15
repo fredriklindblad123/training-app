@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { DailyStatus } from "@/components/DailyStatus";
 import { KpiRing } from "@/components/KpiRing";
+import type { TrendDirection } from "@/components/ui/TrendMark";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
@@ -88,7 +89,13 @@ function continuityRing({
     unit: currentWeeks === 1 ? "vecka" : "veckor",
     fill,
     status: (target == null ? "unknown" : status) as RingStatus,
-    targetText: target != null ? `Bästa ${target} v` : undefined,
+    /* Aldrig grönt eller rött här. En kort svit efter en sjukdomsperiod är
+     * normal, och att färga den röd vore precis den dömande läsningen som
+     * fallgrop 1 i K6 varnar för — samma skäl som direction: "neutral" ovan.
+     * Symbolen får därför neutral ton och ett streck i stället för en pil,
+     * och bär referensen (personbästa) i stället för ett omdöme. */
+    trend: target != null ? { direction: "flat" as const, text: `Bästa ${target} v` } : null,
+    targetText: `${totalCompletedWeeks} avslutade veckor`,
     detailRows: [
       { label: "Nuvarande svit", value: `${currentWeeks} v` },
       {
@@ -144,6 +151,17 @@ function trendRingStatus(change: number | null, noiseThreshold: number): RingSta
   return "neutral";
 }
 
+/** Pilens riktning för samma förändring som trendRingStatus bedömer.
+ *
+ * Skild funktion, samma tröskel: färgen säger OM förändringen är bra, pilen
+ * säger ÅT VILKET HÅLL talet gick. För belastning kan de två peka olika, och
+ * att härleda den ena ur den andra hade gjort just det omöjligt. Brus får ett
+ * streck, inte en pil — annars pekar kortet åt ett håll som inte finns. */
+function trendDirection(change: number | null, noiseThreshold: number): TrendDirection {
+  if (change == null || Math.abs(change) < noiseThreshold) return "flat";
+  return change > 0 ? "up" : "down";
+}
+
 function formatPctChange(pctChange: number): string {
   return `${pctChange >= 0 ? "+" : ""}${(pctChange * 100).toFixed(1)}%`;
 }
@@ -175,7 +193,15 @@ function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: stri
     fill,
     status,
     statusLabel: status === "neutral" ? "Oförändrad" : undefined,
-    targetText: pctChange != null ? `${formatPctChange(pctChange)} senaste 4 v` : undefined,
+    trend:
+      pctChange != null
+        ? {
+            direction: trendDirection(pctChange, EF_NOISE_THRESHOLD_PCT),
+            text: formatPctChange(pctChange),
+          }
+        : null,
+    // Bara perioden kvar — talet står i symbolen och ska inte stå två gånger.
+    targetText: pctChange != null ? "senaste 4 v" : undefined,
     detailRows: [
       {
         label: `Senaste ${EF_TREND_WINDOW_DAYS} dagarna`,
@@ -228,8 +254,14 @@ function vo2maxRing(readings: { date: string; value: number }[], todayKey: strin
     fill,
     status,
     statusLabel: status === "neutral" ? "Oförändrad" : undefined,
-    targetText:
-      delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(0)} senaste ${VO2MAX_LOOKBACK_DAYS} d` : undefined,
+    trend:
+      delta != null
+        ? {
+            direction: trendDirection(delta, VO2MAX_NOISE_THRESHOLD),
+            text: `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}`,
+          }
+        : null,
+    targetText: delta != null ? `senaste ${VO2MAX_LOOKBACK_DAYS} d` : undefined,
     detailRows: [
       { label: "Nu", value: current != null ? `${Math.round(current)} ml/kg/min` : "–" },
       {
@@ -289,7 +321,14 @@ function rollingWeekRing(
     fill,
     status,
     statusLabel: status === "neutral" ? "Oförändrad" : undefined,
-    targetText: pctChange != null ? `${formatPctChange(pctChange)} mot årets snitt` : undefined,
+    trend:
+      pctChange != null
+        ? {
+            direction: trendDirection(pctChange, WEEKLY_NOISE_THRESHOLD_PCT),
+            text: formatPctChange(pctChange),
+          }
+        : null,
+    targetText: pctChange != null ? "mot årets snitt" : undefined,
     detailRows: [
       { label: "Senaste 7 dagarna", value: formatValue(recent) },
       { label: "Årets snitt per vecka", value: formatValue(baseline) },

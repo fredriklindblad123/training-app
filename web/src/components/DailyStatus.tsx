@@ -4,6 +4,7 @@ import {
   type MarkerStatus,
 } from "@/lib/daily-status";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
+import { TrendMark, type TrendDirection } from "@/components/ui/TrendMark";
 
 /* Presentationen av P1.2. Språkkravet ur roadmapen är styrande: appen ska
  * aldrig ställa diagnos eller säga "du är övertränad". Den säger vilken
@@ -27,17 +28,6 @@ function formatBaseline(marker: MarkerStatus): string {
   return `${marker.baseline.toFixed(decimals)}${marker.spec.unit ? ` ${marker.spec.unit}` : ""}`;
 }
 
-/* Färgen per status, som inline-variabel av samma skäl som --cat-* används så
- * i resten av appen: Tailwinds färgklasser kan inte peka på en CSS-variabel
- * utan att gå via arbiträr syntax på varje ställe. */
-const TONE_VAR: Record<RingStatus, string> = {
-  good: "var(--status-good)",
-  watch: "var(--status-watch)",
-  concern: "var(--status-concern)",
-  neutral: "var(--status-neutral)",
-  unknown: "var(--status-unknown)",
-};
-
 /* En markör som kort, utan ring (uttrycklig begäran 2026-09-15).
  *
  * Ringen visade hur nära baslinjen man låg som en fyllnadsgrad — snyggt, men
@@ -54,12 +44,16 @@ const TONE_VAR: Record<RingStatus, string> = {
 function MarkerCard({ marker }: { marker: MarkerStatus }) {
   const { status } = ringFillAndStatus(marker.current, marker.baseline, marker.spec.direction);
   const effectiveStatus: RingStatus = marker.baseline == null ? "unknown" : status;
-  const tone = TONE_VAR[effectiveStatus];
 
+  /* Pilen visar läget mot baslinjen, inte en trend över tid. Underlaget
+   * (MarkerStatus) har senaste veckans snitt och baslinjens median — men
+   * inget föregående fönster, så en riktig tidstrend går inte att räkna fram
+   * här utan att hitta på den. Pilen säger därför "över/under ditt vanliga",
+   * vilket är exakt vad SD-talet bredvid den betyder. */
   const dev = marker.deviation;
-  const arrow = dev == null ? "" : dev > 0.05 ? "↑" : dev < -0.05 ? "↓" : "→";
+  const direction: TrendDirection = dev == null || Math.abs(dev) <= 0.05 ? "flat" : dev > 0 ? "up" : "down";
   const devText =
-    dev == null ? null : `${arrow} ${dev > 0 ? "+" : ""}${dev.toFixed(1).replace(".", ",")} SD`;
+    dev == null ? null : `${dev > 0 ? "+" : ""}${dev.toFixed(1).replace(".", ",")} SD`;
 
   return (
     <div className="flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
@@ -68,9 +62,12 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
           {marker.spec.label}
         </span>
         {devText && (
-          <span className="display tabular text-xs font-semibold" style={{ color: tone }}>
-            {devText}
-          </span>
+          <TrendMark
+            status={effectiveStatus}
+            direction={direction}
+            text={devText}
+            srLabel={`${devText} ${direction === "up" ? "över" : direction === "down" ? "under" : "vid"} baslinjen`}
+          />
         )}
       </div>
 

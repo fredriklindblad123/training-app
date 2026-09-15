@@ -1,4 +1,5 @@
 import type { RingStatus } from "@/lib/kpi-ring";
+import { TrendMark, type TrendDirection } from "@/components/ui/TrendMark";
 
 /* Generisk KPI-ring: en siffra i mitten, en ring runt som visar hur nära
  * riktvärdet man ligger (fyllnad) och hur det ska tolkas (färg). Text bär
@@ -46,6 +47,7 @@ export function KpiRing({
   unit,
   status,
   statusLabel,
+  trend,
   targetText,
   detailRows,
   hint,
@@ -65,6 +67,13 @@ export function KpiRing({
   /** Åsidosätter standardordet för statusen, t.ex. "Måttlig" för en
    * neutral markör som inte är bra/dålig utan bara beskrivande. */
   statusLabel?: string;
+  /** Den färgsatta symbolen uppe till höger: riktning + förändring.
+   *
+   * Skickas explicit i stället för att härledas ur targetText — riktningen är
+   * inte alltid talets tecken, och kontinuitetskorten har medvetet ingen
+   * riktning alls (se continuityRing). Att gissa den ur en formaterad sträng
+   * hade gjort presentationen beroende av hur texten råkar vara skriven. */
+  trend?: { direction: TrendDirection; text: string } | null;
   /** Samma siffra som ringens färg räknas mot, t.ex. "Riktvärde 12,4 km" —
    * visas direkt i förstaintrycket, inte bara i detaljtabellen, så att
    * grön/gul/röd aldrig är den enda förklaringen till var man ligger till. */
@@ -100,13 +109,22 @@ export function KpiRing({
           <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
             {label}
           </span>
-          {label_ && (
-            <span
-              className="display text-xs font-semibold"
-              style={{ color: RING_STROKE_VAR[status] }}
-            >
-              {label_}
-            </span>
+          {trend ? (
+            <TrendMark
+              status={status}
+              direction={trend.direction}
+              text={trend.text}
+              srLabel={label_ || "ingen bedömning"}
+            />
+          ) : (
+            label_ && (
+              <span
+                className="display text-xs font-semibold"
+                style={{ color: RING_STROKE_VAR[status] }}
+              >
+                {label_}
+              </span>
+            )
           )}
         </div>
 
