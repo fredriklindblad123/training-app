@@ -105,6 +105,20 @@ export default async function PassDayPage({
     }
   }
   if (candidateIds.length === 0 && focusId) candidateIds = [focusId];
+  /* Utan block och utan vald löpare: alla coachens löpare.
+   *
+   * Sidan antog fram till 2026-09-15 att man alltid kom hit från en blockruta
+   * och därför hade ett block-id i adressen. Den nya Detaljplanen laddar sin
+   * vecka på datum i stället för på block och skickar bara `date` — då blev
+   * kandidatlistan tom och sidan svarade 404 på ett klick som pekade på ett
+   * pass som faktiskt fanns. Rapporterat på vecka 40.
+   *
+   * Fallbacken är inte bara en lapp: "visa alla" är redan vad showAll
+   * betyder, och en dagsvy för flera löpare utan angivet urval har ingen
+   * rimligare tolkning än hela gruppen. */
+  if (candidateIds.length === 0 && showAll) {
+    candidateIds = [...athletesById.keys()];
+  }
   const athleteIds = candidateIds.filter((id) => (focusId ? id === focusId : true));
   if (athleteIds.length === 0) notFound();
 

@@ -196,6 +196,7 @@ export default async function DetaljplanPage({
   const namesById = new Map(athletes.map((a) => [a.id, a.fullName ?? "Namnlös"]));
 
   let passes: PlannedPassRow[] = [];
+  const blockByPass = new Map<string, string>();
   let competitions: CompetitionRow[] = [];
   const outcomes = new Map<string, PlanOutcome>();
 
@@ -205,7 +206,7 @@ export default async function DetaljplanPage({
         supabase
           .from("planned_workouts")
           .select(
-            "id, user_id, scheduled_date, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, status",
+            "id, user_id, scheduled_date, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, status, block_id",
           )
           .in("user_id", athleteIds)
           .gte("scheduled_date", weekStart)
@@ -230,6 +231,13 @@ export default async function DetaljplanPage({
       ]);
 
     passes = (plannedRows ?? []) as PlannedPassRow[];
+    /* Blocket per pass, för länken vidare. Dagsvyn väljer sina kolumner ur
+     * blockets taggade löpare; utan blocket faller den tillbaka på HELA
+     * gruppen, vilket ger kolumner även för löpare som inte har passet.
+     * Nyckeln är datum+slot, samma som passgrupperna använder. */
+    for (const row of plannedRows as ({ block_id: string | null } & PlannedPassRow)[]) {
+      if (row.block_id) blockByPass.set(`${row.scheduled_date}|${row.slot ?? 1}`, row.block_id);
+    }
     competitions = (competitionRows ?? []) as CompetitionRow[];
 
     // Per löpare, aldrig blandat: matchPlanToSessions parar ihop plan och
@@ -383,7 +391,11 @@ export default async function DetaljplanPage({
                       /* Dagsvyn för alla löpare samtidigt: där bor
                          passformuläret med Beskrivning, och där ser man hela
                          dagen i stället för bara rutan man klickade på. */
-                      href={`/blockplan/pass?date=${day.date}`}
+                      href={`/blockplan/pass?date=${day.date}${
+                        blockByPass.get(`${day.date}|${g.slot ?? 1}`)
+                          ? `&block=${blockByPass.get(`${day.date}|${g.slot ?? 1}`)}`
+                          : ""
+                      }`}
                     />
                   ))
                 )}
