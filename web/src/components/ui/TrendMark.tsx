@@ -55,7 +55,7 @@ const INK: Record<RingStatus, string> = {
 
 function Glyph({ direction }: { direction: TrendDirection }) {
   return (
-    <svg viewBox="0 0 10 10" className="h-2.5 w-2.5 shrink-0" fill="currentColor" aria-hidden>
+    <svg viewBox="0 0 10 10" className="h-3.5 w-3.5 shrink-0" fill="currentColor" aria-hidden>
       {direction === "up" && <path d="M5 1.5 9 8 H1 Z" />}
       {direction === "down" && <path d="M5 8.5 1 2 H9 Z" />}
       {/* Oförändrat är ett streck och inte en pil — en vågrät pil läses lätt
@@ -80,7 +80,13 @@ export function TrendMark({
 }) {
   return (
     <span
-      className="display tabular inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-semibold"
+      /* Storleken följer utfallet den står bredvid, inte etiketten. Satt som
+       * text-base: symbolen låg tidigare uppe i hörnet i text-xs och var för
+       * liten för att läsas i samma blick som talet — rapporterat. 16 px
+       * halvfet är fortfarande "liten text" enligt WCAG (gränsen går vid
+       * 18,66 px för fet), så kontrastkravet 4,5:1 gäller alltjämt och
+       * ink-tonerna klarar det med 4,62-6,64. */
+      className="display tabular inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-base leading-none font-semibold"
       style={{
         color: INK[status],
         // Tonad platta i samma kulör. color-mix och inte en egen token per

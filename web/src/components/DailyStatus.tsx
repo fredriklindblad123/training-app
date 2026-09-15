@@ -57,9 +57,20 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
 
   return (
     <div className="flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-          {marker.spec.label}
+      <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+        {marker.spec.label}
+      </span>
+
+      {/* Avvikelsen står på mätvärdets rad — samma flytt som KPI-korten, av
+          samma skäl: "42, 0,8 SD under" är en avläsning, inte två. */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
+          {formatValue(marker)}
+          {marker.spec.unit && (
+            <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">
+              {marker.spec.unit}
+            </span>
+          )}
         </span>
         {devText && (
           <TrendMark
@@ -68,15 +79,6 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
             text={devText}
             srLabel={`${devText} ${direction === "up" ? "över" : direction === "down" ? "under" : "vid"} baslinjen`}
           />
-        )}
-      </div>
-
-      <div className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
-        {formatValue(marker)}
-        {marker.spec.unit && (
-          <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">
-            {marker.spec.unit}
-          </span>
         )}
       </div>
 
@@ -104,36 +106,24 @@ export function DailyStatus({
 }) {
   const { markers, concerning, shouldEaseOff, evaluated } = status;
 
-  let headline: string;
-  let headlineClass: string;
-
-  if (evaluated === 0) {
-    headline = "Bygger baslinje";
-    headlineClass = "text-[var(--ink-3)]";
-  } else if (shouldEaseOff) {
-    headline = `${concerning.length} markörer under ditt normala`;
-    headlineClass = "text-amber-700 dark:text-amber-400";
-  } else if (concerning.length === 1) {
-    headline = `${concerning[0].spec.label} avviker`;
-    headlineClass = "text-[var(--ink-2)]";
-  } else {
-    headline = "Allt inom ditt normala";
-    headlineClass = "text-emerald-700 dark:text-emerald-400";
-  }
+  /* Sammanfattningen uppe till höger ("Allt inom ditt normala") är borttagen
+   * 2026-09-15 på begäran: de andra sektionerna på dashboarden har bara en
+   * rubrik, och den här stack ut.
+   *
+   * Inget går förlorat. Varje markör bär sin egen färg och avvikelse i
+   * kortet, och det aggregerade beskedet — regeln ur 2.4 om att två eller
+   * fler markörer åt samma håll är det som betyder något — har ett eget
+   * stycke under rutnätet, plus beredskapsvarningen på dashboarden
+   * (buildReadinessAlert). Raden sade alltså samma sak en tredje gång. */
 
   return (
     /* Sektion och inte kort: innehållet ÄR kort numera, och ett kort runt kort
        ger dubbla ramar och två ytnivåer som inte betyder något. Samma val som
        nyckeltalsringarnas sektioner på dashboarden. */
     <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Status</h2>
-          {periodLabel && (
-            <p className="text-xs text-[var(--ink-3)]">{periodLabel}</p>
-          )}
-        </div>
-        <span className={`text-sm font-semibold ${headlineClass}`}>{headline}</span>
+      <div>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Status</h2>
+        {periodLabel && <p className="text-xs text-[var(--ink-3)]">{periodLabel}</p>}
       </div>
 
       {/* ETT kort med hårfina skiljelinjer mellan markörerna, inte tre fristående

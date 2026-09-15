@@ -110,9 +110,22 @@ export function KpiRing({
      * bryts på smal skärm. */
     <details className="group flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
       <summary className="flex cursor-pointer list-none flex-col gap-2 [&::-webkit-details-marker]:hidden">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-            {label}
+        <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+          {label}
+        </span>
+
+        {/* Symbolen står på utfallets rad, inte uppe i hörnet (flyttad
+            2026-09-15 efter rapport). Talet och dess riktning är en enda
+            avläsning — "58, oförändrat" — och att dela dem på var sin rad
+            tvingade blicken att göra två. flex-wrap så att en lång symbol
+            lägger sig under talet i stället för att klämma det på smal
+            skärm. */}
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
+            {valueText}
+            {unit && (
+              <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">{unit}</span>
+            )}
           </span>
           {trend ? (
             <TrendMark
@@ -124,19 +137,12 @@ export function KpiRing({
           ) : (
             label_ && (
               <span
-                className="display text-xs font-semibold"
+                className="display text-sm font-semibold"
                 style={{ color: STATUS_TEXT_VAR[status] }}
               >
                 {label_}
               </span>
             )
-          )}
-        </div>
-
-        <div className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
-          {valueText}
-          {unit && (
-            <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">{unit}</span>
           )}
         </div>
 

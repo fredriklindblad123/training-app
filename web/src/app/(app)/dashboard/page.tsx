@@ -146,14 +146,22 @@ function shiftDateKey(dateKey: string, days: number): string {
   return toDateKey(d);
 }
 
-/** Statusen en trend ska visas med — good/concern är riktningen, "neutral"
- * (inte "watch") för brus: en oförändrad formkurva är inte något att hålla
- * koll på, bara ett beskrivande "ingen tydlig riktning än". */
+/** Statusen en trend ska visas med. Två färger: rött bara för en verklig
+ * försämring, grönt för allt annat.
+ *
+ * Brusbandet låg tidigare på en egen färg — först indigo, sedan grått. Båda
+ * lästes som att kortet var trasigt snarare än som ett besked, och
+ * rapporterades två gånger. Ett oförändrat värde är heller inget att åtgärda,
+ * vilket är precis vad grönt betyder här: inte "du har förbättrats", utan
+ * "inget som kräver något av dig". Att talet står stilla syns ändå — pilen
+ * blir ett streck (trendDirection) och texten säger 0.
+ *
+ * Grått finns kvar, men bara för "unknown": när det inte finns någon
+ * förändring att bedöma alls. Det är en frånvaro av data, inte en frånvaro av
+ * bedömning, och då är ett neutralt kort rätt svar. */
 function trendRingStatus(change: number | null, noiseThreshold: number): RingStatus {
   if (change == null) return "unknown";
-  if (change >= noiseThreshold) return "good";
-  if (change <= -noiseThreshold) return "concern";
-  return "neutral";
+  return change <= -noiseThreshold ? "concern" : "good";
 }
 
 /** Pilens riktning för samma förändring som trendRingStatus bedömer.
@@ -197,7 +205,6 @@ function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: stri
     unit: "m/slag",
     fill,
     status,
-    statusLabel: status === "neutral" ? "Oförändrad" : undefined,
     trend:
       pctChange != null
         ? {
@@ -258,7 +265,6 @@ function vo2maxRing(readings: { date: string; value: number }[], todayKey: strin
     unit: "VO2max",
     fill,
     status,
-    statusLabel: status === "neutral" ? "Oförändrad" : undefined,
     trend:
       delta != null
         ? {
@@ -325,7 +331,6 @@ function rollingWeekRing(
     valueText: formatValue(recent),
     fill,
     status,
-    statusLabel: status === "neutral" ? "Oförändrad" : undefined,
     trend:
       pctChange != null
         ? {
