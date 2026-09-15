@@ -4,7 +4,6 @@ import {
   type MarkerStatus,
 } from "@/lib/daily-status";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
-import { KpiRing } from "@/components/KpiRing";
 
 /* Presentationen av P1.2. Språkkravet ur roadmapen är styrande: appen ska
  * aldrig ställa diagnos eller säga "du är övertränad". Den säger vilken
@@ -28,38 +27,76 @@ function formatBaseline(marker: MarkerStatus): string {
   return `${marker.baseline.toFixed(decimals)}${marker.spec.unit ? ` ${marker.spec.unit}` : ""}`;
 }
 
-function MarkerRing({ marker }: { marker: MarkerStatus }) {
-  const { fill, status } = ringFillAndStatus(marker.current, marker.baseline, marker.spec.direction);
+/* Färgen per status, som inline-variabel av samma skäl som --cat-* används så
+ * i resten av appen: Tailwinds färgklasser kan inte peka på en CSS-variabel
+ * utan att gå via arbiträr syntax på varje ställe. */
+const TONE_VAR: Record<RingStatus, string> = {
+  good: "var(--status-good)",
+  watch: "var(--status-watch)",
+  concern: "var(--status-concern)",
+  neutral: "var(--status-neutral)",
+  unknown: "var(--status-unknown)",
+};
+
+/* En markör som kort, utan ring (uttrycklig begäran 2026-09-15).
+ *
+ * Ringen visade hur nära baslinjen man låg som en fyllnadsgrad — snyggt, men
+ * den tvingade in ett tal med riktning i en form som bara kan visa "mycket
+ * eller lite". För HRV är högre bättre, för vilopuls lägre, och en halvfylld
+ * ring sa inget om vilket. Samma information ryms i tre rader text, och då
+ * kan avvikelsen få både ett TECKEN och en färg.
+ *
+ * Pilen bär riktningen bokstavligt (över eller under baslinjen), färgen bär
+ * bedömningen (bra eller inte). De två är skilda med flit: en vilopuls under
+ * baslinjen är en pil NEDÅT och samtidigt grön, och att låta färgen ensam
+ * betyda "uppåt" hade gjort just den markören obegriplig.
+ */
+function MarkerCard({ marker }: { marker: MarkerStatus }) {
+  const { status } = ringFillAndStatus(marker.current, marker.baseline, marker.spec.direction);
   const effectiveStatus: RingStatus = marker.baseline == null ? "unknown" : status;
+  const tone = TONE_VAR[effectiveStatus];
+
+  const dev = marker.deviation;
+  const arrow = dev == null ? "" : dev > 0.05 ? "↑" : dev < -0.05 ? "↓" : "→";
+  const devText =
+    dev == null ? null : `${arrow} ${dev > 0 ? "+" : ""}${dev.toFixed(1).replace(".", ",")} SD`;
 
   return (
-    <KpiRing
-      label={marker.spec.label}
-      valueText={formatValue(marker)}
-      unit={marker.spec.unit || undefined}
-      fill={fill}
-      status={effectiveStatus}
-      targetText={marker.baseline != null ? `Baslinje ${formatBaseline(marker)}` : undefined}
-      detailRows={[
-        {
-          label: "Senaste veckan",
-          value: `${formatValue(marker)}${marker.spec.unit ? ` ${marker.spec.unit}` : ""}`,
-        },
-        { label: `Baslinje (${marker.baselineDays} dagar)`, value: formatBaseline(marker) },
-        {
-          label: "Avvikelse",
-          value:
-            marker.deviation != null
-              ? `${marker.deviation > 0 ? "+" : ""}${marker.deviation.toFixed(1)} SD`
-              : "–",
-        },
-      ]}
-      hint={
-        marker.baseline == null
-          ? `Bygger baslinje — ${marker.baselineDays} av ${MIN_BASELINE_DAYS} dagar. ${marker.spec.hint}`
-          : marker.spec.hint
-      }
-    />
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+          {marker.spec.label}
+        </span>
+        {devText && (
+          <span className="display tabular text-xs font-semibold" style={{ color: tone }}>
+            {devText}
+          </span>
+        )}
+      </div>
+
+      <div className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
+        {formatValue(marker)}
+        {marker.spec.unit && (
+          <span className="ml-1 text-[0.5em] font-medium text-[var(--ink-3)]">
+            {marker.spec.unit}
+          </span>
+        )}
+      </div>
+
+      {/* Baslinjen står alltid utskriven. Utan den är "+0,8 SD" ett tal utan
+          referens — man vet att man avviker men inte från vad. */}
+      <div className="tabular text-xs text-[var(--ink-3)]">
+        {marker.baseline != null
+          ? `Baslinje ${formatBaseline(marker)} · ${marker.baselineDays} dagar`
+          : `Bygger baslinje — ${marker.baselineDays} av ${MIN_BASELINE_DAYS} dagar`}
+      </div>
+
+      {/* Förklaringen följer med i stället för att gömmas i en uppfällning.
+          Korten är få och raderna korta; att klicka för att förstå vad en
+          markör betyder är ett steg för mycket på den sida man öppnar varje
+          morgon. */}
+      <p className="text-xs leading-snug text-[var(--ink-3)]">{marker.spec.hint}</p>
+    </div>
   );
 }
 
@@ -93,7 +130,10 @@ export function DailyStatus({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+    /* Sektion och inte kort: innehållet ÄR kort numera, och ett kort runt kort
+       ger dubbla ramar och två ytnivåer som inte betyder något. Samma val som
+       nyckeltalsringarnas sektioner på dashboarden. */
+    <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Status</h2>
@@ -104,9 +144,12 @@ export function DailyStatus({
         <span className={`text-sm font-semibold ${headlineClass}`}>{headline}</span>
       </div>
 
-      <div className="flex flex-wrap justify-center gap-1 sm:justify-start">
+      {/* Rutnät av lika breda kort, samma form som nyckeltalsringarna ovanför
+          fick — så att hela dashboarden läser som en uppsättning kort och inte
+          som omväxlande rader och rutor. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {markers.map((m) => (
-          <MarkerRing key={m.spec.key} marker={m} />
+          <MarkerCard key={m.spec.key} marker={m} />
         ))}
       </div>
 
@@ -125,6 +168,6 @@ export function DailyStatus({
           flera rör sig åt samma håll som det brukar betyda något.
         </p>
       )}
-    </div>
+    </section>
   );
 }
