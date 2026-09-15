@@ -5,7 +5,8 @@ import { formatHoursMinutes, formatKm } from "@/lib/format";
 import { describePlannedWorkout, type RepGroupLike } from "@/lib/workout-summary";
 import { LinkPending } from "@/components/ui/LinkPending";
 
-/* Dagens pass, överst på adeptens dashboard.
+/* Dagens pass, överst på adeptens dashboard. Rubriken hette "Idag" fram
+ * till 2026-09-15.
  *
  * Det här är den första frågan en löpare har när hon öppnar appen: vad ska
  * jag göra idag, eller vad blev det av det jag gjorde? Kortet låg tidigare
@@ -67,78 +68,87 @@ export function TodaySession({
   const empty = planned.length === 0 && done.length === 0;
 
   return (
-    <Link
-      href={href}
-      className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--ink-3)]"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Idag
-        </h2>
-        <span className="display text-xs text-[var(--ink-3)]">
+    /* Rubriken står UTANFÖR kortet, som i sektionerna nedanför (flyttad
+       2026-09-15). Den låg tidigare inuti, vilket gav sidan två sorters
+       rubriker: en fristående ovanför ett rutnät och en inbakad i en ruta.
+       Samma sektionsskal som Status och nyckeltalen redan använder. */
+    <section className="flex flex-col gap-3">
+      <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+        Dagens pass
+      </h2>
+
+      <Link
+        href={href}
+        className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--ink-3)]"
+      >
+        {/* Tomt läge sägs rakt ut. En vilodag är ett giltigt svar på "vad ska
+            jag göra idag", och ska inte se ut som att något saknas. */}
+        {empty && (
+          <p className="text-sm text-[var(--ink-3)]">
+            Inget pass planerat eller loggat idag.
+          </p>
+        )}
+
+        {/* Planerat först: det är instruktionen. Genomfört är kvittot. */}
+        {planned.map((p) => {
+          const label = WORKOUT_LABELS[p.workout_type as WorkoutType] ?? p.workout_type;
+          const detail = describePlannedWorkout(p);
+          return (
+            <div key={p.id} className="flex items-stretch gap-3">
+              <Bar colorVar={workoutTypeColorVar(p.workout_type)} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                    {label}
+                  </span>
+                  {p.title && <span className="text-sm text-[var(--ink-2)]">{p.title}</span>}
+                </div>
+                <span className="tabular text-sm text-[var(--ink-3)]">
+                  {detail ?? "Planerat"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {done.map((d) => {
+          const label = isActivityCategory(d.category)
+            ? CATEGORY_LABELS[d.category]
+            : (d.name ?? "Pass");
+          return (
+            <div key={d.id} className="flex items-stretch gap-3">
+              <Bar colorVar={isActivityCategory(d.category) ? categoryColorVar(d.category) : null} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                    {label}
+                  </span>
+                  <span className="display rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-2)]">
+                    Genomfört
+                  </span>
+                </div>
+                <span className="tabular text-sm text-[var(--ink-3)]">
+                  {[
+                    d.distanceMeters > 0 ? formatKm(d.distanceMeters) : null,
+                    d.durationSeconds > 0 ? formatHoursMinutes(d.durationSeconds) : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "Loggat"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Länktexten sist och högerställd, där KPI-korten har sin
+            utfällningspil. Den satt tidigare uppe bredvid rubriken, men
+            rubriken bor inte i kortet längre — och nedre högra hörnet är
+            redan den plats där dashboardens kort säger "det finns mer här". */}
+        <span className="display flex items-center justify-end text-xs text-[var(--ink-3)]">
           Öppna i kalendern
           <LinkPending />
         </span>
-      </div>
-
-      {/* Tomt läge sägs rakt ut. En vilodag är ett giltigt svar på "vad ska
-          jag göra idag", och ska inte se ut som att något saknas. */}
-      {empty && (
-        <p className="text-sm text-[var(--ink-3)]">
-          Inget pass planerat eller loggat idag.
-        </p>
-      )}
-
-      {/* Planerat först: det är instruktionen. Genomfört är kvittot. */}
-      {planned.map((p) => {
-        const label = WORKOUT_LABELS[p.workout_type as WorkoutType] ?? p.workout_type;
-        const detail = describePlannedWorkout(p);
-        return (
-          <div key={p.id} className="flex items-stretch gap-3">
-            <Bar colorVar={workoutTypeColorVar(p.workout_type)} />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-                  {label}
-                </span>
-                {p.title && <span className="text-sm text-[var(--ink-2)]">{p.title}</span>}
-              </div>
-              <span className="tabular text-sm text-[var(--ink-3)]">
-                {detail ?? "Planerat"}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-
-      {done.map((d) => {
-        const label = isActivityCategory(d.category)
-          ? CATEGORY_LABELS[d.category]
-          : (d.name ?? "Pass");
-        return (
-          <div key={d.id} className="flex items-stretch gap-3">
-            <Bar colorVar={isActivityCategory(d.category) ? categoryColorVar(d.category) : null} />
-            <div className="flex min-w-0 flex-col gap-0.5">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-                  {label}
-                </span>
-                <span className="display rounded-full border border-[var(--line)] px-2 py-0.5 text-xs text-[var(--ink-2)]">
-                  Genomfört
-                </span>
-              </div>
-              <span className="tabular text-sm text-[var(--ink-3)]">
-                {[
-                  d.distanceMeters > 0 ? formatKm(d.distanceMeters) : null,
-                  d.durationSeconds > 0 ? formatHoursMinutes(d.durationSeconds) : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || "Loggat"}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-    </Link>
+      </Link>
+    </section>
   );
 }
