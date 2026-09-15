@@ -10,10 +10,12 @@ import { TrendMark, type TrendDirection } from "@/components/ui/TrendMark";
  * aldrig ställa diagnos eller säga "du är övertränad". Den säger vilken
  * markör som avviker och överlåter slutsatsen.
  *
- * Ringens fyllnad är hur nära din egen baslinje du ligger (se lib/kpi-ring),
- * inte SD-avvikelsen rakt av — SD-talet finns kvar i detaljtabellen för den
- * som klickar, men förstaintrycket är samma "hur nära riktvärdet"-språk som
- * resten av dashboardens KPI:er. */
+ * Färgen kommer ur kvoten mellan nuläget och din egen baslinje (se
+ * lib/kpi-ring), inte ur SD-avvikelsen. Riktningen per markör kommer ur
+ * spec.direction i lib/daily-status: HRV och sömnpoäng är higher_is_better,
+ * vilopuls är lower_is_better. En vilopuls UNDER baslinjen är alltså grön
+ * och samtidigt en pil nedåt — det är avsiktligt, och skälet till att pil
+ * och färg är skilda i TrendMark. */
 
 function formatValue(marker: MarkerStatus): string {
   if (marker.current == null) return "—";
@@ -46,14 +48,35 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
   const effectiveStatus: RingStatus = marker.baseline == null ? "unknown" : status;
 
   /* Pilen visar läget mot baslinjen, inte en trend över tid. Underlaget
-   * (MarkerStatus) har senaste veckans snitt och baslinjens median — men
+   * (MarkerStatus) har senaste veckans median och baslinjens median — men
    * inget föregående fönster, så en riktig tidstrend går inte att räkna fram
-   * här utan att hitta på den. Pilen säger därför "över/under ditt vanliga",
-   * vilket är exakt vad SD-talet bredvid den betyder. */
-  const dev = marker.deviation;
-  const direction: TrendDirection = dev == null || Math.abs(dev) <= 0.05 ? "flat" : dev > 0 ? "up" : "down";
+   * här utan att hitta på den. Pilen säger därför "över/under ditt vanliga".
+   *
+   * Procent och inte standardavvikelser (ändrat 2026-09-15 på begäran): de
+   * andra korten på dashboarden visar procentuell förändring, och "+0,8 SD"
+   * krävde att man kunde begreppet för att läsa kortet alls.
+   *
+   * Bytet gör kortet mer konsekvent även inuti sig självt. FÄRGEN har hela
+   * tiden räknats på kvoten current/baseline (ringFillAndStatus), inte på
+   * SD — så kortet visade ett SD-tal bredvid en färg som kom från en kvot.
+   * Nu kommer båda ur samma tal.
+   *
+   * Priset: SD-talet fanns ingen annanstans i gränssnittet, och det är
+   * SD-tröskeln (DEVIATION_THRESHOLD) som avgör om markören räknas in i
+   * "två eller fler utanför det normala". Den regeln syns fortfarande — men
+   * som eget stycke under rutnätet, inte som ett tal man kan följa här. */
+  const pct =
+    marker.current != null && marker.baseline != null && marker.baseline !== 0
+      ? (marker.current - marker.baseline) / marker.baseline
+      : null;
+
+  // Strecket är knutet till det VISADE talet, inte till en egen tröskel: det
+  // kommer alltid och bara när kortet skriver 0.0%. En pil bredvid en nolla
+  // hade sett ut som ett fel.
+  const direction: TrendDirection =
+    pct == null || Math.abs(pct * 100) < 0.05 ? "flat" : pct > 0 ? "up" : "down";
   const devText =
-    dev == null ? null : `${dev > 0 ? "+" : ""}${dev.toFixed(1).replace(".", ",")} SD`;
+    pct == null ? null : `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(1)}%`;
 
   return (
     <div className="flex flex-col gap-2 bg-[var(--surface)] px-3 py-3">
@@ -62,7 +85,7 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
       </span>
 
       {/* Avvikelsen står på mätvärdets rad — samma flytt som KPI-korten, av
-          samma skäl: "42, 0,8 SD under" är en avläsning, inte två. */}
+          samma skäl: "48 ms, 6,7% över" är en avläsning, inte två. */}
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
           {formatValue(marker)}
@@ -82,7 +105,7 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
         )}
       </div>
 
-      {/* Baslinjen står alltid utskriven. Utan den är "+0,8 SD" ett tal utan
+      {/* Baslinjen står alltid utskriven. Utan den är "+6,7%" ett tal utan
           referens — man vet att man avviker men inte från vad. */}
       <div className="tabular text-xs text-[var(--ink-3)]">
         {marker.baseline != null
