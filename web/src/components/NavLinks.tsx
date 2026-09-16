@@ -11,7 +11,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
  * — layouten själv får aldrig searchParams (bara page.tsx gör det i App
  * Router), så det kräver antingen en klientkomponent eller en cookie. Detta
  * är det enklaste alternativet: samma URL-param-drivna mönster som redan
- * finns i /arsplan, bara återanvänt av menyn också. Sidor utan
+ * finns i /blockoversikt, bara återanvänt av menyn också. Sidor utan
  * löparväljare (en vanlig löpare, eller ingen coach) berörs inte — utan
  * `athlete` i URL:en blir länkarna identiska med innan.
  *
@@ -21,7 +21,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
  * Menyn låg tidigare som en enda rad av åtta jämnstora länkar. Problemet var
  * inte att någon sida var överflödig — det utreddes och avfärdades med data:
  * 94 % av aktiviteterna och 96 % av dagboksinläggen ligger utanför varje
- * säsongsblock, och eftersom /arsplan och /blockplan bara spänner blockens
+ * säsongsblock, och eftersom /blockoversikt och /blockplan bara spänner blockens
  * datum kan de strukturellt inte nå den historiken. Kalendern är alltså inte
  * en dubblett av planeringen.
  *
@@ -74,7 +74,7 @@ const LOGG: NavItem[] = [
 const PLAN: NavItem[] = [
   { href: "/detaljplan", label: "Detaljplan" },
   { href: "/blockplan", label: "Blockplan" },
-  { href: "/arsplan", label: "Årsplan" },
+  { href: "/blockoversikt", label: "Blocköversikt" },
 ];
 
 /** "Uppföljning" (2026-08-27): tränarens statistiksida — alla löpare sida

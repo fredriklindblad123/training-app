@@ -9,7 +9,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
  *
  * Låg fram till 2026-09-14 inuti varje sida, och hamnade därför på olika djup
  * överallt: direkt under rubriken på kalendersidorna, efter rubrik och text på
- * Dashboard, och tre element in på Årsplan — bakom både rubrik och
+ * Dashboard, och tre element in på Blocköversikt — bakom både rubrik och
  * nyckeltalsrad. Att den flyttade sig när man bytte sida gjorde att man fick
  * leta efter den, trots att den är det man använder oftast.
  *
@@ -38,7 +38,7 @@ type Athlete = { id: string; fullName: string | null };
  *
  * Löparen själv ser aldrig väljaren ändå (viewableAthletes ger bara en
  * coach mer än sig själv), så det här rör bara tränarens vy. */
-const NO_SWITCHER_PATHS = ["/arsplan", "/blockplan", "/detaljplan", "/uppfoljning"];
+const NO_SWITCHER_PATHS = ["/blockoversikt", "/blockplan", "/detaljplan", "/uppfoljning"];
 
 export function HeaderAthleteSwitcher({
   athletes,

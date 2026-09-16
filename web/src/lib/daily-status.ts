@@ -112,7 +112,7 @@ export type MarkerStatus = {
    *
    * Driver INTE längre kortens färger — de går på percentilband sedan
    * 2026-09-15 (se WATCH_PERCENTILE). Fältet är kvar för att det fortfarande
-   * är rätt mått på ANNAT håll: /arsplan visar HRV-läget veckan före ett
+   * är rätt mått på ANNAT håll: /blockoversikt visar HRV-läget veckan före ett
    * avbrott och /tavlingsresultat före ett lopp, och där är ett SD-tal ett
    * rimligt jämförbart mått mellan löpare och tillfällen. */
   deviation: number | null;

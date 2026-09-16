@@ -127,7 +127,7 @@ export default async function AppLayout({
           {/* Löparväljaren har EN plats i hela appen, och det är här.
               Den låg tidigare inuti varje sida och hamnade därför på olika
               djup överallt — direkt under rubriken på kalendersidorna, tre
-              element in på Årsplan. Att den flyttade sig när man bytte sida
+              element in på Blocköversikt. Att den flyttade sig när man bytte sida
               gjorde att man fick leta efter det man använder oftast.
               Dold i löparläge: då tittar man på sig själv, och det finns
               inget att växla mellan. Suspense av samma skäl som menyn —

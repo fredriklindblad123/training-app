@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
    *
    *   /trends    → /blocket   — men /blocket blev /trender 2026-08-13
    *   /planering → /sasongen  — men /sasongen togs bort 2026-08-17 och
-   *                             delades i /arsplan + /blockplan
+   *                             delades i /blockoversikt + /blockplan
    *
    * Samma fälla som kommentaren här redan varnade för i augusti (regeln
    * dashboard → idag pekade åt fel håll och gav 404 på "Till appen"), utan
@@ -27,7 +27,8 @@ const nextConfig: NextConfig = {
    *   blocket   → trender    (2026-08-13, sidan visade redan trendanalys)
    *   sasongen  → arsplan + blockplan (2026-08-17, delad i två)
    *   oversikt  → uppfoljning (2026-08-27, ersatt av en bredare vy)
-   *   arsplan   → blockplan  (2026-08-27) — OCH TILLBAKA 2026-09-15, se nedan
+   *   arsplan   → blockplan  (2026-08-27), tillbaka 2026-09-15, och
+   *                             vidare till blockoversikt 2026-09-16
    *
    * 2026-09-15 roterade planeringens tre namn ett steg:
    *   blockplan (block och tidslinje)  → arsplan
@@ -50,8 +51,11 @@ const nextConfig: NextConfig = {
       /* Planeringen. /sasongen delades i två sidor, så det finns inget exakt
        * mål — årsplanen är den halva som ärvde sidans identitet (block,
        * tidslinje, veckorutnät). */
-      { source: "/planering", destination: "/arsplan", permanent: true },
-      { source: "/sasongen", destination: "/arsplan", permanent: true },
+      { source: "/planering", destination: "/blockoversikt", permanent: true },
+      { source: "/sasongen", destination: "/blockoversikt", permanent: true },
+      // Sidan hette Årsplan i två dygn (2026-09-15 till 09-16). Kort, men
+      // adressen hann delas och menyn hann läras in.
+      { source: "/arsplan", destination: "/blockoversikt", permanent: true },
 
       // Översikt ersattes av Uppföljning, som gör samma sak i "Dag"-läget.
       { source: "/oversikt", destination: "/uppfoljning", permanent: true },

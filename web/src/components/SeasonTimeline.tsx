@@ -1,8 +1,20 @@
+/* Tidslinjen visar BLOCKEN, inget annat (2026-09-16).
+ *
+ * Tävlingarna låg tidigare som roterade romber under bandet, med en etikett
+ * under varje. Rapporterat två gånger som svårläst, och orsaken är formatet
+ * snarare än detaljerna: ett band som spänner ett år är några hundra pixlar
+ * brett, och ett tiotal tävlingar med namn, prioritet och datum får inte plats
+ * där utan att skriva över varandra. Att krympa symbolerna hade gjort dem
+ * oläsliga i stället för överlappande.
+ *
+ * Tävlingarna visas i stället som kort och text bredvid tidslinjen, i samma
+ * form som resten av appen använder — översiktens rader har "Nästa
+ * A-tävling" utskrivet, och blocköversikten har en egen tävlingssektion.
+ * Bandet får därmed göra en sak: visa när blocken börjar och slutar.
+ */
 import {
   PHASE_COLOR_VARS,
   PHASE_LABELS,
-  PRIORITY_SHORT,
-  SEASON_LABELS,
   type PeriodType,
   type PhaseType,
   type Priority,
@@ -102,56 +114,6 @@ function axisTicks(
   });
 }
 
-/** Tävlingar som ligger för tätt för att gå att skilja åt slås ihop till en
- * markör med antal.
- *
- * Bakgrunden (rapporterat 2026-08-27): i översiktens kompakta rader låg
- * markörerna så tätt att de blev en grå klump — man såg att NÅGOT hände i
- * juli, men inte vad eller hur många. En 8 px romb kan inte stå bredvid en
- * annan på tre dagars avstånd i ett band som spänner ett helt år.
- *
- * Klustret ärver den HÖGSTA prioriteten i gruppen (A före B före C). Det är
- * medvetet: döljer man en A-tävling bakom färgen för en träningstävling
- * försvinner just det man behöver se. Samma rangordning som Blockplanens
- * veckovy redan använder för sina tävlingsetiketter.
- *
- * `minGapPct` är i procent av bandets bredd och därmed beroende av hur brett
- * bandet råkar renderas — men bandets pixelbredd är inte känd på servern, och
- * att mäta den i klienten vore en helt ny sorts komplexitet för en
- * tröskel som bara avgör när två romber råkar nudda varandra. */
-function clusterCompetitions(
-  competitions: TimelineCompetition[],
-  pct: (dateKey: string) => number,
-  minGapPct: number,
-): { key: string; left: number; items: TimelineCompetition[]; priority: Priority }[] {
-  const sorted = [...competitions].sort((a, b) =>
-    a.competition_date.localeCompare(b.competition_date),
-  );
-  const clusters: { key: string; left: number; items: TimelineCompetition[]; priority: Priority }[] =
-    [];
-
-  for (const c of sorted) {
-    const left = pct(c.competition_date);
-    const last = clusters[clusters.length - 1];
-    if (last && left - last.left < minGapPct) {
-      last.items.push(c);
-      if (PRIORITY_RANK[c.priority] > PRIORITY_RANK[last.priority]) last.priority = c.priority;
-    } else {
-      clusters.push({ key: c.id, left, items: [c], priority: c.priority });
-    }
-  }
-  return clusters;
-}
-
-/** A högst — se motiveringen i clusterCompetitions. */
-const PRIORITY_RANK: Record<Priority, number> = { A: 3, B: 2, C: 1 };
-
-const PRIORITY_COLOR: Record<Priority, string> = {
-  A: "bg-red-600",
-  B: "bg-amber-500",
-  C: "bg-[var(--ink-3)]",
-};
-
 /** Förklaringen till bandets grafik: fasfärger, tävlingsprioriteter och
  * idag-strecket.
  *
@@ -160,13 +122,7 @@ const PRIORITY_COLOR: Record<Priority, string> = {
  * Tidigare fanns legenden bara i det icke-kompakta läget, vilket betydde att
  * översikten — den vy där flest romber trängs — var den enda som inte
  * förklarade vad de betydde. */
-export function SeasonTimelineLegend({
-  phases,
-  hasCompetitions,
-}: {
-  phases: PhaseType[];
-  hasCompetitions: boolean;
-}) {
+export function SeasonTimelineLegend({ phases }: { phases: PhaseType[] }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--ink-3)]">
       {phases.map((t) => (
@@ -178,27 +134,6 @@ export function SeasonTimelineLegend({
           {PHASE_LABELS[t]}
         </span>
       ))}
-      {hasCompetitions && (
-        <>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-red-600" />
-            A-tävling
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-amber-500" />
-            B-tävling
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-[var(--ink-3)]" />
-            C · träningstävling
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2.5 w-2.5 rotate-45 bg-[var(--ink-3)]" />
-            <span className="-ml-1 text-[10px]">2</span>
-            flera samma vecka
-          </span>
-        </>
-      )}
       <span className="flex items-center gap-1.5">
         <span className="inline-block h-3 w-0.5 bg-[var(--foreground)]" />
         Idag
@@ -209,19 +144,17 @@ export function SeasonTimelineLegend({
 
 export function SeasonTimeline({
   blocks,
-  competitions,
   compact,
   rangeStart,
   rangeEnd,
 }: {
   blocks: TimelineBlock[];
-  competitions: TimelineCompetition[];
   /** Mindre band, inga tävlingsetiketter/förklaring under — för
-   * översiktskorten (Alla-läget på /arsplan) där flera löpares tidslinjer
+   * översiktskorten (Alla-läget på /blockoversikt) där flera löpares tidslinjer
    * visas sida vid sida. */
   compact?: boolean;
   /** Fast datumintervall för skalan, i stället för att härleda min/max ur
-   * blocks/competitions — så flera löpares tidslinjer i Alla-läget delar
+   * blocken — så flera löpares tidslinjer i Alla-läget delar
    * exakt samma axel och går att jämföra rakt av (annars auto-skalar varje
    * kort till sin egen data, och samma kalendermånad hamnar på olika
    * x-positioner för olika löpare). Utelämnad = samma auto-skalning som
@@ -229,7 +162,7 @@ export function SeasonTimeline({
   rangeStart?: string;
   rangeEnd?: string;
 }) {
-  if (!rangeStart && blocks.length === 0 && competitions.length === 0) {
+  if (!rangeStart && blocks.length === 0) {
     return (
       <p className="text-sm text-[var(--ink-3)]">
         {compact
@@ -241,12 +174,12 @@ export function SeasonTimeline({
 
   const minKey =
     rangeStart ??
-    [...blocks.map((b) => b.start_date), ...competitions.map((c) => c.competition_date)].reduce(
+    blocks.map((b) => b.start_date).reduce(
       (a, b) => (a < b ? a : b),
     );
   const maxKey =
     rangeEnd ??
-    [...blocks.map((b) => b.end_date), ...competitions.map((c) => c.competition_date)].reduce(
+    blocks.map((b) => b.end_date).reduce(
       (a, b) => (a > b ? a : b),
     );
   const min = dayNumber(minKey);
@@ -333,71 +266,11 @@ export function SeasonTimeline({
             ))}
           </div>
 
-          {/* Tävlingsmarkörer, hopslagna när de ligger för tätt (se
-              clusterCompetitions). Tröskeln är större i kompaktläget: där är
-              bandet smalare, så samma antal dagar blir färre pixlar. */}
-          <div className={`relative mt-1 ${compact ? "h-3" : "h-10"}`}>
-            {clusterCompetitions(competitions, pct, compact ? 4 : 3).map((cluster) => {
-              const many = cluster.items.length > 1;
-              /* Tooltipen listar hela klustret, en rad per tävling, med
-                 prioritet och datum — det är den enda platsen det går att se
-                 VAD en hopslagen markör innehåller. */
-              const title = cluster.items
-                .map(
-                  (c) =>
-                    `${PRIORITY_SHORT[c.priority]} ${shortDate(c.competition_date)} — ${c.name}${
-                      c.venue ? ` (${SEASON_LABELS[c.venue]})` : ""
-                    }`,
-                )
-                .join("\n");
-              return (
-                <div
-                  key={cluster.key}
-                  className="absolute flex -translate-x-1/2 flex-col items-center"
-                  style={{ left: `${cluster.left}%` }}
-                  title={title}
-                >
-                  <div className="flex items-center gap-0.5">
-                    <div
-                      className={`${compact ? "h-2 w-2" : "h-3 w-3"} rotate-45 ${PRIORITY_COLOR[cluster.priority]}`}
-                    />
-                    {many && (
-                      <span
-                        className={`${compact ? "text-[9px]" : "text-[10px]"} font-medium text-[var(--ink-3)]`}
-                      >
-                        {cluster.items.length}
-                      </span>
-                    )}
-                  </div>
-                  {/* Text bara under A-tävlingar (2026-09-15).
-                      Varje kluster hade tidigare en etikett under sig, och med
-                      ett tiotal tävlingar över en säsong kolliderade de med
-                      varandra: de är whitespace-nowrap och centrerade över sin
-                      punkt, så två tävlingar några veckor isär skriver över
-                      varandra även när romberna inte gör det. Det var det som
-                      gjorde bandet plottrigt.
-                      A-loppen är de säsongen planeras runt och de enda vars
-                      datum man behöver kunna läsa utan att peka. Resten har
-                      kvar sin romb, sin färg och hela listan i tooltipen. */}
-                  {!compact && cluster.priority === "A" && (
-                    <span className="mt-0.5 whitespace-nowrap text-[10px] font-medium text-[var(--ink-2)]">
-                      {many
-                        ? `${cluster.items.length} tävlingar`
-                        : shortDate(cluster.items[0].competition_date)}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
 
       {!compact && (
-        <SeasonTimelineLegend
-          phases={[...new Set(sortedBlocks.map((b) => b.phase))]}
-          hasCompetitions={competitions.length > 0}
-        />
+        <SeasonTimelineLegend phases={[...new Set(sortedBlocks.map((b) => b.phase))]} />
       )}
     </div>
   );

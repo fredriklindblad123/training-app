@@ -83,22 +83,22 @@ import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@
 import { fieldClass, primaryButtonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
 
-/* Hette /arsplan ("Årsplan") till 2026-08-27, då den döptes om på uttrycklig
+/* Hette /blockoversikt ("Blocköversikt") till 2026-08-27, då den döptes om på uttrycklig
  * begäran: sidan handlar om BLOCK — skapa dem, se dem på tidslinjen, jämföra
- * dem, läsa statistik per block — och "Årsplan" antydde en kalenderårsvy den
+ * dem, läsa statistik per block — och "Blocköversikt" antydde en kalenderårsvy den
  * aldrig har varit. Samma sorts eftersläpning som när /blocket blev /trender
  * 2026-08-13. Gamla adressen lever kvar som en permanent redirect i
  * next.config.ts, så bokmärken och länkar utifrån inte dör.
  *
- * OBS att "Årsplan" lever kvar på två ställen med flit, och att de INTE ska
+ * OBS att "Blocköversikt" lever kvar på två ställen med flit, och att de INTE ska
  * bytas ut: Excel-exportens flik och kommentarerna som hänvisar till
- * Excel-mallens Årsplan-flik. Den fliken är ett externt dokument (Daniels
+ * Excel-mallens Blocköversikt-flik. Den fliken är ett externt dokument (Daniels
  * "Träningsplanering Friidrottstränare steg 3") vars namn vi inte äger —
  * döps den om här slutar korrespondensen mellan app och mall att gå att följa.
  *
  */
-/* Årsplan: säsongens block, standardvecka och ett veckorutnät som speglar
- * Excel-mallens Årsplan-flik (en kolumn per vecka) — flyttad hit ur
+/* Blocköversikt: säsongens block, standardvecka och ett veckorutnät som speglar
+ * Excel-mallens Blocköversikt-flik (en kolumn per vecka) — flyttad hit ur
  * /sasongen 2026-08-17. Veckomallarnas dag-för-dag-innehåll (tidigare
  * nästlat under varje block) flyttades samtidigt till /blockplan, som
  * speglar mallens Blockplan-flik — se motiveringen i lib/template-sync.ts
@@ -860,16 +860,13 @@ async function ArsplanOverview({
       <div className="flex flex-col gap-2">
         {(overviewPhases.length > 0 || overviewHasCompetitions) && (
           <div className="px-3 pb-1">
-            <SeasonTimelineLegend
-              phases={overviewPhases}
-              hasCompetitions={overviewHasCompetitions}
-            />
+            <SeasonTimelineLegend phases={overviewPhases} />
           </div>
         )}
-        {athleteSummaries.map(({ athlete, activeBlock, nextA, yearBlocks, yearCompetitions }) => (
+        {athleteSummaries.map(({ athlete, activeBlock, nextA, yearBlocks }) => (
           <Link
             key={athlete.id}
-            href={`/arsplan?athlete=${athlete.id}`}
+            href={`/blockoversikt?athlete=${athlete.id}`}
             className="flex flex-wrap items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 hover:bg-[var(--surface-raised)]"
           >
             <div className="w-32 shrink-0 font-medium text-[var(--foreground)]">
@@ -885,7 +882,6 @@ async function ArsplanOverview({
             <div className="min-w-[10rem] flex-1">
               <SeasonTimeline
                 blocks={yearBlocks}
-                competitions={yearCompetitions}
                 compact
                 rangeStart={`${currentYear}-01-01`}
                 rangeEnd={`${currentYear}-12-31`}
@@ -1039,7 +1035,7 @@ export default async function ArsplanPage({
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
-          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Årsplan</h1>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blocköversikt</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
             löparens block och veckomönster.
@@ -1209,7 +1205,7 @@ export default async function ArsplanPage({
     (c) => c.competition_date.slice(0, 4) === currentYear,
   );
 
-  // --- Veckorutnät (speglar Excel-mallens Årsplan-flik) --------------------
+  // --- Veckorutnät (speglar Excel-mallens Blocköversikt-flik) --------------------
   // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
   // använder, se lib/arsplan-grid.ts — de kan aldrig visa olika siffror för
   // samma data. Bara planned_workouts/competitions i blockens datumspann
@@ -1330,14 +1326,14 @@ export default async function ArsplanPage({
             väljaren i sidhuvudet inte längre erbjuder vägen. */}
         {viewedAthleteName && (
           <Link
-            href="/arsplan"
+            href="/blockoversikt"
             className="display text-xs text-[var(--ink-3)] underline underline-offset-2 hover:text-[var(--foreground)]"
           >
             ← Alla löpare
           </Link>
         )}
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
-          Årsplan{viewedAthleteName ? ` — ${viewedAthleteName}` : ""}
+          Blocköversikt{viewedAthleteName ? ` — ${viewedAthleteName}` : ""}
         </h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
@@ -1393,8 +1389,70 @@ export default async function ArsplanPage({
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Säsongsöversikt</h2>
-        <SeasonTimeline blocks={timelineYearBlocks} competitions={timelineYearCompetitions} />
+        <SeasonTimeline blocks={timelineYearBlocks} />
       </section>
+
+      {/* ---------------- Tävlingar ----------------
+          Tävlingarna låg tidigare som romber under tidslinjen och var
+          oläsbara — ett band som spänner ett år rymmer inte ett tiotal
+          tävlingar med namn, prioritet och datum utan att de skriver över
+          varandra. Rapporterat två gånger.
+          Som kort får varje tävling sin egen rad med allt utskrivet, och
+          sektionen följer samma form som resten av appen. Kommande först:
+          det är de som går att planera runt. */}
+      {timelineYearCompetitions.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+            Tävlingar {currentYear}
+          </h2>
+          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 lg:grid-cols-3">
+            {[...timelineYearCompetitions]
+              .sort((a, b) => {
+                // Kommande före passerade, annars kronologiskt.
+                const aPast = a.competition_date < today;
+                const bPast = b.competition_date < today;
+                if (aPast !== bPast) return aPast ? 1 : -1;
+                return a.competition_date.localeCompare(b.competition_date);
+              })
+              .map((c) => {
+                const past = c.competition_date < today;
+                return (
+                  <div
+                    key={c.id}
+                    className={`flex flex-col gap-1 bg-[var(--surface)] px-3 py-2.5 ${
+                      past ? "opacity-60" : ""
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="tabular text-xs text-[var(--ink-3)]">
+                        {c.competition_date}
+                      </span>
+                      {/* Prioriteten som ord, inte som färgad form. En romb
+                          krävde en legend för att betyda något; "A-lopp" gör
+                          det inte. */}
+                      <span
+                        className="display text-xs font-semibold"
+                        style={{
+                          color:
+                            c.priority === "A"
+                              ? "var(--status-concern-ink)"
+                              : c.priority === "B"
+                                ? "var(--status-watch-ink)"
+                                : "var(--ink-3)",
+                        }}
+                      >
+                        {c.priority === "C" ? "Träningstävling" : `${c.priority}-lopp`}
+                      </span>
+                    </div>
+                    <span className="display text-sm leading-tight font-semibold text-[var(--foreground)]">
+                      {c.name}
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        </section>
+      )}
 
       {/* ---------------- Veckorutnät ---------------- */}
       {arsplanWeeks.length > 0 && (
@@ -1402,7 +1460,7 @@ export default async function ArsplanPage({
           <div>
             <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Veckorutnät</h2>
             <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-              En kolumn per vecka, precis som Excel-mallens Årsplan-flik. Pass/dagar/timmar
+              En kolumn per vecka, precis som Excel-mallens Blocköversikt-flik. Pass/dagar/timmar
               räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
               visar ett sant noll. Utfall visar hur många av veckans planerade pass som
               faktiskt genomfördes — eller, om inget är planerat än, hur många genomförda pass
@@ -1605,7 +1663,7 @@ export default async function ArsplanPage({
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Block</h2>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Klicka på ett block för att redigera det. Nya block skapas från{" "}
-          <Link href="/arsplan?athlete=alla" className="underline">
+          <Link href="/blockoversikt?athlete=alla" className="underline">
             Översikt
           </Link>{" "}
           — det är där löparna för blocket väljs. Blockets eget dag-för-dag-veckomönster fylls
@@ -1725,7 +1783,7 @@ export default async function ArsplanPage({
             </p>
           </div>
 
-          <form action="/arsplan" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+          <form action="/blockoversikt" method="get" className="flex flex-wrap items-end gap-3 text-sm">
             {athleteParam && <input type="hidden" name="athlete" value={athleteParam} />}
             <label className="flex flex-col gap-1">
               <span className="text-[var(--ink-2)]">Block A</span>

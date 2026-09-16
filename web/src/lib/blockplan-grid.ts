@@ -9,7 +9,7 @@ import {
 /* Delad mellan Blockplans in-app-rutnät (blockplan/page.tsx) och
  * Excel-exporten (flerarsplan/export/route.ts) — samma "en datamodul, aldrig
  * olika siffror för samma data"-princip som lib/arsplan-grid.ts redan
- * etablerade för Årsplan-fliken. */
+ * etablerade för Blocköversikt-fliken. */
 
 export type BlockplanItemInput = {
   weekday: number;

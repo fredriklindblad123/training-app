@@ -10,7 +10,7 @@ import type { createClient } from "@/lib/supabase/server";
  * länkar dem till, oavsett vad den här filen råkar returnera.
  *
  * Successivt utökat sedan dess till i princip hela appen — dashboard,
- * kalender, trender, tävlingsresultat, /arsplan, /blockplan och
+ * kalender, trender, tävlingsresultat, /blockoversikt, /blockplan och
  * /flerarsplan tar alla emot en `athlete`-param och visar
  * `<AthleteSwitcher>` för en coach. */
 
@@ -181,7 +181,7 @@ export function assignableAthletes(scoped: ScopedProfile): AthleteOption[] {
  * En löpare ser alltid bara sig själv — `athleteParam` ignoreras helt för
  * den rollen. En coach växlar via en `athlete`-query-parameter (samma
  * URL-drivna mönster som resten av appen, se t.ex. `athleteHref` i
- * /arsplan) — och kan växla till sig själv precis som till en länkad löpare (se
+ * /blockoversikt) — och kan växla till sig själv precis som till en länkad löpare (se
  * `viewableAthletes`). Ogiltiga värden faller tillbaka till första länkade
  * löparen. Har coachen ingen länkad löpare alls faller det tillbaka till
  * coachens eget id, vilket bara ger tomma resultat (coachen äger normalt

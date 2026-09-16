@@ -33,17 +33,17 @@ import {
   type BlockplanItemInput,
 } from "@/lib/blockplan-grid";
 
-/* Excel-export: Flerårsplan, Årsplan och (sedan 2026-08-21) Blockplan — de
+/* Excel-export: Flerårsplan, Blocköversikt och (sedan 2026-08-21) Blockplan — de
  * flikar som speglar appens planeringsdata. Målgrupp och övningsbiblioteken
  * skrivs medvetet inte hit (avgränsning bekräftad med användaren), och
  * Utfall (plan mot faktiskt genomfört) likaså — det förblir en ren app-vy på
- * /arsplan tills vidare, uttryckligt val 2026-08-21. Radetiketterna speglar
+ * /blockoversikt tills vidare, uttryckligt val 2026-08-21. Radetiketterna speglar
  * originalmallens rubriker men det här är en ny arbetsbok, inte en ifylld
  * kopia av källfilen.
  *
- * Årsplan-fliken byggs sedan 2026-08-17 ur lib/arsplan-grid.ts och
+ * Blocköversikt-fliken byggs sedan 2026-08-17 ur lib/arsplan-grid.ts och
  * Blockplan-fliken ur lib/blockplan-grid.ts — samma datamoduler som
- * /arsplan och /blockplan använder in-app, så Excel-filen och appvyerna
+ * /blockoversikt och /blockplan använder in-app, så Excel-filen och appvyerna
  * aldrig kan visa olika siffror eller rader för samma data. Antal pass/
  * dagar/timmar räknas alltid live ur faktiskt utrullade planned_workouts
  * (blockets egna manuella "standardvecka"-fält togs bort 2026-08-18 —
@@ -120,7 +120,7 @@ function buildArsplanSheet(
   plannedWorkouts: ArsplanPlannedWorkoutInput[],
   competitions: ArsplanCompetitionInput[],
 ) {
-  const sheet = workbook.addWorksheet("Årsplan");
+  const sheet = workbook.addWorksheet("Blocköversikt");
   const weeks = buildArsplanWeeks(blocks, plannedWorkouts, competitions);
 
   if (weeks.length === 0) {
@@ -209,7 +209,7 @@ function blockplanCellText(items: (BlockplanItemInput & { id: string })[]): stri
 /* Blockplan-fliken: ett dag × träningsfaktor-rutnät per block, grupperat per
  * fas precis som /blockplan-sidan. Raduppsättningen kommer ur
  * lib/blockplan-grid.ts, delad med sidan — samma "en datamodul, aldrig olika
- * rader för samma data"-princip som Årsplan-fliken redan följer. */
+ * rader för samma data"-princip som Blocköversikt-fliken redan följer. */
 function buildBlockplanSheet(workbook: ExcelJS.Workbook, blocks: BlockplanBlockInput[]) {
   const sheet = workbook.addWorksheet("Blockplan");
   sheet.getColumn(1).width = 34;
@@ -293,7 +293,7 @@ export async function GET(request: Request) {
   // blocket" (coachen för ett delat block) sedan multi-löpar-omdesignen
   // (migration 20260816100000), inte "vem det gäller". Att filtrera på
   // user_id här gjorde att exporten tyst returnerade noll block för varje
-  // löpare vars block skapats av en coach; /arsplan-sidan gjorde redan rätt.
+  // löpare vars block skapats av en coach; /blockoversikt-sidan gjorde redan rätt.
   const { data: blockAthleteRows } = await supabase
     .from("season_block_athletes")
     .select("block_id")

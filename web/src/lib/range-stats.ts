@@ -9,7 +9,7 @@ import type { TrainingSession } from "@/lib/sessions";
 /* Statistik för ett datumspann — planerat, utfall och fördelning per passtyp.
  *
  * Hette lib/block-stats.ts fram till 2026-08-27 och räknade bara per
- * träningsblock (/arsplan, uttrycklig begäran 2026-08-22). Funktionen var
+ * träningsblock (/blockoversikt, uttrycklig begäran 2026-08-22). Funktionen var
  * dock aldrig blockspecifik: den filtrerar på [startDate, endDate] och bryr
  * sig inte om var spannet kommer ifrån. /uppfoljning behövde exakt samma
  * siffror per månad, vecka och dag, så namnet fick följa vad koden gör i
