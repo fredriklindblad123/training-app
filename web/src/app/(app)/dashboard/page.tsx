@@ -27,6 +27,7 @@ import {
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
 import { RecordCard } from "@/components/RecordCard";
+import { SeasonContext } from "@/components/SeasonContext";
 import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
@@ -322,6 +323,8 @@ export default async function DashboardPage({
     { data: tomorrowQualityWorkouts },
     { data: todayPlannedRows },
     { data: recentSplitRows },
+    { data: currentBlockRows },
+    { data: nextRaceRow },
   ] = await Promise.all([
     // Bara dagens aktiviteter — sidan äger dagen, inget periodfönster.
     supabase
@@ -395,6 +398,35 @@ export default async function DashboardPage({
        löparen, på appens landningssida. Se migrationen för varför sträckan
        avrundas till närmaste 50 m. */
     supabase.rpc("latest_splits_with_record", { target: scopedUserId }),
+    /* Blocket löparen är inne i — eller nästa som börjar.
+     *
+     * EN fråga för båda fallen: block vars slutdatum inte passerat, sorterade
+     * på startdatum. Det första är antingen det pågående blocket eller, om man
+     * ligger i ett glapp, nästa som börjar. Ett glapp är inget kantfall — när
+     * det här byggdes låg hela gruppen i en lugn period efter tävlingssäsongen
+     * och nästa block började först om tolv dagar, så "inget block" hade varit
+     * det enda man såg.
+     *
+     * !inner-aliaset filtrerar fram just hennes block — samma mönster som
+     * /blockplan använder; ett naivt !inner hade tyst reducerat listan. */
+    supabase
+      .from("season_blocks")
+      .select("name, phase, start_date, end_date, blockFilter:season_block_athletes!inner(athlete_id)")
+      .eq("blockFilter.athlete_id", scopedUserId)
+      .gte("end_date", todayKey)
+      .order("start_date")
+      .limit(1)
+      .maybeSingle(),
+    // Nästa tävling framåt. Dagens räknas med — en tävling man ska springa om
+    // några timmar är fortfarande nästa.
+    supabase
+      .from("competitions")
+      .select("name, competition_date, priority")
+      .eq("user_id", scopedUserId)
+      .gte("competition_date", todayKey)
+      .order("competition_date")
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   // --- Status mot baslinje (P1.2) ----------------------------------------
@@ -593,6 +625,32 @@ export default async function DashboardPage({
           tidigare längst NED, under tre ringsektioner och statusrutan.
           Hela kortet länkar till dagen i kalendern, där passet loggas och
           rättas. --------------------------------------------------------- */}
+      {/* Var i säsongen man är, före dagens pass. Dagens pass svarar på VAD
+          man ska göra; det här svarar på varför — vilket block man bygger i
+          och vad man bygger mot. */}
+      <SeasonContext
+        block={
+          currentBlockRows
+            ? {
+                name: currentBlockRows.name as string,
+                phase: currentBlockRows.phase as string,
+                startDate: currentBlockRows.start_date as string,
+                endDate: currentBlockRows.end_date as string,
+              }
+            : null
+        }
+        nextRace={
+          nextRaceRow
+            ? {
+                name: nextRaceRow.name as string,
+                date: nextRaceRow.competition_date as string,
+                priority: nextRaceRow.priority as string,
+              }
+            : null
+        }
+        todayKey={todayKey}
+      />
+
       <TodaySession
         planned={(todayPlannedRows ?? []) as unknown as TodayPlanned[]}
         /* Varven hör till EN aktivitet, och funktionen svarar bara för den
