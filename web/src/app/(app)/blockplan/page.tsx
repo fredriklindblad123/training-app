@@ -409,10 +409,6 @@ function CompetitionCard({
  * standardveckan sätts numera vid blockskapandet på /arsplan, så det här
  * är platsen där tränaren arbetar med de pass som faktiskt ligger i
  * kalendern. */
-/** Ankaret ScrollToAnchor siktar på. Bara EN rad i hela sidan får det — den
- * vecka som pågår, i det block som råkar täcka den. */
-const CURRENT_WEEK_ANCHOR = "innevarande-vecka";
-
 /** Måndagen i innevarande vecka, i svensk tid.
  *
  * Räknas per rendering och inte en gång i modulen: en serverprocess lever
@@ -477,7 +473,10 @@ function WeekGrid({
                det klistrade sidhuvudet, som annars lägger sig över den. */
             <tr
               key={week.weekStart}
-              id={week.weekStart === currentMonday ? CURRENT_WEEK_ANCHOR : undefined}
+              /* Varje rad bär sitt datum — ScrollToAnchor väljer den första
+                 som är idag eller senare, och behöver därför inte veta något
+                 om block eller om vilken vecka som är "rätt". */
+              data-week={week.weekStart}
               className={`scroll-mt-28 align-top ${
                 week.weekStart === currentMonday ? "bg-[var(--surface-raised)]/60" : ""
               }`}
@@ -752,7 +751,7 @@ export default async function BlockplanPage({
   if ((athleteParam == null || athleteParam === "alla") && scoped.role === "coach") {
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-        <ScrollToAnchor targetId={CURRENT_WEEK_ANCHOR} />
+        <ScrollToAnchor fromWeek={currentMondayKey()} />
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
@@ -814,7 +813,7 @@ export default async function BlockplanPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <ScrollToAnchor targetId={CURRENT_WEEK_ANCHOR} />
+      <ScrollToAnchor fromWeek={currentMondayKey()} />
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">

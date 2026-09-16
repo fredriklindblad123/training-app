@@ -2,28 +2,38 @@
 
 import { useEffect } from "react";
 
-/* Rullar sidan till ett element vid första renderingen.
+/* Rullar Blockplanen till veckan tränaren arbetar i, vid laddning.
  *
- * Finns för Blockplanen, som listar ett blocks alla veckor i kronologisk
- * ordning. Tränaren arbetar nästan alltid i veckan som pågår, och den låg
- * mitt i en lång lista som fick letas fram vid varje besök. Ordningen är
- * kvar — historiken ligger ovanför och nås genom att rulla uppåt, vilket är
- * hur man förväntar sig att en tidslinje beter sig.
+ * Sidan listar ett blocks alla veckor kronologiskt. Tränaren arbetar nästan
+ * alltid i veckan som pågår, och den låg mitt i en lång lista som fick letas
+ * fram vid varje besök. Ordningen är kvar — historiken ligger ovanför och nås
+ * genom att rulla uppåt, vilket är hur en tidslinje förväntas bete sig.
  *
- * En klientkomponent och inte en #-länk i adressen: sidan ska landa rätt när
- * man klickar "Blockplan" i menyn, utan att adressen behöver bära ett ankare.
+ * REGELN: första veckoraden vars datum är detta eller senare.
  *
- * `behavior: "instant"` med flit. En mjuk rullning från sidans topp genom
- * hela historiken tar lång tid och ser ut som att sidan skenar; här är målet
- * utgångsläget, inte en förflyttning man ska kunna följa med blicken.
+ * Ett uttryck, två fall. Finns innevarande vecka i ett block är den första
+ * raden som uppfyller villkoret. Gör den inte det — glapp mellan block, eller
+ * en säsong som inte börjat — blir det i stället nästa vecka som faktiskt är
+ * planerad, vilket är det enda vettiga svaret på "visa var jag är". Jämförelsen
+ * är ren strängjämförelse, vilket fungerar eftersom ISO-datum sorterar
+ * lexikografiskt.
  *
- * Gör ingenting om elementet saknas — ett block utan innevarande vecka (helt
- * i det förflutna eller helt i framtiden) ska ligga kvar överst.
+ * Klientkomponent och inte en #-länk: sidan ska landa rätt när man klickar
+ * "Blockplan" i menyn, utan att adressen behöver bära ett ankare.
+ *
+ * `behavior: "instant"` med flit. En mjuk rullning genom hela historiken tar
+ * lång tid och ser ut som att sidan skenar; här är målet utgångsläget, inte en
+ * förflyttning man ska kunna följa med blicken.
+ *
+ * Gör ingenting om ingen rad kvalificerar — ett block helt i det förflutna
+ * ska ligga kvar där det är.
  */
-export function ScrollToAnchor({ targetId }: { targetId: string }) {
+export function ScrollToAnchor({ fromWeek }: { fromWeek: string }) {
   useEffect(() => {
-    document.getElementById(targetId)?.scrollIntoView({ block: "start", behavior: "instant" });
-  }, [targetId]);
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("[data-week]"));
+    const target = rows.find((r) => (r.dataset.week ?? "") >= fromWeek);
+    target?.scrollIntoView({ block: "start", behavior: "instant" });
+  }, [fromWeek]);
 
   return null;
 }

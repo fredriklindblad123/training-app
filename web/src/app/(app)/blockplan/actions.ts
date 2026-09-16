@@ -29,6 +29,10 @@ function num(form: FormData, key: string): number | null {
 function refresh() {
   revalidatePath("/blockplan");
   revalidatePath("/arsplan");
+  // Detaljplanen läser samma planerade pass, en vecka i taget. Utan den här
+  // raden ser ett pass tillagt därifrån ut att inte hända förrän cachen
+  // råkar gå ut.
+  revalidatePath("/detaljplan");
   revalidatePath("/calendar", "layout");
 }
 

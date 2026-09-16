@@ -337,7 +337,7 @@ export function SeasonTimeline({
               clusterCompetitions). Tröskeln är större i kompaktläget: där är
               bandet smalare, så samma antal dagar blir färre pixlar. */}
           <div className={`relative mt-1 ${compact ? "h-3" : "h-10"}`}>
-            {clusterCompetitions(competitions, pct, compact ? 3 : 1.5).map((cluster) => {
+            {clusterCompetitions(competitions, pct, compact ? 4 : 3).map((cluster) => {
               const many = cluster.items.length > 1;
               /* Tooltipen listar hela klustret, en rad per tävling, med
                  prioritet och datum — det är den enda platsen det går att se
@@ -369,11 +369,21 @@ export function SeasonTimeline({
                       </span>
                     )}
                   </div>
-                  {!compact && (
-                    <span className="mt-0.5 whitespace-nowrap text-[10px] text-[var(--ink-3)]">
+                  {/* Text bara under A-tävlingar (2026-09-15).
+                      Varje kluster hade tidigare en etikett under sig, och med
+                      ett tiotal tävlingar över en säsong kolliderade de med
+                      varandra: de är whitespace-nowrap och centrerade över sin
+                      punkt, så två tävlingar några veckor isär skriver över
+                      varandra även när romberna inte gör det. Det var det som
+                      gjorde bandet plottrigt.
+                      A-loppen är de säsongen planeras runt och de enda vars
+                      datum man behöver kunna läsa utan att peka. Resten har
+                      kvar sin romb, sin färg och hela listan i tooltipen. */}
+                  {!compact && cluster.priority === "A" && (
+                    <span className="mt-0.5 whitespace-nowrap text-[10px] font-medium text-[var(--ink-2)]">
                       {many
                         ? `${cluster.items.length} tävlingar`
-                        : `${PRIORITY_SHORT[cluster.items[0].priority]} ${shortDate(cluster.items[0].competition_date)}`}
+                        : shortDate(cluster.items[0].competition_date)}
                     </span>
                   )}
                 </div>

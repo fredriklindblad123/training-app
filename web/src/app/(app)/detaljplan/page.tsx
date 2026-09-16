@@ -5,9 +5,13 @@ import {
   SLOT_LABELS,
   WEEKDAY_LABELS,
   WORKOUT_LABELS,
+  WORKOUT_TYPES,
   workoutTypeColorVar,
   type WorkoutType,
 } from "@/lib/planning";
+import { canEditPlanning } from "@/lib/auth-scope";
+import { addPassOnDate } from "@/app/(app)/blockplan/actions";
+import { fieldClass, smallButtonClass } from "@/components/ui/controls";
 import { formatKm, formatHoursMinutes } from "@/lib/format";
 import {
   buildPlanWeeks,
@@ -165,6 +169,62 @@ function PassCard({
   );
 }
 
+/* "+ nytt pass" på en dag, samma handling som Blockplanens veckovy använder
+ * (begärd 2026-09-16).
+ *
+ * Återanvänder addPassOnDate rakt av i stället för en egen kopia. Den gör
+ * mer än den ser ut att göra — väljer första lediga slot så ett nytt pass på
+ * en dag som redan har ett förmiddagspass blir eftermiddagens, och hoppar
+ * över löpare som redan har passet så en dubbelklickad knapp inte ger två.
+ * En andra implementation hade tappat båda.
+ *
+ * Kräver ett block: det är blocket som avgör VILKA löpare passet skapas för.
+ * En dag utanför alla block får därför ingen knapp — det finns ingen grupp
+ * att skapa passet åt, och ett pass utan block skulle dessutom falla utanför
+ * Blockplanens veckorutnät.
+ */
+function DayAddPass({
+  blockId,
+  date,
+  blockAthletes,
+}: {
+  blockId: string;
+  date: string;
+  blockAthletes: { id: string; fullName: string | null }[];
+}) {
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer list-none text-[11px] text-[var(--ink-3)] hover:text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+        + nytt pass
+      </summary>
+      <form action={addPassOnDate} className="mt-1.5 flex flex-col gap-1.5">
+        <input type="hidden" name="block_id" value={blockId} />
+        <input type="hidden" name="scheduled_date" value={date} />
+        <select name="workout_type" defaultValue="easy" className={fieldClass} aria-label="Typ">
+          {WORKOUT_TYPES.map((w) => (
+            <option key={w} value={w}>
+              {WORKOUT_LABELS[w]}
+            </option>
+          ))}
+        </select>
+        {blockAthletes.length > 1 && (
+          <select name="scope" defaultValue="alla" className={fieldClass} aria-label="Gäller">
+            <option value="alla">Alla på blocket</option>
+            {blockAthletes.map((a) => (
+              <option key={a.id} value={a.id}>
+                Bara {a.fullName ?? "namnlös löpare"}
+              </option>
+            ))}
+          </select>
+        )}
+        <button type="submit" className={smallButtonClass}>
+          Lägg till
+        </button>
+      </form>
+    </details>
+  );
+}
+
 export default async function DetaljplanPage({
   searchParams,
 }: {
@@ -183,6 +243,7 @@ export default async function DetaljplanPage({
   const weekStart = mondayOf(DATE_KEY.test(week ?? "") ? (week as string) : today);
   const weekEnd = addDaysKey(weekStart, 6);
   const thisMonday = mondayOf(today);
+  const canEdit = canEditPlanning(scoped);
 
   /* En löpare ser sin egen vecka; en coach ser sina adepter. Coachens EGEN
    * träning hör inte hit — den är en logg, inte en planering hen coachar, och
@@ -197,11 +258,21 @@ export default async function DetaljplanPage({
 
   let passes: PlannedPassRow[] = [];
   const blockByPass = new Map<string, string>();
+  /* Block som överlappar veckan, för "+ nytt pass". Ett block per dag räcker:
+   * blocken är perioder i en säsong och överlappar inte varandra. Skulle två
+   * ändå göra det vinner det som börjar först, vilket är godtyckligt men
+   * stabilt — bättre än att visa två knappar som gör nästan samma sak. */
+  let weekBlocks: {
+    id: string;
+    start_date: string;
+    end_date: string;
+    season_block_athletes: { athlete_id: string }[] | null;
+  }[] = [];
   let competitions: CompetitionRow[] = [];
   const outcomes = new Map<string, PlanOutcome>();
 
   if (athleteIds.length > 0) {
-    const [{ data: plannedRows }, { data: competitionRows }, { data: activityRows }] =
+    const [{ data: plannedRows }, { data: competitionRows }, { data: activityRows }, { data: blockRows }] =
       await Promise.all([
         supabase
           .from("planned_workouts")
@@ -228,7 +299,15 @@ export default async function DetaljplanPage({
           .gte("start_time", weekStart)
           .lte("start_time", addDaysKey(weekEnd, 1))
           .order("start_time"),
+        supabase
+          .from("season_blocks")
+          .select("id, start_date, end_date, season_block_athletes(athlete_id)")
+          .lte("start_date", weekEnd)
+          .gte("end_date", weekStart)
+          .order("start_date"),
       ]);
+
+    weekBlocks = (blockRows ?? []) as typeof weekBlocks;
 
     passes = (plannedRows ?? []) as PlannedPassRow[];
     /* Blocket per pass, för länken vidare. Dagsvyn väljer sina kolumner ur
@@ -380,10 +459,10 @@ export default async function DetaljplanPage({
                   </div>
                 ))}
 
-                {day.passes.length === 0 && day.competitions.length === 0 ? (
+                {day.passes.length === 0 && day.competitions.length === 0 && (
                   <span className="px-0.5 text-xs text-[var(--ink-3)]">—</span>
-                ) : (
-                  day.passes.map((g) => (
+                )}
+                {day.passes.map((g) => (
                     <PassCard
                       key={g.key}
                       group={g}
@@ -397,8 +476,29 @@ export default async function DetaljplanPage({
                           : ""
                       }`}
                     />
-                  ))
-                )}
+                ))}
+
+                {/* Dagens block avgör vilka löpare ett nytt pass skapas för.
+                    Utanför alla block finns ingen sådan grupp, och då heller
+                    ingen knapp. */}
+                {canEdit &&
+                  (() => {
+                    const block = weekBlocks.find(
+                      (b) => b.start_date <= day.date && day.date <= b.end_date,
+                    );
+                    if (!block) return null;
+                    const ids = (block.season_block_athletes ?? []).map((r) => r.athlete_id);
+                    return (
+                      <DayAddPass
+                        blockId={block.id}
+                        date={day.date}
+                        blockAthletes={ids.map((id) => ({
+                          id,
+                          fullName: namesById.get(id) ?? null,
+                        }))}
+                      />
+                    );
+                  })()}
               </section>
             );
           })}
