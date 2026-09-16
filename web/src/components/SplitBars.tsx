@@ -49,6 +49,7 @@ export function SplitBars({
   const timed = splits.filter((s) => (s.durationSeconds ?? 0) > 0);
   if (timed.length < 2) return null;
 
+  const base = Math.min(...timed.map((s) => s.splitIndex));
   const max = Math.max(...timed.map((s) => s.durationSeconds as number));
   const fastest = Math.min(...timed.map((s) => s.durationSeconds as number));
 
@@ -73,8 +74,11 @@ export function SplitBars({
           const best = secs === fastest;
           return (
             <div key={s.splitIndex} className="flex items-center gap-2">
+              {/* Garmin numrerar varven från noll. Att visa "0, 1, 2" för det
+                  som en löpare räknar som första, andra, tredje varvet är
+                  bara förvirrande — numret är en etikett, inte ett index. */}
               <span className="tabular w-5 shrink-0 text-xs text-[var(--ink-3)]">
-                {s.splitIndex}
+                {s.splitIndex + (base === 0 ? 1 : 0)}
               </span>
               {/* Stapeln ligger i ett EGET spår som får resten av bredden.
                   Procenten räknades först direkt på stapeln, men den satt då i

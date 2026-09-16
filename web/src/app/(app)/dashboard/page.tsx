@@ -30,6 +30,7 @@ import { STATUS_LABEL } from "@/lib/calendar-utils";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, type TodayPlanned } from "@/components/TodaySession";
 import { SplitBars } from "@/components/SplitBars";
+import { RecordCard } from "@/components/RecordCard";
 import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
@@ -466,28 +467,12 @@ export default async function DashboardPage({
       .eq("user_id", scopedUserId)
       .eq("scheduled_date", todayKey)
       .order("slot", { ascending: true }),
-    /* Mellantiderna från det senaste passet som har några (P: designförslaget
-       2026-09-16). Datan har funnits i activity_splits hela tiden och visades
-       ingenstans — för en medeldistanslöpare är varvtiderna det mest
-       intressanta som finns.
-
-       Ordnas på splitens EGEN start_time, inte på aktivitetens, så att hela
-       hämtningen blir en enda runda i den här Promise.all i stället för
-       "hitta senaste passet, hämta sedan dess varv" i två steg. De senaste 40
-       aktiva varven räcker med marginal för ett pass; vilorna hämtas inte
-       alls, de är inte det man jämför.
-
-       !inner på activities är filtret som gör att man bara får sina egna varv
-       — activity_splits har ingen egen user_id. */
-    supabase
-      .from("activity_splits")
-      .select(
-        "activity_id, split_index, distance_meters, duration_seconds, start_time, activities!inner(user_id, name, category)",
-      )
-      .eq("activities.user_id", scopedUserId)
-      .eq("split_type", "active")
-      .order("start_time", { ascending: false })
-      .limit(40),
+    /* Senaste passets varv OCH årets bästa tid på samma sträcka, i en runda.
+       Jämförelsen görs i databasen: att skicka hem årets alla varv för att
+       kunna säga "snabbaste i år" vore 1 242 rader för den mest aktiva
+       löparen, på appens landningssida. Se migrationen för varför sträckan
+       avrundas till närmaste 50 m. */
+    supabase.rpc("latest_splits_with_record", { target: scopedUserId }),
   ]);
 
   // --- Status mot baslinje (P1.2) ----------------------------------------
@@ -613,46 +598,45 @@ export default async function DashboardPage({
   // Raderna kom sorterade nyast först; alla som hör till samma aktivitet som
   // den allra senaste är det pass vi visar. Sedan vänds de till stigande
   // ordning, eftersom varv läses 1, 2, 3 — inte baklänges.
+  /* Funktionen svarar bara för SENASTE passet, och bara om det har aktiva
+   * varv. Ett lugnt distanspass har inga och ger noll rader — då visas ingen
+   * varvsektion alls.
+   *
+   * Det här var en rapporterad bugg innan: koden tog det senaste passet SOM
+   * HADE VARV, vilket kunde vara ett intervallpass flera dagar bak, och
+   * visade alltså intervaller för en dag då löparen sprang distans. */
   type SplitRowRaw = {
-    activity_id: string;
     split_index: number;
     distance_meters: number | null;
     duration_seconds: number | null;
-    start_time: string;
-    activities: { name: string | null; category: string | null } | null;
+    activity_name: string | null;
+    activity_category: string | null;
+    started: string | null;
+    previous_best: number | null;
   };
-  const splitRows = (recentSplitRows ?? []) as unknown as SplitRowRaw[];
-
-  /* Varven måste höra till SENASTE PASSET, inte till senaste passet som råkar
-   * ha varv.
-   *
-   * Frågan hämtar de senaste aktiva varven, och tog man bara det översta fick
-   * man det senaste INTERVALLPASSET — som kan ligga flera dagar bak. Det såg
-   * ut som att dagens lugna distanspass hade varv, vilket rapporterades:
-   * intervaller visades för en dag då löparen sprang distans.
-   *
-   * Nu jämförs mot id:t på den allra senaste aktiviteten. Har den inga varv
-   * visas ingen sektion alls — ett distanspass HAR inga varv, och att då visa
-   * ett annat pass vore att svara på en fråga ingen ställt. */
-  const newestActivityId =
-    (allActivityRows ?? []).length > 0
-      ? ((allActivityRows as unknown as { id: string; start_time: string }[]).reduce((a, b) =>
-          a.start_time >= b.start_time ? a : b,
-        ).id ?? null)
-      : null;
-
-  const latestSplits = newestActivityId
-    ? splitRows
-        .filter((r) => r.activity_id === newestActivityId)
-        .sort((a, b) => a.split_index - b.split_index)
-    : [];
-  const splitMeta = latestSplits[0]?.activities ?? null;
-  const splitCategory = splitMeta?.category ?? null;
+  const latestSplits = ((recentSplitRows ?? []) as unknown as SplitRowRaw[]).slice();
+  const splitCategory = latestSplits[0]?.activity_category ?? null;
   const splitTitle =
     splitCategory && isActivityCategory(splitCategory)
       ? CATEGORY_LABELS[splitCategory]
-      : (splitMeta?.name ?? "Pass");
-  const splitDate = latestSplits[0]?.start_time?.slice(0, 10) ?? "";
+      : (latestSplits[0]?.activity_name ?? "Pass");
+  const splitDate = latestSplits[0]?.started?.slice(0, 10) ?? "";
+
+  /* --- Rekordet -----------------------------------------------------------
+   * Snabbaste varvet i passet, om det slår årets bästa på samma sträcka.
+   * previous_best är null när det inte finns någon tidigare tid att jämföra
+   * mot — då är det inte ett rekord utan ett första värde, och kortet visas
+   * inte. Marginalen måste vara minst en halv sekund: Garmins varvtider är
+   * inte exakta på hundradelen, och ett "rekord" på två hundradelar hade
+   * dykt upp stup i kvarten och slutat betyda något. */
+  const record = latestSplits
+    .filter(
+      (s) =>
+        s.duration_seconds != null &&
+        s.previous_best != null &&
+        s.duration_seconds <= s.previous_best - 0.5,
+    )
+    .sort((a, b) => (a.duration_seconds as number) - (b.duration_seconds as number))[0];
 
   /* --- Sviten som rutor -------------------------------------------------- */
   // En ruta per kalendervecka bakåt, med veckans antal pass och om någon av
@@ -717,6 +701,16 @@ export default async function DashboardPage({
           plats säger mer när talet ställs mot den egna baslinjen — "80 ms"
           betyder ingenting utan "normalt 74". Två rader med samma mätvärden
           strax under varandra var dessutom ren dubblering. ------------- */}
+      {/* Rekordet före varven: slog man något ska det vara det första man ser,
+          inte något man hittar efter att ha läst en stapellista. */}
+      {record && (
+        <RecordCard
+          distanceMeters={record.distance_meters}
+          durationSeconds={record.duration_seconds as number}
+          previousBest={record.previous_best as number}
+        />
+      )}
+
       {/* Varven direkt under dagens pass: det är de två sakerna en löpare
           öppnar appen för — vad ska jag göra, och hur gick det sist.
           Ritas bara när passet faktiskt har varv; ett lugnt distanspass har

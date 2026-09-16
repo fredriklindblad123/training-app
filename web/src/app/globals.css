@@ -177,3 +177,12 @@ body {
   font-family: var(--font-display), var(--font-body), ui-sans-serif, sans-serif;
   letter-spacing: -0.01em;
 }
+
+/* Rekordkortets entré. Ett kort svep uppåt med en antydan till skala — inte
+   en studs: det ska läsas som att kortet landar, inte som en leksak.
+   Definieras globalt eftersom Tailwind inte kan generera keyframes åt en
+   arbiträr animate-[]-klass. */
+@keyframes record {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
