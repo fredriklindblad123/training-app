@@ -749,10 +749,18 @@ export default async function DashboardPage({
               : (latestSession.dominantActivity.name ?? "Pass")
           }
           dateLabel={latestSession.date}
+          category={latestSession.category}
           summary={{
             distanceMeters: latestSession.distanceMeters,
             durationSeconds: latestSession.durationSeconds,
             avgHr: latestSession.avgHr,
+            zoneSeconds: [
+              latestSession.hrZone1Seconds,
+              latestSession.hrZone2Seconds,
+              latestSession.hrZone3Seconds,
+              latestSession.hrZone4Seconds,
+              latestSession.hrZone5Seconds,
+            ],
           }}
         />
       )}

@@ -1,4 +1,5 @@
 import { formatDuration, formatHoursMinutes, formatKm, formatPace } from "@/lib/format";
+import { ZONE_DESCRIPTIONS, ZONE_LABELS, zoneColorVar } from "@/lib/intensity";
 
 /* Mellantiderna från senaste passet, som staplar.
  *
@@ -97,6 +98,32 @@ function selectReps(splits: SplitRow[]): { reps: SplitRow[]; label: string } {
   return { reps: splits, label: `${splits.length} varv` };
 }
 
+/** Kategorier där varvtider ÄR innehållet. Allt annat beskrivs bättre av
+ * fart, tid och puls. */
+function latestCategoryIsInterval(category: string): boolean {
+  return category === "interval";
+}
+
+/** Zonen passet faktiskt tillbringades i.
+ *
+ * Härledd ur klockans egna zontider, inte ur beräknade gränser: gränserna
+ * finns inte lagrade i appen (profiles har max_hr och tröskelpuls, men inte
+ * zonindelningen), och att räkna fram egna ur maxpuls hade kunnat motsäga de
+ * tider Garmin redan rapporterat.
+ *
+ * Det svarar strikt på "var låg tyngdpunkten", inte "i vilken zon hamnar
+ * medelpulsen" — för ett jämnt distanspass är det samma sak, och andelen
+ * står utskriven så att man ser hur entydigt det är. */
+function dominantZone(
+  zoneSeconds: [number, number, number, number, number],
+): { index: number; share: number } | null {
+  const total = zoneSeconds.reduce((a, b) => a + b, 0);
+  if (total <= 0) return null;
+  let index = 0;
+  for (let i = 1; i < 5; i++) if (zoneSeconds[i] > zoneSeconds[index]) index = i;
+  return { index, share: zoneSeconds[index] / total };
+}
+
 /** Ett nyckeltal i sammanfattningen för ett distanspass. */
 function Metric({ label, value }: { label: string; value: string }) {
   return (
@@ -116,6 +143,7 @@ export function SplitBars({
   title,
   dateLabel,
   summary,
+  category,
 }: {
   splits: SplitRow[];
   /** Passets namn, t.ex. "Intervaller". */
@@ -127,10 +155,29 @@ export function SplitBars({
     distanceMeters: number;
     durationSeconds: number;
     avgHr: number | null;
+    /** Sekunder i zon 1–5, från klockan. */
+    zoneSeconds: [number, number, number, number, number];
   } | null;
+  /** Passets kategori. AVGÖR vilken vy som visas — se nedan. */
+  category: string;
 }) {
   const all = splits.filter((s) => (s.durationSeconds ?? 0) > 0);
-  const found = all.length >= 2 ? selectReps(all) : null;
+
+  /* KATEGORIN avgör, inte om det råkar finnas varv (rättat 2026-09-16).
+   *
+   * Ett distanspass har nästan alltid varv ändå: klockan tar ett autovarv per
+   * kilometer. Den gamla regeln letade efter en grupp varv som hörde ihop,
+   * hittade "10×1000 m" i ett lugnt niokilometerspass och ritade
+   * kilometerstaplar — precis den vilseledande vyn som skulle bort.
+   * Rapporterat på Daniels distanspass.
+   *
+   * Tröskelpass får gå på gruppregeln, för de är verkligen två olika saker:
+   * ett löpande tempopass har inga repetitioner, "6×3 min" har det. */
+  const repBased =
+    latestCategoryIsInterval(category) ||
+    (category === "threshold" && all.length >= 2 && !selectReps(all).label.endsWith("varv"));
+
+  const found = repBased && all.length >= 2 ? selectReps(all) : null;
 
   /* Ett DISTANSPASS har inga repetitioner, och varvtider säger inget om det.
    *
@@ -145,6 +192,7 @@ export function SplitBars({
   if (!found || found.label.endsWith("varv")) {
     if (!summary || summary.distanceMeters <= 0 || summary.durationSeconds <= 0) return null;
     const paceSeconds = summary.durationSeconds / (summary.distanceMeters / 1000);
+    const zone = dominantZone(summary.zoneSeconds);
     return (
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -161,6 +209,27 @@ export function SplitBars({
           <Metric label="Tid" value={formatHoursMinutes(summary.durationSeconds)} />
           {summary.avgHr != null && (
             <Metric label="Medelpuls" value={`${summary.avgHr}`} />
+          )}
+          {/* Zonen bredvid pulsen: 144 slag säger inget utan att man vet vad
+              det är för den här löparen. Punkten bär zonens egen färg, samma
+              som i diagrammen på /trender. */}
+          {zone && (
+            <div className="flex flex-col gap-0.5">
+              <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                Pulszon
+              </span>
+              <span className="display flex items-center gap-1.5 text-2xl leading-none font-bold text-[var(--foreground)]">
+                <span
+                  aria-hidden
+                  className="inline-block h-3 w-3 shrink-0 rounded-sm"
+                  style={{ backgroundColor: zoneColorVar(zone.index) }}
+                />
+                {ZONE_LABELS[zone.index]}
+              </span>
+              <span className="text-xs text-[var(--ink-3)]">
+                {ZONE_DESCRIPTIONS[zone.index]} · {Math.round(zone.share * 100)}% av tiden
+              </span>
+            </div>
           )}
         </div>
       </section>
