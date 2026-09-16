@@ -13,6 +13,8 @@ import { NavLinks, NavLinksView } from "@/components/NavLinks";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { HeaderAthleteSwitcher } from "@/components/HeaderAthleteSwitcher";
 import { RefreshGarmin } from "@/components/RefreshGarmin";
+import { LoggTabBar } from "@/components/LoggTabBar";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { getViewMode } from "@/lib/view-mode";
 import { syncTargetsFromScope, triggerGarminSyncForAll } from "@/lib/garmin-sync";
 
@@ -182,21 +184,52 @@ export default async function AppLayout({
             <RefreshGarmin />
           </Suspense>
 
-          {/* Växeln närmast kontot: den byter vem DU är i appen, inte vad du
-              tittar på. Bara för en coach — en adept är bara löpare. */}
-          {isCoach && <ViewModeToggle mode={mode} />}
-          {/* Adressen är identitet, inte ett val. Den viker först när det blir
-              trångt — xl och uppåt — eftersom lägesväxeln redan svarar på
-              "vem är jag just nu" på de smalare skärmarna. */}
-          <span className="hidden xl:inline">{scoped.email}</span>
-          <form action={signOut}>
-            <button type="submit" className="hover:text-[var(--foreground)]">
-              Logga ut
-            </button>
-          </form>
+          {/* Kontot samlat bakom EN knapp (2026-09-16).
+              Lägesväxeln, adressen och utloggningen låg utspridda i raden och
+              tog plats från det man faktiskt använder. Att byta mellan
+              tränare och löpare gör man några gånger i veckan, inte per
+              minut, och att logga ut ännu mer sällan — de hör hemma bakom ett
+              klick, inte framför. */}
+          <Dropdown
+            align="right"
+            width="w-56"
+            label={
+              <span
+                aria-hidden
+                className="display flex h-7 w-7 items-center justify-center rounded-full bg-[var(--surface-raised)] text-xs font-bold text-[var(--foreground)]"
+              >
+                {(scoped.email ?? "?").charAt(0).toUpperCase()}
+              </span>
+            }
+          >
+            <span className="truncate px-2 pt-1 pb-2 text-xs text-[var(--ink-3)]">
+              {scoped.email}
+            </span>
+            {isCoach && (
+              <div className="border-t border-[var(--line)] px-2 py-2">
+                <ViewModeToggle mode={mode} />
+              </div>
+            )}
+            <form action={signOut} className="border-t border-[var(--line)] pt-2">
+              <button
+                type="submit"
+                className="w-full rounded-md px-2 py-1 text-left text-sm text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
+              >
+                Logga ut
+              </button>
+            </form>
+          </Dropdown>
         </div>
       </header>
       <main className="flex flex-1 flex-col">{children}</main>
+
+      {/* Tabbrad i botten, bara på telefon. Menyn låg i sidhuvudet, alltså
+          längst bort från tummen. Suspense av samma skäl som menyn ovan:
+          komponenten läser searchParams för att bära löparvalet mellan
+          flikarna. */}
+      <Suspense fallback={null}>
+        <LoggTabBar />
+      </Suspense>
     </div>
   );
 }

@@ -178,24 +178,34 @@ export function NavLinksView({
 
   /* Alla länkar i en platt lista — mobilmenyn visar dem staplade och behöver
      inte grupperingens vågräta avdelare. */
+  /* Loggvyerna är INTE med i den hopfällda mobilmenyn — de bor i tabbraden i
+   * botten sedan 2026-09-16. Att lista dem båda ställena hade gjort menyn
+   * längre utan att göra något nåbart som inte redan var det.
+   * `current` räknas däremot på ALLA länkar, så knappen fortfarande visar var
+   * man är även när man står på en loggvy. */
   const flat: { group: string; items: NavItem[] }[] = [
-    { group: "Logg", items: LOGG },
     ...(showPlan ? [{ group: "Plan", items: plan }] : []),
     { group: "", items: [SETTINGS] },
   ];
   const current =
-    flat.flatMap((g) => g.items).find((l) => pathname === l.href || pathname.startsWith(`${l.href}/`))
-      ?.label ?? "Meny";
+    [...LOGG, ...flat.flatMap((g) => g.items)].find(
+      (l) => pathname === l.href || pathname.startsWith(`${l.href}/`),
+    )?.label ?? "Meny";
 
   return (
     <>
       {/* ---- Bred skärm: allt utskrivet ---- */}
       <nav className="display hidden flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium sm:flex">
-        {renderGroup("nav-logg", "Logg", LOGG)}
+        {/* Loggruppen döljs under lg: där tar tabbraden i botten över, och två
+            menyer med samma fyra länkar är en meny för mycket. Plan-gruppen
+            står kvar — den hör inte hemma i en tabbrad (se LoggTabBar). */}
+        <span className="hidden lg:contents">
+          {renderGroup("nav-logg", "Logg", LOGG)}
 
-        {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
-            role="group", så den ska inte läsas upp. */}
-        <span aria-hidden className="h-4 w-px bg-[var(--line)]" />
+          {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
+              role="group", så den ska inte läsas upp. */}
+          <span aria-hidden className="h-4 w-px bg-[var(--line)]" />
+        </span>
 
         {showPlan && (
           <>

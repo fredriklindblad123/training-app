@@ -5,40 +5,53 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { Dropdown } from "@/components/ui/Dropdown";
 
-/* Löparväljaren i sidhuvudet.
+/* Löparväljaren: ansikten, inte en meny.
  *
- * Låg fram till 2026-09-14 inuti varje sida, och hamnade därför på olika djup
- * överallt: direkt under rubriken på kalendersidorna, efter rubrik och text på
- * Dashboard, och tre element in på Blocköversikt — bakom både rubrik och
- * nyckeltalsrad. Att den flyttade sig när man bytte sida gjorde att man fick
- * leta efter den, trots att den är det man använder oftast.
+ * Var tidigare namnpills på bred skärm och en hopfällbar meny på smal. Menyn
+ * kostade ett extra klick före varje byte och kunde dessutom stå öppen när man
+ * inte ville det. Med fyra adepter finns det ingen anledning att gömma dem
+ * bakom en lista — de får plats som fyra cirklar, och tränaren pekar på en
+ * person i stället för att öppna en meny och läsa namn.
  *
- * Nu en enda placering, bredvid lägesväxeln: valen som ändrar VEM och VAD DU
- * ÄR står tillsammans, skilda från navigeringen som ändrar VAR du är.
+ * Över MAX_AVATARS faller den tillbaka på den gamla menyn. Ansikten fungerar
+ * så länge man känner igen dem på en initial; en hel klubb gör man inte.
  *
- * Klientkomponent av nödvändighet — en layout får aldrig searchParams i App
- * Router, så den som ska bevara sidans övriga parametrar måste läsa dem på
- * klienten. Det är också vad som gör `buildHref` överflödig: länken byggs ur
- * nuvarande pathname plus nuvarande parametrar med `athlete` utbytt, vilket
- * bevarar sidans egna filter utan att varje sida behöver beskriva hur.
+ * Kulören härleds ur löparens id och är därmed STABIL — samma person har
+ * samma färg i varje vy, varje dag. En slumpad eller indexbaserad färg hade
+ * flyttat sig när roster ändras, och då betyder färgen ingenting.
  *
- * Bara serialiserbara props (strängar och en array av strängar) — se
- * scripts/check-client-boundary.mjs för varför det är viktigt.
+ * Syns inte alls i planeringsvyerna (se NO_SWITCHER_PATHS): de visar redan
+ * alla löpare sida vid sida.
  */
 
 type Athlete = { id: string; fullName: string | null };
 
-/* Sidor som INTE har någon löparväljare alls (2026-09-15).
- *
- * Planeringsvyerna visar redan alla löpare sida vid sida — varje pass bär
- * sina egna löparchips, och veckorutnätet är byggt för att läsas på tvären
- * över hela gruppen. Väljaren erbjöd då att smalna av till en löpare, vilket
- * gör vyn sämre på det den finns för, och den kostade ett omladdat sidbygge
- * per klick.
- *
- * Löparen själv ser aldrig väljaren ändå (viewableAthletes ger bara en
- * coach mer än sig själv), så det här rör bara tränarens vy. */
 const NO_SWITCHER_PATHS = ["/blockoversikt", "/blockplan", "/detaljplan", "/uppfoljning"];
+
+/** Fler än så här och ansiktena blir en rad prickar man ändå måste läsa. */
+const MAX_AVATARS = 6;
+
+/* Tonerna är valda för att gå isär även för den som inte skiljer rött från
+ * grönt: de skiljer sig i ljushet lika mycket som i kulör. Mörk text på ljus
+ * platta, så initialen är läsbar i båda teman utan att tonen måste bytas. */
+const AVATAR_TONES = [
+  "#d98b5f",
+  "#7fa9d4",
+  "#b48fd0",
+  "#86bf9a",
+  "#d4a35f",
+  "#c98fa0",
+];
+
+function toneFor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_TONES[h % AVATAR_TONES.length];
+}
+
+function initial(name: string | null): string {
+  return (name ?? "?").trim().charAt(0).toUpperCase() || "?";
+}
 
 export function HeaderAthleteSwitcher({
   athletes,
@@ -53,13 +66,11 @@ export function HeaderAthleteSwitcher({
   const params = useSearchParams();
 
   if (athletes.length === 0) return null;
-
   if (NO_SWITCHER_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     return null;
   }
 
-  const raw = params.get("athlete");
-  const active = raw ?? defaultAthleteId;
+  const active = params.get("athlete") ?? defaultAthleteId;
 
   /** Samma sida, samma filter, annan löpare. */
   const hrefFor = (id: string) => {
@@ -68,50 +79,54 @@ export function HeaderAthleteSwitcher({
     return `${pathname}?${next.toString()}`;
   };
 
-  const pill = (on: boolean) =>
-    `rounded-md px-2.5 py-1 font-medium transition-colors ${
-      on
-        ? "bg-[var(--foreground)] text-[var(--background)]"
-        : "text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
-    }`;
-
-  // "Alla" fanns bara för planeringsvyerna, som inte har någon väljare kvar.
-  const activeName = athletes.find((a) => a.id === active)?.fullName ?? "Löpare";
-
-  return (
-    <>
-      {/* ---- Bred skärm: alla löpare utskrivna ---- */}
-      <div
-        role="group"
-        aria-label="Välj löpare"
-        className="display hidden flex-wrap items-center gap-1.5 text-sm lg:flex"
-      >
+  if (athletes.length > MAX_AVATARS) {
+    const activeName = athletes.find((a) => a.id === active)?.fullName ?? "Löpare";
+    const pill = (on: boolean) =>
+      `block rounded-md px-2.5 py-1 font-medium transition-colors ${
+        on
+          ? "bg-[var(--foreground)] text-[var(--background)]"
+          : "text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
+      }`;
+    return (
+      <Dropdown label={activeName} align="left" width="w-48">
         {athletes.map((a) => (
-          <Link
-            key={a.id}
-            href={hrefFor(a.id)}
-            aria-current={active === a.id ? "page" : undefined}
-            className={pill(active === a.id)}
-          >
-            {a.fullName ?? "Namnlös"}
-            <LinkPending />
-          </Link>
-        ))}
-      </div>
-
-      {/* ---- Smalare skärm: hopfälld, med den valda löparen i knappen ----
-          Fem namnpills bredvid meny, uppdatering och lägesväxel spränger
-          bredden långt före telefonstorlek. Hopfälld visar den ändå det enda
-          man behöver veta i vilostadiet: VEM man tittar på.
-          Dropdown sköter stängningen vid val — <details> gör det inte själv,
-          och en klientnavigering nollställer den inte. */}
-      <Dropdown label={activeName} align="left" width="w-48" className="lg:hidden">
-        {athletes.map((a) => (
-          <Link key={a.id} href={hrefFor(a.id)} className={`${pill(active === a.id)} block`}>
+          <Link key={a.id} href={hrefFor(a.id)} className={pill(active === a.id)}>
             {a.fullName ?? "Namnlös"}
           </Link>
         ))}
       </Dropdown>
-    </>
+    );
+  }
+
+  return (
+    <div role="group" aria-label="Välj löpare" className="flex items-center gap-1.5">
+      {athletes.map((a) => {
+        const on = active === a.id;
+        return (
+          <Link
+            key={a.id}
+            href={hrefFor(a.id)}
+            aria-current={on ? "page" : undefined}
+            title={a.fullName ?? "Namnlös"}
+            className="relative flex"
+          >
+            <span
+              className={`display flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-[#17191c] transition-all ${
+                on
+                  ? "ring-2 ring-[var(--foreground)] ring-offset-2 ring-offset-[var(--background)]"
+                  : "opacity-55 hover:opacity-90"
+              }`}
+              style={{ backgroundColor: toneFor(a.id) }}
+            >
+              {initial(a.fullName)}
+            </span>
+            {/* Namnet finns för skärmläsare — en initial i en cirkel säger
+                inget utan sammanhang. */}
+            <span className="sr-only">{a.fullName ?? "Namnlös löpare"}</span>
+            <LinkPending />
+          </Link>
+        );
+      })}
+    </div>
   );
 }
