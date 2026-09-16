@@ -55,7 +55,7 @@ export type PassGroup = {
    * beräknats. OBS att detta INTE kommer ur planned_workouts.status — den
    * kolumnen skrivs aldrig (verifierat 2026-08-22: samtliga rader är
    * `planned`, ingen har linked_activity_id). Utfallet räknas i läsvägen av
-   * matchPlanToSessions, samma funktion som kalendern, /blockoversikt och
+   * matchPlanToSessions, samma funktion som kalendern, /arsoversikt och
    * /trender använder, och matas in här utifrån. */
   outcomeByAthlete: Record<string, PlanOutcome>;
 };

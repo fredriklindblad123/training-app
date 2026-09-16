@@ -1,5 +1,19 @@
 /* Tidslinjen visar BLOCKEN, inget annat (2026-09-16).
  *
+ * Full vy: EN RAD PER BLOCK sedan 2026-09-16. Blocken låg tidigare staplade i
+ * ett enda band, och det var bandets grundfel — ett block på tre veckor blir
+ * några procent brett på ett år, och namnet klipptes till ingenting. Man såg
+ * färgade fält utan att kunna läsa vad de var. Nu står namn och fas i en egen
+ * kolumn som aldrig klipps, och stapeln får göra det den är bra på: visa när
+ * och hur länge.
+ *
+ * Kompakt vy (översiktens rad per löpare) behåller ett band: där ÄR raden
+ * löparen, och blocken måste samsas på samma höjd.
+ *
+ * Båda lägena har ett månadsrutnät bakom staplarna. Tidigare fanns bara en
+ * tunn axel under bandet, och blicken fick vandra fram och tillbaka mellan
+ * stapel och etikett för att avgöra när något började.
+ *
  * Tävlingarna låg tidigare som roterade romber under bandet, med en etikett
  * under varje. Rapporterat två gånger som svårläst, och orsaken är formatet
  * snarare än detaljerna: ett band som spänner ett år är några hundra pixlar
@@ -150,7 +164,7 @@ export function SeasonTimeline({
 }: {
   blocks: TimelineBlock[];
   /** Mindre band, inga tävlingsetiketter/förklaring under — för
-   * översiktskorten (Alla-läget på /blockoversikt) där flera löpares tidslinjer
+   * översiktskorten (Alla-läget på /arsoversikt) där flera löpares tidslinjer
    * visas sida vid sida. */
   compact?: boolean;
   /** Fast datumintervall för skalan, i stället för att härleda min/max ur
@@ -194,84 +208,161 @@ export function SeasonTimeline({
   // Sorterade så att banden ritas i kronologisk ordning.
   const sortedBlocks = [...blocks].sort((a, b) => a.start_date.localeCompare(b.start_date));
 
-  const bandHeight = compact ? "h-6" : "h-12";
 
+  /* Månadsrutnätet. Strecken ritas bakom banden så att man kan läsa AV var ett
+   * block börjar, inte bara att det ligger "någonstans i mitten". Tidigare
+   * fanns bara en tunn axel under bandet, och blicken fick vandra fram och
+   * tillbaka mellan stapel och etikett. */
+  const ticks = axisTicks(minKey, maxKey, pct, compact ? 14 : 7);
+
+  const grid = (
+    <div className="pointer-events-none absolute inset-0" aria-hidden>
+      {ticks.map((tick) => (
+        <span
+          key={tick.key}
+          className="absolute top-0 bottom-0 w-px bg-[var(--line)]"
+          style={{ left: `${tick.left}%` }}
+        />
+      ))}
+      {todayVisible && (
+        <span
+          className="absolute top-0 bottom-0 w-0.5 bg-[var(--foreground)]"
+          style={{ left: `${todayPct}%` }}
+        />
+      )}
+    </div>
+  );
+
+  const monthAxis = (
+    <div className="relative mt-1 h-4">
+      {ticks.map((tick) => (
+        <span
+          key={tick.key}
+          className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[10px] text-[var(--ink-3)]"
+          style={{ left: `${tick.left}%` }}
+        >
+          {tick.showLabel ? tick.label : ""}
+        </span>
+      ))}
+    </div>
+  );
+
+  /* ---- Kompakt: ETT band, en rad per löpare i översikten ----
+     Där är raden i sig löparen, och blocken måste därför samsas på samma
+     höjd. Namnen får inte plats och står i tooltipen. */
+  if (compact) {
+    return (
+      <div className="relative">
+        <div className="relative h-6 overflow-hidden rounded bg-[var(--surface-raised)]">
+          {grid}
+          {sortedBlocks.map((b) => {
+            const left = pct(b.start_date);
+            const width = Math.max(1.5, pct(b.end_date) - left);
+            return (
+              <div
+                key={b.id}
+                className="absolute top-0 h-6 rounded-sm"
+                style={{
+                  left: `${left}%`,
+                  width: `${width}%`,
+                  backgroundColor: PHASE_COLOR_VARS[b.phase],
+                }}
+                title={`${b.name} — ${PHASE_LABELS[b.phase]}, ${shortDate(b.start_date)}–${shortDate(b.end_date)}`}
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- Full: EN RAD PER BLOCK ----
+   *
+   * Blocken låg tidigare staplade i ett enda band, och det var bandets
+   * grundfel: ett block på tre veckor blir några procent brett på ett år, och
+   * namnet klipptes till ingenting. Man såg färgade fält utan att kunna läsa
+   * vad de var — rapporterat som svårläst.
+   *
+   * Med en rad per block står namn, fas och längd i en egen kolumn till
+   * vänster och kan aldrig klippas, medan stapeln får göra det den är bra på:
+   * visa NÄR och HUR LÄNGE. Raderna delar samma axel, så blocken går
+   * fortfarande att läsa mot varandra.
+   */
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-        <div className={compact ? "min-w-[12rem]" : "min-w-[32rem]"}>
-          {/* Blockband */}
-          <div className={`relative ${bandHeight} rounded bg-[var(--surface-raised)]`}>
+      <div className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+        <div className="min-w-[36rem]">
+          <div className="flex flex-col gap-1.5">
             {sortedBlocks.map((b) => {
               const left = pct(b.start_date);
-              const width = Math.max(1.5, pct(b.end_date) - left);
+              const width = Math.max(1, pct(b.end_date) - left);
+              const weeks = Math.max(
+                1,
+                Math.round((dayNumber(b.end_date) - dayNumber(b.start_date) + 1) / 7),
+              );
+              const current = b.start_date <= todayKey && todayKey <= b.end_date;
               return (
-                <div
-                  key={b.id}
-                  className={`absolute top-0 flex ${bandHeight} items-center overflow-hidden rounded px-2`}
-                  style={{
-                    left: `${left}%`,
-                    width: `${width}%`,
-                    backgroundColor: PHASE_COLOR_VARS[b.phase],
-                  }}
-                  title={`${b.name} — ${PHASE_LABELS[b.phase]}, ${shortDate(b.start_date)}–${shortDate(b.end_date)}`}
-                >
-                  {!compact && (
-                    /* Namn OCH datumspann i bandet. Bandet är h-12, så två
-                       rader får plats; datumen var tidigare bara nåbara via
-                       tooltipen, vilket gjorde att man såg att ett block låg
-                       "någonstans i mitten" men aldrig när det började. */
-                    <span className="flex min-w-0 flex-col leading-tight">
-                      <span className="truncate text-xs font-medium text-white drop-shadow-sm">
-                        {b.name}
-                      </span>
-                      <span className="truncate text-[10px] text-white/85 drop-shadow-sm">
-                        {shortDate(b.start_date)}–{shortDate(b.end_date)}
-                      </span>
+                <div key={b.id} className="flex items-center gap-3">
+                  {/* Etikettkolumnen har fast bredd så att alla staplar
+                      börjar på samma x — annars flyttar sig axeln beroende på
+                      hur långt ett blocknamn råkar vara. */}
+                  <div className="flex w-44 shrink-0 flex-col leading-tight">
+                    <span
+                      className={`display truncate text-sm font-semibold ${
+                        current ? "text-[var(--foreground)]" : "text-[var(--ink-2)]"
+                      }`}
+                      title={b.name}
+                    >
+                      {b.name}
                     </span>
-                  )}
+                    <span className="flex items-center gap-1.5 text-[11px] text-[var(--ink-3)]">
+                      <span
+                        aria-hidden
+                        className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                        style={{ backgroundColor: PHASE_COLOR_VARS[b.phase] }}
+                      />
+                      <span className="truncate">{PHASE_LABELS[b.phase]}</span>
+                    </span>
+                  </div>
+
+                  <div className="relative h-7 flex-1">
+                    {grid}
+                    <div
+                      className="absolute top-0 flex h-7 items-center overflow-hidden rounded px-2"
+                      style={{
+                        left: `${left}%`,
+                        width: `${width}%`,
+                        backgroundColor: PHASE_COLOR_VARS[b.phase],
+                        // Det pågående blocket får en ram i förgrundsfärg —
+                        // samma markör som "idag"-strecket, så de läses ihop.
+                        outline: current ? "2px solid var(--foreground)" : undefined,
+                        outlineOffset: current ? "-2px" : undefined,
+                      }}
+                      title={`${b.name} — ${shortDate(b.start_date)}–${shortDate(b.end_date)}, ${weeks} v`}
+                    >
+                      {/* Veckorna i stapeln: det är blockets längd, och den är
+                          det man jämför block med. Datumen står i tooltipen —
+                          två rader text i en 28 px stapel blir oläsligt. */}
+                      <span className="tabular truncate text-[11px] font-medium text-white drop-shadow-sm">
+                        {weeks} v
+                      </span>
+                    </div>
+                  </div>
                 </div>
               );
             })}
-
-            {todayVisible && (
-              <div
-                className={`absolute top-0 ${bandHeight} w-0.5 bg-[var(--foreground)]`}
-                style={{ left: `${todayPct}%` }}
-                title={`Idag ${todayKey}`}
-              />
-            )}
           </div>
 
-          {/* Tidsaxel: månadsstreck med etikett. Ritas mellan blockbandet och
-              tävlingsmarkörerna så att den ligger närmast det den förklarar.
-              Etiketter gallras när de skulle trängas — se `minLabelGap`. */}
-          <div className="relative mt-0.5 h-4">
-            {/* Minsta avstånd mellan två etiketter: ett band över två år har
-                ~24 månadsstreck, och alla utskrivna vore en gröt. Strecken
-                ritas ändå — bara etiketterna gallras. */}
-            {axisTicks(minKey, maxKey, pct, compact ? 14 : 7).map((t) => (
-              <div
-                key={t.key}
-                className="absolute top-0 flex flex-col items-center"
-                style={{ left: `${t.left}%` }}
-              >
-                <span className="h-1 w-px bg-[var(--line)]" aria-hidden />
-                {t.showLabel && (
-                  <span className="-translate-x-1/2 whitespace-nowrap text-[10px] text-[var(--ink-3)]">
-                    {t.label}
-                  </span>
-                )}
-              </div>
-            ))}
+          {/* Axeln under staplarna, inskjuten lika mycket som etikettkolumnen
+              så att månaderna står i linje med rutnätet ovanför. */}
+          <div className="flex">
+            <div className="w-44 shrink-0" />
+            <div className="flex-1">{monthAxis}</div>
           </div>
-
         </div>
       </div>
 
-      {!compact && (
-        <SeasonTimelineLegend phases={[...new Set(sortedBlocks.map((b) => b.phase))]} />
-      )}
+      <SeasonTimelineLegend phases={[...new Set(sortedBlocks.map((b) => b.phase))]} />
     </div>
   );
 }

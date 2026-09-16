@@ -7,7 +7,7 @@
  * ju närmare tävlingarna man kommer.
  * ------------------------------------------------------------------------ */
 
-// Period + fas — samma tvånivå-vokabulär som rad 5-6 i Blocköversikt-fliken i
+// Period + fas — samma tvånivå-vokabulär som rad 5-6 i Årsöversikt-fliken i
 // Svensk Friidrotts mall ("Träningsplanering Friidrottstränare steg 3").
 // Ersätter det tidigare egna block_type-ordförrådet (grund/uppbyggnad/...)
 // helt, så att ett block i appen heter samma sak som i mallen tränaren
@@ -354,10 +354,10 @@ export type TemplateItem = {
   description: string | null;
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
-  /** Vilken Blocköversikt-rad (lib/training-factors.ts) det här passet räknas mot
+  /** Vilken Årsöversikt-rad (lib/training-factors.ts) det här passet räknas mot
    * — t.ex. "Tröskel" eller "Maximal" snabbhet. Planeringen sker per pass,
    * inte som en klumpsumma för blocket (rättat 2026-08-16) — Excel-exportens
-   * Blocköversikt-flik härleds numera ur vilka pass som faktiskt är taggade med
+   * Årsöversikt-flik härleds numera ur vilka pass som faktiskt är taggade med
    * vilken faktor, inte ur ett separat block-fält. Nullable — inte alla pass
    * (vila, ett obestämt lugnt pass) hör till en specifik faktor. */
   training_factor?: string | null;

@@ -24,7 +24,7 @@ function str(form: FormData, key: string): string | null {
 }
 
 function refresh() {
-  revalidatePath("/blockoversikt");
+  revalidatePath("/arsoversikt");
   revalidatePath("/blockplan");
   revalidatePath("/calendar", "layout");
 }

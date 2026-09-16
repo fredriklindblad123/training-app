@@ -14,7 +14,7 @@ import { getViewMode } from "@/lib/view-mode";
  * modell: originalfliken är själv löst formulerad (kryssrutor och fritext),
  * en striktare modell hade tvingat in data källan inte har.
  *
- * Samma athlete-scoping-mönster som /blockoversikt (lib/auth-scope.ts,
+ * Samma athlete-scoping-mönster som /arsoversikt (lib/auth-scope.ts,
  * URL-`athlete`-param) — en löpare ser bara sig själv, en coach växlar via
  * väljaren. */
 

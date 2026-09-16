@@ -142,7 +142,7 @@ export function resolveDatePeriod(
  *
  * Returnerar null när det inte finns några block alls — anroparen ska då
  * säga "inga block upplagda än" i stället för att visa en tom tabell, av
- * samma skäl som /blockoversikt gör det: noll block är ett normalt startläge, inte
+ * samma skäl som /arsoversikt gör det: noll block är ett normalt startläge, inte
  * ett fel.
  *
  * Utan giltigt `anchorId` väljs blocket som täcker `today`, annars det
