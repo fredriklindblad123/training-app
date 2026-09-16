@@ -29,12 +29,18 @@ function num(form: FormData, key: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/* Tävlingar visas på FEM ställen, och en ändring måste slå igenom på alla.
+ * Att missa ett av dem ger den värsta sortens fel: sidan ser ut att fungera
+ * men visar en tävling som är borttagen, eller saknar en som just lagts in.
+ * Kalendern tar "layout" eftersom tävlingar ritas i år-, månads-, vecko- och
+ * dagvyn, som alla är egna segment. */
 function refresh() {
   revalidatePath("/tavlingsresultat");
+  revalidatePath("/tavlingar");
   revalidatePath("/sasongsoversikt");
-  // Tävlingarna visas numera i Blockplans veckovy (med deltagarna), så en
-  // ny/borttagen tävling måste slå igenom där också.
   revalidatePath("/blockplan");
+  revalidatePath("/detaljplan");
+  revalidatePath("/calendar", "layout");
 }
 
 /** Bara "är någon inloggad" — RLS avgör om raden faktiskt går att nå. Samma

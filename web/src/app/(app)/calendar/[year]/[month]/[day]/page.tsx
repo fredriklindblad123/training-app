@@ -57,6 +57,16 @@ export default async function DayPage({
     .gte("end_date", dateStr)
     .order("start_date");
 
+  /* Dagens tävling. Dagvyn var den ENDA kalendervyn som inte visade
+     tävlingar — år, månad och vecka gjorde det redan. En löpare som öppnade
+     tävlingsdagen såg alltså sina pass men inte att det var tävling, vilket
+     är det enda som egentligen står på schemat den dagen. */
+  const { data: raceRows } = await supabase
+    .from("competitions")
+    .select("id, name, priority, location")
+    .eq("user_id", scopedUserId)
+    .eq("competition_date", dateStr);
+
   const todayStr = dateKey(
     new Date().getFullYear(),
     new Date().getMonth() + 1,
@@ -102,6 +112,32 @@ export default async function DayPage({
         yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
+
+      {/* Tävlingen först, före passen: är det tävlingsdag är det DET som
+          gäller, och passen runt omkring är uppvärmning och nedjogg. Egen
+          färg (--cat-race) och inte kortens vanliga yta, så den inte läses
+          som ännu ett pass. */}
+      {((raceRows ?? []) as { id: string; name: string; priority: string; location: string | null }[]).map(
+        (r) => (
+          <div
+            key={r.id}
+            className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border p-4"
+            style={{
+              borderColor: "color-mix(in oklab, var(--cat-race) 55%, var(--line))",
+              backgroundImage:
+                "radial-gradient(125% 135% at 0% 0%, color-mix(in oklab, var(--cat-race) 20%, transparent), transparent 62%)",
+            }}
+          >
+            <span className="display text-xl leading-tight font-bold text-[var(--foreground)]">
+              {r.name}
+            </span>
+            <span className="display text-sm font-semibold text-[var(--cat-race)]">
+              {r.priority === "C" ? "Träningstävling" : `${r.priority}-lopp`}
+            </span>
+            {r.location && <span className="text-sm text-[var(--ink-3)]">{r.location}</span>}
+          </div>
+        ),
+      )}
 
       {/* Allt dagsinnehåll bor i DayContent, delat med Blockplans dagsvy
           för flera löpare (/blockplan/pass) — se motiveringen där. */}

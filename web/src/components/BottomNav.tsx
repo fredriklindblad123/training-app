@@ -49,6 +49,9 @@ const PLAN: Tab[] = [
   { href: "/detaljplan", label: "Vecka", icon: "M4 6h16v14H4zM4 10h16M9 14h6" },
   { href: "/blockplan", label: "Block", icon: "M4 5h16v4H4zM4 11h16v4H4zM4 17h10v3H4z" },
   { href: "/sasongsoversikt", label: "Säsong", icon: "M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6" },
+  /* Tävlingarna är planering, inte logg: här bestämmer man VAD som ska
+   * springas och av vem. Resultaten fylls i under Lopp i loggruppen. */
+  { href: "/tavlingar", label: "Tävling", icon: "M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0zM6 6H3v2a3 3 0 0 0 3 3M18 6h3v2a3 3 0 0 1-3 3" },
 ];
 
 const UPPFOLJNING: Tab = {
