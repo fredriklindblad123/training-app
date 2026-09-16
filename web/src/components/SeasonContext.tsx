@@ -73,7 +73,7 @@ export function SeasonContext({
           ) : (
             <span className="text-sm text-[var(--ink-3)]">
               Inget block just nu.{" "}
-              <Link href="/arsoversikt" className="underline">
+              <Link href="/sasongsoversikt" className="underline">
                 Lägg upp säsongen
               </Link>
             </span>

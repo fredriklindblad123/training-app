@@ -61,7 +61,7 @@ import { getViewMode } from "@/lib/view-mode";
  * — ingen separat namngiven "mall" att skapa, ingen delning mellan block.
  * Uttrycklig begäran: en gammal, coach-ägd mall läckte in mellan löpare
  * bara för att den delade fas med ett block, och det extra namngivnings-
- * steget kändes redundant ovanpå att blocket redan skapats på /arsoversikt —
+ * steget kändes redundant ovanpå att blocket redan skapats på /sasongsoversikt —
  * "man får skapa ett nytt varje gång istället, lättare att begripa". */
 
 const input =
@@ -91,7 +91,7 @@ type BlockRow = {
 
 /** Ett block med sin veckovy. Delad mellan
  * Alla-vyn och den enskilda löparens vy så de aldrig kan glida isär —
- * samma resonemang som BlockCard på /arsoversikt. */
+ * samma resonemang som BlockCard på /sasongsoversikt. */
 function BlockWeekSection({
   block,
   weeks,
@@ -406,7 +406,7 @@ function CompetitionCard({
 /** Veckovyn: en rad per kalendervecka i blocket, tidigaste veckan överst,
  * dagarna som kolumner (uttrycklig begäran 2026-08-21). Ersätter den
  * abstrakta standardvecka-vyn i den enskilda löparens Blockplan —
- * standardveckan sätts numera vid blockskapandet på /arsoversikt, så det här
+ * standardveckan sätts numera vid blockskapandet på /sasongsoversikt, så det här
  * är platsen där tränaren arbetar med de pass som faktiskt ligger i
  * kalendern. */
 /** Måndagen i innevarande vecka, i svensk tid.
@@ -671,7 +671,7 @@ async function loadWeekData(
       // Utfallet: `planned_workouts.status` skrivs aldrig (verifierat
       // 2026-08-22 — alla rader är `planned`, ingen har
       // linked_activity_id), så "genomfört" måste räknas fram ur de
-      // faktiska aktiviteterna i läsvägen. Samma väg som /arsoversikt och
+      // faktiska aktiviteterna i läsvägen. Samma väg som /sasongsoversikt och
       // kalendern: activities → groupActivitiesIntoSessions →
       // matchPlanToSessions.
       supabase
@@ -734,7 +734,7 @@ export default async function BlockplanPage({
 }: {
   searchParams: Promise<{
     /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
-     * mönster som /arsoversikt, se lib/auth-scope.ts. */
+     * mönster som /sasongsoversikt, se lib/auth-scope.ts. */
     athlete?: string;
   }>;
 }) {
@@ -805,9 +805,9 @@ export default async function BlockplanPage({
 
   // Visa bara faser som faktiskt har ett block — en lista med alla sex
   // faser, mest tomma, gjorde det svårt att se vad man faktiskt skulle
-  // göra. Arbetsflödet är Flerårsplan → Årsöversikt (skapar block) → Blockplan
+  // göra. Arbetsflödet är Flerårsplan → Säsongsöversikt (skapar block) → Blockplan
   // (fyller i just den fasens block), så Blockplan speglar vad som redan
-  // finns i Årsöversikt i stället för att lista hela taxonomin i förväg.
+  // finns i Säsongsöversikt i stället för att lista hela taxonomin i förväg.
   const relevantPhases = PHASE_TYPES.filter((phase) => blockList.some((b) => b.phase === phase));
 
 
@@ -820,8 +820,8 @@ export default async function BlockplanPage({
           Varje blocks eget dag-för-dag-veckomönster — precis som Excel-mallens Blockplan-flik.
           Ett pass läggs till direkt på blocket och syns i kalendern omedelbart, utan ett
           separat &quot;rulla ut&quot;-steg. Block och standardvecka skapas på{" "}
-          <Link href="/arsoversikt" className="underline">
-            Årsöversikt
+          <Link href="/sasongsoversikt" className="underline">
+            Säsongsöversikt
           </Link>{" "}
           — nya block dyker upp här automatiskt.
         </p>
@@ -856,8 +856,8 @@ export default async function BlockplanPage({
       {relevantPhases.length === 0 && (
         <p className="text-sm text-[var(--ink-3)]">
           Inga block skapade ännu. Lägg upp ett block för säsongens första fas på{" "}
-          <Link href="/arsoversikt" className="underline">
-            Årsöversikt
+          <Link href="/sasongsoversikt" className="underline">
+            Säsongsöversikt
           </Link>{" "}
           — det dyker upp här automatiskt så fort det finns.
         </p>

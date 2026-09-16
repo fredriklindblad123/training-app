@@ -16,7 +16,7 @@ const nextConfig: NextConfig = {
    *
    *   /trends    → /blocket   — men /blocket blev /trender 2026-08-13
    *   /planering → /sasongen  — men /sasongen togs bort 2026-08-17 och
-   *                             delades i /arsoversikt + /blockplan
+   *                             delades i /sasongsoversikt + /blockplan
    *
    * Samma fälla som kommentaren här redan varnade för i augusti (regeln
    * dashboard → idag pekade åt fel håll och gav 404 på "Till appen"), utan
@@ -51,14 +51,17 @@ const nextConfig: NextConfig = {
       /* Planeringen. /sasongen delades i två sidor, så det finns inget exakt
        * mål — årsplanen är den halva som ärvde sidans identitet (block,
        * tidslinje, veckorutnät). */
-      { source: "/planering", destination: "/arsoversikt", permanent: true },
-      { source: "/sasongen", destination: "/arsoversikt", permanent: true },
+      { source: "/planering", destination: "/sasongsoversikt", permanent: true },
+      { source: "/sasongen", destination: "/sasongsoversikt", permanent: true },
       // Sidan hette Årsplan i två dygn (2026-09-15 till 09-16). Kort, men
       // adressen hann delas och menyn hann läras in.
-      { source: "/arsplan", destination: "/arsoversikt", permanent: true },
+      { source: "/arsplan", destination: "/sasongsoversikt", permanent: true },
       // Hette Blocköversikt i ett dygn (2026-09-16), innan namnet landade på
-      // Årsöversikt — sidan visar hela året, inte ett block.
-      { source: "/blockoversikt", destination: "/arsoversikt", permanent: true },
+      // Säsongsöversikt — sidan visar hela året, inte ett block.
+      { source: "/blockoversikt", destination: "/sasongsoversikt", permanent: true },
+      // Och Årsöversikt i några timmar samma dygn. Sidan spänner en säsong,
+      // inte ett kalenderår — namnet landade till slut där.
+      { source: "/arsoversikt", destination: "/sasongsoversikt", permanent: true },
 
       // Översikt ersattes av Uppföljning, som gör samma sak i "Dag"-läget.
       { source: "/oversikt", destination: "/uppfoljning", permanent: true },

@@ -1,4 +1,4 @@
-/* Fas 0: träningsfaktor-taxonomin ur Årsöversikt-fliken i
+/* Fas 0: träningsfaktor-taxonomin ur Säsongsöversikt-fliken i
  * "Träningsplanering Friidrottstränare steg 3" (Svensk Friidrott). Cellerna
  * i originalmallen blandar betoningsord ("Stor betoning") och fri text
  * ("3 pass/vecka (från 30min - 1h)") för samma sorts rad — därför är värdet

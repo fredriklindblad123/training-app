@@ -55,8 +55,8 @@ import { getViewMode } from "@/lib/view-mode";
  * Utökad 2026-08-16: Tävlingar-sektionen (lägga till/prioritera/logga
  * resultat) flyttad hit från /sasongen, se motiveringen i actions.ts —
  * att analysera och att administrera samma tävlingar hör ihop på en sida,
- * /arsoversikt (tidigare /sasongen) behåller bara en läsande
- * "Nästa A-tävling"-rad och Årsöversikts veckorutnäts tävlingsrad. */
+ * /sasongsoversikt (tidigare /sasongen) behåller bara en läsande
+ * "Nästa A-tävling"-rad och Säsongsöversikts veckorutnäts tävlingsrad. */
 
 const input =
   fieldClass;
@@ -194,7 +194,7 @@ async function loadRaceAggregate(
 }
 
 /** Radlista för tävlingsjämförelsen — speglar blockjämförelsens rader
- * (/arsoversikt) i form och stil, se docs/tranarperspektiv.md K5 punkt 2. */
+ * (/sasongsoversikt) i form och stil, se docs/tranarperspektiv.md K5 punkt 2. */
 function raceComparisonRows(
   a: RaceAggregate,
   b: RaceAggregate,
@@ -295,7 +295,7 @@ export default async function TavlingsresultatPage({
      * sidans filter. */
     redigeraTavling?: string;
     /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
-     * mönster som /arsoversikt, se lib/auth-scope.ts. */
+     * mönster som /sasongsoversikt, se lib/auth-scope.ts. */
     athlete?: string;
   }>;
 }) {
@@ -804,7 +804,7 @@ export default async function TavlingsresultatPage({
                 information på samma sida. */}
 
             {/* Upptrappningsjämförelsen — samma tabellstruktur som
-                blockjämförelsen på /arsoversikt, men bara lopp i någon av de
+                blockjämförelsen på /sasongsoversikt, men bara lopp i någon av de
                 valda grenarna. */}
             {racesInSelectedEvents.length < 2 ? (
               <p className="text-sm text-[var(--ink-3)]">
@@ -935,7 +935,7 @@ export default async function TavlingsresultatPage({
         <p className="max-w-3xl text-sm text-[var(--ink-3)]">
           Prioriteten märker upp säsongen: A är huvudmålen, C träningstävlingar. Den visas i
           tidslinjen och väljer &quot;Nästa A-tävling&quot;, men styr ingen planering — hur
-          veckorna ser ut inför ett lopp bestämmer du i Årsöversikt och Blockplan.
+          veckorna ser ut inför ett lopp bestämmer du i Säsongsöversikt och Blockplan.
         </p>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

@@ -10,7 +10,6 @@ import {
 } from "@/lib/auth-scope";
 import {
   SeasonTimeline,
-  SeasonTimelineLegend,
   type TimelineBlock,
   type TimelineCompetition,
 } from "@/components/SeasonTimeline";
@@ -47,11 +46,6 @@ import {
 } from "./actions";
 import { TrainingFactorSelect } from "@/components/TrainingFactorSelect";
 import {
-  TRAINING_FACTORS,
-  TRAINING_FACTOR_GROUP_LABELS,
-  TRAINING_FACTOR_SUBGROUP_LABELS,
-  type TrainingFactorGroup,
-  type TrainingFactorSubgroup,
 } from "@/lib/training-factors";
 import {
   SESSION_ACTIVITY_COLUMNS,
@@ -78,27 +72,26 @@ import {
   type InterruptionPeriod,
   type InterruptionPrecursor,
 } from "@/lib/interruption-timeline";
-import { buildArsplanWeeks, computeMergeRuns, type ArsplanCompetitionInput } from "@/lib/arsplan-grid";
-import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
+import { matchPlanToSessions, type PlannedWorkout } from "@/lib/plan-matching";
 import { fieldClass, primaryButtonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
 
-/* Hette /arsoversikt ("Årsöversikt") till 2026-08-27, då den döptes om på uttrycklig
+/* Hette /sasongsoversikt ("Säsongsöversikt") till 2026-08-27, då den döptes om på uttrycklig
  * begäran: sidan handlar om BLOCK — skapa dem, se dem på tidslinjen, jämföra
- * dem, läsa statistik per block — och "Årsöversikt" antydde en kalenderårsvy den
+ * dem, läsa statistik per block — och "Säsongsöversikt" antydde en kalenderårsvy den
  * aldrig har varit. Samma sorts eftersläpning som när /blocket blev /trender
  * 2026-08-13. Gamla adressen lever kvar som en permanent redirect i
  * next.config.ts, så bokmärken och länkar utifrån inte dör.
  *
- * OBS att "Årsöversikt" lever kvar på två ställen med flit, och att de INTE ska
+ * OBS att "Säsongsöversikt" lever kvar på två ställen med flit, och att de INTE ska
  * bytas ut: Excel-exportens flik och kommentarerna som hänvisar till
- * Excel-mallens Årsöversikt-flik. Den fliken är ett externt dokument (Daniels
+ * Excel-mallens Säsongsöversikt-flik. Den fliken är ett externt dokument (Daniels
  * "Träningsplanering Friidrottstränare steg 3") vars namn vi inte äger —
  * döps den om här slutar korrespondensen mellan app och mall att gå att följa.
  *
  */
-/* Årsöversikt: säsongens block, standardvecka och ett veckorutnät som speglar
- * Excel-mallens Årsöversikt-flik (en kolumn per vecka) — flyttad hit ur
+/* Säsongsöversikt: säsongens block, standardvecka och ett veckorutnät som speglar
+ * Excel-mallens Säsongsöversikt-flik (en kolumn per vecka) — flyttad hit ur
  * /sasongen 2026-08-17. Veckomallarnas dag-för-dag-innehåll (tidigare
  * nästlat under varje block) flyttades samtidigt till /blockplan, som
  * speglar mallens Blockplan-flik — se motiveringen i lib/template-sync.ts
@@ -852,21 +845,20 @@ async function ArsplanOverview({
    * identiska förklaringar under varandra vore brus. Faserna är unionen av
    * alla löpares block, så förklaringen täcker varje färg som faktiskt syns
    * i någon rad. */
-  const overviewPhases = [...new Set(sortedAllBlocks.map((b) => b.phase))];
-  const overviewHasCompetitions = athleteSummaries.some((a) => a.yearCompetitions.length > 0);
 
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        {(overviewPhases.length > 0 || overviewHasCompetitions) && (
-          <div className="px-3 pb-1">
-            <SeasonTimelineLegend phases={overviewPhases} />
-          </div>
-        )}
-        {athleteSummaries.map(({ athlete, activeBlock, nextA, yearBlocks }) => (
+        {/* Ingen tidslinje och därmed ingen förklaring här (2026-09-16).
+            Staplarna visade ett helt år i tio centimeter, en rad per löpare —
+            block på några veckor blev några pixlar breda och gick inte att
+            läsa. Bandet finns kvar i den enskilda löparens vy, där det har
+            plats att vara läsbart. Raden här säger i stället i klartext vilket
+            block och vilken tävling som gäller. */}
+        {athleteSummaries.map(({ athlete, activeBlock, nextA }) => (
           <Link
             key={athlete.id}
-            href={`/arsoversikt?athlete=${athlete.id}`}
+            href={`/sasongsoversikt?athlete=${athlete.id}`}
             className="flex flex-wrap items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 hover:bg-[var(--surface-raised)]"
           >
             <div className="w-32 shrink-0 font-medium text-[var(--foreground)]">
@@ -879,17 +871,95 @@ async function ArsplanOverview({
               Nästa A-tävling:{" "}
               {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
             </div>
-            <div className="min-w-[10rem] flex-1">
-              <SeasonTimeline
-                blocks={yearBlocks}
-                compact
-                rangeStart={`${currentYear}-01-01`}
-                rangeEnd={`${currentYear}-12-31`}
-              />
-            </div>
           </Link>
         ))}
       </div>
+
+      {/* Tävlingsöversikten står direkt på startsidan (begärt 2026-09-16).
+          Den låg tidigare bara i den enskilda löparens vy, så en tränare fick
+          klicka in på var och en för att se vad gruppen hade framför sig.
+
+          En tävling flera löpare springer är FLERA RADER i databasen med samma
+          namn och datum — det finns ingen kopplingstabell (se
+          CompetitionRow i lib/plan-weeks.ts). De slås därför ihop här, och
+          deltagarna listas i kortet. Utan hopslagningen hade Terräng SM
+          dykt upp fyra gånger. */}
+      {(() => {
+        const byRace = new Map<
+          string,
+          { name: string; date: string; priority: string; athletes: string[] }
+        >();
+        for (const { athlete, yearCompetitions } of athleteSummaries) {
+          for (const c of yearCompetitions) {
+            const key = `${c.competition_date}|${c.name}`;
+            const row = byRace.get(key) ?? {
+              name: c.name,
+              date: c.competition_date,
+              priority: c.priority,
+              athletes: [],
+            };
+            row.athletes.push(athlete.fullName ?? "Namnlös");
+            // Högsta prioritet vinner: en tävling som är A-lopp för någon är
+            // en A-tävling i en vy som visar hela gruppen.
+            if (c.priority === "A" || (c.priority === "B" && row.priority === "C")) {
+              row.priority = c.priority;
+            }
+            byRace.set(key, row);
+          }
+        }
+        const races = [...byRace.values()].sort((a, b) => {
+          // Kommande före passerade, annars kronologiskt.
+          const aPast = a.date < today;
+          const bPast = b.date < today;
+          if (aPast !== bPast) return aPast ? 1 : -1;
+          return a.date.localeCompare(b.date);
+        });
+        if (races.length === 0) return null;
+
+        return (
+          <section className="flex flex-col gap-3">
+            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+              Tävlingar
+            </h2>
+            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 lg:grid-cols-3">
+              {races.map((r) => {
+                const past = r.date < today;
+                return (
+                  <div
+                    key={`${r.date}|${r.name}`}
+                    className={`flex flex-col gap-1 bg-[var(--surface)] px-3 py-2.5 ${
+                      past ? "opacity-60" : ""
+                    }`}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="tabular text-xs text-[var(--ink-3)]">{r.date}</span>
+                      {/* Prioriteten som ord, inte som färgad form: en romb
+                          krävde en legend för att betyda något. */}
+                      <span
+                        className="display text-xs font-semibold"
+                        style={{
+                          color:
+                            r.priority === "A"
+                              ? "var(--status-concern-ink)"
+                              : r.priority === "B"
+                                ? "var(--status-watch-ink)"
+                                : "var(--ink-3)",
+                        }}
+                      >
+                        {r.priority === "C" ? "Träningstävling" : `${r.priority}-lopp`}
+                      </span>
+                    </div>
+                    <span className="display text-sm leading-tight font-semibold text-[var(--foreground)]">
+                      {r.name}
+                    </span>
+                    <span className="text-xs text-[var(--ink-3)]">{r.athletes.join(", ")}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Ihopslagen blocklista över hela rostern — redigera/ta bort direkt
        * här (uttrycklig begäran 2026-08-18), samma BlockCard som den
@@ -1035,7 +1105,7 @@ export default async function ArsplanPage({
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <div>
-          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Årsöversikt</h1>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Säsongsöversikt</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
             löparens block och veckomönster.
@@ -1205,7 +1275,7 @@ export default async function ArsplanPage({
     (c) => c.competition_date.slice(0, 4) === currentYear,
   );
 
-  // --- Veckorutnät (speglar Excel-mallens Årsöversikt-flik) --------------------
+  // --- Veckorutnät (speglar Excel-mallens Säsongsöversikt-flik) --------------------
   // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
   // använder, se lib/arsplan-grid.ts — de kan aldrig visa olika siffror för
   // samma data. Bara planned_workouts/competitions i blockens datumspann
@@ -1232,11 +1302,6 @@ export default async function ArsplanPage({
         ]);
 
   const gridPlannedWorkouts = (gridWorkoutRows ?? []) as (PlannedWorkout & { training_factor: string | null })[];
-  const arsplanWeeks = buildArsplanWeeks(
-    blockList,
-    gridPlannedWorkouts,
-    (competitionList ?? []) as ArsplanCompetitionInput[],
-  );
 
   // Utfall per vecka (mervärdet jämfört med Excel: planen syns bredvid vad
   // som faktiskt genomfördes, utan att man behöver jämföra två dokument).
@@ -1253,9 +1318,6 @@ export default async function ArsplanPage({
     const wk = isoWeekStart(date);
     matchesByWeek.set(wk, [...(matchesByWeek.get(wk) ?? []), m]);
   }
-  const complianceByWeek = new Map(
-    [...matchesByWeek.entries()].map(([wk, matches]) => [wk, summarizeCompliance(matches)]),
-  );
 
   // --- K6: avbrottstidslinjen (docs/tranarperspektiv.md), flyttad hit från
   // /blocket (docs/tranarloopen.md 3.1) ---------------------------------------
@@ -1326,14 +1388,14 @@ export default async function ArsplanPage({
             väljaren i sidhuvudet inte längre erbjuder vägen. */}
         {viewedAthleteName && (
           <Link
-            href="/arsoversikt"
+            href="/sasongsoversikt"
             className="display text-xs text-[var(--ink-3)] underline underline-offset-2 hover:text-[var(--foreground)]"
           >
             ← Alla löpare
           </Link>
         )}
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
-          Årsöversikt{viewedAthleteName ? ` — ${viewedAthleteName}` : ""}
+          Säsongsöversikt{viewedAthleteName ? ` — ${viewedAthleteName}` : ""}
         </h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
@@ -1454,216 +1516,20 @@ export default async function ArsplanPage({
         </section>
       )}
 
-      {/* ---------------- Veckorutnät ---------------- */}
-      {arsplanWeeks.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Veckorutnät</h2>
-            <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-              En kolumn per vecka, precis som Excel-mallens Årsöversikt-flik. Pass/dagar/timmar
-              räknas alltid live ur faktiskt utrullade pass — en vecka utan utrullat mönster
-              visar ett sant noll. Utfall visar hur många av veckans planerade pass som
-              faktiskt genomfördes — eller, om inget är planerat än, hur många genomförda pass
-              som ändå loggats den veckan (&quot;oplanerat&quot;).
-            </p>
-          </div>
-          <div className="w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-            <table className="w-max min-w-full text-left text-xs">
-              <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
-                <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-medium bg-[var(--surface)]">
-                    Vecka #
-                  </th>
-                  {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                      {w.isoWeekNumber}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="text-[var(--ink-3)]">
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal bg-[var(--surface)]">
-                    Månad
-                  </th>
-                  {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className="py-1 pr-3">
-                      {w.monthLabel}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
-                    Period / fas
-                  </th>
-                  {(() => {
-                    const runs = computeMergeRuns(arsplanWeeks);
-                    const runByStart = new Map(runs.map((r) => [r.startIndex, r]));
-                    const covered = new Set<number>();
-                    for (const r of runs) for (let i = r.startIndex; i < r.startIndex + r.length; i++) covered.add(i);
-                    return arsplanWeeks.map((w, i) => {
-                      if (covered.has(i) && !runByStart.has(i)) return null;
-                      const run = runByStart.get(i);
-                      return (
-                        <td
-                          key={w.weekStart}
-                          colSpan={run?.length ?? 1}
-                          className="py-1 pr-3 text-[var(--ink-2)]"
-                        >
-                          {w.block ? `${PERIOD_LABELS[w.block.period]} · ${PHASE_LABELS[w.block.phase]}` : "–"}
-                        </td>
-                      );
-                    });
-                  })()}
-                </tr>
-                <tr>
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
-                    Pass
-                  </th>
-                  {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                      {w.sessionsCount || "–"}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
-                    Dagar
-                  </th>
-                  {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                      {w.daysCount || "–"}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
-                    Timmar
-                  </th>
-                  {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                      {w.hoursCount ? (Math.round(w.hoursCount * 10) / 10) : "–"}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)]">
-                    Tävlingsstarter
-                  </th>
-                  {arsplanWeeks.map((w) => (
-                    <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                      {w.startsCount || "–"}
-                    </td>
-                  ))}
-                </tr>
-                <tr className="font-medium text-[var(--foreground)]">
-                  <th scope="row" className="sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-medium bg-[var(--surface)]">
-                    Utfall
-                  </th>
-                  {arsplanWeeks.map((w) => {
-                    const c = complianceByWeek.get(w.weekStart);
-                    // En vecka utan plan i Blockplan ska ändå visa att
-                    // löparen faktiskt tränat, i stället för att bara tystna
-                    // tills mönstret hunnit fyllas i — det är poängen med
-                    // att ha utfall i appen alls (uttrycklig begäran
-                    // 2026-08-18: vyn ska spegla verkligheten kontinuerligt).
-                    const label =
-                      c && c.plannedCount > 0
-                        ? `${c.completedCount}/${c.plannedCount}`
-                        : c && c.unplanned.length > 0
-                          ? `${c.unplanned.length} (oplanerat)`
-                          : "–";
-                    return (
-                      <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                        {label}
-                      </td>
-                    );
-                  })}
-                </tr>
-                {(() => {
-                  // Tre nivåer, som originalmallens fetstil/vänsterställning
-                  // (grupp: fetstil, ingen indragning; undergrupp: fetstil,
-                  // indragen; rad: normal stil, indragen ytterligare om den
-                  // hör till en undergrupp) — uttrycklig begäran 2026-08-18,
-                  // annars kom alla rader på en rak lista under bara
-                  // gruppnivån.
-                  let lastGroup: TrainingFactorGroup | null = null;
-                  let lastSubgroup: TrainingFactorSubgroup | null = null;
-                  return TRAINING_FACTORS.flatMap((factor) => {
-                    const rows = [];
-                    if (factor.group !== lastGroup) {
-                      rows.push(
-                        <tr key={`group-${factor.group}`}>
-                          {/* Ingen colSpan över hela bredden. En fryst cell som
-                              täcker hela tabellen kan inte stå still när man
-                              rullar i sidled — den följer med, medan raderna
-                              under står kvar, vilket är precis den ojämna
-                              effekten som rapporterades. Rubriken får i
-                              stället bara första kolumnen (fryst som alla
-                              andra) och en tom cell för resten. */}
-                          <th
-                            scope="row"
-                            className="sticky left-0 z-10 py-1 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
-                          >
-                            {TRAINING_FACTOR_GROUP_LABELS[factor.group]}
-                          </th>
-                          <td colSpan={arsplanWeeks.length} />
-                        </tr>,
-                      );
-                      lastGroup = factor.group;
-                      lastSubgroup = null;
-                    }
-                    if (factor.subgroup && factor.subgroup !== lastSubgroup) {
-                      rows.push(
-                        <tr key={`subgroup-${factor.group}-${factor.subgroup}`}>
-                          {/* Ingen colSpan över hela bredden. En fryst cell som
-                              täcker hela tabellen kan inte stå still när man
-                              rullar i sidled — den följer med, medan raderna
-                              under står kvar, vilket är precis den ojämna
-                              effekten som rapporterades. Rubriken får i
-                              stället bara första kolumnen (fryst som alla
-                              andra) och en tom cell för resten. */}
-                          <th
-                            scope="row"
-                            className="sticky left-0 z-10 py-1 pl-3 text-left font-medium italic text-[var(--ink-3)] bg-[var(--surface)]"
-                          >
-                            {TRAINING_FACTOR_SUBGROUP_LABELS[factor.subgroup]}
-                          </th>
-                          <td colSpan={arsplanWeeks.length} />
-                        </tr>,
-                      );
-                    }
-                    lastSubgroup = factor.subgroup ?? null;
-                    rows.push(
-                      <tr key={factor.key}>
-                        <th
-                          scope="row"
-                          className={`sticky left-0 z-10 border-r border-[var(--line)] py-1 pr-4 font-normal text-[var(--ink-2)] bg-[var(--surface)] ${
-                            factor.subgroup ? "pl-6" : ""
-                          }`}
-                        >
-                          {factor.label}
-                        </th>
-                        {arsplanWeeks.map((w) => (
-                          <td key={w.weekStart} className="py-1 pr-3 tabular-nums">
-                            {w.factorCounts[factor.key] ?? ""}
-                          </td>
-                        ))}
-                      </tr>,
-                    );
-                    return rows;
-                  });
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+      {/* Veckorutnätet togs bort 2026-09-16 (begärt). Det var en tabell med
+          en kolumn per vecka — upp till 52 — och en rad per träningsfaktor i
+          tre nivåer. Det speglade Excel-mallens flik, vilket var poängen när
+          appen skulle ersätta Excel, men som skärmvy var den oläslig: man
+          rullade i sidled genom ett år för att hitta en siffra.
+          lib/arsplan-grid.ts är kvar — Excel-exporten bygger fortfarande sin
+          flik ur den, och den är fortfarande rätt format DÄR. -------- */}
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Block</h2>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Klicka på ett block för att redigera det. Nya block skapas från{" "}
-          <Link href="/arsoversikt?athlete=alla" className="underline">
+          <Link href="/sasongsoversikt?athlete=alla" className="underline">
             Översikt
           </Link>{" "}
           — det är där löparna för blocket väljs. Blockets eget dag-för-dag-veckomönster fylls
@@ -1783,7 +1649,7 @@ export default async function ArsplanPage({
             </p>
           </div>
 
-          <form action="/arsoversikt" method="get" className="flex flex-wrap items-end gap-3 text-sm">
+          <form action="/sasongsoversikt" method="get" className="flex flex-wrap items-end gap-3 text-sm">
             {athleteParam && <input type="hidden" name="athlete" value={athleteParam} />}
             <label className="flex flex-col gap-1">
               <span className="text-[var(--ink-2)]">Block A</span>

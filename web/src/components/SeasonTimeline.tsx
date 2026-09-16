@@ -164,7 +164,7 @@ export function SeasonTimeline({
 }: {
   blocks: TimelineBlock[];
   /** Mindre band, inga tävlingsetiketter/förklaring under — för
-   * översiktskorten (Alla-läget på /arsoversikt) där flera löpares tidslinjer
+   * översiktskorten (Alla-läget på /sasongsoversikt) där flera löpares tidslinjer
    * visas sida vid sida. */
   compact?: boolean;
   /** Fast datumintervall för skalan, i stället för att härleda min/max ur

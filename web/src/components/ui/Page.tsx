@@ -22,7 +22,7 @@ export function Page({ children }: { children: ReactNode }) {
  * Sidrubriken: namn plus en mening om vad sidan svarar på.
  *
  * `lead` är inte dekoration. Varje sida i appen svarar på en fråga, och den
- * som öppnar Årsöversikt för första gången ska slippa gissa vilken. Texten hålls
+ * som öppnar Säsongsöversikt för första gången ska slippa gissa vilken. Texten hålls
  * under ~65 tecken per rad (max-w-3xl) eftersom längre rader är mätbart
  * långsammare att läsa.
  */

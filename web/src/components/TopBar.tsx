@@ -39,7 +39,7 @@ function toneFor(id: string): string {
 
 /** Planeringsvyerna visar redan alla löpare sida vid sida — där finns inget
  * att välja mellan, och väljaren hade bara kunnat göra vyn sämre. */
-const NO_ATHLETE_PICKER = ["/arsoversikt", "/blockplan", "/detaljplan", "/uppfoljning"];
+const NO_ATHLETE_PICKER = ["/sasongsoversikt", "/blockplan", "/detaljplan", "/uppfoljning"];
 
 export function TopBar({
   athletes,

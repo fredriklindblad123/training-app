@@ -9,8 +9,8 @@ import { parseResultSeconds } from "@/lib/race-results";
 /* Tävlingar: lägga till, prioritera och logga resultat — flyttat hit från
  * /sasongen 2026-08-16 (uttrycklig begäran). Att logga ETT RESULTAT efter
  * ett lopp är retrospektivt, inte säsongsplanering, och hörde inte hemma på
- * en framåtblickande sida. /arsoversikt (tidigare /sasongen) behåller bara en
- * läsande "Nästa A-tävling"-rad, Årsöversikts veckorutnäts tävlingsrad och
+ * en framåtblickande sida. /sasongsoversikt (tidigare /sasongen) behåller bara en
+ * läsande "Nästa A-tävling"-rad, Säsongsöversikts veckorutnäts tävlingsrad och
  * tävlingsmarkörer i tidslinjen — all redigering (den här filen) hör nu
  * ihop med analysen av samma data på den här sidan. */
 
@@ -31,7 +31,7 @@ function num(form: FormData, key: string): number | null {
 
 function refresh() {
   revalidatePath("/tavlingsresultat");
-  revalidatePath("/arsoversikt");
+  revalidatePath("/sasongsoversikt");
   // Tävlingarna visas numera i Blockplans veckovy (med deltagarna), så en
   // ny/borttagen tävling måste slå igenom där också.
   revalidatePath("/blockplan");

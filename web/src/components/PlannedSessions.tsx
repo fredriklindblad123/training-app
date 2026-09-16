@@ -53,7 +53,7 @@ function factorLabel(key: string | null): string | null {
   return TRAINING_FACTORS.find((f) => f.key === key)?.label ?? key;
 }
 
-/** Vilken Årsöversikt-rad (lib/training-factors.ts) passet räknas mot —
+/** Vilken Säsongsöversikt-rad (lib/training-factors.ts) passet räknas mot —
  * planeringen sker per pass, inte som en klumpsumma för blocket (se
  * motiveringen i sasongen/page.tsx:s motsvarande fält). Frivilligt. */
 function TrainingFactorField({ defaultValue }: { defaultValue?: string | null }) {

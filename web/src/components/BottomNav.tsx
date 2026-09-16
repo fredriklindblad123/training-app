@@ -48,7 +48,7 @@ const LOGG: Tab[] = [
 const PLAN: Tab[] = [
   { href: "/detaljplan", label: "Vecka", icon: "M4 6h16v14H4zM4 10h16M9 14h6" },
   { href: "/blockplan", label: "Block", icon: "M4 5h16v4H4zM4 11h16v4H4zM4 17h10v3H4z" },
-  { href: "/arsoversikt", label: "År", icon: "M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6" },
+  { href: "/sasongsoversikt", label: "Säsong", icon: "M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6" },
 ];
 
 const UPPFOLJNING: Tab = {
