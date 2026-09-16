@@ -22,7 +22,7 @@ import { cache } from "react";
  *
  * Bärs av en cookie, inte av en query-parameter. Läget är en varaktig
  * inställning och ska överleva varje navigering utan att varje länk i appen
- * behöver skriva om sig — det är precis det `?athlete=` redan tvingar NavLinks
+ * behöver skriva om sig — det är precis det `?athlete=` redan tvingar BottomNav
  * att göra, och det vill vi inte ha två av.
  */
 

@@ -9,18 +9,18 @@ import {
   viewableAthletes,
 } from "@/lib/auth-scope";
 import { signOut } from "@/app/login/actions";
-import { NavLinks, NavLinksView } from "@/components/NavLinks";
 import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { HeaderAthleteSwitcher } from "@/components/HeaderAthleteSwitcher";
 import { RefreshGarmin } from "@/components/RefreshGarmin";
-import { LoggTabBar } from "@/components/LoggTabBar";
+import { BottomNav } from "@/components/BottomNav";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { getViewMode } from "@/lib/view-mode";
 import { syncTargetsFromScope, triggerGarminSyncForAll } from "@/lib/garmin-sync";
 
-/* Menyn grupperas sedan 2026-08-27 i Logg och Plan — se motiveringen i
- * components/NavLinks.tsx, som äger både grupperna och ordningen. Historiken
- * nedan är varför de enskilda länkarna heter som de gör.
+/* Navigeringen bor sedan 2026-09-16 i components/BottomNav.tsx, längst ned
+ * på sidan i stället för i sidhuvudet. Den äger grupperna (Logg och Plan,
+ * sedan 2026-08-27) och ordningen. Historiken nedan är varför de enskilda
+ * vyerna heter som de gör.
  *
  * Ordningen namngav tidigare loopens kadenser, inte artefakttyper
  * (docs/tranarloopen.md). Första länken hette tidigare "Idag"; bytt tillbaka
@@ -114,28 +114,10 @@ export default async function AppLayout({
           innehållet som passerar under ska synas skymta, annars ser raden ut
           som ett avhugget lock. z-40 räcker med marginal — inget i appen
           lägger sig högre än dropdownernas z-50, som ligger INUTI headern. */}
-      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--line)] bg-[var(--background)]/90 px-4 py-2 backdrop-blur sm:px-6">
-        {/* Fallbacken renderar SAMMA meny, bara utan löparvalet i länkarna.
-            Tidigare stod det "Laddar meny…" här, vilket betydde att menyn
-            försvann och ersattes av en textrad vid varje navigering — det såg
-            ut som att appen laddade om sig själv. Suspense behövs bara för att
-            NavLinks läser useSearchParams(); resten av menyn är känd direkt. */}
-        <Suspense
-          fallback={
-            <NavLinksView
-              isCoach={isCoach}
-              planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
-              runnerMode={runnerMode}
-              athlete={null}
-            />
-          }
-        >
-          <NavLinks
-            isCoach={isCoach}
-            planOwnedByCoach={scoped != null && !canEditPlanning(scoped)}
-            runnerMode={runnerMode}
-          />
-        </Suspense>
+      {/* Sidhuvudet bär inte längre någon navigering (2026-09-16). Den bor i
+          BottomNav, inom räckhåll för tummen. Kvar här är bara VEM du tittar
+          på och VEM du är — löparväljaren, Garmin-uppdateringen och kontot. */}
+      <header className="sticky top-0 z-40 flex flex-wrap items-center justify-end gap-x-4 gap-y-2 border-b border-[var(--line)] bg-[var(--background)]/90 px-4 py-2 backdrop-blur sm:px-6">
         <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--ink-3)]">
           {/* Löparväljaren har EN plats i hela appen, och det är här.
               Den låg tidigare inuti varje sida och hamnade därför på olika
@@ -223,12 +205,14 @@ export default async function AppLayout({
       </header>
       <main className="flex flex-1 flex-col">{children}</main>
 
-      {/* Tabbrad i botten, bara på telefon. Menyn låg i sidhuvudet, alltså
-          längst bort från tummen. Suspense av samma skäl som menyn ovan:
-          komponenten läser searchParams för att bära löparvalet mellan
-          flikarna. */}
+      {/* Hela navigeringen, längst ned. Suspense eftersom komponenten läser
+          searchParams för att bära löparvalet mellan vyerna. */}
       <Suspense fallback={null}>
-        <LoggTabBar />
+        <BottomNav
+          isCoach={isCoach}
+          planOwnedByCoach={!canEditPlanning(scoped)}
+          runnerMode={runnerMode}
+        />
       </Suspense>
     </div>
   );

@@ -371,7 +371,7 @@ export default async function DashboardPage({
   const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
   const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
   // Bifogas på sidans egna länkar (till dagvyn/veckovyn) så växlingen
-  // följer med dit också — huvudmenyn (NavLinks) gör samma sak för
+  // följer med dit också — navigeringen (BottomNav) gör samma sak för
   // menylänkarna.
   const athleteQuery = scoped.role === "coach" ? `?athlete=${scopedUserId}` : "";
 

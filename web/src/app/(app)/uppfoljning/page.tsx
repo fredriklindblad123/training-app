@@ -58,7 +58,7 @@ import { getViewMode } from "@/lib/view-mode";
  * data. Efterlevnaden kommer i sin tur ur summarizeCompliance, samma som
  * kalendern, Blockplan och /trender.
  *
- * Sidan ligger i menyns PLAN-grupp (components/NavLinks.tsx) trots att den
+ * Sidan ligger i navigeringens PLAN-grupp (components/BottomNav.tsx) trots att den
  * mest visar utfall: frågan den svarar på är "höll planen?", vilket är
  * planeringens egen uppföljning — inte loggbokens "vad hände?". */
 

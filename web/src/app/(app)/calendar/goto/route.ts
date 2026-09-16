@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const horizon = searchParams.get("horizon");
   const date = searchParams.get("date");
   // Fas 0-uppföljning: en coachs valda löpare ska överleva "hoppa till
-  // datum"-formuläret precis som den redan gör i huvudmenyn (NavLinks).
+  // datum"-formuläret precis som den redan gör i navigeringen (BottomNav).
   const athlete = searchParams.get("athlete");
   const athleteQuery = athlete ? `?athlete=${athlete}` : "";
 

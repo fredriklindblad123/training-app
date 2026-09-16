@@ -128,7 +128,7 @@ export function canEditPlanning(scoped: ScopedProfile): boolean {
  * kontrollera vem som var vald innan hen skrev något.
  *
  * Coachens egen träning nås i stället via en egen ingång i menyn ("Min
- * träning", se components/NavLinks.tsx) — ett konto, men två tydligt skilda
+ * träning", se components/BottomNav.tsx) — ett konto, men två tydligt skilda
  * lägen. Alternativet som övervägdes var två separata inloggningar, vilket
  * hade tvingat fram en dubblerad Garmin-koppling och en utloggning varje gång
  * man vill se sin egen runda.
