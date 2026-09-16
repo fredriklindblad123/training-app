@@ -194,7 +194,7 @@ export function DailyStatus({
           sömnen halva raden. Markören finns kvar i STATUS_MARKERS — den ingår
           fortfarande i shouldEaseOff-bedömningen, som ska väga allt som mätts,
           inte bara det som visas. */}
-      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-3">
+      <div className="day-surface grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-3">
         {markers
           .filter((m) => m.spec.key !== "sleepHours")
           .map((m) => (

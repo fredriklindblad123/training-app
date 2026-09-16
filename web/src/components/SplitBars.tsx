@@ -64,7 +64,7 @@ export function SplitBars({
         </span>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+      <div className="day-surface flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
         <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
           {repsLabel(timed)}
         </div>

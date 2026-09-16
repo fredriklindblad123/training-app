@@ -58,6 +58,23 @@ function Bar({ colorVar }: { colorVar: string | null }) {
   );
 }
 
+/** Dagens kulör: det planerade passets typ i första hand, annars det
+ * genomförda. Vila, test och häck saknar kategorifärg och ger null.
+ *
+ * Exporterad eftersom HELA dashboarden färgas av den sedan 2026-09-16, inte
+ * bara det här kortet — sidan sätter --day-accent ur samma funktion. Två
+ * kopior av regeln hade oundvikligen glidit isär, och då hade sidan och
+ * kortet visat olika färger för samma dag. */
+export function dayAccent(
+  planned: { workout_type: string }[],
+  done: { category: string }[],
+): string | null {
+  return (
+    (planned[0] ? workoutTypeColorVar(planned[0].workout_type) : null) ??
+    (done[0] && isActivityCategory(done[0].category) ? categoryColorVar(done[0].category) : null)
+  );
+}
+
 export function TodaySession({
   planned,
   done,
@@ -72,9 +89,7 @@ export function TodaySession({
   /* Kortets kulör: det planerade passets typ i första hand, annars det
      genomförda. Vila, test och häck saknar kategorifärg och ger null, vilket
      lämnar kortet i den vanliga ytan — en vilodag ska inte skrika. */
-  const accent =
-    (planned[0] ? workoutTypeColorVar(planned[0].workout_type) : null) ??
-    (done[0] && isActivityCategory(done[0].category) ? categoryColorVar(done[0].category) : null);
+  const accent = dayAccent(planned, done);
 
   return (
     /* Rubriken står UTANFÖR kortet, som i sektionerna nedanför (flyttad

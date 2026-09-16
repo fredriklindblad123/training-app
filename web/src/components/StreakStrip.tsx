@@ -37,7 +37,7 @@ export function StreakStrip({
         Din svit
       </h2>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+      <div className="day-surface flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
         <div className="flex items-baseline gap-2">
           <span className="display text-3xl leading-none font-bold text-[var(--foreground)]">
             {currentWeeks}

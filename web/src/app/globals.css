@@ -186,3 +186,51 @@ body {
   from { opacity: 0; transform: translateY(14px) scale(0.97); }
   to { opacity: 1; transform: none; }
 }
+
+/* Dagens färg över hela dashboarden (2026-09-16).
+ *
+ * Sidan sätter --day-accent ur dagens passtyp (se dayAccent i
+ * TodaySession.tsx) och den här klassen låter den färga ytorna. Poängen är
+ * att dagen ska KÄNNAS olika beroende på vad som står på schemat — ett
+ * intervallpass och en vilodag ska inte se identiska ut.
+ *
+ * VAD DEN INTE RÖR, och varför: statusfärgerna. Grönt och rött på
+ * status-, form- och volymkorten betyder något precis — före eller efter
+ * baslinjen — och att låta dagens kulör blanda sig i dem hade gjort att
+ * samma siffra såg olika ut beroende på vilket pass som råkade stå på
+ * schemat. Reglerna nedan träffar därför bara ramar, ytor och etiketter,
+ * aldrig text eller symboler som bär en bedömning.
+ *
+ * Allt går via color-mix mot befintliga tokens, så mörkt läge följer med av
+ * sig självt och inget värde behöver dubbleras per tema. */
+.day-theme {
+  /* Ambient ton bakom hela sidan: stark i överkanten där dagens pass står,
+     helt utslocknad en bit ned. En jämn platta över hela sidan hade läst som
+     att någon bytt bakgrundsfärg; en toning läser som ljus. */
+  background-image: radial-gradient(
+    120% 55% at 50% 0%,
+    color-mix(in oklab, var(--day-accent, transparent) 14%, transparent),
+    transparent 70%
+  );
+}
+
+/* Kortens ramar tar upp dagens kulör svagt, så att sidan hänger ihop med
+   passkortet i stället för att bara ha ett färgat inslag högst upp. */
+.day-theme .day-surface {
+  border-color: color-mix(in oklab, var(--day-accent, var(--line)) 22%, var(--line));
+}
+
+/* Sektionsrubrikerna får ett litet märke i dagens färg. Det är den billigaste
+   möjliga kopplingen mellan rubrik och tema — ingen extra yta, ingen text som
+   byter färg och tappar kontrast. */
+.day-theme section > h2::before,
+.day-theme section > div > h2::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 0.78em;
+  margin-right: 0.5rem;
+  vertical-align: baseline;
+  border-radius: 2px;
+  background: var(--day-accent, var(--line));
+}

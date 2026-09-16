@@ -28,7 +28,7 @@ import {
 } from "@/lib/continuity";
 import { STATUS_LABEL } from "@/lib/calendar-utils";
 import { getViewMode } from "@/lib/view-mode";
-import { TodaySession, type TodayPlanned } from "@/components/TodaySession";
+import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
 import { SplitBars } from "@/components/SplitBars";
 import { RecordCard } from "@/components/RecordCard";
 import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
@@ -670,10 +670,24 @@ export default async function DashboardPage({
     }
   }
 
+  /* Dagens kulör för HELA sidan. Samma funktion som passkortet använder. */
+  const pageAccent = dayAccent(
+    (todayPlannedRows ?? []) as unknown as { workout_type: string }[],
+    sessions.map((s) => ({ category: s.category })),
+  );
+
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}${athleteQuery}`;
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    /* Hela sidan bär dagens färg, inte bara passkortet (begärt 2026-09-16).
+       --day-accent kommer ur samma dayAccent() som kortet använder, så sidan
+       och kortet kan aldrig visa olika färg för samma dag. Saknas den — en
+       vilodag, eller inget pass alls — sätts ingen variabel, och .day-theme
+       faller tillbaka på appens vanliga ytor via sina egna fallback-värden. */
+    <div
+      className="day-theme flex flex-1 flex-col gap-8 px-6 py-8"
+      style={pageAccent ? ({ "--day-accent": pageAccent } as React.CSSProperties) : undefined}
+    >
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Dashboard</h1>
 
       {/* --- Dagens pass, allra överst.
@@ -744,7 +758,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+        <div className="day-surface grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {formRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
@@ -759,7 +773,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+        <div className="day-surface grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
@@ -799,7 +813,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+        <div className="day-surface grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {continuityRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
