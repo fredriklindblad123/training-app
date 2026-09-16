@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
+import { circleButtonClass } from "@/components/ui/CircleButton";
 
 /* Själva knappen i uppdateringsformuläret.
  *
@@ -8,6 +9,12 @@ import { useFormStatus } from "react-dom";
  * status från formuläret OVANFÖR sig i trädet, så den måste sitta inuti
  * <form> — men bara den behöver vara klient, inte formuläret eller den
  * serverkomponent som hämtar tidsstämpeln.
+ *
+ * Cirkel sedan 2026-09-16, i samma form som adepternas avatarer: raden hade
+ * annars blivit fyra cirklar bredvid tre textknappar, vilket läser som två
+ * olika saker som råkat hamna intill varandra. Klockslaget för senaste synk
+ * flyttade in i title — det var en textrad bredvid knappen förut, och en
+ * sådan får inte plats i en rad av cirklar.
  *
  * Återkopplingen är hela poängen. En Garmin-synk tar flera sekunder (inloggning,
  * aktiviteter, varv, sömn — för tränaren gånger antalet adepter), och utan
@@ -17,25 +24,31 @@ import { useFormStatus } from "react-dom";
  * Knappen låses under tiden av samma anledning. `aria-busy` så att en
  * skärmläsare får veta det, inte bara den som ser texten byta.
  */
-export function RefreshGarminButton() {
+export function RefreshGarminButton({ title }: { title: string }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
       disabled={pending}
       aria-busy={pending}
-      title="Hämta senaste träningsdata från Garmin för dig och dina adepter"
-      className="display flex items-center gap-1.5 rounded-md border border-[var(--line)] px-2.5 py-1 text-sm font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)] disabled:cursor-progress disabled:opacity-70"
+      aria-label={title}
+      title={title}
+      className={circleButtonClass}
     >
-      {/* Snurran ritas alltid, men är osynlig när inget pågår — då hoppar inte
-          knappens bredd i det ögonblick man trycker. */}
-      <span
+      {/* Samma pil i båda lägena, men snurrande när det pågår. En ikon som
+          BYTS ut fick knappen att hoppa; en som roterar gör det inte. */}
+      <svg
+        viewBox="0 0 24 24"
+        className={`h-4 w-4 ${pending ? "motion-safe:animate-spin" : ""}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
         aria-hidden
-        className={`inline-block h-3 w-3 rounded-full border-2 border-current border-r-transparent transition-opacity motion-reduce:animate-none ${
-          pending ? "animate-spin opacity-100" : "opacity-0"
-        }`}
-      />
-      {pending ? "Hämtar…" : "Uppdatera"}
+      >
+        <path d="M20 11a8 8 0 1 0-.6 4M20 5v6h-6" />
+      </svg>
     </button>
   );
 }

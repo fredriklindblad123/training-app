@@ -9,9 +9,11 @@ import {
   viewableAthletes,
 } from "@/lib/auth-scope";
 import { signOut } from "@/app/login/actions";
-import { ViewModeToggle } from "@/components/ViewModeToggle";
 import { RefreshGarmin } from "@/components/RefreshGarmin";
 import { BottomNav } from "@/components/BottomNav";
+import { TopBar } from "@/components/TopBar";
+import { ModeCircle } from "@/components/ModeCircle";
+import { circleButtonClass } from "@/components/ui/CircleButton";
 import { getViewMode } from "@/lib/view-mode";
 import { syncTargetsFromScope, triggerGarminSyncForAll } from "@/lib/garmin-sync";
 
@@ -104,69 +106,75 @@ export default async function AppLayout({
 
   return (
     <div className="flex flex-1 flex-col">
+      {/* Uppe: vem du tittar på och vem du är. Nere: vilken vy du är i.
+          Uppdelningen är medveten — toppraden ändrar SAMMANHANG, bottenraden
+          byter VY, och att blanda dem gjorde tidigare båda raderna till
+          samlingar av knappar utan inbördes ordning. */}
+      <Suspense fallback={null}>
+        <TopBar
+          /* Tom lista i löparläge: då tittar man på sig själv och har inget
+             att växla mellan. */
+          athletes={isCoach && !runnerMode ? viewableAthletes(scoped) : []}
+          defaultAthleteId={resolveScopedUserId(scoped)}
+          actions={
+            <>
+              {/* Manuell hämtning. Automatiken går på varje sidvisning men är
+                  strypt till femton minuter; den här struntar i strypningen,
+                  för den som just kommit hem från ett pass vill se det nu.
+                  Strömmas in: komponenten gör en egen fråga för senaste
+                  synktidpunkt, och den ska inte hålla upp resten av raden.
+                  Fallbacken är samma cirkel, avstängd, så inget hoppar. */}
+              <Suspense
+                fallback={
+                  <span
+                    aria-hidden
+                    className="h-8 w-8 shrink-0 rounded-full border border-[var(--line)] bg-[var(--surface)] opacity-60"
+                  />
+                }
+              >
+                <RefreshGarmin />
+              </Suspense>
+
+              {/* Bara för en coach — en adept är bara löpare och har inget
+                  att växla mellan. */}
+              {isCoach && <ModeCircle mode={mode} />}
+
+              <form action={signOut} className="flex">
+                <button
+                  type="submit"
+                  title="Logga ut"
+                  aria-label="Logga ut"
+                  className={circleButtonClass}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.9}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                  >
+                    <path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5" />
+                  </svg>
+                </button>
+              </form>
+            </>
+          }
+        />
+      </Suspense>
+
       <main className="flex flex-1 flex-col">{children}</main>
 
-      {/* Hela gränssnittet utanför sidan självt, längst ned: navigering, vem
-          du tittar på, och kontot. Sidhuvudet är borttaget — det bar till
-          slut bara identitet, och en klistrad rad högst upp kostade
-          skärmhöjd på varje sida för tre kontroller man rör några gånger om
-          dagen.
-          Suspense eftersom komponenten läser searchParams för att bära
-          löparvalet mellan vyerna. */}
+      {/* Navigeringen, inom räckhåll för tummen. Suspense eftersom
+          komponenten läser searchParams för att bära löparvalet mellan
+          vyerna. */}
       <Suspense fallback={null}>
         <BottomNav
           isCoach={isCoach}
           planOwnedByCoach={!canEditPlanning(scoped)}
           runnerMode={runnerMode}
-          /* Tom lista i löparläge: då tittar man på sig själv och har inget
-             att växla mellan. */
-          athletes={isCoach && !runnerMode ? viewableAthletes(scoped) : []}
-          defaultAthleteId={resolveScopedUserId(scoped)}
-          account={
-            <>
-              <span className="truncate px-2 pt-1 pb-2 text-xs text-[var(--ink-3)]">
-                {scoped.email}
-              </span>
-
-              {/* Manuell hämtning. Automatiken går på varje sidvisning men är
-                  strypt till femton minuter; den här struntar i strypningen,
-                  för den som just kommit hem från ett pass vill se det nu.
-                  Strömmas in: komponenten gör en egen fråga för senaste
-                  synktidpunkt, och den ska inte hålla upp resten. */}
-              <div className="border-t border-[var(--line)] px-2 py-2">
-                <Suspense
-                  fallback={
-                    <button
-                      type="button"
-                      disabled
-                      className="display flex items-center gap-1.5 rounded-md border border-[var(--line)] px-2.5 py-1 text-sm font-medium text-[var(--ink-2)] opacity-70"
-                    >
-                      Uppdatera
-                    </button>
-                  }
-                >
-                  <RefreshGarmin />
-                </Suspense>
-              </div>
-
-              {/* Växeln byter vem DU är i appen, inte vad du tittar på. Bara
-                  för en coach — en adept är bara löpare. */}
-              {isCoach && (
-                <div className="border-t border-[var(--line)] px-2 py-2">
-                  <ViewModeToggle mode={mode} />
-                </div>
-              )}
-
-              <form action={signOut} className="border-t border-[var(--line)] pt-2">
-                <button
-                  type="submit"
-                  className="w-full rounded-md px-2 py-1 text-left text-sm text-[var(--ink-2)] hover:bg-[var(--surface-raised)] hover:text-[var(--foreground)]"
-                >
-                  Logga ut
-                </button>
-              </form>
-            </>
-          }
         />
       </Suspense>
     </div>

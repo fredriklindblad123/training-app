@@ -84,13 +84,16 @@ export async function RefreshGarmin() {
     : null;
 
   return (
-    <form action={refresh} className="flex items-center gap-2">
-      <RefreshGarminButton />
-      {/* Tomt tillstånd får inte en platshållare: "aldrig synkad" är ett
-          faktum värt att se, inte ett streck att tolka. */}
-      <span className="tabular hidden text-xs text-[var(--ink-3)] sm:inline">
-        {label ? `kl ${label}` : "aldrig synkad"}
-      </span>
+    <form action={refresh} className="flex">
+      {/* Klockslaget bor i knappens title, inte som en egen textrad. Tomt
+          tillstånd sägs rakt ut: "aldrig synkad" är ett faktum värt att se. */}
+      <RefreshGarminButton
+        title={
+          label
+            ? `Hämta senaste träningsdata från Garmin. Senast kl ${label}.`
+            : "Hämta senaste träningsdata från Garmin. Aldrig synkad."
+        }
+      />
     </form>
   );
 }
