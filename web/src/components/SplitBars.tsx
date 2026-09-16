@@ -76,17 +76,25 @@ export function SplitBars({
               <span className="tabular w-5 shrink-0 text-xs text-[var(--ink-3)]">
                 {s.splitIndex}
               </span>
+              {/* Stapeln ligger i ett EGET spår som får resten av bredden.
+                  Procenten räknades först direkt på stapeln, men den satt då i
+                  samma flexrad som varvnumret och tiden — 100% av raden PLUS
+                  två textkolumner blev bredare än kortet, och staplarna gick
+                  utanför. Spåret äger bredden, stapeln äger sin andel av
+                  spåret. */}
+              <span className="flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-[var(--surface-raised)]">
+                <span
+                  className="h-full rounded-sm"
+                  style={{
+                    // Minst 6% så att även det snabbaste varvet syns som en
+                    // stapel och inte som ett streck.
+                    width: `${Math.max(6, (secs / max) * 100)}%`,
+                    backgroundColor: best ? "var(--status-watch)" : "var(--cat-interval)",
+                  }}
+                />
+              </span>
               <span
-                className="h-2.5 shrink-0 rounded-sm transition-[width] duration-500"
-                style={{
-                  // Minst 6% så att även det snabbaste varvet syns som en
-                  // stapel och inte som ett streck.
-                  width: `${Math.max(6, (secs / max) * 100)}%`,
-                  backgroundColor: best ? "var(--status-watch)" : "var(--cat-interval)",
-                }}
-              />
-              <span
-                className={`tabular ml-auto text-xs ${
+                className={`tabular w-12 shrink-0 text-right text-xs ${
                   best
                     ? "font-semibold text-[var(--status-watch-ink)]"
                     : "text-[var(--ink-2)]"

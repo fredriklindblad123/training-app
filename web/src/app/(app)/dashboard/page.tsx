@@ -622,10 +622,28 @@ export default async function DashboardPage({
     activities: { name: string | null; category: string | null } | null;
   };
   const splitRows = (recentSplitRows ?? []) as unknown as SplitRowRaw[];
-  const latestActivityId = splitRows[0]?.activity_id ?? null;
-  const latestSplits = latestActivityId
+
+  /* Varven måste höra till SENASTE PASSET, inte till senaste passet som råkar
+   * ha varv.
+   *
+   * Frågan hämtar de senaste aktiva varven, och tog man bara det översta fick
+   * man det senaste INTERVALLPASSET — som kan ligga flera dagar bak. Det såg
+   * ut som att dagens lugna distanspass hade varv, vilket rapporterades:
+   * intervaller visades för en dag då löparen sprang distans.
+   *
+   * Nu jämförs mot id:t på den allra senaste aktiviteten. Har den inga varv
+   * visas ingen sektion alls — ett distanspass HAR inga varv, och att då visa
+   * ett annat pass vore att svara på en fråga ingen ställt. */
+  const newestActivityId =
+    (allActivityRows ?? []).length > 0
+      ? ((allActivityRows as unknown as { id: string; start_time: string }[]).reduce((a, b) =>
+          a.start_time >= b.start_time ? a : b,
+        ).id ?? null)
+      : null;
+
+  const latestSplits = newestActivityId
     ? splitRows
-        .filter((r) => r.activity_id === latestActivityId)
+        .filter((r) => r.activity_id === newestActivityId)
         .sort((a, b) => a.split_index - b.split_index)
     : [];
   const splitMeta = latestSplits[0]?.activities ?? null;
