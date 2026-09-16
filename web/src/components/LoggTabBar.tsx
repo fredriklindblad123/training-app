@@ -13,8 +13,15 @@ import { usePathname, useSearchParams } from "next/navigation";
  * skärm; att lägga sex vyer i en tabbrad hade gett fem millimeter breda
  * träffytor. Plan-gruppen ligger kvar i sidhuvudet, som fortsätter finnas.
  *
- * Dold från lg och uppåt: på en bred skärm är sidhuvudets meny bättre, och
- * två menyer samtidigt är en meny för mycket.
+ * Synlig på ALLA bredder sedan 2026-09-16. Den var först dold från lg och
+ * uppåt, med motiveringen att sidhuvudets meny är bättre på en bred skärm.
+ * Effekten blev att den som sitter vid en dator aldrig såg den alls —
+ * rapporterat. Loggruppen är i stället borta ur sidhuvudet på alla bredder,
+ * så det finns exakt ett ställe att byta loggvy.
+ *
+ * På bred skärm blir raden en centrerad platta i stället för att spänna hela
+ * fönstret: fyra flikar utdragna över 1400 pixlar ser ut som ett misstag, och
+ * en tabbrad ska läsas som en enhet.
  *
  * Ikonerna är ritade som SVG och inte som emoji — emoji renderas olika i
  * varje operativsystem, och en rad där en ikon är platt och nästa är en
@@ -41,7 +48,7 @@ export function LoggTabBar() {
   return (
     <nav
       aria-label="Logg"
-      className="sticky bottom-0 z-40 flex border-t border-[var(--line)] bg-[var(--background)]/95 px-2 pt-1.5 backdrop-blur lg:hidden"
+      className="sticky bottom-0 z-40 mx-auto flex w-full border-t border-[var(--line)] bg-[var(--background)]/95 px-2 pt-1.5 backdrop-blur sm:mb-4 sm:w-fit sm:gap-1 sm:rounded-full sm:border sm:px-2 sm:shadow-lg"
       /* Marginal för iPhones hemindikator. Utan den hamnar den nedersta
          raden text under systemets streck. */
       style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
@@ -53,8 +60,10 @@ export function LoggTabBar() {
             key={t.href}
             href={`${t.href}${suffix}`}
             aria-current={on ? "page" : undefined}
-            className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1 transition-colors ${
-              on ? "text-[var(--foreground)]" : "text-[var(--ink-3)]"
+            className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1 transition-colors sm:min-w-20 sm:flex-none ${
+              on
+                ? "bg-[var(--surface-raised)] text-[var(--foreground)] sm:rounded-full"
+                : "text-[var(--ink-3)] hover:text-[var(--foreground)]"
             }`}
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor"

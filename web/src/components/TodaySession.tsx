@@ -97,11 +97,19 @@ export function TodaySession({
         className="relative flex flex-col gap-3 overflow-hidden rounded-lg border p-4 transition-colors"
         style={{
           borderColor: accent
-            ? `color-mix(in oklab, ${accent} 45%, var(--line))`
+            ? `color-mix(in oklab, ${accent} 55%, var(--line))`
             : "var(--line)",
-          backgroundColor: accent
-            ? `color-mix(in oklab, ${accent} 10%, var(--surface))`
-            : "var(--surface)",
+          /* Övertoning från hörnet, inte en jämn tonplatta.
+             Först låg färgen på tio procents inblandning, vilket knappt
+             syntes — kortet såg ut som alla andra kort med en färgad ram.
+             Rapporterat mot designförslagets mockup, som har en verklig
+             övertoning. Den startar starkt uppe till vänster där rubriken
+             står och tonar ut mot mitten, så att texten längre ned behåller
+             sin kontrast mot en nästan vanlig yta. */
+          backgroundImage: accent
+            ? `radial-gradient(125% 135% at 0% 0%, color-mix(in oklab, ${accent} 42%, var(--surface)), color-mix(in oklab, ${accent} 6%, var(--surface)) 62%)`
+            : undefined,
+          backgroundColor: "var(--surface)",
         }}
       >
         {/* Tomt läge sägs rakt ut. En vilodag är ett giltigt svar på "vad ska
@@ -125,8 +133,11 @@ export function TodaySession({
               <span className="display text-2xl leading-none font-bold text-[var(--foreground)] uppercase">
                 {label}
               </span>
+              {/* Repetitionerna i bärnsten och med siffror i fast bredd, som i
+                  mockupen: talet är kortets andra rubrik, inte en
+                  underrubrik, och ska läsas i samma blick som typen. */}
               {detail && (
-                <span className="display tabular text-xl leading-tight font-semibold text-[var(--status-watch-ink)]">
+                <span className="tabular text-2xl leading-tight font-bold text-[var(--status-watch)]">
                   {detail}
                 </span>
               )}

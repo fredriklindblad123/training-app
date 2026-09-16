@@ -196,16 +196,10 @@ export function NavLinksView({
     <>
       {/* ---- Bred skärm: allt utskrivet ---- */}
       <nav className="display hidden flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium sm:flex">
-        {/* Loggruppen döljs under lg: där tar tabbraden i botten över, och två
-            menyer med samma fyra länkar är en meny för mycket. Plan-gruppen
-            står kvar — den hör inte hemma i en tabbrad (se LoggTabBar). */}
-        <span className="hidden lg:contents">
-          {renderGroup("nav-logg", "Logg", LOGG)}
-
-          {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
-              role="group", så den ska inte läsas upp. */}
-          <span aria-hidden className="h-4 w-px bg-[var(--line)]" />
-        </span>
+        {/* Loggruppen finns INTE här. Den bor i tabbraden i botten
+            (LoggTabBar), på alla bredder — det ska finnas exakt ett ställe att
+            byta loggvy. Plan-gruppen står kvar: planeringen är tränarens
+            arbete vid en skärm och hör inte hemma i en tabbrad. */}
 
         {showPlan && (
           <>
