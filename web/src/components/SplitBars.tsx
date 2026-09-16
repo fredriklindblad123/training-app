@@ -21,19 +21,80 @@ export type SplitRow = {
   splitIndex: number;
   distanceMeters: number | null;
   durationSeconds: number | null;
+  /** Sträckan varvet räknas som, eller null när det inte är en riktig sträcka
+   * utan bara hur långt man hann. Kommer från databasen, se migrationen
+   * record_only_for_real_distances. */
+  canonicalDistance: number | null;
 };
 
-/** "1000 m" eller "5×" när distansen saknas — rubriken över staplarna. */
-function repsLabel(splits: SplitRow[]): string {
-  const dists = splits.map((s) => Math.round((s.distanceMeters ?? 0) / 10) * 10).filter((d) => d > 0);
-  if (dists.length === 0) return `${splits.length} varv`;
-  // Alla lika långa är det vanliga fallet (5×1000). Skiljer de sig åt visar vi
-  // bara antalet — "5×1000/800/600" är sant men oläsligt i en rubrik.
-  const same = dists.every((d) => Math.abs(d - dists[0]) <= 20);
-  if (!same) return `${splits.length} varv`;
-  return dists[0] >= 2000
-    ? `${splits.length}×${(dists[0] / 1000).toFixed(1).replace(".", ",")} km`
-    : `${splits.length}×${dists[0]} m`;
+/* Vilka varv som faktiskt ÄR repetitionerna, och vad de ska kallas.
+ *
+ * Ett Garmin-pass är inte en ren lista repetitioner. Ett verkligt pass såg ut
+ * så här: tre kilometer uppvärmning, ett varv på 63 m, sex varv på exakt 181
+ * sekunder, fem joggvilor på 90 sekunder — alla märkta "active" av klockan —
+ * och sedan nedjogg. Att rita alla sjutton som likvärdiga staplar och kalla
+ * dem "17 varv" säger inget om vad passet var.
+ *
+ * Regeln: hitta den största gruppen varv som hör ihop, och visa bara den.
+ *
+ *   TID först. Ligger flera varv på samma sekund är passet tidsbaserat —
+ *   "6×3 min" — och distansen är ett utfall, inte ett mål. Det var precis den
+ *   feltolkningen som rapporterades: appen påstod personbästa på 750 m när
+ *   målet var tre minuter och tiden per definition inte kunde bli bättre.
+ *
+ *   DISTANS annars, och bara på en riktig sträcka (canonicalDistance från
+ *   databasen). 757 m är ingen sträcka, det är hur långt man hann.
+ *
+ * Hittas ingen grupp visas alla varv och etiketten säger bara antalet — ett
+ * ärligt "det här är vad klockan spelade in".
+ */
+
+/** Grupperar på ett värde med 2% tolerans och returnerar den största gruppen. */
+function largestCluster(
+  splits: SplitRow[],
+  valueOf: (s: SplitRow) => number | null,
+): SplitRow[] {
+  let best: SplitRow[] = [];
+  for (const anchor of splits) {
+    const v = valueOf(anchor);
+    if (v == null || v <= 0) continue;
+    const group = splits.filter((s) => {
+      const w = valueOf(s);
+      return w != null && Math.abs(w - v) <= v * 0.02;
+    });
+    if (group.length > best.length) best = group;
+  }
+  return best;
+}
+
+function minutesLabel(seconds: number): string {
+  const m = seconds / 60;
+  // Hela minuter är det normala (3 min, 90 sek skrivs som 1,5 min).
+  return Number.isInteger(Math.round(m * 10) / 10) && Math.abs(m - Math.round(m)) < 0.02
+    ? `${Math.round(m)} min`
+    : `${(Math.round(m * 10) / 10).toFixed(1).replace(".", ",")} min`;
+}
+
+function selectReps(splits: SplitRow[]): { reps: SplitRow[]; label: string } {
+  const byTime = largestCluster(splits, (s) => s.durationSeconds);
+  if (byTime.length >= 3) {
+    const secs = byTime[0].durationSeconds as number;
+    return { reps: byTime, label: `${byTime.length}×${minutesLabel(secs)}` };
+  }
+
+  const byDistance = largestCluster(splits, (s) => s.canonicalDistance ?? null);
+  if (byDistance.length >= 2) {
+    const d = byDistance[0].canonicalDistance as number;
+    return {
+      reps: byDistance,
+      label:
+        d >= 2000
+          ? `${byDistance.length}×${(d / 1000).toFixed(1).replace(".", ",")} km`
+          : `${byDistance.length}×${d} m`,
+    };
+  }
+
+  return { reps: splits, label: `${splits.length} varv` };
 }
 
 export function SplitBars({
@@ -46,10 +107,10 @@ export function SplitBars({
   title: string;
   dateLabel: string;
 }) {
-  const timed = splits.filter((s) => (s.durationSeconds ?? 0) > 0);
-  if (timed.length < 2) return null;
+  const all = splits.filter((s) => (s.durationSeconds ?? 0) > 0);
+  if (all.length < 2) return null;
 
-  const base = Math.min(...timed.map((s) => s.splitIndex));
+  const { reps: timed, label: repsText } = selectReps(all);
   const max = Math.max(...timed.map((s) => s.durationSeconds as number));
   const fastest = Math.min(...timed.map((s) => s.durationSeconds as number));
 
@@ -66,7 +127,7 @@ export function SplitBars({
 
       <div className="day-surface flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
         <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-          {repsLabel(timed)}
+          {repsText}
         </div>
 
         {timed.map((s) => {
@@ -78,7 +139,7 @@ export function SplitBars({
                   som en löpare räknar som första, andra, tredje varvet är
                   bara förvirrande — numret är en etikett, inte ett index. */}
               <span className="tabular w-5 shrink-0 text-xs text-[var(--ink-3)]">
-                {s.splitIndex + (base === 0 ? 1 : 0)}
+                {timed.indexOf(s) + 1}
               </span>
               {/* Stapeln ligger i ett EGET spår som får resten av bredden.
                   Procenten räknades först direkt på stapeln, men den satt då i

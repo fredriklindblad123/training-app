@@ -18,17 +18,22 @@ export function RecordCard({
   durationSeconds,
   previousBest,
 }: {
-  distanceMeters: number | null;
+  /** Sträckan varvet RÄKNAS SOM, från databasen — inte den uppmätta.
+   *
+   * Kortet avrundade tidigare den uppmätta distansen själv, vilket är hur
+   * felet uppstod: ett tidsintervall på 757 m blev "750 m" och påstods vara
+   * ett personbästa, trots att målet var tre minuter och tiden per definition
+   * inte kunde bli bättre. Nu utlöses kortet bara på sträckor databasen
+   * godkänt som riktiga, och etiketten skriver ut just den sträckan. */
+  distanceMeters: number;
   durationSeconds: number;
   previousBest: number;
 }) {
   const gain = previousBest - durationSeconds;
   const label =
-    distanceMeters == null
-      ? "Snabbaste varvet i år"
-      : distanceMeters >= 2000
-        ? `Snabbaste ${(Math.round(distanceMeters / 100) / 10).toFixed(1).replace(".", ",")} km i år`
-        : `Snabbaste ${Math.round(distanceMeters / 50) * 50} m i år`;
+    distanceMeters >= 2000
+      ? `Snabbaste ${(distanceMeters / 1000).toFixed(1).replace(".", ",")} km i år`
+      : `Snabbaste ${distanceMeters} m i år`;
 
   return (
     <section

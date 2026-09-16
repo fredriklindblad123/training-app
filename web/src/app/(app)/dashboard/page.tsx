@@ -613,6 +613,7 @@ export default async function DashboardPage({
     activity_category: string | null;
     started: string | null;
     previous_best: number | null;
+    canonical_distance: number | null;
   };
   const latestSplits = ((recentSplitRows ?? []) as unknown as SplitRowRaw[]).slice();
   const splitCategory = latestSplits[0]?.activity_category ?? null;
@@ -634,6 +635,9 @@ export default async function DashboardPage({
       (s) =>
         s.duration_seconds != null &&
         s.previous_best != null &&
+        // canonical_distance är null för varv som inte är en riktig sträcka —
+        // ett tidsintervalls 757 m kan varken sätta eller slå ett rekord.
+        s.canonical_distance != null &&
         s.duration_seconds <= s.previous_best - 0.5,
     )
     .sort((a, b) => (a.duration_seconds as number) - (b.duration_seconds as number))[0];
@@ -719,7 +723,7 @@ export default async function DashboardPage({
           inte något man hittar efter att ha läst en stapellista. */}
       {record && (
         <RecordCard
-          distanceMeters={record.distance_meters}
+          distanceMeters={record.canonical_distance as number}
           durationSeconds={record.duration_seconds as number}
           previousBest={record.previous_best as number}
         />
@@ -735,6 +739,7 @@ export default async function DashboardPage({
             splitIndex: s.split_index,
             distanceMeters: s.distance_meters,
             durationSeconds: s.duration_seconds,
+            canonicalDistance: s.canonical_distance,
           }))}
           title={splitTitle}
           dateLabel={splitDate}
