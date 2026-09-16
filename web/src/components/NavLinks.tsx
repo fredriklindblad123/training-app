@@ -178,17 +178,24 @@ export function NavLinksView({
 
   /* Alla länkar i en platt lista — mobilmenyn visar dem staplade och behöver
      inte grupperingens vågräta avdelare. */
-  /* Loggvyerna är INTE med i den hopfällda mobilmenyn — de bor i tabbraden i
-   * botten sedan 2026-09-16. Att lista dem båda ställena hade gjort menyn
-   * längre utan att göra något nåbart som inte redan var det.
-   * `current` räknas däremot på ALLA länkar, så knappen fortfarande visar var
-   * man är även när man står på en loggvy. */
+  /* Loggvyerna ÄR med i menyn igen (2026-09-16, samma dag de togs bort).
+   *
+   * De flyttades till tabbraden med motiveringen att det ska finnas exakt ett
+   * ställe att byta loggvy. Men då blev tabbraden också det ENDA stället, och
+   * en tränare rapporterade att hen inte längre kom åt loggvyerna alls. Vad
+   * som gjorde att tabbraden inte dög i just det läget vet jag inte — och
+   * just därför står länkarna här igen: en navigering får vara redundant, den
+   * får inte vara omöjlig.
+   *
+   * Tabbraden finns kvar. Den är snabbare att nå med tummen och är fortsatt
+   * det avsedda sättet på telefon; menyn är vägen som alltid fungerar. */
   const flat: { group: string; items: NavItem[] }[] = [
+    { group: "Logg", items: LOGG },
     ...(showPlan ? [{ group: "Plan", items: plan }] : []),
     { group: "", items: [SETTINGS] },
   ];
   const current =
-    [...LOGG, ...flat.flatMap((g) => g.items)].find(
+    flat.flatMap((g) => g.items).find(
       (l) => pathname === l.href || pathname.startsWith(`${l.href}/`),
     )?.label ?? "Meny";
 
@@ -196,10 +203,14 @@ export function NavLinksView({
     <>
       {/* ---- Bred skärm: allt utskrivet ---- */}
       <nav className="display hidden flex-wrap items-center gap-x-4 gap-y-2 text-sm font-medium sm:flex">
-        {/* Loggruppen finns INTE här. Den bor i tabbraden i botten
-            (LoggTabBar), på alla bredder — det ska finnas exakt ett ställe att
-            byta loggvy. Plan-gruppen står kvar: planeringen är tränarens
-            arbete vid en skärm och hör inte hemma i en tabbrad. */}
+        {/* Loggruppen står här igen, se motiveringen vid `flat` ovan: den låg
+            en kort stund bara i tabbraden, och en tränare blev då utan väg in
+            till loggvyerna. */}
+        {renderGroup("nav-logg", "Logg", LOGG)}
+
+        {/* Avdelaren är dekor — grupperna bär redan sin gräns semantiskt via
+            role="group", så den ska inte läsas upp. */}
+        <span aria-hidden className="h-4 w-px bg-[var(--line)]" />
 
         {showPlan && (
           <>

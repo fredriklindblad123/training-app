@@ -1,4 +1,4 @@
-import { formatDuration } from "@/lib/format";
+import { formatDuration, formatHoursMinutes, formatKm, formatPace } from "@/lib/format";
 
 /* Mellantiderna från senaste passet, som staplar.
  *
@@ -97,20 +97,77 @@ function selectReps(splits: SplitRow[]): { reps: SplitRow[]; label: string } {
   return { reps: splits, label: `${splits.length} varv` };
 }
 
+/** Ett nyckeltal i sammanfattningen för ett distanspass. */
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+        {label}
+      </span>
+      <span className="display tabular text-2xl leading-none font-bold text-[var(--foreground)]">
+        {value}
+      </span>
+    </div>
+  );
+}
+
 export function SplitBars({
   splits,
   title,
   dateLabel,
+  summary,
 }: {
   splits: SplitRow[];
   /** Passets namn, t.ex. "Intervaller". */
   title: string;
   dateLabel: string;
+  /** Passet i helhet. Bär sektionen när det inte finns några repetitioner —
+   * se motiveringen nedan. */
+  summary: {
+    distanceMeters: number;
+    durationSeconds: number;
+    avgHr: number | null;
+  } | null;
 }) {
   const all = splits.filter((s) => (s.durationSeconds ?? 0) > 0);
-  if (all.length < 2) return null;
+  const found = all.length >= 2 ? selectReps(all) : null;
 
-  const { reps: timed, label: repsText } = selectReps(all);
+  /* Ett DISTANSPASS har inga repetitioner, och varvtider säger inget om det.
+   *
+   * Det man vill veta efter ett lugnt eller långt pass är farten och pulsen —
+   * inte hur lång tid varje kilometer tog. Kilometerstaplar för ett
+   * distanspass är dessutom aktivt vilseledande: de ser ut som repetitioner
+   * och inbjuder till att jämföra varv som aldrig var tänkta att jämföras.
+   * Rapporterat.
+   *
+   * Sektionen byter därför innehåll efter vad passet var, inte efter vilken
+   * data som råkar finnas. */
+  if (!found || found.label.endsWith("varv")) {
+    if (!summary || summary.distanceMeters <= 0 || summary.durationSeconds <= 0) return null;
+    const paceSeconds = summary.durationSeconds / (summary.distanceMeters / 1000);
+    return (
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+            Senaste passet
+          </h2>
+          <span className="text-xs text-[var(--ink-3)]">
+            {title} · {dateLabel}
+          </span>
+        </div>
+        <div className="day-surface flex flex-wrap gap-x-10 gap-y-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+          <Metric label="Distans" value={formatKm(summary.distanceMeters)} />
+          <Metric label="Fart" value={formatPace(paceSeconds)} />
+          <Metric label="Tid" value={formatHoursMinutes(summary.durationSeconds)} />
+          {summary.avgHr != null && (
+            <Metric label="Medelpuls" value={`${summary.avgHr}`} />
+          )}
+        </div>
+      </section>
+    );
+  }
+
+  const { reps: timed, label: repsText } = found;
   const max = Math.max(...timed.map((s) => s.durationSeconds as number));
   const fastest = Math.min(...timed.map((s) => s.durationSeconds as number));
 

@@ -616,12 +616,6 @@ export default async function DashboardPage({
     canonical_distance: number | null;
   };
   const latestSplits = ((recentSplitRows ?? []) as unknown as SplitRowRaw[]).slice();
-  const splitCategory = latestSplits[0]?.activity_category ?? null;
-  const splitTitle =
-    splitCategory && isActivityCategory(splitCategory)
-      ? CATEGORY_LABELS[splitCategory]
-      : (latestSplits[0]?.activity_name ?? "Pass");
-  const splitDate = latestSplits[0]?.started?.slice(0, 10) ?? "";
 
   /* --- Rekordet -----------------------------------------------------------
    * Snabbaste varvet i passet, om det slår årets bästa på samma sträcka.
@@ -641,6 +635,11 @@ export default async function DashboardPage({
         s.duration_seconds <= s.previous_best - 0.5,
     )
     .sort((a, b) => (a.duration_seconds as number) - (b.duration_seconds as number))[0];
+
+  /* Senaste passet i helhet — bär varvsektionen när passet inte har några
+   * repetitioner. allSessions är redan hämtad och sorterad; sista posten är
+   * det senaste passet. */
+  const latestSession = allSessions.length > 0 ? allSessions[allSessions.length - 1] : null;
 
   /* --- Sviten som rutor -------------------------------------------------- */
   // En ruta per kalendervecka bakåt, med veckans antal pass och om någon av
@@ -733,7 +732,10 @@ export default async function DashboardPage({
           öppnar appen för — vad ska jag göra, och hur gick det sist.
           Ritas bara när passet faktiskt har varv; ett lugnt distanspass har
           inga, och en tom rubrik är värre än ingen. */}
-      {latestSplits.length >= 2 && (
+      {/* Sektionen byter innehåll efter vad passet VAR: varvtider för
+          intervaller, fart och puls för distans. Komponenten avgör vilket —
+          se motiveringen där. */}
+      {latestSession && (
         <SplitBars
           splits={latestSplits.map((s) => ({
             splitIndex: s.split_index,
@@ -741,8 +743,17 @@ export default async function DashboardPage({
             durationSeconds: s.duration_seconds,
             canonicalDistance: s.canonical_distance,
           }))}
-          title={splitTitle}
-          dateLabel={splitDate}
+          title={
+            isActivityCategory(latestSession.category)
+              ? CATEGORY_LABELS[latestSession.category]
+              : (latestSession.dominantActivity.name ?? "Pass")
+          }
+          dateLabel={latestSession.date}
+          summary={{
+            distanceMeters: latestSession.distanceMeters,
+            durationSeconds: latestSession.durationSeconds,
+            avgHr: latestSession.avgHr,
+          }}
         />
       )}
 
