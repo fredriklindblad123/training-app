@@ -23,6 +23,10 @@ export type ScopedProfile = {
   /** Den faktiskt inloggade personens eget id — alltid detta för en löpare,
    * coachens eget (troligen tomma) id för en coach. */
   userId: string;
+  /** Den inloggades adress, till sidhuvudet. Följer med gratis: getUser har
+   * redan hämtat user-objektet, och att låta layouten anropa getUser en gång
+   * till bara för adressen kostade en nätverksrunda. */
+  email: string | null;
   role: "athlete" | "coach";
   /** Bara ifyllt för en coach — löparna `coach_athletes` länkar hen till. */
   linkedAthletes: AthleteOption[];
@@ -65,6 +69,7 @@ export const getScopedProfile = cache(async function getScopedProfile(
       .maybeSingle();
     return {
       userId: user.id,
+      email: user.email ?? null,
       role,
       linkedAthletes: [],
       coachId: (coachLink?.coach_id as string | undefined) ?? null,
@@ -90,7 +95,7 @@ export const getScopedProfile = cache(async function getScopedProfile(
     }));
   }
 
-  return { userId: user.id, role, linkedAthletes, coachId: null };
+  return { userId: user.id, email: user.email ?? null, role, linkedAthletes, coachId: null };
 });
 
 /**

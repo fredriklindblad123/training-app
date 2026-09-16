@@ -49,11 +49,23 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
-  if (!user) {
+  /* EN autentiseringsrunda, inte två (2026-09-16).
+   *
+   * Layouten anropade tidigare auth.getUser() här, och getScopedProfile
+   * anropade den igen några rader ned. createClient och getScopedProfile är
+   * båda memoiserade per rendering, men getUser är det inte — den går alltid
+   * ut på nätet mot Supabase Auth för att validera token.
+   *
+   * Uppmätt mot produktion: ett oinloggat anrop till /dashboard, som bara
+   * hinner köra middleware och omdirigera, tar 440 ms. Rundan kostar alltså
+   * omkring 200 ms, och den gjordes två gånger innan något renderades.
+   *
+   * getScopedProfile returnerar null utan inloggad användare, vilket är exakt
+   * samma villkor som getUser gav — inloggningskontrollen blir därmed inte
+   * svagare, bara billigare. */
+  const scoped = await getScopedProfile(supabase);
+  if (!scoped) {
     redirect("/login");
   }
 
@@ -61,8 +73,7 @@ export default async function AppLayout({
   // synas — en löpare har ingen egen adept att se en översikt av — och om
   // Plan-gruppen ska märkas som tränarens (en adept med länkad coach ser
   // planeringen skrivskyddad, se canEditPlanning).
-  const scoped = await getScopedProfile(supabase);
-  const isCoach = scoped?.role === "coach";
+  const isCoach = scoped.role === "coach";
   const mode = await getViewMode();
   const runnerMode = isCoach && mode === "runner";
 
@@ -79,7 +90,7 @@ export default async function AppLayout({
    * att det här går att göra per sidvisning över huvud taget.
    *
    * after() så att inget av det syns i svarstiden. */
-  if (scoped) {
+  {
     const targets = syncTargetsFromScope(scoped);
     after(async () => {
       try {
@@ -144,7 +155,32 @@ export default async function AppLayout({
           {/* Manuell hämtning. Automatiken går på varje sidvisning men är
               strypt till femton minuter; den här struntar i strypningen, för
               den som just kommit hem från ett pass vill se det nu. */}
-          <RefreshGarmin />
+          {/* Strömmas in (2026-09-16). Komponenten gör en egen fråga för att
+              hämta senaste synktidpunkt, och den låg i den blockerande vägen:
+              ingen del av sidhuvudet kunde ritas förrän garmin_connections
+              svarat. Nu ritas knappen direkt och klockslaget fyller i sig när
+              frågan är klar.
+              Fallbacken är samma knapp, avstängd, och inte en snurra: formen
+              är densamma så inget hoppar när den riktiga versionen tar över.
+              Avstängd med flit — den riktiga knappen sitter i ett <form>, och
+              en kopia utanför formuläret hade gått att klicka utan att något
+              hände. */}
+          <Suspense
+            fallback={
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled
+                  className="display flex items-center gap-1.5 rounded-md border border-[var(--line)] px-2.5 py-1 text-sm font-medium text-[var(--ink-2)] opacity-70"
+                >
+                  <span aria-hidden className="inline-block h-3 w-3" />
+                  Uppdatera
+                </button>
+              </div>
+            }
+          >
+            <RefreshGarmin />
+          </Suspense>
 
           {/* Växeln närmast kontot: den byter vem DU är i appen, inte vad du
               tittar på. Bara för en coach — en adept är bara löpare. */}
@@ -152,7 +188,7 @@ export default async function AppLayout({
           {/* Adressen är identitet, inte ett val. Den viker först när det blir
               trångt — xl och uppåt — eftersom lägesväxeln redan svarar på
               "vem är jag just nu" på de smalare skärmarna. */}
-          <span className="hidden xl:inline">{user.email}</span>
+          <span className="hidden xl:inline">{scoped.email}</span>
           <form action={signOut}>
             <button type="submit" className="hover:text-[var(--foreground)]">
               Logga ut
