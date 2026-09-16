@@ -1,7 +1,14 @@
 import { formatDuration, formatHoursMinutes, formatKm, formatPace } from "@/lib/format";
 import { ZONE_DESCRIPTIONS, ZONE_LABELS, zoneColorVar } from "@/lib/intensity";
 
-/* Mellantiderna från senaste passet, som staplar.
+/* Vad ett genomfört pass FAKTISKT innehöll — varvtider eller fart och puls.
+ *
+ * Ligger inuti dagens pass sedan 2026-09-16 (begärt), inte i en egen sektion.
+ * Två rubriker för samma dag, "Dagens pass" och "Senaste passet", gjorde att
+ * man fick läsa två ställen för att veta vad man gjort — och de kunde dessutom
+ * visa olika dagar, eftersom den ena var låst till idag och den andra till
+ * senaste passet oavsett när det var.
+ *
  *
  * Datan har funnits i activity_splits hela tiden — 2 475 aktiva varv över 289
  * pass — och visades ingenstans i appen. För en medeldistanslöpare är
@@ -138,17 +145,12 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function SplitBars({
+export function SessionDetail({
   splits,
-  title,
-  dateLabel,
   summary,
   category,
 }: {
   splits: SplitRow[];
-  /** Passets namn, t.ex. "Intervaller". */
-  title: string;
-  dateLabel: string;
   /** Passet i helhet. Bär sektionen när det inte finns några repetitioner —
    * se motiveringen nedan. */
   summary: {
@@ -189,50 +191,38 @@ export function SplitBars({
    *
    * Sektionen byter därför innehåll efter vad passet var, inte efter vilken
    * data som råkar finnas. */
-  if (!found || found.label.endsWith("varv")) {
+  if (!found) {
     if (!summary || summary.distanceMeters <= 0 || summary.durationSeconds <= 0) return null;
     const paceSeconds = summary.durationSeconds / (summary.distanceMeters / 1000);
     const zone = dominantZone(summary.zoneSeconds);
     return (
-      <section className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Senaste passet
-          </h2>
-          <span className="text-xs text-[var(--ink-3)]">
-            {title} · {dateLabel}
-          </span>
-        </div>
-        <div className="day-surface flex flex-wrap gap-x-10 gap-y-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-          <Metric label="Distans" value={formatKm(summary.distanceMeters)} />
-          <Metric label="Fart" value={formatPace(paceSeconds)} />
-          <Metric label="Tid" value={formatHoursMinutes(summary.durationSeconds)} />
-          {summary.avgHr != null && (
-            <Metric label="Medelpuls" value={`${summary.avgHr}`} />
-          )}
-          {/* Zonen bredvid pulsen: 144 slag säger inget utan att man vet vad
-              det är för den här löparen. Punkten bär zonens egen färg, samma
-              som i diagrammen på /trender. */}
-          {zone && (
-            <div className="flex flex-col gap-0.5">
-              <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-                Pulszon
-              </span>
-              <span className="display flex items-center gap-1.5 text-2xl leading-none font-bold text-[var(--foreground)]">
-                <span
-                  aria-hidden
-                  className="inline-block h-3 w-3 shrink-0 rounded-sm"
-                  style={{ backgroundColor: zoneColorVar(zone.index) }}
-                />
-                {ZONE_LABELS[zone.index]}
-              </span>
-              <span className="text-xs text-[var(--ink-3)]">
-                {ZONE_DESCRIPTIONS[zone.index]} · {Math.round(zone.share * 100)}% av tiden
-              </span>
-            </div>
-          )}
-        </div>
-      </section>
+      <div className="flex flex-wrap gap-x-8 gap-y-4">
+        <Metric label="Distans" value={formatKm(summary.distanceMeters)} />
+        <Metric label="Fart" value={formatPace(paceSeconds)} />
+        <Metric label="Tid" value={formatHoursMinutes(summary.durationSeconds)} />
+        {summary.avgHr != null && <Metric label="Medelpuls" value={`${summary.avgHr}`} />}
+        {/* Zonen bredvid pulsen: 144 slag säger inget utan att man vet vad
+            det är för den här löparen. Punkten bär zonens egen färg, samma
+            som i diagrammen på /trender. */}
+        {zone && (
+          <div className="flex flex-col gap-0.5">
+            <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+              Pulszon
+            </span>
+            <span className="display flex items-center gap-1.5 text-2xl leading-none font-bold text-[var(--foreground)]">
+              <span
+                aria-hidden
+                className="inline-block h-3 w-3 shrink-0 rounded-sm"
+                style={{ backgroundColor: zoneColorVar(zone.index) }}
+              />
+              {ZONE_LABELS[zone.index]}
+            </span>
+            <span className="text-xs text-[var(--ink-3)]">
+              {ZONE_DESCRIPTIONS[zone.index]} · {Math.round(zone.share * 100)}% av tiden
+            </span>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -241,62 +231,49 @@ export function SplitBars({
   const fastest = Math.min(...timed.map((s) => s.durationSeconds as number));
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Senaste varven
-        </h2>
-        <span className="text-xs text-[var(--ink-3)]">
-          {title} · {dateLabel}
-        </span>
+    <div className="flex flex-col gap-2">
+      <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+        {repsText}
       </div>
 
-      <div className="day-surface flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-        <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-          {repsText}
-        </div>
-
-        {timed.map((s) => {
-          const secs = s.durationSeconds as number;
-          const best = secs === fastest;
-          return (
-            <div key={s.splitIndex} className="flex items-center gap-2">
-              {/* Garmin numrerar varven från noll. Att visa "0, 1, 2" för det
-                  som en löpare räknar som första, andra, tredje varvet är
-                  bara förvirrande — numret är en etikett, inte ett index. */}
-              <span className="tabular w-5 shrink-0 text-xs text-[var(--ink-3)]">
-                {timed.indexOf(s) + 1}
-              </span>
-              {/* Stapeln ligger i ett EGET spår som får resten av bredden.
-                  Procenten räknades först direkt på stapeln, men den satt då i
-                  samma flexrad som varvnumret och tiden — 100% av raden PLUS
-                  två textkolumner blev bredare än kortet, och staplarna gick
-                  utanför. Spåret äger bredden, stapeln äger sin andel av
-                  spåret. */}
-              <span className="flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-[var(--surface-raised)]">
-                <span
-                  className="h-full rounded-sm"
-                  style={{
-                    // Minst 6% så att även det snabbaste varvet syns som en
-                    // stapel och inte som ett streck.
-                    width: `${Math.max(6, (secs / max) * 100)}%`,
-                    backgroundColor: best ? "var(--status-watch)" : "var(--cat-interval)",
-                  }}
-                />
-              </span>
+      {timed.map((s) => {
+        const secs = s.durationSeconds as number;
+        const best = secs === fastest;
+        return (
+          <div key={s.splitIndex} className="flex items-center gap-2">
+            {/* Garmin numrerar varven från noll, och numret räknas dessutom
+                över HELA passet — uppvärmning och vilor inräknade. Här räknas
+                det inom de varv som faktiskt visas, så första repetitionen
+                heter 1. */}
+            <span className="tabular w-5 shrink-0 text-xs text-[var(--ink-3)]">
+              {timed.indexOf(s) + 1}
+            </span>
+            {/* Stapeln ligger i ett EGET spår som får resten av bredden.
+                Procenten räknades först direkt på stapeln, som då satt i samma
+                flexrad som varvnumret och tiden — 100% av raden PLUS två
+                textkolumner blev bredare än kortet, och staplarna gick
+                utanför. */}
+            <span className="flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-[var(--surface-raised)]">
               <span
-                className={`tabular w-12 shrink-0 text-right text-xs ${
-                  best
-                    ? "font-semibold text-[var(--status-watch-ink)]"
-                    : "text-[var(--ink-2)]"
-                }`}
-              >
-                {formatDuration(secs)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+                className="h-full rounded-sm"
+                style={{
+                  // Minst 6% så att även det snabbaste varvet syns som en
+                  // stapel och inte som ett streck.
+                  width: `${Math.max(6, (secs / max) * 100)}%`,
+                  backgroundColor: best ? "var(--status-watch)" : "var(--cat-interval)",
+                }}
+              />
+            </span>
+            <span
+              className={`tabular w-12 shrink-0 text-right text-xs ${
+                best ? "font-semibold text-[var(--status-watch-ink)]" : "text-[var(--ink-2)]"
+              }`}
+            >
+              {formatDuration(secs)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
   );
 }

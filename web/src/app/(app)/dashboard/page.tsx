@@ -9,7 +9,6 @@ import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
 import { median } from "@/lib/stats-utils";
 import { isoWeekStart } from "@/lib/stats-utils";
-import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
 import {
@@ -29,7 +28,6 @@ import {
 import { STATUS_LABEL } from "@/lib/calendar-utils";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
-import { SplitBars } from "@/components/SplitBars";
 import { RecordCard } from "@/components/RecordCard";
 import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
 
@@ -701,12 +699,33 @@ export default async function DashboardPage({
           rättas. --------------------------------------------------------- */}
       <TodaySession
         planned={(todayPlannedRows ?? []) as unknown as TodayPlanned[]}
+        /* Varven hör till EN aktivitet, och funktionen svarar bara för den
+           allra senaste. De hängs därför bara på det pass de faktiskt kommer
+           ifrån — och bara om det passet är idag. Är senaste passet från i
+           går har dagens pass inga varv att visa, vilket är rätt svar. */
         done={sessions.map((s) => ({
           id: s.id,
           category: s.category,
           name: s.dominantActivity.name,
           distanceMeters: s.distanceMeters,
           durationSeconds: s.durationSeconds,
+          avgHr: s.avgHr,
+          zoneSeconds: [
+            s.hrZone1Seconds,
+            s.hrZone2Seconds,
+            s.hrZone3Seconds,
+            s.hrZone4Seconds,
+            s.hrZone5Seconds,
+          ] as [number, number, number, number, number],
+          splits:
+            latestSession?.id === s.id
+              ? latestSplits.map((r) => ({
+                  splitIndex: r.split_index,
+                  distanceMeters: r.distance_meters,
+                  durationSeconds: r.duration_seconds,
+                  canonicalDistance: r.canonical_distance,
+                }))
+              : [],
         }))}
         href={todayHref}
       />
@@ -732,39 +751,6 @@ export default async function DashboardPage({
           öppnar appen för — vad ska jag göra, och hur gick det sist.
           Ritas bara när passet faktiskt har varv; ett lugnt distanspass har
           inga, och en tom rubrik är värre än ingen. */}
-      {/* Sektionen byter innehåll efter vad passet VAR: varvtider för
-          intervaller, fart och puls för distans. Komponenten avgör vilket —
-          se motiveringen där. */}
-      {latestSession && (
-        <SplitBars
-          splits={latestSplits.map((s) => ({
-            splitIndex: s.split_index,
-            distanceMeters: s.distance_meters,
-            durationSeconds: s.duration_seconds,
-            canonicalDistance: s.canonical_distance,
-          }))}
-          title={
-            isActivityCategory(latestSession.category)
-              ? CATEGORY_LABELS[latestSession.category]
-              : (latestSession.dominantActivity.name ?? "Pass")
-          }
-          dateLabel={latestSession.date}
-          category={latestSession.category}
-          summary={{
-            distanceMeters: latestSession.distanceMeters,
-            durationSeconds: latestSession.durationSeconds,
-            avgHr: latestSession.avgHr,
-            zoneSeconds: [
-              latestSession.hrZone1Seconds,
-              latestSession.hrZone2Seconds,
-              latestSession.hrZone3Seconds,
-              latestSession.hrZone4Seconds,
-              latestSession.hrZone5Seconds,
-            ],
-          }}
-        />
-      )}
-
       <StreakStrip
         currentWeeks={continuity.currentWeeksWithoutInterruption}
         bestWeeks={continuity.bestWeeksWithoutInterruption}

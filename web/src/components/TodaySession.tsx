@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
-import { formatHoursMinutes, formatKm } from "@/lib/format";
 import { describePlannedWorkout, type RepGroupLike } from "@/lib/workout-summary";
 import { LinkPending } from "@/components/ui/LinkPending";
+import { SessionDetail, type SplitRow } from "@/components/SessionDetail";
 
 /* Dagens pass, överst på adeptens dashboard. Rubriken hette "Idag" fram
  * till 2026-09-15.
@@ -44,6 +44,11 @@ export type TodayDone = {
   name: string | null;
   distanceMeters: number;
   durationSeconds: number;
+  avgHr: number | null;
+  /** Sekunder i zon 1–5, från klockan. */
+  zoneSeconds: [number, number, number, number, number];
+  /** Varven, när passet har några. Tomt för ett distanspass. */
+  splits: SplitRow[];
 };
 
 /** Färgstapeln som bär passets typ, i full radhöjd. Vila, test och häck har
@@ -169,14 +174,20 @@ export function TodaySession({
           );
         })}
 
+        {/* Genomfört EFTER planerat: planen är instruktionen, utfallet är
+            kvittot. Innehållet är hela passet — varvtider för ett
+            intervallpass, fart och puls för ett distanspass — och låg
+            tidigare i en egen sektion längre ned under rubriken "Senaste
+            passet". Två rubriker för samma dag gjorde att man fick läsa två
+            ställen, och de kunde dessutom visa olika dagar. */}
         {done.map((d) => {
           const label = isActivityCategory(d.category)
             ? CATEGORY_LABELS[d.category]
             : (d.name ?? "Pass");
           return (
-            <div key={d.id} className="flex items-stretch gap-3">
+            <div key={d.id} className="flex items-stretch gap-3 border-t border-[var(--line)] pt-3">
               <Bar colorVar={isActivityCategory(d.category) ? categoryColorVar(d.category) : null} />
-              <div className="flex min-w-0 flex-col gap-0.5">
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
                     {label}
@@ -185,14 +196,16 @@ export function TodaySession({
                     Genomfört
                   </span>
                 </div>
-                <span className="tabular text-sm text-[var(--ink-3)]">
-                  {[
-                    d.distanceMeters > 0 ? formatKm(d.distanceMeters) : null,
-                    d.durationSeconds > 0 ? formatHoursMinutes(d.durationSeconds) : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ") || "Loggat"}
-                </span>
+                <SessionDetail
+                  splits={d.splits}
+                  category={d.category}
+                  summary={{
+                    distanceMeters: d.distanceMeters,
+                    durationSeconds: d.durationSeconds,
+                    avgHr: d.avgHr,
+                    zoneSeconds: d.zoneSeconds,
+                  }}
+                />
               </div>
             </div>
           );
