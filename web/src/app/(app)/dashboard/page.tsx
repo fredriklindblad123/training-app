@@ -20,12 +20,10 @@ import {
 import { toDateKey } from "@/lib/week-series";
 import {
   computeContinuityStreaks,
-  QUALITY_TARGET,
   type ContinuitySession,
   type ContinuityStreaks,
   type InterruptionDay,
 } from "@/lib/continuity";
-import { STATUS_LABEL } from "@/lib/calendar-utils";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
 import { RecordCard } from "@/components/RecordCard";
@@ -48,80 +46,6 @@ import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
  * från Garmin Connect-appens egen "Utvärdering" per pass
  * (activities.garmin_feel/garmin_rpe), och känsla ur Alices egna ord från
  * dagbokstexten (lib/diary-text.ts) — se /trender. */
-
-/** Fallgrop 3 i K6 (tranarperspektiv.md): under den här mängden avslutade
- * veckor är "personbästa" bara brus från en kort historik — bättre att visa
- * enbart nuvarande svit utan riktvärde än att låtsas ett riktvärde finns. */
-const MIN_COMPLETED_WEEKS_FOR_TARGET = 12;
-
-/** Bygger ring-props för ett kontinuitetsmått (K6). Riktvärdet är alltid det
- * egna personbästa — det finns inget externt "rätt" antal veckor utan avbrott
- * att sikta mot.
- *
- * Bedöms sedan 2026-09-15 med "higher_is_better", alltså grönt/gult/rött mot
- * personbästa — samma skala som alla andra kort.
- *
- * Det är en MEDVETEN OMSVÄNGNING, och den har en kostnad värd att känna till.
- * Korten låg tidigare på `direction: "neutral"` just för att en kort svit
- * efter en sjukdomsperiod inte skulle färgas röd — fallgrop 1 i K6 varnar för
- * att kontinuitet läses som ett misslyckande, och sjukdom händer. Den
- * neutrala tonen var indigo, och med grönt, gult och rött bredvid sig lästes
- * den som en fjärde bedömning man inte kunde tyda. Rapporterat, och riktigt.
- *
- * Avvägningen blev: hellre en färg som betyder något entydigt än en som
- * ingen kan tolka. Vad som bröt sviten står kvar i detaljraderna, beskrivande
- * (sjukdom/skada + datum) och inte som en varning — den delen av fallgrop 1
- * står fast. Vill man tillbaka till det icke-dömande läget är det ett ord:
- * "higher_is_better" → "neutral" i ringFillAndStatus nedan. */
-function continuityRing({
-  label,
-  currentWeeks,
-  bestWeeks,
-  totalCompletedWeeks,
-  lastInterruption,
-  hint,
-}: {
-  label: string;
-  currentWeeks: number;
-  bestWeeks: number;
-  totalCompletedWeeks: number;
-  lastInterruption: { date: string; dayType: "sick" | "injured" } | null;
-  hint: string;
-}) {
-  const hasEnoughHistory = totalCompletedWeeks >= MIN_COMPLETED_WEEKS_FOR_TARGET;
-  const target = hasEnoughHistory ? bestWeeks : null;
-  const { fill, status } = ringFillAndStatus(currentWeeks, target, "higher_is_better");
-
-  return {
-    label,
-    valueText: String(currentWeeks),
-    unit: currentWeeks === 1 ? "vecka" : "veckor",
-    fill,
-    status: (target == null ? "unknown" : status) as RingStatus,
-    /* Streck och inte pil, trots att färgen nu bedömer. En svit är ett LÄGE,
-     * inte en förändring — den har ingen riktning att peka åt, och en pil
-     * uppåt hade påstått att den växer just nu. Färgen säger hur läget står
-     * sig mot personbästa, texten säger mot vad. */
-    trend: target != null ? { direction: "flat" as const, text: `Bästa ${target} v` } : null,
-    targetText: `${totalCompletedWeeks} avslutade veckor`,
-    detailRows: [
-      { label: "Nuvarande svit", value: `${currentWeeks} v` },
-      {
-        label: "Personbästa",
-        value: hasEnoughHistory
-          ? `${bestWeeks} v`
-          : `otillräcklig historik (${totalCompletedWeeks} av ${MIN_COMPLETED_WEEKS_FOR_TARGET} v)`,
-      },
-      {
-        label: "Bröt senaste sviten",
-        value: lastInterruption
-          ? `${STATUS_LABEL[lastInterruption.dayType]}, ${lastInterruption.date}`
-          : "Ingen svit bruten ännu",
-      },
-    ],
-    hint,
-  };
-}
 
 /** Rullande fönster, samma längd som trendlinjen i EfficiencyChart — så
  * ringen och grafen på /trender alltid pratar om samma period. En statisk
@@ -542,34 +466,6 @@ export default async function DashboardPage({
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
 
-  const continuityRings = [
-    // K6: kontinuitet, det enda långa horisontmåttet på den här sidan (se
-    // docs/tranarperspektiv.md) — räknat över hela historiken, ett ankare
-    // bredvid dagens brus.
-    continuityRing({
-      label: "Kontinuitet",
-      currentWeeks: continuity.currentWeeksWithoutInterruption,
-      bestWeeks: continuity.bestWeeksWithoutInterruption,
-      totalCompletedWeeks: continuity.totalCompletedWeeks,
-      lastInterruption: continuity.lastInterruption,
-      hint:
-        "Sammanhängande avslutade veckor utan en sjuk- eller skaddag. Innevarande vecka räknas " +
-        "inte förrän den är slut. En bruten svit är sjukdom eller skada, inte ett misslyckande " +
-        "— se /trends för vad som brukar föregå ett avbrott.",
-    }),
-    continuityRing({
-      label: "Kvalitetsveckor",
-      currentWeeks: continuity.currentQualityWeeks,
-      bestWeeks: continuity.bestQualityWeeks,
-      totalCompletedWeeks: continuity.totalCompletedWeeks,
-      lastInterruption: continuity.lastInterruption,
-      hint:
-        `Sammanhängande avslutade veckor med minst ${QUALITY_TARGET} genomförda kvalitetspass ` +
-        "(tröskel, intervall, tävling eller tröskeltest). Almgren och Lindh pekar båda på att " +
-        "kunna upprepa kvalitet är det som avgör, mer än ett enstaka hårt pass.",
-    }),
-  ];
-
   const formRings = [efficiencyRing(efPoints, todayKey), vo2maxRing(vo2maxReadings, todayKey)];
 
   // --- Volym och belastning -----------------------------------------------
@@ -757,7 +653,6 @@ export default async function DashboardPage({
         weeks={streakWeeks}
       />
 
-      <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
       {/* --- Form och kondition: överst på sidan, egen sektion. Långa
           horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
@@ -768,7 +663,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="day-surface grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {formRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
@@ -783,7 +678,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="day-surface grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}
@@ -816,20 +711,19 @@ export default async function DashboardPage({
         </div>
       )}
 
-      {/* --- Kontinuitet (K6): den enda långa horisonten på den här sidan,
-          ett ankare mot dagens brus. --------------------------------------- */}
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Kontinuitet</h2>
-        {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
-            stället för kort vars bredd styrs av hur långt mätvärdet råkar
-            vara. */}
-        <div className="day-surface grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
-          {continuityRings.map((r) => (
-            <KpiRing key={r.label} {...r} />
-          ))}
-        </div>
-      </section>
+      {/* Kontinuitetssektionen togs bort 2026-09-16 (begärt). Den visade
+          samma svit som "Din svit" högre upp, fast som två nyckeltalskort med
+          en ring runt — samma siffra två gånger på samma sida. Rutorna är det
+          som faktiskt blev läst, så de fick stanna.
+          Byggarfunktionen är borttagen med. Underlaget (computeContinuity)
+          räknas fortfarande och driver rutorna, så måtten finns kvar om
+          korten någon gång ska tillbaka. ------------------------------- */}
 
+      {/* Status sist (2026-09-16, begärt). Den svarar på "hur mår jag", vilket
+          är en bakgrundsfråga — den styr inte vad man gör idag, den färgar hur
+          man läser resten. Överst tog den plats från dagens pass, som är det
+          man öppnar appen för. */}
+      <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
       {/* --- Utgången: loopens nästa steg efter dagen är veckan. /veckan togs
           bort 2026-08-13 (dubblerade kalenderns veckovy) — länken pekar dit

@@ -214,10 +214,37 @@ body {
   );
 }
 
-/* Kortens ramar tar upp dagens kulör svagt, så att sidan hänger ihop med
-   passkortet i stället för att bara ha ett färgat inslag högst upp. */
-.day-theme .day-surface {
+/* Korten får samma tonade övertoning som dagens pass, fast svagare (begärt
+   2026-09-16). Dagens pass är sidans huvudkort och behåller sin starkare
+   toning; de övriga ska kännas som samma familj utan att konkurrera.
+
+   Övertoningen bygger på TRANSPARENS och inte på inblandning mot ytan, och det
+   är nödvändigt: flera av korten är rutnät vars bakgrund är linjefärgen som
+   lyser igenom ett enpixelsmellanrum och ritar skiljelinjerna. En ogenomskinlig
+   toning hade målat över den bakgrunden och raderat linjerna. Med transparens
+   läggs tonen ovanpå vad som än finns under — yta eller linje. */
+.day-theme :is(.day-surface, .day-grid) {
   border-color: color-mix(in oklab, var(--day-accent, var(--line)) 22%, var(--line));
+}
+
+/* Toningen läggs på KORTET, och flera av "korten" är i själva verket celler i
+   ett rutnät: behållaren har linjefärg som bakgrund och ett enpixelsmellanrum
+   mellan cellerna ritar skiljelinjerna. Cellerna är ogenomskinliga och hade
+   täckt en toning som låg på behållaren — därför träffar regeln både den
+   ensamma kortytan och cellerna i ett rutnät.
+   Att varje cell får sin egen toning är inte en kompromiss utan det avsedda:
+   var och en av dem ÄR ett kort, och ska se ut som ett.
+
+   Transparens och inte inblandning mot ytan, så att tonen kan läggas ovanpå
+   vilken bakgrund som helst utan att radera den — och så att den hamnar bakom
+   texten i stället för över den. */
+.day-theme .day-surface,
+.day-theme .day-grid > * {
+  background-image: radial-gradient(
+    125% 135% at 0% 0%,
+    color-mix(in oklab, var(--day-accent, transparent) 13%, transparent),
+    transparent 62%
+  );
 }
 
 /* Sektionsrubrikerna får ett litet märke i dagens färg. Det är den billigaste
