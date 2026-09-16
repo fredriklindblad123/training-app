@@ -53,49 +53,41 @@ export const getScopedProfile = cache(async function getScopedProfile(
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: profileRow } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  const role: "athlete" | "coach" = profileRow?.role === "coach" ? "coach" : "athlete";
+  /* EN databasrunda, inte tre (2026-09-16).
+   *
+   * Funktionen gjorde tidigare tre frågor i följd — roll ur profiles, länkar
+   * ur coach_athletes, och sedan adepternas namn ur profiles igen. Varje runda
+   * kostar uppmätt omkring 200 ms, och de gick sekventiellt eftersom varje
+   * fråga behövde svaret från den förra. Sidan kunde inte börja hämta sin egen
+   * data förrän alla tre var klara, vilket är den enskilt största orsaken till
+   * att det tog sekunder att komma in på startsidan.
+   *
+   * scoped_profile() gör samma sak i ett uttryck. Den tar inga argument och
+   * läser auth.uid() själv, så det finns inget id att byta ut — se
+   * migrationen för varför SECURITY DEFINER är säkert här.
+   *
+   * auth.getUser() ligger kvar och går fortfarande ut på nätet. Den validerar
+   * token, och att byta den mot getSession() (som bara läser kakan) vore att
+   * ta bort en säkerhetskontroll för att spara tid. */
+  const { data } = await supabase.rpc("scoped_profile");
+  const row = (data ?? null) as {
+    role?: string;
+    coach_id?: string | null;
+    linked_athletes?: { id: string; full_name: string | null }[];
+  } | null;
 
-  if (role !== "coach") {
-    const { data: coachLink } = await supabase
-      .from("coach_athletes")
-      .select("coach_id")
-      .eq("athlete_id", user.id)
-      .limit(1)
-      .maybeSingle();
-    return {
-      userId: user.id,
-      email: user.email ?? null,
-      role,
-      linkedAthletes: [],
-      coachId: (coachLink?.coach_id as string | undefined) ?? null,
-    };
-  }
+  const role: "athlete" | "coach" = row?.role === "coach" ? "coach" : "athlete";
 
-  const { data: links } = await supabase
-    .from("coach_athletes")
-    .select("athlete_id")
-    .eq("coach_id", user.id);
-  const athleteIds = (links ?? []).map((l) => l.athlete_id as string);
-
-  let linkedAthletes: AthleteOption[] = [];
-  if (athleteIds.length > 0) {
-    const { data: rows } = await supabase
-      .from("profiles")
-      .select("id, full_name")
-      .in("id", athleteIds)
-      .order("full_name");
-    linkedAthletes = (rows ?? []).map((r) => ({
-      id: r.id as string,
-      fullName: r.full_name as string | null,
-    }));
-  }
-
-  return { userId: user.id, email: user.email ?? null, role, linkedAthletes, coachId: null };
+  return {
+    userId: user.id,
+    email: user.email ?? null,
+    role,
+    linkedAthletes: (row?.linked_athletes ?? []).map((a) => ({
+      id: a.id,
+      fullName: a.full_name,
+    })),
+    coachId: row?.coach_id ?? null,
+  };
 });
 
 /**
