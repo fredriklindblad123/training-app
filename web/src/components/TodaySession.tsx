@@ -33,6 +33,9 @@ export type TodayPlanned = {
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
   planned_rep_groups: RepGroupLike[] | null;
+  /** Tränarens text till löparen. Det enda på skärmen som är skrivet av en
+   * människa till just den här personen — därför står den framme. */
+  description: string | null;
 };
 
 export type TodayDone = {
@@ -66,6 +69,12 @@ export function TodaySession({
   href: string;
 }) {
   const empty = planned.length === 0 && done.length === 0;
+  /* Kortets kulör: det planerade passets typ i första hand, annars det
+     genomförda. Vila, test och häck saknar kategorifärg och ger null, vilket
+     lämnar kortet i den vanliga ytan — en vilodag ska inte skrika. */
+  const accent =
+    (planned[0] ? workoutTypeColorVar(planned[0].workout_type) : null) ??
+    (done[0] && isActivityCategory(done[0].category) ? categoryColorVar(done[0].category) : null);
 
   return (
     /* Rubriken står UTANFÖR kortet, som i sektionerna nedanför (flyttad
@@ -77,9 +86,23 @@ export function TodaySession({
         Dagens pass
       </h2>
 
+      {/* Passets färg bär HELA kortet, inte en tre pixlar bred remsa i kanten.
+          Typen ska gå att läsa innan man läst ett enda ord — intervall är
+          laddat, distans lugnt, vila nästan ingenting.
+          Kulören kommer ur samma --cat-*-token som resten av appen och blandas
+          mot ytan med color-mix, så den följer med i mörkt läge automatiskt i
+          stället för att lysa. */}
       <Link
         href={href}
-        className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--ink-3)]"
+        className="relative flex flex-col gap-3 overflow-hidden rounded-lg border p-4 transition-colors"
+        style={{
+          borderColor: accent
+            ? `color-mix(in oklab, ${accent} 45%, var(--line))`
+            : "var(--line)",
+          backgroundColor: accent
+            ? `color-mix(in oklab, ${accent} 10%, var(--surface))`
+            : "var(--surface)",
+        }}
       >
         {/* Tomt läge sägs rakt ut. En vilodag är ett giltigt svar på "vad ska
             jag göra idag", och ska inte se ut som att något saknas. */}
@@ -93,20 +116,29 @@ export function TodaySession({
         {planned.map((p) => {
           const label = WORKOUT_LABELS[p.workout_type as WorkoutType] ?? p.workout_type;
           const detail = describePlannedWorkout(p);
+          const comment = (p.description ?? "").trim();
           return (
-            <div key={p.id} className="flex items-stretch gap-3">
-              <Bar colorVar={workoutTypeColorVar(p.workout_type)} />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-                    {label}
-                  </span>
-                  {p.title && <span className="text-sm text-[var(--ink-2)]">{p.title}</span>}
-                </div>
-                <span className="tabular text-sm text-[var(--ink-3)]">
-                  {detail ?? "Planerat"}
+            /* Typen som rubrik, repetitionerna som det stora talet. "5×1000"
+               är vad passet ÄR — det stod tidigare som en grå detaljrad under
+               namnet, i samma storlek som allt annat på kortet. */
+            <div key={p.id} className="flex flex-col gap-1">
+              <span className="display text-2xl leading-none font-bold text-[var(--foreground)] uppercase">
+                {label}
+              </span>
+              {detail && (
+                <span className="display tabular text-xl leading-tight font-semibold text-[var(--status-watch-ink)]">
+                  {detail}
                 </span>
-              </div>
+              )}
+              {p.title && <span className="text-sm text-[var(--ink-2)]">{p.title}</span>}
+              {comment && (
+                <p className="mt-0.5 border-l-2 border-[var(--line)] pl-2 text-sm leading-snug whitespace-pre-line text-[var(--ink-2)]">
+                  {comment}
+                </p>
+              )}
+              {!detail && !p.title && !comment && (
+                <span className="text-sm text-[var(--ink-3)]">Planerat</span>
+              )}
             </div>
           );
         })}

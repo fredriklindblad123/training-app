@@ -8,6 +8,8 @@ import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
 import { median } from "@/lib/stats-utils";
+import { isoWeekStart } from "@/lib/stats-utils";
+import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
 import {
@@ -27,6 +29,8 @@ import {
 import { STATUS_LABEL } from "@/lib/calendar-utils";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, type TodayPlanned } from "@/components/TodaySession";
+import { SplitBars } from "@/components/SplitBars";
+import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
  * sidan efter inloggning (se app/page.tsx, login/actions.ts,
@@ -394,6 +398,7 @@ export default async function DashboardPage({
     { data: statusMetrics },
     { data: tomorrowQualityWorkouts },
     { data: todayPlannedRows },
+    { data: recentSplitRows },
   ] = await Promise.all([
     // Bara dagens aktiviteter — sidan äger dagen, inget periodfönster.
     supabase
@@ -455,12 +460,34 @@ export default async function DashboardPage({
     supabase
       .from("planned_workouts")
       .select(
-        "id, slot, workout_type, title, target_distance_meters, target_duration_seconds, " +
+        "id, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, " +
           "planned_rep_groups(reps, distance_meters, duration_seconds, sort_order)",
       )
       .eq("user_id", scopedUserId)
       .eq("scheduled_date", todayKey)
       .order("slot", { ascending: true }),
+    /* Mellantiderna från det senaste passet som har några (P: designförslaget
+       2026-09-16). Datan har funnits i activity_splits hela tiden och visades
+       ingenstans — för en medeldistanslöpare är varvtiderna det mest
+       intressanta som finns.
+
+       Ordnas på splitens EGEN start_time, inte på aktivitetens, så att hela
+       hämtningen blir en enda runda i den här Promise.all i stället för
+       "hitta senaste passet, hämta sedan dess varv" i två steg. De senaste 40
+       aktiva varven räcker med marginal för ett pass; vilorna hämtas inte
+       alls, de är inte det man jämför.
+
+       !inner på activities är filtret som gör att man bara får sina egna varv
+       — activity_splits har ingen egen user_id. */
+    supabase
+      .from("activity_splits")
+      .select(
+        "activity_id, split_index, distance_meters, duration_seconds, start_time, activities!inner(user_id, name, category)",
+      )
+      .eq("activities.user_id", scopedUserId)
+      .eq("split_type", "active")
+      .order("start_time", { ascending: false })
+      .limit(40),
   ]);
 
   // --- Status mot baslinje (P1.2) ----------------------------------------
@@ -582,6 +609,65 @@ export default async function DashboardPage({
     rollingWeekRing("Belastning", dailyLoad, todayKey, yearStartKey, (v) => String(Math.round(v))),
   ];
 
+  /* --- Varven från senaste passet ------------------------------------- */
+  // Raderna kom sorterade nyast först; alla som hör till samma aktivitet som
+  // den allra senaste är det pass vi visar. Sedan vänds de till stigande
+  // ordning, eftersom varv läses 1, 2, 3 — inte baklänges.
+  type SplitRowRaw = {
+    activity_id: string;
+    split_index: number;
+    distance_meters: number | null;
+    duration_seconds: number | null;
+    start_time: string;
+    activities: { name: string | null; category: string | null } | null;
+  };
+  const splitRows = (recentSplitRows ?? []) as unknown as SplitRowRaw[];
+  const latestActivityId = splitRows[0]?.activity_id ?? null;
+  const latestSplits = latestActivityId
+    ? splitRows
+        .filter((r) => r.activity_id === latestActivityId)
+        .sort((a, b) => a.split_index - b.split_index)
+    : [];
+  const splitMeta = latestSplits[0]?.activities ?? null;
+  const splitCategory = splitMeta?.category ?? null;
+  const splitTitle =
+    splitCategory && isActivityCategory(splitCategory)
+      ? CATEGORY_LABELS[splitCategory]
+      : (splitMeta?.name ?? "Pass");
+  const splitDate = latestSplits[0]?.start_time?.slice(0, 10) ?? "";
+
+  /* --- Sviten som rutor -------------------------------------------------- */
+  // En ruta per kalendervecka bakåt, med veckans antal pass och om någon av
+  // dem var kvalitet. Räknas ur allSessions, som redan är hämtad — ingen ny
+  // fråga för det här.
+  const QUALITY_CATEGORIES = new Set(["interval", "threshold", "race"]);
+  const weekAgg = new Map<string, { sessions: number; quality: boolean }>();
+  for (const s of allSessions) {
+    const key = isoWeekStart(s.date);
+    const cur = weekAgg.get(key) ?? { sessions: 0, quality: false };
+    cur.sessions += 1;
+    if (QUALITY_CATEGORIES.has(s.category)) cur.quality = true;
+    weekAgg.set(key, cur);
+  }
+  // Sammanhängande veckoserie, så att en helt tom vecka blir en tom ruta i
+  // stället för att försvinna och få sviten att se obruten ut.
+  const streakWeeks: StreakWeek[] = [];
+  {
+    const thisWeek = isoWeekStart(todayKey);
+    const cursor = new Date(`${thisWeek}T00:00:00Z`);
+    cursor.setUTCDate(cursor.getUTCDate() - 7 * 13);
+    for (let i = 0; i < 14; i++) {
+      const key = cursor.toISOString().slice(0, 10);
+      const agg = weekAgg.get(key);
+      streakWeeks.push({
+        weekStart: key,
+        sessions: agg?.sessions ?? 0,
+        quality: agg?.quality ?? false,
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 7);
+    }
+  }
+
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}${athleteQuery}`;
 
   return (
@@ -613,6 +699,28 @@ export default async function DashboardPage({
           plats säger mer när talet ställs mot den egna baslinjen — "80 ms"
           betyder ingenting utan "normalt 74". Två rader med samma mätvärden
           strax under varandra var dessutom ren dubblering. ------------- */}
+      {/* Varven direkt under dagens pass: det är de två sakerna en löpare
+          öppnar appen för — vad ska jag göra, och hur gick det sist.
+          Ritas bara när passet faktiskt har varv; ett lugnt distanspass har
+          inga, och en tom rubrik är värre än ingen. */}
+      {latestSplits.length >= 2 && (
+        <SplitBars
+          splits={latestSplits.map((s) => ({
+            splitIndex: s.split_index,
+            distanceMeters: s.distance_meters,
+            durationSeconds: s.duration_seconds,
+          }))}
+          title={splitTitle}
+          dateLabel={splitDate}
+        />
+      )}
+
+      <StreakStrip
+        currentWeeks={continuity.currentWeeksWithoutInterruption}
+        bestWeeks={continuity.bestWeeksWithoutInterruption}
+        weeks={streakWeeks}
+      />
+
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
       {/* --- Form och kondition: överst på sidan, egen sektion. Långa
