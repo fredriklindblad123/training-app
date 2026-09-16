@@ -26,6 +26,7 @@ export function Dropdown({
   align = "left",
   width = "w-56",
   className = "",
+  openUp = false,
   children,
 }: {
   /** Vad knappen visar i hopfällt läge. Ska bära tillståndet — vilken sida
@@ -35,6 +36,9 @@ export function Dropdown({
   align?: "left" | "right";
   width?: string;
   className?: string;
+  /** Fäll ut uppåt i stället för nedåt. Behövs för menyer som sitter längst
+   * ned på sidan — en panel som växer nedåt därifrån hamnar utanför rutan. */
+  openUp?: boolean;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDetailsElement>(null);
@@ -64,7 +68,9 @@ export function Dropdown({
           till vänster på sin rad. Klämman gör att den alltid syns även om
           ankringen råkar bli fel för en viss skärmbredd. */}
       <div
-        className={`absolute ${align === "right" ? "right-0" : "left-0"} z-50 mt-2 flex ${width} max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg`}
+        className={`absolute ${align === "right" ? "right-0" : "left-0"} ${
+          openUp ? "bottom-full mb-2" : "mt-2"
+        } z-50 flex ${width} max-w-[calc(100vw-1.5rem)] flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 shadow-lg`}
       >
         {children}
       </div>

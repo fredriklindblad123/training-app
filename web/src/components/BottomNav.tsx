@@ -1,7 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { LinkPending } from "@/components/ui/LinkPending";
+import { Dropdown } from "@/components/ui/Dropdown";
 
 /* Hela navigeringen, längst ned (2026-09-16).
  *
@@ -26,7 +29,32 @@ import { usePathname, useSearchParams } from "next/navigation";
  *
  * Ikonerna är SVG och inte emoji — emoji renderas olika i varje operativsystem,
  * och en rad där en ikon är platt och nästa är en färgglad figur ser trasig ut.
+ *
+ * ALLT bor här sedan 2026-09-16: navigering, vilken adept man tittar på, och
+ * kontot med lägesväxel, Garmin-uppdatering och utloggning. Sidhuvudet är
+ * borttaget helt. Det bar till slut bara identitet, och att hålla en klistrad
+ * rad högst upp för tre kontroller man rör några gånger om dagen kostade
+ * skärmhöjd på varje sida.
  */
+
+/* Adepternas färger. Härledda ur id:t och därmed STABILA — samma person har
+ * samma färg i varje vy, varje dag. En indexbaserad färg hade flyttat sig när
+ * rostern ändras, och då betyder färgen ingenting.
+ *
+ * Tonerna skiljer sig i ljushet lika mycket som i kulör, så de går isär även
+ * för den som inte skiljer rött från grönt. Mörk text på ljus platta, så
+ * initialen är läsbar i båda teman. */
+const AVATAR_TONES = ["#d98b5f", "#7fa9d4", "#b48fd0", "#86bf9a", "#d4a35f", "#c98fa0"];
+
+function toneFor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_TONES[h % AVATAR_TONES.length];
+}
+
+/** Planeringsvyerna visar redan alla löpare sida vid sida — där finns inget
+ * att välja mellan, och väljaren hade bara kunnat göra vyn sämre. */
+const NO_ATHLETE_PICKER = ["/blockoversikt", "/blockplan", "/detaljplan", "/uppfoljning"];
 
 type Tab = { href: string; label: string; icon: string };
 
@@ -61,6 +89,9 @@ export function BottomNav({
   isCoach,
   planOwnedByCoach,
   runnerMode,
+  athletes,
+  defaultAthleteId,
+  account,
 }: {
   isCoach: boolean;
   /** Adept med länkad tränare — då ägs planeringen av någon annan. */
@@ -68,6 +99,18 @@ export function BottomNav({
   /** Coachen tittar på sin EGEN träning och ska se exakt samma vyer som en
    * adept. */
   runnerMode: boolean;
+  /** Adepterna en tränare kan växla mellan. Tom för en löpare. */
+  athletes: { id: string; fullName: string | null }[];
+  /** Vilken löpare sidorna faller tillbaka på utan `?athlete=`. Räknas fram
+   * på servern (resolveScopedUserId) — klienten kan inte känna till regeln. */
+  defaultAthleteId: string;
+  /* Kontots innehåll: adress, lägesväxel, Garmin-uppdatering och utloggning.
+   *
+   * Skickas in som färdig markup i stället för att byggas här, eftersom två av
+   * delarna är serverkomponenter med egna serveråtgärder — uppdateringen
+   * hämtar dessutom senaste synktidpunkt. Bara den utfällbara ramen behöver
+   * vara klient. */
+  account: ReactNode;
 }) {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -95,6 +138,18 @@ export function BottomNav({
         : "text-[var(--ink-3)] hover:text-[var(--foreground)]"
     }`;
 
+  const activeAthlete = params.get("athlete") ?? defaultAthleteId;
+  const showAthletes =
+    athletes.length > 0 &&
+    !NO_ATHLETE_PICKER.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+
+  /** Samma sida, samma filter, annan löpare. */
+  const athleteHref = (id: string) => {
+    const next = new URLSearchParams(params.toString());
+    next.set("athlete", id);
+    return `${pathname}?${next.toString()}`;
+  };
+
   return (
     <div
       className="sticky bottom-0 z-40 flex flex-col items-center gap-1 border-t border-[var(--line)] bg-[var(--background)]/95 px-2 pt-1.5 backdrop-blur sm:border-0 sm:bg-transparent sm:pb-4 sm:backdrop-blur-none"
@@ -102,7 +157,42 @@ export function BottomNav({
          text under systemets streck. */
       style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
     >
-      {showPlan && (
+      {/* Översta raden: VEM du tittar på, och VILKEN grupp du är i. Två frågor
+          av samma sort — de ändrar sammanhanget, inte vilken vy du står i —
+          och de hör därför ihop, skilda från flikarna nedanför. */}
+      <div className="flex w-full items-center justify-center gap-2 sm:w-auto">
+        {showAthletes && (
+          <div role="group" aria-label="Välj löpare" className="flex items-center gap-1">
+            {athletes.map((a) => {
+              const on = activeAthlete === a.id;
+              return (
+                <Link
+                  key={a.id}
+                  href={athleteHref(a.id)}
+                  aria-current={on ? "page" : undefined}
+                  title={a.fullName ?? "Namnlös"}
+                  className="relative flex"
+                >
+                  <span
+                    className={`display flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold text-[#17191c] transition-all ${
+                      on
+                        ? "ring-2 ring-[var(--foreground)] ring-offset-2 ring-offset-[var(--background)]"
+                        : "opacity-55 hover:opacity-90"
+                    }`}
+                    style={{ backgroundColor: toneFor(a.id) }}
+                  >
+                    {(a.fullName ?? "?").trim().charAt(0).toUpperCase() || "?"}
+                  </span>
+                  {/* En initial i en cirkel säger inget utan sammanhang. */}
+                  <span className="sr-only">{a.fullName ?? "Namnlös löpare"}</span>
+                  <LinkPending />
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        {showPlan && (
         <div
           role="group"
           aria-label="Välj grupp"
@@ -117,7 +207,27 @@ export function BottomNav({
             Plan
           </Link>
         </div>
-      )}
+        )}
+
+        {/* Kontot sist på raden, öppnar uppåt. Lägesväxel, Garmin-uppdatering
+            och utloggning rör man några gånger om dagen — de ska vara nåbara,
+            inte framme. */}
+        <Dropdown
+          openUp
+          align="right"
+          width="w-60"
+          label={
+            <span
+              aria-hidden
+              className="display flex h-6 w-6 items-center justify-center rounded-full bg-[var(--surface-raised)] text-[0.7rem] font-bold text-[var(--foreground)]"
+            >
+              ···
+            </span>
+          }
+        >
+          {account}
+        </Dropdown>
+      </div>
 
       <nav
         aria-label={showPlan && isPlanPath ? "Planering" : "Logg"}
