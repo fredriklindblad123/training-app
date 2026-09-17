@@ -361,6 +361,26 @@ export default async function TavlingsresultatPage({
     return matchesYear && matchesVenue;
   });
 
+  /* KOMMANDE tävlingar står för sig, och står UTANFÖR årsfiltret.
+   *
+   * Rapporterat: en löpare såg inte sina kommande tävlingar alls. Två skäl,
+   * båda i filtret. Årsfiltret väljer ett år med tävlingar i — alltså det år
+   * historiken ligger i — och gömde därmed samtliga tolv lopp som låg nästa
+   * säsong. Det enda kommande loppet i innevarande år låg dessutom sist i en
+   * kronologisk lista efter sjutton genomförda.
+   *
+   * Ett årsfilter är rätt axel för historik och fel för "vad har jag framför
+   * mig". Kommande filtreras därför bara på bana och sorteras närmast först;
+   * genomförda behåller årsfiltret, som är vad det finns för. */
+  const upcomingCompetitions = allCompetitions
+    .filter((c) => c.competition_date >= todayKey)
+    .filter((c) => !managedVenueFilter || c.venue === managedVenueFilter)
+    .sort((a, b) => a.competition_date.localeCompare(b.competition_date));
+
+  const pastCompetitions = managedCompetitions
+    .filter((c) => c.competition_date < todayKey)
+    .sort((a, b) => b.competition_date.localeCompare(a.competition_date));
+
   /** Bygger en /tavlingsresultat-länk som behåller tävlingslistans
    * år-/bana-filter — bara den del som skickas in i `overrides` byts ut.
    * Samma mönster som toggleEventHref/banaHref nedan, som gör motsvarande
@@ -619,6 +639,176 @@ export default async function TavlingsresultatPage({
 
   /** Byter vilken löpare en coach tittar på, behåller grenval/bana-filter
    * samt tävlingslistans eget år-/bana-filter. */
+
+
+  /* Ett tävlingskort. Utbrutet 2026-09-17 när listan delades i kommande och
+   * genomförda — två kopior av samma hundra rader JSX hade oundvikligen
+   * glidit isär.
+   *
+   * `editing` styr om resultat- och grenfälten är framme. Kommande tävlingar
+   * skickar alltid in true: man kom hit för att rapportera, och ett extra
+   * klick före varje inmatning är en tröskel utan syfte. Genomförda behåller
+   * länkbeteendet, så listan inte blir en vägg av fält. */
+  function CompetitionCard({ c, editing }: { c: CompetitionRow; editing: boolean }) {
+    return (
+
+              <div
+                key={c.id}
+                className="rounded-lg border border-[var(--line)] p-4"
+              >
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="flex items-baseline gap-2">
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                        c.priority === "A"
+                          ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                          : c.priority === "B"
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                            : "bg-[var(--surface-raised)] text-[var(--ink-2)]"
+                      }`}
+                    >
+                      {c.priority}
+                    </span>
+                    <span className="font-medium text-[var(--foreground)]">{c.name}</span>
+                    <span className="text-sm text-[var(--ink-3)]">
+                      {c.competition_date}
+                      {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
+                      {c.location ? ` · ${c.location}` : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {c.competition_events.length > 0 && (
+                      <Link
+                        href={editCompetitionHref(editing ? null : c.id)}
+                        className="text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
+                      >
+                        {editing ? "Klar" : "Redigera"}
+                      </Link>
+                    )}
+                    <form action={deleteCompetition}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <button
+                        type="submit"
+                        className="text-xs text-[var(--ink-3)] hover:text-[var(--status-concern)]"
+                      >
+                        Ta bort
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                {/* Grenlistan visas alltid, även tom: det är HÄR man fyller
+                    i sitt resultat, och en tävling utan grenar såg tidigare
+                    ut som att den inte gick att rapportera på. Tränaren
+                    lägger bara upp namn, datum och vilka som ska med —
+                    vilken gren var och en springer är löparens eget, och
+                    Alice kan köra 1500 där Nike kör 800. */}
+                {(c.competition_events.length > 0 || editing) && (
+                  <div className="mt-3 flex flex-col gap-2">
+                    {c.competition_events
+                      .slice()
+                      .sort((a, b) => a.event.localeCompare(b.event))
+                      .map((e) =>
+                        editing ? (
+                          <div key={e.id} className="flex flex-wrap items-end gap-2">
+                          <form
+                            action={saveEventResult}
+                            className="flex flex-wrap items-end gap-2 text-sm"
+                          >
+                            <input type="hidden" name="event_id" value={e.id} />
+                            <span className="w-28 font-medium text-[var(--foreground)]">
+                              {e.event}
+                            </span>
+                            <span className="text-[var(--ink-3)]">
+                              mål {e.target_result ?? "—"}
+                            </span>
+                            <input
+                              name="actual_result"
+                              defaultValue={e.actual_result ?? ""}
+                              placeholder="resultat"
+                              className={`${input} w-28`}
+                            />
+                            <input
+                              name="placement"
+                              type="number"
+                              min="1"
+                              defaultValue={e.placement ?? ""}
+                              placeholder="plats"
+                              className={`${input} w-20`}
+                            />
+                            <button type="submit" className={ghostBtn}>
+                              Spara
+                            </button>
+                          </form>
+                          {/* Egen form: en submit-knapp inuti spara-formuläret
+                              hade skickat fel handling. */}
+                          <form action={deleteCompetitionEvent}>
+                            <input type="hidden" name="event_id" value={e.id} />
+                            <button
+                              type="submit"
+                              title={`Ta bort ${e.event}`}
+                              className="pb-1.5 text-xs text-[var(--status-concern-ink)] hover:underline"
+                            >
+                              Ta bort
+                            </button>
+                          </form>
+                          </div>
+                        ) : (
+                          <div key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
+                            <span className="w-28 font-medium text-[var(--foreground)]">
+                              {e.event}
+                            </span>
+                            <span className="text-[var(--ink-2)]">
+                              {e.actual_result ?? "inget resultat inlagt"}
+                              {e.placement != null ? ` · ${e.placement}:a plats` : ""}
+                            </span>
+                            {e.target_result && (
+                              <span className="text-xs text-[var(--ink-3)]">
+                                mål {e.target_result}
+                              </span>
+                            )}
+                          </div>
+                        ),
+                      )}
+
+                    {editing && (
+                      <>
+                        {c.competition_events.length === 0 && (
+                          <p className="text-sm text-[var(--ink-3)]">
+                            Ingen gren inlagd än. Lägg till den du sprang.
+                          </p>
+                        )}
+                        {/* Grenlistan är förslag, inte en spärr — fritext
+                            tillåts, så en stafett eller en ovanlig sträcka
+                            inte blir omöjlig att rapportera. */}
+                        <form
+                          action={addCompetitionEvent}
+                          className="flex flex-wrap items-end gap-2 border-t border-[var(--line)] pt-2 text-sm"
+                        >
+                          <input type="hidden" name="competition_id" value={c.id} />
+                          <input
+                            name="event"
+                            list="vanliga-grenar"
+                            required
+                            placeholder="gren, t.ex. 1500m"
+                            className={`${input} w-40`}
+                          />
+                          <input
+                            name="target_result"
+                            placeholder="mål (valfritt)"
+                            className={`${input} w-28`}
+                          />
+                          <button type="submit" className={ghostBtn}>
+                            Lägg till gren
+                          </button>
+                        </form>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -1005,176 +1195,36 @@ export default async function TavlingsresultatPage({
           </div>
         </div>
 
-        {managedCompetitions.length === 0 && (
+        {/* KOMMANDE först, och utanför årsfiltret. Det är här man fyller i
+            vilken gren man ska springa; resultatet kommer efteråt.
+            Kortet är alltid utfällt i den här listan — man kom hit för att
+            rapportera, och ett extra klick före varje inmatning är en
+            tröskel utan syfte. */}
+        <h3 className="display text-base font-semibold text-[var(--foreground)]">Kommande</h3>
+        {upcomingCompetitions.length === 0 ? (
+          <p className="text-sm text-[var(--ink-3)]">Inga tävlingar inlagda framåt.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {upcomingCompetitions.map((c) => (
+              <CompetitionCard key={c.id} c={c} editing />
+            ))}
+          </div>
+        )}
+
+        <h3 className="display mt-4 text-base font-semibold text-[var(--foreground)]">
+          Genomförda
+        </h3>
+        {pastCompetitions.length === 0 ? (
           <p className="text-sm text-[var(--ink-3)]">
             Inga tävlingar {tavlingsAr === "alla" ? "" : `${tavlingsAr} `}
             {tavlingsBana !== "alla" ? `(${tavlingsBana === "inne" ? "inomhus" : "utomhus"}) ` : ""}
             än.
           </p>
-        )}
-
-        {managedCompetitions.length > 0 && (
+        ) : (
           <div className="flex flex-col gap-2">
-            {managedCompetitions.map((c) => {
-              const editing = c.id === redigeraTavlingParam;
-              return (
-                <div
-                  key={c.id}
-                  className="rounded-lg border border-[var(--line)] p-4"
-                >
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <div className="flex items-baseline gap-2">
-                      <span
-                        className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                          c.priority === "A"
-                            ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
-                            : c.priority === "B"
-                              ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
-                              : "bg-[var(--surface-raised)] text-[var(--ink-2)]"
-                        }`}
-                      >
-                        {c.priority}
-                      </span>
-                      <span className="font-medium text-[var(--foreground)]">{c.name}</span>
-                      <span className="text-sm text-[var(--ink-3)]">
-                        {c.competition_date}
-                        {c.venue ? ` · ${SEASON_LABELS[c.venue]}` : ""}
-                        {c.location ? ` · ${c.location}` : ""}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {c.competition_events.length > 0 && (
-                        <Link
-                          href={editCompetitionHref(editing ? null : c.id)}
-                          className="text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
-                        >
-                          {editing ? "Klar" : "Redigera"}
-                        </Link>
-                      )}
-                      <form action={deleteCompetition}>
-                        <input type="hidden" name="id" value={c.id} />
-                        <button
-                          type="submit"
-                          className="text-xs text-[var(--ink-3)] hover:text-[var(--status-concern)]"
-                        >
-                          Ta bort
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-
-                  {/* Grenlistan visas alltid, även tom: det är HÄR man fyller
-                      i sitt resultat, och en tävling utan grenar såg tidigare
-                      ut som att den inte gick att rapportera på. Tränaren
-                      lägger bara upp namn, datum och vilka som ska med —
-                      vilken gren var och en springer är löparens eget, och
-                      Alice kan köra 1500 där Nike kör 800. */}
-                  {(c.competition_events.length > 0 || editing) && (
-                    <div className="mt-3 flex flex-col gap-2">
-                      {c.competition_events
-                        .slice()
-                        .sort((a, b) => a.event.localeCompare(b.event))
-                        .map((e) =>
-                          editing ? (
-                            <div key={e.id} className="flex flex-wrap items-end gap-2">
-                            <form
-                              action={saveEventResult}
-                              className="flex flex-wrap items-end gap-2 text-sm"
-                            >
-                              <input type="hidden" name="event_id" value={e.id} />
-                              <span className="w-28 font-medium text-[var(--foreground)]">
-                                {e.event}
-                              </span>
-                              <span className="text-[var(--ink-3)]">
-                                mål {e.target_result ?? "—"}
-                              </span>
-                              <input
-                                name="actual_result"
-                                defaultValue={e.actual_result ?? ""}
-                                placeholder="resultat"
-                                className={`${input} w-28`}
-                              />
-                              <input
-                                name="placement"
-                                type="number"
-                                min="1"
-                                defaultValue={e.placement ?? ""}
-                                placeholder="plats"
-                                className={`${input} w-20`}
-                              />
-                              <button type="submit" className={ghostBtn}>
-                                Spara
-                              </button>
-                            </form>
-                            {/* Egen form: en submit-knapp inuti spara-formuläret
-                                hade skickat fel handling. */}
-                            <form action={deleteCompetitionEvent}>
-                              <input type="hidden" name="event_id" value={e.id} />
-                              <button
-                                type="submit"
-                                title={`Ta bort ${e.event}`}
-                                className="pb-1.5 text-xs text-[var(--status-concern-ink)] hover:underline"
-                              >
-                                Ta bort
-                              </button>
-                            </form>
-                            </div>
-                          ) : (
-                            <div key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
-                              <span className="w-28 font-medium text-[var(--foreground)]">
-                                {e.event}
-                              </span>
-                              <span className="text-[var(--ink-2)]">
-                                {e.actual_result ?? "inget resultat inlagt"}
-                                {e.placement != null ? ` · ${e.placement}:a plats` : ""}
-                              </span>
-                              {e.target_result && (
-                                <span className="text-xs text-[var(--ink-3)]">
-                                  mål {e.target_result}
-                                </span>
-                              )}
-                            </div>
-                          ),
-                        )}
-
-                      {editing && (
-                        <>
-                          {c.competition_events.length === 0 && (
-                            <p className="text-sm text-[var(--ink-3)]">
-                              Ingen gren inlagd än. Lägg till den du sprang.
-                            </p>
-                          )}
-                          {/* Grenlistan är förslag, inte en spärr — fritext
-                              tillåts, så en stafett eller en ovanlig sträcka
-                              inte blir omöjlig att rapportera. */}
-                          <form
-                            action={addCompetitionEvent}
-                            className="flex flex-wrap items-end gap-2 border-t border-[var(--line)] pt-2 text-sm"
-                          >
-                            <input type="hidden" name="competition_id" value={c.id} />
-                            <input
-                              name="event"
-                              list="vanliga-grenar"
-                              required
-                              placeholder="gren, t.ex. 1500m"
-                              className={`${input} w-40`}
-                            />
-                            <input
-                              name="target_result"
-                              placeholder="mål (valfritt)"
-                              className={`${input} w-28`}
-                            />
-                            <button type="submit" className={ghostBtn}>
-                              Lägg till gren
-                            </button>
-                          </form>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {pastCompetitions.map((c) => (
+              <CompetitionCard key={c.id} c={c} editing={c.id === redigeraTavlingParam} />
+            ))}
           </div>
         )}
 

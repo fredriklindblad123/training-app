@@ -327,6 +327,30 @@ function BlockCard({
           {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
           {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""}
         </span>
+
+        {/* Vilka löpare blocket gäller, i hopfällt läge (2026-09-17).
+            Stod tidigare bara som kryssrutor inne i redigeringsformuläret, så
+            man fick fälla ut varje block för att se vem det var till — i en
+            lista med tio block är det tio klick för att svara på en fråga som
+            är hela poängen med ett delat block. Rapporterat.
+            Tomt block sägs rakt ut: ett block utan löpare rullas aldrig ut och
+            är i praktiken overksamt. */}
+        <span className="flex flex-wrap gap-1 pt-0.5">
+          {athletes.filter((a) => selectedAthleteIds.has(a.id)).length === 0 ? (
+            <span className="text-xs text-[var(--status-watch-ink)]">Ingen löpare kopplad</span>
+          ) : (
+            athletes
+              .filter((a) => selectedAthleteIds.has(a.id))
+              .map((a) => (
+                <span
+                  key={a.id}
+                  className="display rounded-full border border-[var(--line)] px-2 py-0.5 text-[11px] text-[var(--ink-2)]"
+                >
+                  {a.fullName ?? "Namnlös"}
+                </span>
+              ))
+          )}
+        </span>
       </summary>
 
       {canEdit ? (
