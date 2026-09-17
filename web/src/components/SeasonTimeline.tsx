@@ -29,6 +29,7 @@
 import {
   PHASE_COLOR_VARS,
   PHASE_LABELS,
+  groupBlocksBySeason,
   type PeriodType,
   type PhaseType,
   type Priority,
@@ -316,19 +317,7 @@ export function SeasonTimeline({
               Grupperna ordnas efter när de BÖRJAR, så läsningen uppifrån och
               ned fortfarande följer tiden. */}
           {(() => {
-            const groups: { key: string; label: string; blocks: TimelineBlock[] }[] = [];
-            for (const b of sortedBlocks) {
-              const key = b.season ?? "none";
-              const label =
-                b.season === "indoor"
-                  ? "Inomhussäsong"
-                  : b.season === "outdoor"
-                    ? "Utomhussäsong"
-                    : "Mellan säsongerna";
-              const found = groups.find((g) => g.key === key);
-              if (found) found.blocks.push(b);
-              else groups.push({ key, label, blocks: [b] });
-            }
+            const groups = groupBlocksBySeason(sortedBlocks);
             return groups.map((group) => (
               <div key={group.key} className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-3">

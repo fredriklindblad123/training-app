@@ -34,7 +34,7 @@ import {
   type PeriodType,
   type PhaseType,
   type WorkoutType,
-  type SeasonKind,
+  groupBlocksBySeason,
 } from "@/lib/planning";
 import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
@@ -1129,35 +1129,6 @@ async function ArsplanOverview({
   );
 }
 
-
-/* Blocken grupperade på säsong — inomhus, utomhus och de som inte hör till
- * någondera.
- *
- * Den tredje gruppen är inget kantfall: uppmätt på Alices plan är tre av elva
- * block utan säsong, och det är förberedelse- och återhämtningsblocken mellan
- * säsongerna. De får ett eget namn i stället för att tigas ihjäl eller klumpas
- * in i en säsong de inte hör till.
- *
- * Grupperna kommer i den ordning deras första block börjar, så en läsning
- * uppifrån och ned fortfarande följer tiden. */
-function groupBlocksBySeason<T extends { season: SeasonKind | null; start_date: string }>(
-  blocks: T[],
-): { key: string; label: string; blocks: T[] }[] {
-  const groups: { key: string; label: string; blocks: T[] }[] = [];
-  for (const b of [...blocks].sort((a, c) => a.start_date.localeCompare(c.start_date))) {
-    const key = b.season ?? "none";
-    const label =
-      b.season === "indoor"
-        ? "Inomhussäsong"
-        : b.season === "outdoor"
-          ? "Utomhussäsong"
-          : "Mellan säsongerna";
-    const found = groups.find((g) => g.key === key);
-    if (found) found.blocks.push(b);
-    else groups.push({ key, label, blocks: [b] });
-  }
-  return groups;
-}
 
 function SeasonGroupHeading({ label, count }: { label: string; count: number }) {
   return (

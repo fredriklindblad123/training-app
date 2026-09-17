@@ -472,3 +472,49 @@ export function datesForWeekday(from: string, to: string, weekday: number): stri
   return dates;
 }
 
+
+
+/* ---------------------------- Säsongssektioner ---------------------------- */
+
+/** Vilken sektion ett block hör till: år + säsong, t.ex. "2027 inne".
+ *
+ * ÅRET TAS UR BLOCKETS MITT, inte ur startdatumet. En inomhussäsong går över
+ * nyår — "Tävlingsförberedande inne 2027" börjar 21 december 2026 — och ett
+ * startårsbaserat namn hade kallat den 2026, alltså fel säsong. Mittpunkten
+ * landar i januari och ger 2027, utan att inomhus behöver hanteras separat.
+ *
+ * Block utan säsong är inget kantfall: uppmätt på produktionsdatan saknar tre
+ * av elva den, och det är förberedelse- och återhämtningsblocken MELLAN
+ * säsongerna. De får ett eget namn i stället för att klumpas in i en säsong de
+ * inte hör till. */
+export function seasonSectionKey(block: {
+  season: SeasonKind | null;
+  start_date: string;
+  end_date: string;
+}): { key: string; label: string; sortDate: string } {
+  const start = Date.parse(`${block.start_date}T00:00:00Z`);
+  const end = Date.parse(`${block.end_date}T00:00:00Z`);
+  const mid = new Date((start + end) / 2);
+  const year = mid.getUTCFullYear();
+  const part =
+    block.season === "indoor" ? "inne" : block.season === "outdoor" ? "ute" : "mellan säsongerna";
+  return {
+    key: `${year}-${block.season ?? "none"}`,
+    label: `${year} ${part}`,
+    sortDate: block.start_date,
+  };
+}
+
+/** Grupperar block i säsongssektioner, i den ordning sektionerna börjar. */
+export function groupBlocksBySeason<
+  T extends { season: SeasonKind | null; start_date: string; end_date: string },
+>(blocks: T[]): { key: string; label: string; blocks: T[] }[] {
+  const groups: { key: string; label: string; blocks: T[] }[] = [];
+  for (const b of [...blocks].sort((a, c) => a.start_date.localeCompare(c.start_date))) {
+    const { key, label } = seasonSectionKey(b);
+    const found = groups.find((g) => g.key === key);
+    if (found) found.blocks.push(b);
+    else groups.push({ key, label, blocks: [b] });
+  }
+  return groups;
+}
