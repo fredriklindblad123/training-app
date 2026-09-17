@@ -33,7 +33,7 @@ import {
   type AvailabilityKind,
   type PeriodType,
   type PhaseType,
-  type WorkoutType, priorityLabel} from "@/lib/planning";
+  type WorkoutType} from "@/lib/planning";
 import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
@@ -834,10 +834,16 @@ async function ArsplanOverview({
       .map((id) => blockById.get(id))
       .filter((b): b is BlockCardBlock => b != null);
     const activeBlock = myBlocks.find((b) => b.start_date <= today && b.end_date >= today);
+    /* Nästa block som börjar, för glapp mellan två block. Utan det står
+     * "Inget aktivt block" på alla under en lugn period — kontrollerat mot
+     * datan: hela gruppen låg i ett sådant glapp när sidan byggdes. */
+    const nextBlock = myBlocks
+      .filter((b) => b.start_date > today)
+      .sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
     const yearBlocks = myBlocks.filter(
       (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
     );
-    return { athlete, activeBlock, nextA, yearBlocks, yearCompetitions };
+    return { athlete, activeBlock, nextBlock, myBlocks, nextA, yearBlocks, yearCompetitions };
   });
 
   /* Legenden ritas EN gång för hela listan, inte en gång per löparrad — fem
@@ -854,109 +860,128 @@ async function ArsplanOverview({
             läsa. Bandet finns kvar i den enskilda löparens vy, där det har
             plats att vara läsbart. Raden här säger i stället i klartext vilket
             block och vilken tävling som gäller. */}
-        {athleteSummaries.map(({ athlete, activeBlock, nextA }) => (
-          <Link
-            key={athlete.id}
-            href={`/sasongsoversikt?athlete=${athlete.id}`}
-            className="flex flex-wrap items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 hover:bg-[var(--surface-raised)]"
-          >
-            <div className="w-32 shrink-0 font-medium text-[var(--foreground)]">
-              {athlete.fullName ?? "Namnlös löpare"}
-            </div>
-            <div className="w-52 shrink-0 text-sm text-[var(--ink-3)]">
-              {activeBlock ? `${activeBlock.name} · ${PHASE_LABELS[activeBlock.phase]}` : "Inget aktivt block"}
-            </div>
-            <div className="w-56 shrink-0 text-sm text-[var(--ink-3)]">
-              Nästa A-tävling:{" "}
-              {nextA ? `${nextA.name} · ${nextA.competition_date}` : "Ingen inlagd"}
-            </div>
-          </Link>
-        ))}
+        {/* Raderna bär löparens HELA läge, inte bara namnet (2026-09-17).
+            Förut stod bara aktivt block och nästa A-tävling, och allt annat
+            krävde att man klickade in på var och en. För en tränare med fyra
+            adepter blev det fyra sidladdningar för att svara på "hur ligger
+            gruppen till". Nu står blockets namn, fas och hur långt in i det
+            man är, nästa lopp med nedräkning, och hur många block som är
+            upplagda — och kortet länkar fortfarande in till hela vyn för den
+            som ska ändra något. */}
+        {athleteSummaries.map(({ athlete, activeBlock, nextA, myBlocks, nextBlock }) => {
+          const shown = activeBlock ?? nextBlock;
+          const blockWeek =
+            activeBlock != null
+              ? Math.floor(
+                  (Date.parse(`${today}T00:00:00Z`) -
+                    Date.parse(`${activeBlock.start_date}T00:00:00Z`)) /
+                    (7 * 86_400_000),
+                ) + 1
+              : null;
+          const blockWeeks =
+            shown != null
+              ? Math.max(
+                  1,
+                  Math.ceil(
+                    (Date.parse(`${shown.end_date}T00:00:00Z`) -
+                      Date.parse(`${shown.start_date}T00:00:00Z`) +
+                      86_400_000) /
+                      (7 * 86_400_000),
+                  ),
+                )
+              : null;
+          const daysToBlock =
+            shown != null && shown.start_date > today
+              ? Math.round(
+                  (Date.parse(`${shown.start_date}T00:00:00Z`) -
+                    Date.parse(`${today}T00:00:00Z`)) /
+                    86_400_000,
+                )
+              : null;
+          const daysToRace = nextA
+            ? Math.round(
+                (Date.parse(`${nextA.competition_date}T00:00:00Z`) -
+                  Date.parse(`${today}T00:00:00Z`)) /
+                  86_400_000,
+              )
+            : null;
+
+          return (
+            <Link
+              key={athlete.id}
+              href={`/sasongsoversikt?athlete=${athlete.id}`}
+              className="grid grid-cols-1 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)] sm:grid-cols-[10rem_1fr_1fr_auto]"
+            >
+              <div className="display self-center text-base font-semibold text-[var(--foreground)]">
+                {athlete.fullName ?? "Namnlös löpare"}
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                  Block
+                </span>
+                {shown ? (
+                  <>
+                    <span className="text-sm font-medium text-[var(--foreground)]">
+                      {shown.name}
+                    </span>
+                    <span className="tabular flex items-center gap-1.5 text-xs text-[var(--ink-3)]">
+                      <span
+                        aria-hidden
+                        className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                        style={{ backgroundColor: PHASE_COLOR_VARS[shown.phase] }}
+                      />
+                      {PHASE_LABELS[shown.phase]}
+                      {/* Har blocket inte börjat står nedräkningen i stället
+                          för veckonumret — "vecka -2 av 8" vore obegripligt. */}
+                      {daysToBlock != null
+                        ? ` · om ${daysToBlock} d`
+                        : blockWeek != null && blockWeeks != null
+                          ? ` · v ${blockWeek}/${blockWeeks}`
+                          : ""}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm text-[var(--ink-3)]">Inget block upplagt</span>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                  Nästa A-lopp
+                </span>
+                {nextA && daysToRace != null ? (
+                  <>
+                    <span className="text-sm font-medium text-[var(--foreground)]">
+                      {nextA.name}
+                    </span>
+                    <span className="tabular text-xs text-[var(--ink-3)]">
+                      {nextA.competition_date} ·{" "}
+                      {daysToRace === 0
+                        ? "idag"
+                        : daysToRace === 1
+                          ? "imorgon"
+                          : `${daysToRace} dagar kvar`}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm text-[var(--ink-3)]">Ingen inlagd</span>
+                )}
+              </div>
+
+              <div className="tabular self-center text-xs text-[var(--ink-3)] sm:text-right">
+                {myBlocks.length} {myBlocks.length === 1 ? "block" : "block"} totalt
+              </div>
+            </Link>
+          );
+        })}
       </div>
 
-      {/* Tävlingsöversikten står direkt på startsidan (begärt 2026-09-16).
-          Den låg tidigare bara i den enskilda löparens vy, så en tränare fick
-          klicka in på var och en för att se vad gruppen hade framför sig.
-
-          En tävling flera löpare springer är FLERA RADER i databasen med samma
-          namn och datum — det finns ingen kopplingstabell (se
-          CompetitionRow i lib/plan-weeks.ts). De slås därför ihop här, och
-          deltagarna listas i kortet. Utan hopslagningen hade Terräng SM
-          dykt upp fyra gånger. */}
-      {(() => {
-        const byRace = new Map<
-          string,
-          { name: string; date: string; priority: string; athletes: string[] }
-        >();
-        for (const { athlete, yearCompetitions } of athleteSummaries) {
-          for (const c of yearCompetitions) {
-            const key = `${c.competition_date}|${c.name}`;
-            const row = byRace.get(key) ?? {
-              name: c.name,
-              date: c.competition_date,
-              priority: c.priority,
-              athletes: [],
-            };
-            row.athletes.push(athlete.fullName ?? "Namnlös");
-            // Högsta prioritet vinner: en tävling som är A-lopp för någon är
-            // en A-tävling i en vy som visar hela gruppen.
-            if (c.priority === "A" || (c.priority === "B" && row.priority === "C")) {
-              row.priority = c.priority;
-            }
-            byRace.set(key, row);
-          }
-        }
-        const races = [...byRace.values()].sort((a, b) => {
-          // Kommande före passerade, annars kronologiskt.
-          const aPast = a.date < today;
-          const bPast = b.date < today;
-          if (aPast !== bPast) return aPast ? 1 : -1;
-          return a.date.localeCompare(b.date);
-        });
-        if (races.length === 0) return null;
-
-        return (
-          <section className="flex flex-col gap-3">
-            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-              Tävlingar
-            </h2>
-            <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 lg:grid-cols-3">
-              {races.map((r) => {
-                const past = r.date < today;
-                return (
-                  <div
-                    key={`${r.date}|${r.name}`}
-                    className={`flex flex-col gap-1 bg-[var(--surface)] px-3 py-2.5 ${
-                      past ? "opacity-60" : ""
-                    }`}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="tabular text-xs text-[var(--ink-3)]">{r.date}</span>
-                      {/* Prioriteten som ord, inte som färgad form: en romb
-                          krävde en legend för att betyda något. */}
-                      <span
-                        className="display text-xs font-semibold"
-                        style={{
-                          color:
-                            r.priority === "A"
-                              ? "var(--status-concern-ink)"
-                              : "var(--status-watch-ink)",
-                        }}
-                      >
-                        {priorityLabel(r.priority)}
-                      </span>
-                    </div>
-                    <span className="display text-sm leading-tight font-semibold text-[var(--foreground)]">
-                      {r.name}
-                    </span>
-                    <span className="text-xs text-[var(--ink-3)]">{r.athletes.join(", ")}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        );
-      })()}
+      {/* Tävlingstabellen är borta härifrån (2026-09-17). Tävlingarna har en
+          egen flik sedan i går, med tidslinje, redigering och koppling av
+          löpare — en tabell här hade bara varit en sämre kopia som dessutom
+          inte gick att ändra i. Löparens nästa lopp står kvar i hennes kort
+          nedan, vilket är det översikten behöver veta. */}
 
       {/* Ihopslagen blocklista över hela rostern — redigera/ta bort direkt
        * här (uttrycklig begäran 2026-08-18), samma BlockCard som den
@@ -1268,9 +1293,6 @@ export default async function ArsplanPage({
   const timelineYearBlocks = blockList.filter(
     (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
   );
-  const timelineYearCompetitions = competitionList.filter(
-    (c) => c.competition_date.slice(0, 4) === currentYear,
-  );
 
   // --- Veckorutnät (speglar Excel-mallens Säsongsöversikt-flik) --------------------
   // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
@@ -1459,65 +1481,8 @@ export default async function ArsplanPage({
           Som kort får varje tävling sin egen rad med allt utskrivet, och
           sektionen följer samma form som resten av appen. Kommande först:
           det är de som går att planera runt. */}
-      {timelineYearCompetitions.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Tävlingar {currentYear}
-          </h2>
-          <div className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 lg:grid-cols-3">
-            {[...timelineYearCompetitions]
-              .sort((a, b) => {
-                // Kommande före passerade, annars kronologiskt.
-                const aPast = a.competition_date < today;
-                const bPast = b.competition_date < today;
-                if (aPast !== bPast) return aPast ? 1 : -1;
-                return a.competition_date.localeCompare(b.competition_date);
-              })
-              .map((c) => {
-                const past = c.competition_date < today;
-                return (
-                  <div
-                    key={c.id}
-                    className={`flex flex-col gap-1 bg-[var(--surface)] px-3 py-2.5 ${
-                      past ? "opacity-60" : ""
-                    }`}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="tabular text-xs text-[var(--ink-3)]">
-                        {c.competition_date}
-                      </span>
-                      {/* Prioriteten som ord, inte som färgad form. En romb
-                          krävde en legend för att betyda något; "A-lopp" gör
-                          det inte. */}
-                      <span
-                        className="display text-xs font-semibold"
-                        style={{
-                          color:
-                            c.priority === "A"
-                              ? "var(--status-concern-ink)"
-                              : "var(--status-watch-ink)",
-                        }}
-                      >
-                        {priorityLabel(c.priority)}
-                      </span>
-                    </div>
-                    <span className="display text-sm leading-tight font-semibold text-[var(--foreground)]">
-                      {c.name}
-                    </span>
-                  </div>
-                );
-              })}
-          </div>
-        </section>
-      )}
-
-      {/* Veckorutnätet togs bort 2026-09-16 (begärt). Det var en tabell med
-          en kolumn per vecka — upp till 52 — och en rad per träningsfaktor i
-          tre nivåer. Det speglade Excel-mallens flik, vilket var poängen när
-          appen skulle ersätta Excel, men som skärmvy var den oläslig: man
-          rullade i sidled genom ett år för att hitta en siffra.
-          lib/arsplan-grid.ts är kvar — Excel-exporten bygger fortfarande sin
-          flik ur den, och den är fortfarande rätt format DÄR. -------- */}
+      {/* Även här är tävlingstabellen borttagen — se motiveringen i
+          översikten ovan. Tävlingarna bor under fliken Tävling. */}
 
       {/* ---------------- Block ---------------- */}
       <section className="flex flex-col gap-3">
