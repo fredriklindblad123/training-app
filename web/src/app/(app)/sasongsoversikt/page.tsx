@@ -10,6 +10,8 @@ import {
 } from "@/lib/auth-scope";
 import {
   SeasonTimeline,
+  AthleteSeasonBand,
+  SeasonBandAxis,
   type TimelineBlock,
   type TimelineCompetition,
 } from "@/components/SeasonTimeline";
@@ -910,29 +912,20 @@ async function ArsplanOverview({
 
   return (
     <div className="flex flex-col gap-8">
-      {/* GRUPPENS PLAN överst, en gång (2026-09-17).
-          Sidan visade tidigare ett kort per löpare med block och nästa lopp.
-          Adepterna tränar i grupp och delar samma block, så korten blev fyra
-          nästan identiska rutor som beskrev löparna i stället för planen —
-          rapporterat. Den här tidslinjen är planen: säsongsbandet, blocken med
-          namn och längd, och tävlingarna. Skillnaderna mellan löparna syns i
-          remsorna under. */}
-      {planBlocks.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Säsongen
-          </h2>
-          <SeasonTimeline blocks={planBlocks} />
-        </section>
-      )}
+      {/* Gruppens fulla tidslinje är BORTA ur förstavyn (2026-09-17, begärt).
+          Den visade alla block med namn och längd, vilket är rätt detaljnivå
+          när man zoomat in på EN löpare men för mycket som förstaintryck —
+          adepterna delar ändå samma block, så den sa samma sak som banden
+          nedanför fast utförligare. Den finns kvar i löparens egen vy. */}
 
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Löparna
         </h2>
         <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-          En remsa per löpare på samma tidsaxel som ovan. Luckor är block hon
-          inte är taggad på. Klicka för hennes egen säsong.
+          Ett band per löpare på gemensam tidsaxel. Segmenten är säsongerna —
+          fyllda för tävlingssäsong, streckade för perioderna emellan. Klicka
+          för hennes block och veckor.
         </p>
 
         <div className="flex flex-col gap-2">
@@ -949,16 +942,11 @@ async function ArsplanOverview({
                   {athlete.fullName ?? "Namnlös"}
                 </span>
 
-                {/* Remsan bär informationen: var hon har block och var det är
-                    tomt. Namnen står i tidslinjen ovanför och behöver inte
-                    upprepas fyra gånger. */}
-                <span className="min-w-[12rem] flex-1">
-                  <SeasonTimeline
-                    blocks={strip}
-                    compact
-                    rangeStart={rangeFrom}
-                    rangeEnd={rangeTo}
-                  />
+                {/* Bandet visar SÄSONGERNA, inte blocken. Blocknamnen hör
+                    hemma i löparens egen vy; här är frågan vilken säsong hon
+                    är i och när nästa börjar. */}
+                <span className="min-w-[14rem] flex-1">
+                  <AthleteSeasonBand blocks={strip} rangeStart={rangeFrom} rangeEnd={rangeTo} />
                 </span>
 
                 <span className="tabular w-40 shrink-0 text-xs text-[var(--ink-3)]">
@@ -986,6 +974,16 @@ async function ArsplanOverview({
               </Link>
             );
           })}
+        </div>
+
+        {/* Månadsaxeln en gång under alla band — de delar spann, så en axel
+            per rad hade varit fyra kopior av samma skala. */}
+        <div className="flex gap-x-4">
+          <span className="w-28 shrink-0" />
+          <span className="min-w-[14rem] flex-1">
+            <SeasonBandAxis rangeStart={rangeFrom} rangeEnd={rangeTo} />
+          </span>
+          <span className="w-40 shrink-0" />
         </div>
       </section>
 

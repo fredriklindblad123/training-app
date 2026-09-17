@@ -505,3 +505,128 @@ export function SeasonTimeline({
     </div>
   );
 }
+
+/* En löpares SÄSONGER som ett liggande band — inte hennes block.
+ *
+ * Översikten visade tidigare gruppens alla block i en full tidslinje plus en
+ * blockremsa per löpare. Det var för mycket för en förstavy: adepterna delar
+ * samma block, så raderna blev nästan identiska och detaljerna hörde hemma
+ * först när man zoomar in på en löpare (begärt 2026-09-17).
+ *
+ * Här är varje segment en SÄSONG — "2027 inne", "2027 ute" — beräknad ur
+ * löparens egna block via samma seasonSectionKey som resten av appen. Spannet
+ * går från säsongens första block till dess sista, så bandet visar när hon är
+ * i vilken säsong och var glappen ligger.
+ *
+ * Ett fast datumspann utifrån, inte auto-skalning: annars hamnar samma månad
+ * på olika x för olika löpare och banden går inte att läsa mot varandra.
+ */
+export function AthleteSeasonBand({
+  blocks,
+  rangeStart,
+  rangeEnd,
+}: {
+  blocks: TimelineBlock[];
+  rangeStart: string;
+  rangeEnd: string;
+}) {
+  const min = dayNumber(rangeStart);
+  const max = dayNumber(rangeEnd);
+  const span = Math.max(1, max - min);
+  const pct = (dateKey: string) => ((dayNumber(dateKey) - min) / span) * 100;
+
+  if (blocks.length === 0) {
+    return (
+      <div className="h-9 rounded bg-[var(--surface-raised)]" aria-hidden />
+    );
+  }
+
+  const groups = groupBlocksBySeason(blocks).map((g) => {
+    const from = g.blocks.reduce((m, b) => (b.start_date < m ? b.start_date : m), g.blocks[0].start_date);
+    const to = g.blocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), g.blocks[0].end_date);
+    return { ...g, from, to };
+  });
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayPct = pct(todayKey);
+
+  return (
+    <div className="relative h-9 overflow-hidden rounded bg-[var(--surface-raised)]">
+      {groups.map((g) => {
+        const left = pct(g.from);
+        const width = Math.max(2, pct(g.to) - left);
+        /* Tävlingssäsongerna är fyllda, perioderna mellan dem streckade. En
+         * säsong är det man toppar mot; förberedelse och återhämtning är
+         * vägen dit, och ska inte läsas som samma sorts sak. */
+        const isSeason = g.key.endsWith("indoor") || g.key.endsWith("outdoor");
+        const isIndoor = g.key.endsWith("indoor");
+        return (
+          <div
+            key={g.key}
+            className={`absolute top-0 flex h-9 flex-col justify-center overflow-hidden px-2 ${
+              isSeason ? "rounded" : "rounded border border-dashed border-[var(--line)]"
+            }`}
+            style={{
+              left: `${left}%`,
+              width: `${width}%`,
+              backgroundColor: isSeason
+                ? isIndoor
+                  ? "color-mix(in oklab, var(--zone-3) 45%, var(--surface))"
+                  : "color-mix(in oklab, var(--cat-threshold) 45%, var(--surface))"
+                : "transparent",
+            }}
+            title={`${g.label}: ${shortDate(g.from)}–${shortDate(g.to)}`}
+          >
+            <span className="display truncate text-[0.6875rem] font-bold tracking-[0.06em] text-[var(--foreground)] uppercase">
+              {g.label}
+            </span>
+            {/* Datumen i bandet när segmentet är brett nog. Under det blir de
+                tre tecken och oläsliga — då räcker tooltipen och den
+                gemensamma månadsaxeln under listan. */}
+            {width > 14 && (
+              <span className="tabular truncate text-[10px] text-[var(--ink-2)]">
+                {shortDate(g.from)}–{shortDate(g.to)}
+              </span>
+            )}
+          </div>
+        );
+      })}
+
+      {todayPct >= 0 && todayPct <= 100 && (
+        <span
+          aria-hidden
+          className="absolute top-0 h-9 w-0.5 bg-[var(--foreground)]"
+          style={{ left: `${todayPct}%` }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Månadsaxeln under en lista av band, ritad EN gång. */
+export function SeasonBandAxis({
+  rangeStart,
+  rangeEnd,
+}: {
+  rangeStart: string;
+  rangeEnd: string;
+}) {
+  const min = dayNumber(rangeStart);
+  const max = dayNumber(rangeEnd);
+  const span = Math.max(1, max - min);
+  const pct = (dateKey: string) => ((dayNumber(dateKey) - min) / span) * 100;
+
+  return (
+    <div className="relative h-4">
+      {axisTicks(rangeStart, rangeEnd, pct, 7).map((t) => (
+        <span
+          key={t.key}
+          className="absolute top-0 -translate-x-1/2 text-[10px] whitespace-nowrap text-[var(--ink-3)]"
+          style={{ left: `${t.left}%` }}
+        >
+          {t.showLabel ? t.label : ""}
+        </span>
+      ))}
+    </div>
+  );
+}
