@@ -203,3 +203,50 @@ export async function saveEventResult(formData: FormData) {
     .eq("id", id);
   refresh();
 }
+
+
+/* Adepten lägger till sin egen gren på en tävling tränaren skapat.
+ *
+ * Arbetsdelningen sedan 2026-09-17: tränaren lägger upp VAD tävlingen heter,
+ * NÄR den är och VILKA som ska med. Vad var och en springer där är löparens
+ * eget — Alice kör 1500 och Nike 800 på samma tävling, och tränaren ska inte
+ * behöva fylla i det åt dem.
+ *
+ * Grenen hör till competition_events, som pekar på EN löpares competitions-rad.
+ * Varje löpare har alltså sin egen uppsättning grenar på samma lopp, vilket är
+ * precis vad som behövs. RLS på competitions avgör om raden går att nå — inget
+ * extra user_id-filter här, samma mönster som resten av filen.
+ */
+export async function addCompetitionEvent(formData: FormData) {
+  const auth = await requireUser();
+  const competitionId = str(formData, "competition_id");
+  const event = str(formData, "event");
+  if (!auth || !competitionId || !event) return;
+
+  // Sist i listan. Ordningen är den man la till dem i, vilket för en löpare
+  // med två grenar samma dag är den ordning hon springer dem.
+  const { data: existing } = await auth.supabase
+    .from("competition_events")
+    .select("sort_order")
+    .eq("competition_id", competitionId)
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  await auth.supabase.from("competition_events").insert({
+    competition_id: competitionId,
+    event,
+    sort_order: ((existing?.sort_order as number | undefined) ?? -1) + 1,
+    target_result: str(formData, "target_result"),
+  });
+  refresh();
+}
+
+/** Tar bort en gren. Bara den egna raden — se RLS-resonemanget ovan. */
+export async function deleteCompetitionEvent(formData: FormData) {
+  const auth = await requireUser();
+  const id = str(formData, "event_id");
+  if (!auth || !id) return;
+  await auth.supabase.from("competition_events").delete().eq("id", id);
+  refresh();
+}

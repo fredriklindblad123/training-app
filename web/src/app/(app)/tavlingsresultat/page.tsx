@@ -2,7 +2,12 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
-import { deleteCompetition, saveEventResult } from "./actions";
+import {
+  addCompetitionEvent,
+  deleteCompetitionEvent,
+  deleteCompetition,
+  saveEventResult,
+} from "./actions";
 import {
   addDays as planAddDays,
   competitionYearCounts,
@@ -11,6 +16,7 @@ import {
   toDateKey,
   type Priority,
   type SeasonKind,
+  COMMON_EVENTS,
 } from "@/lib/planning";
 import {
   SESSION_ACTIVITY_COLUMNS,
@@ -33,7 +39,15 @@ import {
 import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
 
-/* Tävlingsresultat: analys och jämförelse av redan inlagda tävlingar —
+/* Resultat: här fyller löparen i vad det blev, och ser sin utveckling.
+ *
+ * ARBETSDELNINGEN (2026-09-17): tränaren lägger upp tävlingen under Tävling —
+ * vad den heter, när den är, och vilka som ska med. Löparen väljer själv
+ * vilken gren hon sprang och fyller i tid och placering här. Alice kan köra
+ * 1500 där Nike kör 800 på samma lopp, och det är inget tränaren ska behöva
+ * fylla i åt dem.
+ *
+ * Analys och jämförelse av redan inlagda tävlingar —
  * grenutveckling över tid och upptrappningen inför två valda lopp.
  *
  * Flyttad ut ur /sasongen 2026-08-13 till en egen vy: att lägga till/redigera
@@ -608,7 +622,7 @@ export default async function TavlingsresultatPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Tävlingsresultat</h1>
+      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Resultat</h1>
 
       {/* Karriären i fyra tal. Sidan öppnade tidigare direkt i grenväljaren,
           så omfattningen — hur många lopp, hur länge, vad som väntar — fanns
@@ -911,6 +925,15 @@ export default async function TavlingsresultatPage({
       </section>
 
       {/* ---------------- Tävlingar ---------------- */}
+      {/* Grenförslagen. En datalist och inte en select: listan finns för att
+          slippa skriva "1500m" varje gång, inte för att begränsa — en stafett
+          eller en ovanlig sträcka ska gå att rapportera ändå. */}
+      <datalist id="vanliga-grenar">
+        {COMMON_EVENTS.map((e) => (
+          <option key={e} value={e} />
+        ))}
+      </datalist>
+
       <section id="tavlingar" className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Tävlingar</h2>
         {/* Texten lovade tidigare att "prioriteten styr hur planeringen toppar" och att
@@ -1040,15 +1063,21 @@ export default async function TavlingsresultatPage({
                     </div>
                   </div>
 
-                  {c.competition_events.length > 0 && (
+                  {/* Grenlistan visas alltid, även tom: det är HÄR man fyller
+                      i sitt resultat, och en tävling utan grenar såg tidigare
+                      ut som att den inte gick att rapportera på. Tränaren
+                      lägger bara upp namn, datum och vilka som ska med —
+                      vilken gren var och en springer är löparens eget, och
+                      Alice kan köra 1500 där Nike kör 800. */}
+                  {(c.competition_events.length > 0 || editing) && (
                     <div className="mt-3 flex flex-col gap-2">
                       {c.competition_events
                         .slice()
                         .sort((a, b) => a.event.localeCompare(b.event))
                         .map((e) =>
                           editing ? (
+                            <div key={e.id} className="flex flex-wrap items-end gap-2">
                             <form
-                              key={e.id}
                               action={saveEventResult}
                               className="flex flex-wrap items-end gap-2 text-sm"
                             >
@@ -1077,6 +1106,19 @@ export default async function TavlingsresultatPage({
                                 Spara
                               </button>
                             </form>
+                            {/* Egen form: en submit-knapp inuti spara-formuläret
+                                hade skickat fel handling. */}
+                            <form action={deleteCompetitionEvent}>
+                              <input type="hidden" name="event_id" value={e.id} />
+                              <button
+                                type="submit"
+                                title={`Ta bort ${e.event}`}
+                                className="pb-1.5 text-xs text-[var(--status-concern-ink)] hover:underline"
+                              >
+                                Ta bort
+                              </button>
+                            </form>
+                            </div>
                           ) : (
                             <div key={e.id} className="flex flex-wrap items-baseline gap-2 text-sm">
                               <span className="w-28 font-medium text-[var(--foreground)]">
@@ -1094,6 +1136,40 @@ export default async function TavlingsresultatPage({
                             </div>
                           ),
                         )}
+
+                      {editing && (
+                        <>
+                          {c.competition_events.length === 0 && (
+                            <p className="text-sm text-[var(--ink-3)]">
+                              Ingen gren inlagd än. Lägg till den du sprang.
+                            </p>
+                          )}
+                          {/* Grenlistan är förslag, inte en spärr — fritext
+                              tillåts, så en stafett eller en ovanlig sträcka
+                              inte blir omöjlig att rapportera. */}
+                          <form
+                            action={addCompetitionEvent}
+                            className="flex flex-wrap items-end gap-2 border-t border-[var(--line)] pt-2 text-sm"
+                          >
+                            <input type="hidden" name="competition_id" value={c.id} />
+                            <input
+                              name="event"
+                              list="vanliga-grenar"
+                              required
+                              placeholder="gren, t.ex. 1500m"
+                              className={`${input} w-40`}
+                            />
+                            <input
+                              name="target_result"
+                              placeholder="mål (valfritt)"
+                              className={`${input} w-28`}
+                            />
+                            <button type="submit" className={ghostBtn}>
+                              Lägg till gren
+                            </button>
+                          </form>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

@@ -40,7 +40,9 @@ const LOGG: Tab[] = [
   { href: "/dashboard", label: "Idag", icon: "M4 13h5v7H4zM10 4h4v16h-4zM15 9h5v11h-5z" },
   { href: "/calendar", label: "Kalender", icon: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" },
   { href: "/trender", label: "Form", icon: "M4 17l5-6 4 4 7-8" },
-  { href: "/tavlingsresultat", label: "Lopp", icon: "M7 4v16M7 4h10l-2.5 3.5L17 11H7" },
+  /* "Resultat", inte "Lopp" (2026-09-17). Vyn är dit man går för att fylla i
+   * vad det BLEV — själva loppen läggs upp av tränaren under Tävling. */
+  { href: "/tavlingsresultat", label: "Resultat", icon: "M7 4v16M7 4h10l-2.5 3.5L17 11H7" },
 ];
 
 /* Kortast horisont först, samma ordning som menyn hade: veckan man är i
