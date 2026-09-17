@@ -831,19 +831,24 @@ async function ArsplanOverview({
             .order("competition_date")
             .limit(1)
             .maybeSingle(),
-          // Bara innevarande år — samma avgränsning som huvudvyns tidslinje,
-          // annars blir raderna lika oläsliga som helvyn var.
+          /* De närmaste tävlingarna löparen är taggad på — inte året, utan
+             framåt. Årsbegränsningen fanns för en tabell som är borttagen, och
+             den gömde allt som låg nästa säsong: kontrollerat mot datan har
+             Alice tolv lopp inlagda 2027 och ett kvar i år.
+             Tre stycken: fler blir en lista i ett kort som ska gå att läsa i
+             en blick, och vill man se hela finns fliken Tävling. */
           supabase
             .from("competitions")
-            .select("id, name, competition_date, priority, venue")
+            .select("id, name, competition_date, priority")
             .eq("user_id", athlete.id)
-            .gte("competition_date", `${currentYear}-01-01`)
-            .lte("competition_date", `${currentYear}-12-31`),
+            .gte("competition_date", today)
+            .order("competition_date")
+            .limit(3),
         ]);
         return {
           athlete,
           nextA,
-          yearCompetitions: (yearCompetitionRows ?? []) as TimelineCompetition[],
+          upcomingRaces: (yearCompetitionRows ?? []) as TimelineCompetition[],
         };
       }),
     ),
@@ -853,7 +858,7 @@ async function ArsplanOverview({
   const blockById = new Map(allBlocks.map((b) => [b.id, b]));
   const sortedAllBlocks = [...allBlocks].sort((a, b) => a.start_date.localeCompare(b.start_date));
 
-  const athleteSummaries = athleteExtras.map(({ athlete, nextA, yearCompetitions }) => {
+  const athleteSummaries = athleteExtras.map(({ athlete, nextA, upcomingRaces }) => {
     const myBlocks = (blockIdsByAthlete.get(athlete.id) ?? [])
       .map((id) => blockById.get(id))
       .filter((b): b is BlockCardBlock => b != null);
@@ -867,7 +872,7 @@ async function ArsplanOverview({
     const yearBlocks = myBlocks.filter(
       (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
     );
-    return { athlete, activeBlock, nextBlock, myBlocks, nextA, yearBlocks, yearCompetitions };
+    return { athlete, activeBlock, nextBlock, myBlocks, nextA, yearBlocks, upcomingRaces };
   });
 
   /* Legenden ritas EN gång för hela listan, inte en gång per löparrad — fem
@@ -892,7 +897,7 @@ async function ArsplanOverview({
             man är, nästa lopp med nedräkning, och hur många block som är
             upplagda — och kortet länkar fortfarande in till hela vyn för den
             som ska ändra något. */}
-        {athleteSummaries.map(({ athlete, activeBlock, nextA, myBlocks, nextBlock }) => {
+        {athleteSummaries.map(({ athlete, activeBlock, myBlocks, nextBlock, upcomingRaces }) => {
           const shown = activeBlock ?? nextBlock;
           const blockWeek =
             activeBlock != null
@@ -922,13 +927,6 @@ async function ArsplanOverview({
                     86_400_000,
                 )
               : null;
-          const daysToRace = nextA
-            ? Math.round(
-                (Date.parse(`${nextA.competition_date}T00:00:00Z`) -
-                  Date.parse(`${today}T00:00:00Z`)) /
-                  86_400_000,
-              )
-            : null;
 
           return (
             <Link
@@ -972,24 +970,41 @@ async function ArsplanOverview({
 
               <div className="flex flex-col gap-0.5">
                 <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-                  Nästa A-lopp
+                  Kommande tävlingar
                 </span>
-                {nextA && daysToRace != null ? (
+                {upcomingRaces.length === 0 ? (
+                  <span className="text-sm text-[var(--ink-3)]">Ingen inlagd</span>
+                ) : (
                   <>
+                    {/* Det närmaste loppet i klartext med nedräkning, resten
+                        som kompakta rader under. Att räkna ned till alla tre
+                        hade gjort kortet till en tabell; det är det första man
+                        planerar mot. */}
                     <span className="text-sm font-medium text-[var(--foreground)]">
-                      {nextA.name}
+                      {upcomingRaces[0].name}
                     </span>
                     <span className="tabular text-xs text-[var(--ink-3)]">
-                      {nextA.competition_date} ·{" "}
-                      {daysToRace === 0
-                        ? "idag"
-                        : daysToRace === 1
-                          ? "imorgon"
-                          : `${daysToRace} dagar kvar`}
+                      {upcomingRaces[0].competition_date} ·{" "}
+                      {(() => {
+                        const d = Math.round(
+                          (Date.parse(`${upcomingRaces[0].competition_date}T00:00:00Z`) -
+                            Date.parse(`${today}T00:00:00Z`)) /
+                            86_400_000,
+                        );
+                        return d === 0 ? "idag" : d === 1 ? "imorgon" : `${d} dagar kvar`;
+                      })()}
+                      {upcomingRaces[0].priority === "A" ? " · A-lopp" : ""}
                     </span>
+                    {upcomingRaces.slice(1).map((r) => (
+                      <span
+                        key={`${r.competition_date}|${r.name}`}
+                        className="tabular truncate text-xs text-[var(--ink-3)]"
+                      >
+                        {r.competition_date.slice(5)} {r.name}
+                        {r.priority === "A" ? " · A" : ""}
+                      </span>
+                    ))}
                   </>
-                ) : (
-                  <span className="text-sm text-[var(--ink-3)]">Ingen inlagd</span>
                 )}
               </div>
 
@@ -1494,7 +1509,27 @@ export default async function ArsplanPage({
       {/* ---------------- Säsongsöversikt ---------------- */}
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Säsongsöversikt</h2>
-        <SeasonTimeline blocks={timelineYearBlocks} />
+        {/* Tävlingarna i en egen bana under blockstaplarna. Löparen är taggad
+            på dem via sina egna competitions-rader, så listan är redan
+            hennes — ingen extra filtrering behövs.
+            Innevarande år, samma avgränsning som blocken ovanför: ett band
+            som spänner hela historiken blev en oläslig klump, vilket var
+            varför årsfiltret infördes från början. */}
+        <SeasonTimeline
+          blocks={timelineYearBlocks}
+          races={competitionList
+            /* Bara KOMMANDE lopp i banan. Kontrollerat mot datan: Alice har
+               arton tävlingar i år, varav sjutton redan sprungna — alla med
+               etikett hade blivit den vägg av namn som tävlingsmarkörerna en
+               gång togs bort för. Genomförda tävlingar hör hemma i Resultat;
+               tidslinjen handlar om vad som ligger framför. */
+            .filter((c) => c.competition_date >= today)
+            .map((c) => ({
+              name: c.name,
+              date: c.competition_date,
+              priority: c.priority,
+            }))}
+        />
       </section>
 
       {/* ---------------- Tävlingar ----------------

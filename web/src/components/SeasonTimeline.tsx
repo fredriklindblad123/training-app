@@ -158,11 +158,23 @@ export function SeasonTimelineLegend({ phases }: { phases: PhaseType[] }) {
 
 export function SeasonTimeline({
   blocks,
+  races = [],
   compact,
   rangeStart,
   rangeEnd,
 }: {
   blocks: TimelineBlock[];
+  /* Tävlingar löparen är taggad på, i EGEN BANA under blockstaplarna.
+   *
+   * Egen bana och inte markörer ovanpå staplarna, och det är hela lärdomen
+   * från förra försöket: romber ovanpå blockbandet med etiketter under blev
+   * oläsliga och togs bort. I en egen rad konkurrerar de inte med blocken om
+   * ytan, och etiketterna får dessutom banfördelning sinsemellan — samma
+   * grepp som RaceTimeline på tävlingssidan.
+   *
+   * Bara i den fulla vyn. Kompaktläget är sex pixlar högt och rymmer inte en
+   * rad till. */
+  races?: { name: string; date: string; priority: string }[];
   /** Mindre band, inga tävlingsetiketter/förklaring under — för
    * översiktskorten (Alla-läget på /sasongsoversikt) där flera löpares tidslinjer
    * visas sida vid sida. */
@@ -352,6 +364,71 @@ export function SeasonTimeline({
               );
             })}
           </div>
+
+          {/* ---- Tävlingsbanan ---- */}
+          {(() => {
+            const inRange = races
+              .filter((r) => r.date >= minKey && r.date <= maxKey)
+              .sort((a, b) => a.date.localeCompare(b.date));
+            if (inRange.length === 0) return null;
+
+            /* Etikettbredd som andel av bandet. Exakt pixelbredd är inte känd
+             * på servern; tilltaget i överkant, hellre en extra rad än två
+             * namn ovanpå varandra. */
+            const LABEL_PCT = 18;
+            const laneEnds: number[] = [];
+            const placed = inRange.map((r) => {
+              const left = pct(r.date);
+              let lane = laneEnds.findIndex((end) => left > end);
+              if (lane === -1) {
+                lane = laneEnds.length;
+                laneEnds.push(0);
+              }
+              laneEnds[lane] = left + LABEL_PCT;
+              return { race: r, left, lane };
+            });
+            const lanes = Math.max(1, laneEnds.length);
+
+            return (
+              <div className="mt-2 flex items-start gap-3 border-t border-[var(--line)] pt-2">
+                <div className="display w-44 shrink-0 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                  Tävlingar
+                </div>
+                <div className="relative flex-1" style={{ height: `${lanes * 2.1}rem` }}>
+                  {grid}
+                  {placed.map(({ race, left, lane }) => (
+                    <div
+                      key={`${race.date}|${race.name}`}
+                      className="absolute flex flex-col"
+                      style={{
+                        left: `${left}%`,
+                        top: `${lane * 2.1}rem`,
+                        maxWidth: `${Math.max(14, 100 - left)}%`,
+                      }}
+                      title={`${race.name} — ${shortDate(race.date)}`}
+                    >
+                      <span className="flex items-center gap-1">
+                        <span
+                          aria-hidden
+                          className="inline-block h-2 w-2 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              race.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
+                          }}
+                        />
+                        <span className="truncate text-[11px] font-medium text-[var(--foreground)]">
+                          {race.name}
+                        </span>
+                      </span>
+                      <span className="tabular truncate pl-3 text-[10px] text-[var(--ink-3)]">
+                        {shortDate(race.date)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Axeln under staplarna, inskjuten lika mycket som etikettkolumnen
               så att månaderna står i linje med rutnätet ovanför. */}
