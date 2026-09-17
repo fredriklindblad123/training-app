@@ -305,28 +305,56 @@ export function SeasonTimeline({
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
         <div className="min-w-[36rem]">
-          {/* Indelat efter SÄSONG, inte bara kronologiskt (2026-09-17, begärt).
-              Simbanor: inomhussäsongens block för sig, utomhussäsongens för
-              sig, och däremellan de som inte hör till någon — förberedelse och
-              återhämtning. Alla på samma axel, så man ser både vad som hör
-              ihop och när det ligger.
-              Uppmätt på Alices plan: sex utomhusblock, två inomhus och tre
-              utan säsong. Den tredje gruppen är alltså inget kantfall och får
-              ett eget namn i stället för att tigas ihjäl eller klumpas in i
-              fel säsong.
-              Grupperna ordnas efter när de BÖRJAR, så läsningen uppifrån och
-              ned fortfarande följer tiden. */}
+          {/* SÄSONGSBANDET, överst och på samma axel som blocken.
+              Säsongerna låg tidigare som rubriker mellan blockraderna, alltså
+              som grupper i en lista. Det bröt kronologin: "Återhämtning ht
+              2027" hamnade före "2027 ute", som ligger maj till september, och
+              staplarna hoppade bakåt i tiden. Rapporterat.
+              En säsong ÄR ett tidsspann, så den hör hemma på axeln. Blocken
+              kan då ligga i en enda kronologisk lista, och man ser ändå vilken
+              säsong varje stapel faller inom genom att titta rakt upp. */}
           {(() => {
             const groups = groupBlocksBySeason(sortedBlocks);
-            return groups.map((group) => (
-              <div key={group.key} className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-3">
-                  <div className="display w-44 shrink-0 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-                    {group.label}
-                  </div>
-                  <div className="h-px flex-1 bg-[var(--line)]" aria-hidden />
+            return (
+              <div className="mb-2 flex items-center gap-3">
+                <div className="w-44 shrink-0" />
+                <div className="relative h-6 flex-1">
+                  {groups.map((g) => {
+                    const from = g.blocks.reduce(
+                      (m, b) => (b.start_date < m ? b.start_date : m),
+                      g.blocks[0].start_date,
+                    );
+                    const to = g.blocks.reduce(
+                      (m, b) => (b.end_date > m ? b.end_date : m),
+                      g.blocks[0].end_date,
+                    );
+                    const left = pct(from);
+                    const width = Math.max(2, pct(to) - left);
+                    const isSeason = g.key.endsWith("indoor") || g.key.endsWith("outdoor");
+                    return (
+                      <div
+                        key={g.key}
+                        className={`absolute top-0 flex h-6 items-center overflow-hidden rounded px-2 ${
+                          isSeason
+                            ? "bg-[var(--surface-raised)] ring-1 ring-[var(--line)]"
+                            : "border border-dashed border-[var(--line)]"
+                        }`}
+                        style={{ left: `${left}%`, width: `${width}%` }}
+                        title={`${g.label}: ${shortDate(from)}–${shortDate(to)}`}
+                      >
+                        <span className="display truncate text-[0.6875rem] font-bold tracking-[0.08em] text-[var(--ink-2)] uppercase">
+                          {g.label}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
-                {group.blocks.map((b) => {
+              </div>
+            );
+          })()}
+
+          <div className="flex flex-col gap-1.5">
+            {sortedBlocks.map((b) => {
               const left = pct(b.start_date);
               const width = Math.max(1, pct(b.end_date) - left);
               const weeks = Math.max(
@@ -384,113 +412,39 @@ export function SeasonTimeline({
                 </div>
               );
             })}
-              </div>
-            ));
-          })()}
+          </div>
 
-          {/* ---- Tävlingsbanan ---- */}
+          {/* ---- Tävlingarna: punkter på axeln, namnen i en lista ----
+              Etiketter i bandet har provats två gånger och fallit båda:
+              namnen skriver över varandra, och med banfördelning krävdes åtta
+              rader för tolv lopp — sjutton rem bara till tävlingar.
+              Bandet är bra på EN sak: att visa NÄR något ligger och om det
+              klumpar ihop sig. Namn och datum är text, och text läses i en
+              lista. Punkten och raden delar färg, så man kopplar ihop dem. */}
           {(() => {
             const inRange = races
               .filter((r) => r.date >= minKey && r.date <= maxKey)
               .sort((a, b) => a.date.localeCompare(b.date));
             if (inRange.length === 0) return null;
 
-            /* Etikettbredd som andel av bandet. Exakt pixelbredd är inte känd
-             * på servern; tilltaget i överkant, hellre en extra rad än två
-             * namn ovanpå varandra. */
-            const LABEL_PCT = 18;
-            /* Tak på antalet banor, och det är nödvändigt. Simulerat mot
-             * Alices tolv kommande lopp över ett femtonmånadersband: utan tak
-             * krävs ÅTTA banor, alltså sjutton rem bara till tävlingar. Det är
-             * precis den gröt som fick markörerna borttagna från bandet en
-             * gång. */
-            const MAX_LANES = 3;
-
-            /* A-loppen fördelas FÖRST, så de alltid får en etikett. Får något
-             * inte plats är det ett B-lopp som blir en omärkt punkt, inte
-             * säsongens huvudmål. Kronologiskt inom varje prioritet. */
-            const byImportance = [...inRange].sort((a, b) => {
-              if (a.priority !== b.priority) return a.priority === "A" ? -1 : 1;
-              return a.date.localeCompare(b.date);
-            });
-
-            const laneEnds: number[] = [];
-            const labelled: { race: (typeof inRange)[number]; left: number; lane: number }[] = [];
-            const dots: { race: (typeof inRange)[number]; left: number }[] = [];
-
-            for (const r of byImportance) {
-              const left = pct(r.date);
-              let lane = laneEnds.findIndex((end) => left > end);
-              if (lane === -1) {
-                if (laneEnds.length >= MAX_LANES) {
-                  // Ryms inte: punkt utan etikett, med namnet i tooltipen.
-                  dots.push({ race: r, left });
-                  continue;
-                }
-                lane = laneEnds.length;
-                laneEnds.push(0);
-              }
-              laneEnds[lane] = left + LABEL_PCT;
-              labelled.push({ race: r, left, lane });
-            }
-            const lanes = Math.max(1, laneEnds.length);
-            const placed = labelled;
-
             return (
-              <div className="mt-2 flex items-start gap-3 border-t border-[var(--line)] pt-2">
+              <div className="mt-2 flex items-center gap-3 border-t border-[var(--line)] pt-2">
                 <div className="display w-44 shrink-0 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
                   Tävlingar
                 </div>
-                <div
-                  className="relative flex-1"
-                  style={{ height: `${lanes * 2.1 + (dots.length > 0 ? 0.9 : 0)}rem` }}
-                >
+                <div className="relative h-5 flex-1">
                   {grid}
-
-                  {/* De som inte fick etikett, som punkter på en egen rad
-                      längst ned. De försvinner inte — man ser ATT det ligger
-                      lopp där, och namnet finns i tooltipen. */}
-                  {dots.map(({ race, left }) => (
+                  {inRange.map((r) => (
                     <span
-                      key={`dot-${race.date}-${race.name}`}
-                      title={`${race.name} — ${shortDate(race.date)}`}
-                      className="absolute h-2 w-2 -translate-x-1/2 rounded-full"
+                      key={`${r.date}|${r.name}`}
+                      title={`${r.name} — ${shortDate(r.date)}`}
+                      className="absolute top-1.5 h-2.5 w-2.5 -translate-x-1/2 rounded-full ring-2 ring-[var(--surface)]"
                       style={{
-                        left: `${left}%`,
-                        top: `${lanes * 2.1}rem`,
+                        left: `${pct(r.date)}%`,
                         backgroundColor:
-                          race.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
+                          r.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
                       }}
                     />
-                  ))}
-                  {placed.map(({ race, left, lane }) => (
-                    <div
-                      key={`${race.date}|${race.name}`}
-                      className="absolute flex flex-col"
-                      style={{
-                        left: `${left}%`,
-                        top: `${lane * 2.1}rem`,
-                        maxWidth: `${Math.max(14, 100 - left)}%`,
-                      }}
-                      title={`${race.name} — ${shortDate(race.date)}`}
-                    >
-                      <span className="flex items-center gap-1">
-                        <span
-                          aria-hidden
-                          className="inline-block h-2 w-2 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor:
-                              race.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
-                          }}
-                        />
-                        <span className="truncate text-[11px] font-medium text-[var(--foreground)]">
-                          {race.name}
-                        </span>
-                      </span>
-                      <span className="tabular truncate pl-3 text-[10px] text-[var(--ink-3)]">
-                        {shortDate(race.date)}
-                      </span>
-                    </div>
                   ))}
                 </div>
               </div>
@@ -505,6 +459,47 @@ export function SeasonTimeline({
           </div>
         </div>
       </div>
+
+      {/* Tävlingarna i klartext under bandet. Kronologiskt, samma ordning som
+          punkterna ovanför, och färgen kopplar ihop rad och punkt. Ett rutnät
+          i stället för en rad per tävling: tolv lopp som en lodrät lista hade
+          blivit lika högt som hela tidslinjen. */}
+      {races.filter((r) => r.date >= minKey && r.date <= maxKey).length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+            Planerade tävlingar
+          </span>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+            {races
+              .filter((r) => r.date >= minKey && r.date <= maxKey)
+              .sort((a, b) => a.date.localeCompare(b.date))
+              .map((r) => (
+                <span
+                  key={`${r.date}|${r.name}`}
+                  className="flex items-baseline gap-2 text-xs"
+                >
+                  <span
+                    aria-hidden
+                    className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor:
+                        r.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
+                    }}
+                  />
+                  <span className="tabular w-16 shrink-0 text-[var(--ink-3)]">
+                    {shortDate(r.date)}
+                  </span>
+                  <span className="truncate text-[var(--foreground)]">{r.name}</span>
+                  {r.priority === "A" && (
+                    <span className="display shrink-0 text-[10px] font-semibold text-[var(--cat-race)]">
+                      A
+                    </span>
+                  )}
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
 
       <SeasonTimelineLegend phases={[...new Set(sortedBlocks.map((b) => b.phase))]} />
     </div>

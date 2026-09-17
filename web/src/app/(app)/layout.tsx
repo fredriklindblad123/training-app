@@ -165,7 +165,10 @@ export default async function AppLayout({
         />
       </Suspense>
 
-      <main className="flex flex-1 flex-col">{children}</main>
+      {/* Plats för den klistrade bottenraden. Utan den lägger sig menyn över
+          sidans sista sektion — syntes i säsongsöversikten, där
+          tävlingsbanan hamnade delvis bakom flikarna. Rapporterat. */}
+      <main className="flex flex-1 flex-col pb-28 sm:pb-24">{children}</main>
 
       {/* Navigeringen, inom räckhåll för tummen. Suspense eftersom
           komponenten läser searchParams för att bära löparvalet mellan

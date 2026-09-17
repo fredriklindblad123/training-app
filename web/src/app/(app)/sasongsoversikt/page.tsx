@@ -34,7 +34,7 @@ import {
   type PeriodType,
   type PhaseType,
   type WorkoutType,
-  groupBlocksBySeason,
+  seasonSectionKey,
 } from "@/lib/planning";
 import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
@@ -325,9 +325,20 @@ function BlockCard({
             {b.start_date} – {b.end_date} · {weeksBetween(b.start_date, b.end_date)} v
           </span>
         </span>
-        <span className="text-xs text-[var(--ink-3)]">
-          {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
-          {b.season ? ` · ${SEASON_LABELS[b.season]}` : ""}
+        {/* Säsongen som eget märke, inte som ett ord i radan. Listan är
+            kronologisk — att gruppera den på säsong bröt tidsordningen, se
+            SeasonTimeline — så säsongstillhörigheten måste synas per kort.
+            Block utan säsong får inget märke: förberedelse och återhämtning
+            ligger mellan säsongerna och hör inte till någon. */}
+        <span className="flex flex-wrap items-baseline gap-x-2 text-xs text-[var(--ink-3)]">
+          <span>
+            {PERIOD_LABELS[b.period]} · {PHASE_LABELS[b.phase]}
+          </span>
+          {b.season && (
+            <span className="display rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.06em] text-[var(--ink-2)] uppercase">
+              {seasonSectionKey(b).label}
+            </span>
+          )}
         </span>
 
         {/* Vilka löpare blocket gäller, i hopfällt läge (2026-09-17).
@@ -1034,19 +1045,14 @@ async function ArsplanOverview({
           <p className="text-sm text-[var(--ink-3)]">Inga block skapade ännu.</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {groupBlocksBySeason(sortedAllBlocks).map((g) => (
-              <div key={g.key} className="flex flex-col gap-2">
-                <SeasonGroupHeading label={g.label} count={g.blocks.length} />
-                {g.blocks.map((b) => (
-                  <BlockCard
-                    key={b.id}
-                    block={b}
-                    canEdit={canEditPlanning(scoped)}
-                    athletes={athletes}
-                    selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
-                  />
-                ))}
-              </div>
+            {sortedAllBlocks.map((b) => (
+              <BlockCard
+                key={b.id}
+                block={b}
+                canEdit={canEditPlanning(scoped)}
+                athletes={athletes}
+                selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
+              />
             ))}
           </div>
         )}
@@ -1129,20 +1135,6 @@ async function ArsplanOverview({
   );
 }
 
-
-function SeasonGroupHeading({ label, count }: { label: string; count: number }) {
-  return (
-    <div className="flex items-baseline gap-2 pt-1">
-      <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-        {label}
-      </span>
-      <span className="tabular text-xs text-[var(--ink-3)]">
-        {count} {count === 1 ? "block" : "block"}
-      </span>
-      <span className="h-px flex-1 bg-[var(--line)]" aria-hidden />
-    </div>
-  );
-}
 
 export default async function ArsplanPage({
   searchParams,
@@ -1589,10 +1581,7 @@ export default async function ArsplanPage({
 
         {blockList.length > 0 && (
           <div className="flex flex-col gap-2">
-            {groupBlocksBySeason(blockList).map((g) => (
-              <div key={g.key} className="flex flex-col gap-2">
-                <SeasonGroupHeading label={g.label} count={g.blocks.length} />
-                {g.blocks.map((b) => (
+            {blockList.map((b) => (
               <BlockCard
                 key={b.id}
                 block={b}
@@ -1609,8 +1598,6 @@ export default async function ArsplanPage({
                   competitionDates: competitionList.map((c) => c.competition_date),
                 })}
               />
-                ))}
-              </div>
             ))}
           </div>
         )}
