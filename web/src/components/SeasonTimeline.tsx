@@ -304,8 +304,40 @@ export function SeasonTimeline({
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
         <div className="min-w-[36rem]">
-          <div className="flex flex-col gap-1.5">
-            {sortedBlocks.map((b) => {
+          {/* Indelat efter SÄSONG, inte bara kronologiskt (2026-09-17, begärt).
+              Simbanor: inomhussäsongens block för sig, utomhussäsongens för
+              sig, och däremellan de som inte hör till någon — förberedelse och
+              återhämtning. Alla på samma axel, så man ser både vad som hör
+              ihop och när det ligger.
+              Uppmätt på Alices plan: sex utomhusblock, två inomhus och tre
+              utan säsong. Den tredje gruppen är alltså inget kantfall och får
+              ett eget namn i stället för att tigas ihjäl eller klumpas in i
+              fel säsong.
+              Grupperna ordnas efter när de BÖRJAR, så läsningen uppifrån och
+              ned fortfarande följer tiden. */}
+          {(() => {
+            const groups: { key: string; label: string; blocks: TimelineBlock[] }[] = [];
+            for (const b of sortedBlocks) {
+              const key = b.season ?? "none";
+              const label =
+                b.season === "indoor"
+                  ? "Inomhussäsong"
+                  : b.season === "outdoor"
+                    ? "Utomhussäsong"
+                    : "Mellan säsongerna";
+              const found = groups.find((g) => g.key === key);
+              if (found) found.blocks.push(b);
+              else groups.push({ key, label, blocks: [b] });
+            }
+            return groups.map((group) => (
+              <div key={group.key} className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-3">
+                  <div className="display w-44 shrink-0 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                    {group.label}
+                  </div>
+                  <div className="h-px flex-1 bg-[var(--line)]" aria-hidden />
+                </div>
+                {group.blocks.map((b) => {
               const left = pct(b.start_date);
               const width = Math.max(1, pct(b.end_date) - left);
               const weeks = Math.max(
@@ -363,7 +395,9 @@ export function SeasonTimeline({
                 </div>
               );
             })}
-          </div>
+              </div>
+            ));
+          })()}
 
           {/* ---- Tävlingsbanan ---- */}
           {(() => {
