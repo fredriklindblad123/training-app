@@ -94,10 +94,23 @@ export function BottomNav({
   );
   const tabs = showPlan && isPlanPath ? planTabs : loggTabs;
 
-  /* Löparvalet följer med mellan vyerna. Utan det skulle en tränare som
-     tittar på Alices kalender och trycker "Form" landa på sin egen. */
+  /* Löparvalet följer med mellan LOGGVYERNA, aldrig in i planeringen.
+   *
+   * Loggen är per person: tittar man på Alices kalender och trycker "Form"
+   * ska man få Alices form, inte sin egen.
+   *
+   * Planeringen är tvärtom hela gruppens. Det är tränarens arbetsyta — han
+   * lägger upp block och veckor för alla, även om inte varje pass gäller
+   * alla. Vill han analysera EN löpare gör han det i loggen.
+   *
+   * Att bära med parametern hit var ett verkligt fel: valde man Alice i
+   * loggen och tryckte "Block" landade man på /blockplan?athlete=<alice>,
+   * som slog över till enskild-löpar-vyn. Passen tappade sina löparchips och
+   * ett öppnat pass visade bara Alice. Rapporterat. */
   const athlete = params.get("athlete");
-  const suffix = athlete ? `?athlete=${athlete}` : "";
+  const loggSuffix = athlete ? `?athlete=${athlete}` : "";
+  const suffixFor = (href: string) =>
+    PLAN.some((p) => href === p.href) || href === UPPFOLJNING.href ? "" : loggSuffix;
 
   const groupPill = (on: boolean) =>
     `display rounded-full px-3 py-0.5 text-[0.65rem] font-bold tracking-[0.1em] uppercase transition-colors ${
@@ -121,10 +134,10 @@ export function BottomNav({
         >
           {/* Växeln navigerar till gruppens första vy i stället för att sätta
               ett läge. Ingen växel utan mål: man ser direkt vad man fick. */}
-          <Link href={`${LOGG[0].href}${suffix}`} className={groupPill(!isPlanPath)}>
+          <Link href={`${LOGG[0].href}${loggSuffix}`} className={groupPill(!isPlanPath)}>
             Logg
           </Link>
-          <Link href={`${PLAN[0].href}${suffix}`} className={groupPill(isPlanPath)}>
+          <Link href={PLAN[0].href} className={groupPill(isPlanPath)}>
             Plan
           </Link>
         </div>
@@ -139,7 +152,7 @@ export function BottomNav({
           return (
             <Link
               key={t.href}
-              href={`${t.href}${suffix}`}
+              href={`${t.href}${suffixFor(t.href)}`}
               aria-current={on ? "page" : undefined}
               className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1 transition-colors sm:min-w-20 sm:flex-none ${
                 on

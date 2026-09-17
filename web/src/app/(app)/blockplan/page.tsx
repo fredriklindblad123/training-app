@@ -3,7 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import {
   canEditPlanning,
   getScopedProfile,
-  resolveScopedUserId,
   viewableAthletes,
   type AthleteOption,
   type ScopedProfile,
@@ -53,7 +52,6 @@ import {
 } from "@/lib/sessions";
 import { TRAINING_FACTORS } from "@/lib/training-factors";
 import { fieldClass } from "@/components/ui/controls";
-import { getViewMode } from "@/lib/view-mode";
 
 /* Blockplan: varje blocks eget dag-för-dag-veckomönster, en fas i taget —
  * speglar Excel-mallens Blockplan-flik. Flyttad hit ur /sasongen
@@ -769,26 +767,31 @@ async function loadWeekData(
   return { passesByBlock, competitionsByBlock, outcomes };
 }
 
-export default async function BlockplanPage({
-  searchParams,
-}: {
-  searchParams: Promise<{
-    /** Fas 0-uppföljning: vilken löpare en coach tittar på just nu — samma
-     * mönster som /sasongsoversikt, se lib/auth-scope.ts. */
-    athlete?: string;
-  }>;
-}) {
+/* Ingen searchParams. Sidan tar INGEN löparparameter sedan 2026-09-17:
+ * planeringen är tränarens arbetsyta och visar alltid hela gruppen, och en
+ * löpare ser alltid sig själv. Att ta emot parametern och ignorera den hade
+ * varit ett löfte sidan inte håller. */
+export default async function BlockplanPage() {
   const supabase = await createClient();
-  const { athlete: athleteParam } = await searchParams;
 
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return null;
 
-  // En coach landar i veckovyn för ALLA sina löpare som standard — hen ska
-  // inte behöva gå in på en löpare först för att se veckorna (uttrycklig
-  // begäran 2026-08-21). `?athlete=<id>` går fortfarande till en enskild
-  // löpares vy; det är bara startläget som ändrats.
-  if ((athleteParam == null || athleteParam === "alla") && scoped.role === "coach") {
+  /* En coach ser ALLTID hela gruppen här, oavsett `?athlete=` (2026-09-17).
+   *
+   * Planeringen är tränarens arbetsyta: han lägger upp block och veckor för
+   * alla, även om inte varje pass gäller alla. Att smalna av till en person
+   * gör vyn sämre på precis det den finns för — passen tappar sina löparchips
+   * och man ser inte längre vem som ligger på vad.
+   *
+   * Parametern följde tidigare med från loggen via menyn, så ett klick på
+   * "Block" efter att ha tittat på Alice landade i hennes vy utan att man
+   * bett om det. Menyn bär den inte längre (se BottomNav), och den här raden
+   * gör att inte heller en gammal länk eller ett bokmärke kan göra det.
+   *
+   * En LÖPARE faller fortfarande igenom till vyn nedanför — hon har bara sina
+   * egna block, och för henne är "hela gruppen" hon själv. */
+  if (scoped.role === "coach") {
     return (
       <div className="flex flex-1 flex-col gap-8 px-6 py-8">
         <ScrollToAnchor fromWeek={currentMondayKey()} />
@@ -808,9 +811,9 @@ export default async function BlockplanPage({
     );
   }
 
-  const runnerMode = scoped.role === "coach" && (await getViewMode()) === "runner";
-
-  const scopedUserId = resolveScopedUserId(scoped, athleteParam, runnerMode);
+  /* Hit når bara en LÖPARE — coachen returnerade ovanför. Hon ser alltid sig
+   * själv, så varken löparläge eller `?athlete=` spelar någon roll här. */
+  const scopedUserId = scoped.userId;
   const canEdit = canEditPlanning(scoped);
 
   /* En fråga i stället för två i rad. Blockets eget mönster hämtas nästlat —

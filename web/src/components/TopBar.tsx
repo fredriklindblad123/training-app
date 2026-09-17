@@ -39,7 +39,17 @@ function toneFor(id: string): string {
 
 /** Planeringsvyerna visar redan alla löpare sida vid sida — där finns inget
  * att välja mellan, och väljaren hade bara kunnat göra vyn sämre. */
-const NO_ATHLETE_PICKER = ["/sasongsoversikt", "/blockplan", "/detaljplan", "/uppfoljning"];
+/* Planeringsvyerna har ingen löparväljare. De visar hela gruppen — det är
+ * tränarens arbetsyta, och att smalna av till en person gör vyn sämre på det
+ * den finns för. Vill man analysera EN löpare gör man det i loggen.
+ * /tavlingar tillkom 2026-09-17 och saknades här. */
+const NO_ATHLETE_PICKER = [
+  "/sasongsoversikt",
+  "/blockplan",
+  "/detaljplan",
+  "/tavlingar",
+  "/uppfoljning",
+];
 
 export function TopBar({
   athletes,
