@@ -376,26 +376,70 @@ export function SeasonTimeline({
              * på servern; tilltaget i överkant, hellre en extra rad än två
              * namn ovanpå varandra. */
             const LABEL_PCT = 18;
+            /* Tak på antalet banor, och det är nödvändigt. Simulerat mot
+             * Alices tolv kommande lopp över ett femtonmånadersband: utan tak
+             * krävs ÅTTA banor, alltså sjutton rem bara till tävlingar. Det är
+             * precis den gröt som fick markörerna borttagna från bandet en
+             * gång. */
+            const MAX_LANES = 3;
+
+            /* A-loppen fördelas FÖRST, så de alltid får en etikett. Får något
+             * inte plats är det ett B-lopp som blir en omärkt punkt, inte
+             * säsongens huvudmål. Kronologiskt inom varje prioritet. */
+            const byImportance = [...inRange].sort((a, b) => {
+              if (a.priority !== b.priority) return a.priority === "A" ? -1 : 1;
+              return a.date.localeCompare(b.date);
+            });
+
             const laneEnds: number[] = [];
-            const placed = inRange.map((r) => {
+            const labelled: { race: (typeof inRange)[number]; left: number; lane: number }[] = [];
+            const dots: { race: (typeof inRange)[number]; left: number }[] = [];
+
+            for (const r of byImportance) {
               const left = pct(r.date);
               let lane = laneEnds.findIndex((end) => left > end);
               if (lane === -1) {
+                if (laneEnds.length >= MAX_LANES) {
+                  // Ryms inte: punkt utan etikett, med namnet i tooltipen.
+                  dots.push({ race: r, left });
+                  continue;
+                }
                 lane = laneEnds.length;
                 laneEnds.push(0);
               }
               laneEnds[lane] = left + LABEL_PCT;
-              return { race: r, left, lane };
-            });
+              labelled.push({ race: r, left, lane });
+            }
             const lanes = Math.max(1, laneEnds.length);
+            const placed = labelled;
 
             return (
               <div className="mt-2 flex items-start gap-3 border-t border-[var(--line)] pt-2">
                 <div className="display w-44 shrink-0 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
                   Tävlingar
                 </div>
-                <div className="relative flex-1" style={{ height: `${lanes * 2.1}rem` }}>
+                <div
+                  className="relative flex-1"
+                  style={{ height: `${lanes * 2.1 + (dots.length > 0 ? 0.9 : 0)}rem` }}
+                >
                   {grid}
+
+                  {/* De som inte fick etikett, som punkter på en egen rad
+                      längst ned. De försvinner inte — man ser ATT det ligger
+                      lopp där, och namnet finns i tooltipen. */}
+                  {dots.map(({ race, left }) => (
+                    <span
+                      key={`dot-${race.date}-${race.name}`}
+                      title={`${race.name} — ${shortDate(race.date)}`}
+                      className="absolute h-2 w-2 -translate-x-1/2 rounded-full"
+                      style={{
+                        left: `${left}%`,
+                        top: `${lanes * 2.1}rem`,
+                        backgroundColor:
+                          race.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
+                      }}
+                    />
+                  ))}
                   {placed.map(({ race, left, lane }) => (
                     <div
                       key={`${race.date}|${race.name}`}

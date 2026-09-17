@@ -1323,15 +1323,26 @@ export default async function ArsplanPage({
   const nextA = nextACompetition;
   const activeBlock = blockList.find((b) => b.start_date <= today && b.end_date >= today);
 
-  // Säsongsöversikten (SeasonTimeline) fick hela historiken (år av importerade
-  // tävlingsresultat + gamla block) tidigare — bandet blev en oläslig klump
-  // av överlappande markörer (uttrycklig begäran). Visar bara innevarande
-  // kalenderår här; block-listan, jämförelsen och veckorutnätet nedanför
-  // rörs inte, de använder fortfarande blockList/competitionList ofiltrerat.
   const currentYear = today.slice(0, 4);
-  const timelineYearBlocks = blockList.filter(
-    (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
-  );
+
+  /* Tidslinjen visar SÄSONGEN FRAMÅT, inte ett kalenderår.
+   *
+   * Filtret krävde tidigare att blocket överlappade innevarande kalenderår,
+   * och axeln skalade sedan till just de blocken. Följden, uppmätt mot Alices
+   * data: hon har elva block som löper augusti 2026 till oktober 2027, men
+   * bara tre rörde 2026 — och axeln började därför 1 augusti. Hela året syntes
+   * aldrig, och de åtta block som utgör resten av säsongen fanns inte med
+   * alls. Rapporterat.
+   *
+   * En säsong i den här sporten löper höst till höst, inte januari till
+   * december, så ett kalenderår är fel avgränsning. Nu tas allt som inte
+   * redan är passerat: blocket man är i, och allt som ligger framför.
+   *
+   * Historiken utelämnas fortfarande med flit — det var den som gjorde bandet
+   * till en oläslig klump när det visade allt. Gamla block finns kvar i
+   * block-listan och jämförelsen nedanför, som använder blockList ofiltrerat. */
+  const yearStart = `${currentYear}-01-01`;
+  const timelineYearBlocks = blockList.filter((b) => b.end_date >= yearStart);
 
   // --- Veckorutnät (speglar Excel-mallens Säsongsöversikt-flik) --------------------
   // Samma datamodul som Excel-exporten (flerarsplan/export/route.ts)
@@ -1512,9 +1523,7 @@ export default async function ArsplanPage({
         {/* Tävlingarna i en egen bana under blockstaplarna. Löparen är taggad
             på dem via sina egna competitions-rader, så listan är redan
             hennes — ingen extra filtrering behövs.
-            Innevarande år, samma avgränsning som blocken ovanför: ett band
-            som spänner hela historiken blev en oläslig klump, vilket var
-            varför årsfiltret infördes från början. */}
+            Samma horisont som blocken ovanför: säsongen framåt. */}
         <SeasonTimeline
           blocks={timelineYearBlocks}
           races={competitionList
