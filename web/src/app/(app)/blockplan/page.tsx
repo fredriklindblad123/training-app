@@ -26,6 +26,7 @@ import {
 } from "@/lib/planning";
 import { RepGroupEditor, type RepGroupRow } from "@/components/RepGroupEditor";
 import { ScrollToAnchor } from "@/components/ScrollToAnchor";
+import { toggleCompetitionAthlete } from "@/app/(app)/tavlingar/actions";
 import {
   addAthleteToPass,
   addPassOnDate,
@@ -368,13 +369,19 @@ function DayAddPass({
 function CompetitionCard({
   competition,
   athletesById,
+  blockAthletes,
+  canEdit,
 }: {
   competition: CompetitionGroup;
   athletesById: Map<string, AthleteOption>;
+  /** Löparna på blocket — kandidaterna som kan kopplas på tävlingen. */
+  blockAthletes: AthleteOption[];
+  canEdit: boolean;
 }) {
   const participants = competition.athleteIds
     .map((id) => athletesById.get(id))
     .filter((a): a is AthleteOption => a != null);
+  const on = new Set(competition.athleteIds);
 
   return (
     <div className="rounded border border-amber-300 bg-amber-50 px-1.5 py-1 text-xs break-words dark:border-amber-700/60 dark:bg-amber-950/40">
@@ -387,18 +394,45 @@ function CompetitionCard({
         )}
       </div>
       <div className="text-[10px] text-amber-800/80 dark:text-amber-300/80">tävling</div>
-      {participants.length > 0 && (
-        <div className="mt-0.5 flex flex-wrap gap-0.5">
-          {participants.map((a) => (
-            <span
-              key={a.id}
-              className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-900 dark:bg-amber-800 dark:text-amber-100"
-            >
-              {a.fullName ?? "namnlös"}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Löparchipsen är KLICKBARA (2026-09-17, begärt): att koppla på och av
+          någon ska gå från den vy där man ser veckan, inte kräva ett hopp till
+          Tävling och tillbaka. Samma handling som tävlingssidan använder, så
+          de två kan aldrig göra olika saker.
+          Utan redigeringsrätt blir de vanliga etiketter — en knapp som inte
+          gör något är värre än ingen knapp. */}
+      <div className="mt-0.5 flex flex-wrap gap-0.5">
+        {canEdit
+          ? blockAthletes.map((a) => (
+              <form key={a.id} action={toggleCompetitionAthlete}>
+                <input type="hidden" name="name" value={competition.name} />
+                <input type="hidden" name="competition_date" value={competition.date} />
+                <input type="hidden" name="athlete_id" value={a.id} />
+                <button
+                  type="submit"
+                  title={
+                    on.has(a.id)
+                      ? `Ta bort ${a.fullName ?? "löpare"} från ${competition.name}`
+                      : `Lägg till ${a.fullName ?? "löpare"} på ${competition.name}`
+                  }
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] transition-colors ${
+                    on.has(a.id)
+                      ? "bg-amber-200 text-amber-900 dark:bg-amber-800 dark:text-amber-100"
+                      : "border border-amber-300/60 text-amber-800/50 hover:text-amber-900 dark:border-amber-700/50 dark:text-amber-300/40 dark:hover:text-amber-200"
+                  }`}
+                >
+                  {a.fullName ?? "namnlös"}
+                </button>
+              </form>
+            ))
+          : participants.map((a) => (
+              <span
+                key={a.id}
+                className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-900 dark:bg-amber-800 dark:text-amber-100"
+              >
+                {a.fullName ?? "namnlös"}
+              </span>
+            ))}
+      </div>
     </div>
   );
 }
@@ -501,7 +535,13 @@ function WeekGrid({
                 >
                   <div className="flex flex-col gap-1">
                     {day.competitions.map((c) => (
-                      <CompetitionCard key={c.key} competition={c} athletesById={athletesById} />
+                      <CompetitionCard
+                        key={c.key}
+                        competition={c}
+                        athletesById={athletesById}
+                        blockAthletes={blockAthletes}
+                        canEdit={canEdit}
+                      />
                     ))}
                     {day.passes.map((p) => (
                       <WeekPassCard

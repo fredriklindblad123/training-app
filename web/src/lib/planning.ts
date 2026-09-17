@@ -134,15 +134,25 @@ export const SEASON_LABELS: Record<SeasonKind, string> = {
   outdoor: "Utomhus",
 };
 
-export type Priority = "A" | "B" | "C";
+/* Två nivåer, inte tre (2026-09-17, begärt). Ett lopp är antingen ett man
+ * periodiserar mot eller ett man springer på vägen dit — mellanläget "C,
+ * träningstävling" bar ingen egen betydelse som ändrade planeringen.
+ * Databasen tillåter inte längre C heller, se migrationen
+ * competition_priority_a_or_b: 153 befintliga C-rader skrevs om till B. */
+export type Priority = "A" | "B";
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
   A: "A — säsongens huvudmål",
-  B: "B — viktig tävling",
-  C: "C — träningstävling",
+  B: "B — övrig tävling",
 };
 
-export const PRIORITY_SHORT: Record<Priority, string> = { A: "A", B: "B", C: "C" };
+export const PRIORITY_SHORT: Record<Priority, string> = { A: "A", B: "B" };
+
+/** Etiketten i listor och kort. Alltid "A-lopp"/"B-lopp" — kort nog att stå i
+ * en rad med datum utan att ta över. */
+export function priorityLabel(priority: string): string {
+  return `${priority}-lopp`;
+}
 
 /** Vanliga grenar för en svensk medeldistanslöpare. Fritext är tillåtet —
  * listan finns för att slippa skriva "1500m" varje gång, inte för att

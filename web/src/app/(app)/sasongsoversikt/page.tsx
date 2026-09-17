@@ -33,8 +33,7 @@ import {
   type AvailabilityKind,
   type PeriodType,
   type PhaseType,
-  type WorkoutType,
-} from "@/lib/planning";
+  type WorkoutType, priorityLabel} from "@/lib/planning";
 import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
@@ -941,12 +940,10 @@ async function ArsplanOverview({
                           color:
                             r.priority === "A"
                               ? "var(--status-concern-ink)"
-                              : r.priority === "B"
-                                ? "var(--status-watch-ink)"
-                                : "var(--ink-3)",
+                              : "var(--status-watch-ink)",
                         }}
                       >
-                        {r.priority === "C" ? "Träningstävling" : `${r.priority}-lopp`}
+                        {priorityLabel(r.priority)}
                       </span>
                     </div>
                     <span className="display text-sm leading-tight font-semibold text-[var(--foreground)]">
@@ -1498,12 +1495,10 @@ export default async function ArsplanPage({
                           color:
                             c.priority === "A"
                               ? "var(--status-concern-ink)"
-                              : c.priority === "B"
-                                ? "var(--status-watch-ink)"
-                                : "var(--ink-3)",
+                              : "var(--status-watch-ink)",
                         }}
                       >
-                        {c.priority === "C" ? "Träningstävling" : `${c.priority}-lopp`}
+                        {priorityLabel(c.priority)}
                       </span>
                     </div>
                     <span className="display text-sm leading-tight font-semibold text-[var(--foreground)]">

@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { assignableAthletes, getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
+import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
-import { createCompetition, deleteCompetition, saveEventResult } from "./actions";
+import { deleteCompetition, saveEventResult } from "./actions";
 import {
   addDays as planAddDays,
-  COMMON_EVENTS,
   competitionYearCounts,
   defaultCompetitionYear,
-  PRIORITY_LABELS,
   SEASON_LABELS,
   toDateKey,
   type Priority,
@@ -60,19 +58,8 @@ import { getViewMode } from "@/lib/view-mode";
 
 const input =
   fieldClass;
-const primaryBtn =
-  primaryButtonClass;
 const ghostBtn =
   buttonClass;
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="text-[var(--ink-2)]">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 function formatPct(v: number): string {
   return `${Math.round(v * 100)}%`;
@@ -933,7 +920,7 @@ export default async function TavlingsresultatPage({
             togs bort 2026-09-13 i stället för att byggas — planeringen ska styras av
             tränaren, inte av ett antagande appen gör åt honom. */}
         <p className="max-w-3xl text-sm text-[var(--ink-3)]">
-          Prioriteten märker upp säsongen: A är huvudmålen, C träningstävlingar. Den visas i
+          Prioriteten märker upp säsongen: A är huvudmålen, B allt annat. Den visas i
           tidslinjen och väljer &quot;Nästa A-tävling&quot;, men styr ingen planering — hur
           veckorna ser ut inför ett lopp bestämmer du i Säsongsöversikt och Blockplan.
         </p>
@@ -1115,85 +1102,19 @@ export default async function TavlingsresultatPage({
           </div>
         )}
 
-        <details id="lagg-till-tavling" className="rounded-lg border border-[var(--line)] p-4">
-          <summary className="cursor-pointer text-sm font-medium text-[var(--foreground)]">
-            Lägg till tävling
-          </summary>
-          <form action={createCompetition} className="mt-3 flex flex-wrap items-end gap-3">
-            {/* Så att createCompetition kan avgöra om det aktiva filtret
-             * skulle dölja den nyskapade tävlingen och navigera om till rätt
-             * år/bana i så fall — se motiveringen i actions.ts. */}
-            <input type="hidden" name="current_tavlingsAr" value={tavlingsAr} />
-            <input type="hidden" name="current_tavlingsBana" value={tavlingsBana} />
-            <input type="hidden" name="athlete" value={scopedUserId} />
-            {/* Flera löpare på samma tävling blir en rad var — competitions
-                har ingen junction-tabell, se targetAthleteIds i actions.ts.
-                Den löpare vyn står på är förkryssad, så enkelfallet är ett
-                klick som förut. */}
-            {scoped.role === "coach" && assignableAthletes(scoped).length > 0 && (
-              <fieldset className="flex flex-col gap-1">
-                <legend className="text-sm text-[var(--ink-2)]">Löpare</legend>
-                <div className="flex flex-wrap gap-3">
-                  {assignableAthletes(scoped).map((a) => (
-                    <label key={a.id} className="flex items-center gap-1 text-sm">
-                      <input
-                        type="checkbox"
-                        name="athletes"
-                        value={a.id}
-                        defaultChecked={a.id === scopedUserId}
-                      />
-                      {a.fullName ?? "Namnlös löpare"}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            )}
-            <Field label="Namn">
-              <input name="name" required placeholder="Inomhus-SM" className={input} />
-            </Field>
-            <Field label="Datum">
-              <input type="date" name="competition_date" required className={input} />
-            </Field>
-            <Field label="Plats">
-              <input name="location" placeholder="Göteborg" className={input} />
-            </Field>
-            <Field label="Inne/ute">
-              <select name="venue" className={input} defaultValue="">
-                <option value="">—</option>
-                <option value="indoor">{SEASON_LABELS.indoor}</option>
-                <option value="outdoor">{SEASON_LABELS.outdoor}</option>
-              </select>
-            </Field>
-            <Field label="Prioritet">
-              <select name="priority" className={input} defaultValue="C">
-                {(["A", "B", "C"] as const).map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_LABELS[p]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Grenar (komma mellan)">
-              <input
-                name="events"
-                list="common-events"
-                placeholder="1500m, 800m"
-                className={input}
-              />
-              <datalist id="common-events">
-                {COMMON_EVENTS.map((e) => (
-                  <option key={e} value={e} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label="Måltid (första grenen)">
-              <input name="target_result" placeholder="4:35.00" className={input} />
-            </Field>
-            <button type="submit" className={primaryBtn}>
-              Lägg till
-            </button>
-          </form>
-        </details>
+        {/* "Lägg till tävling" är borttaget härifrån (2026-09-17, begärt).
+            Tävlingen SKAPAS av tränaren under Tävling; den här sidan är
+            loggen, där man fyller i vad det blev. Att ha båda vägarna gjorde
+            att en adept lade upp en egen tävling som ingen annan såg, i
+            stället för att rapportera in på den tränaren redan planerat.
+            Resultatet fylls i per gren på tävlingskorten ovanför. */}
+        <p className="text-sm text-[var(--ink-3)]">
+          Tävlingarna läggs upp av tränaren under{" "}
+          <Link href="/tavlingar" className="underline">
+            Tävling
+          </Link>
+          . Här fyller du i resultatet när du sprungit.
+        </p>
       </section>
     </div>
   );

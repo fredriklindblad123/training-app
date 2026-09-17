@@ -132,3 +132,34 @@ export async function toggleCompetitionAthlete(formData: FormData) {
   }
   refresh();
 }
+
+
+/** Ändrar tävlingen — alla löpares rader på en gång.
+ *
+ * Namn och datum är NYCKELN som håller ihop gruppen, och därför måste de gamla
+ * värdena skickas med för att hitta raderna innan de skrivs om. Utan det hade
+ * en namnändring skapat en andra tävling i stället för att ändra den som finns.
+ */
+export async function updatePlannedCompetition(formData: FormData) {
+  const supabase = await createClient();
+  const allowed = await allowedAthleteIds(supabase);
+  const prevName = str(formData, "prev_name");
+  const prevDate = str(formData, "prev_competition_date");
+  const name = str(formData, "name");
+  const date = str(formData, "competition_date");
+  if (!prevName || !prevDate || !name || !date || allowed.length === 0) return;
+
+  await supabase
+    .from("competitions")
+    .update({
+      name,
+      competition_date: date,
+      priority: str(formData, "priority") ?? "B",
+      location: str(formData, "location"),
+      venue: str(formData, "venue"),
+    })
+    .eq("name", prevName)
+    .eq("competition_date", prevDate)
+    .in("user_id", allowed);
+  refresh();
+}

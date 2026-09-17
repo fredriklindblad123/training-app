@@ -7,9 +7,11 @@ import {
   WORKOUT_LABELS,
   WORKOUT_TYPES,
   workoutTypeColorVar,
+  priorityLabel,
   type WorkoutType,
 } from "@/lib/planning";
 import { canEditPlanning } from "@/lib/auth-scope";
+import { toggleCompetitionAthlete } from "@/app/(app)/tavlingar/actions";
 import { addPassOnDate } from "@/app/(app)/blockplan/actions";
 import { fieldClass, smallButtonClass } from "@/components/ui/controls";
 import { formatKm, formatHoursMinutes } from "@/lib/format";
@@ -449,15 +451,51 @@ export default async function DetaljplanPage({
                   </span>
                 </div>
 
-                {day.competitions.map((c) => (
-                  <div
-                    key={c.key}
-                    className="rounded-md border border-[var(--cat-race)] px-2 py-1.5 text-xs"
-                  >
-                    <span className="display font-semibold text-[var(--foreground)]">{c.name}</span>
-                    <span className="ml-1 text-[var(--ink-3)]">{c.priority}-lopp</span>
-                  </div>
-                ))}
+                {day.competitions.map((c) => {
+                  const on = new Set(c.athleteIds);
+                  return (
+                    <div
+                      key={c.key}
+                      className="flex flex-col gap-1 rounded-md border border-[var(--cat-race)] px-2 py-1.5 text-xs"
+                    >
+                      <div>
+                        <span className="display font-semibold text-[var(--foreground)]">
+                          {c.name}
+                        </span>
+                        <span className="ml-1 text-[var(--ink-3)]">{priorityLabel(c.priority)}</span>
+                      </div>
+                      {/* Löparna kopplas på och av direkt här, samma handling
+                          som Tävling och Blockplan använder — veckan är den vy
+                          man står i när man bestämmer vem som ska springa. */}
+                      {canEdit && (
+                        <div className="flex flex-wrap gap-1">
+                          {athletes.map((a) => (
+                            <form key={a.id} action={toggleCompetitionAthlete}>
+                              <input type="hidden" name="name" value={c.name} />
+                              <input type="hidden" name="competition_date" value={c.date} />
+                              <input type="hidden" name="athlete_id" value={a.id} />
+                              <button
+                                type="submit"
+                                title={
+                                  on.has(a.id)
+                                    ? `Ta bort ${a.fullName ?? "löpare"}`
+                                    : `Lägg till ${a.fullName ?? "löpare"}`
+                                }
+                                className={`rounded-full px-1.5 py-0.5 text-[10px] transition-colors ${
+                                  on.has(a.id)
+                                    ? "bg-[var(--cat-race)] text-white"
+                                    : "border border-[var(--line)] text-[var(--ink-3)] hover:text-[var(--foreground)]"
+                                }`}
+                              >
+                                {a.fullName ?? "Namnlös"}
+                              </button>
+                            </form>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
 
                 {day.passes.length === 0 && day.competitions.length === 0 && (
                   <span className="px-0.5 text-xs text-[var(--ink-3)]">—</span>

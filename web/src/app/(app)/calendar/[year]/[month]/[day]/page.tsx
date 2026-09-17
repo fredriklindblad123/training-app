@@ -1,3 +1,4 @@
+import { priorityLabel } from "@/lib/planning";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
@@ -132,7 +133,7 @@ export default async function DayPage({
               {r.name}
             </span>
             <span className="display text-sm font-semibold text-[var(--cat-race)]">
-              {r.priority === "C" ? "Träningstävling" : `${r.priority}-lopp`}
+              {priorityLabel(r.priority)}
             </span>
             {r.location && <span className="text-sm text-[var(--ink-3)]">{r.location}</span>}
           </div>

@@ -1,3 +1,4 @@
+import { priorityLabel } from "@/lib/planning";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, assignableAthletes, canEditPlanning } from "@/lib/auth-scope";
 import { fieldClass, primaryButtonClass, smallButtonClass } from "@/components/ui/controls";
@@ -5,7 +6,9 @@ import {
   createPlannedCompetition,
   deletePlannedCompetition,
   toggleCompetitionAthlete,
+  updatePlannedCompetition,
 } from "./actions";
+import { RaceTimeline } from "@/components/RaceTimeline";
 
 /* Tävlingsplaneringen: vad gruppen har framför sig, och hur man ändrar det.
  *
@@ -75,11 +78,7 @@ export default async function TavlingarPage() {
   const past = races.filter((r) => r.date < todayKey).reverse();
 
   const priorityColor = (p: string) =>
-    p === "A"
-      ? "var(--status-concern-ink)"
-      : p === "B"
-        ? "var(--status-watch-ink)"
-        : "var(--ink-3)";
+    p === "A" ? "var(--status-concern-ink)" : "var(--status-watch-ink)";
 
   const daysUntil = (date: string) =>
     Math.round(
@@ -103,7 +102,7 @@ export default async function TavlingarPage() {
             className="display text-xs font-semibold"
             style={{ color: priorityColor(race.priority) }}
           >
-            {race.priority === "C" ? "Träningstävling" : `${race.priority}-lopp`}
+            {priorityLabel(race.priority)}
           </span>
         </div>
 
@@ -148,13 +147,63 @@ export default async function TavlingarPage() {
         </div>
 
         {canEdit && (
-          <form action={deletePlannedCompetition} className="mt-0.5">
-            <input type="hidden" name="name" value={race.name} />
-            <input type="hidden" name="competition_date" value={race.date} />
-            <button type="submit" className={`${smallButtonClass} text-[var(--status-concern-ink)]`}>
-              Ta bort tävlingen
-            </button>
-          </form>
+          /* Redigering bakom en utfällning: den behövs sällan, och ett
+             formulär per kort framme hade gjort listan till en vägg av fält.
+             Namn och datum skickas med som prev_* — de är nyckeln som håller
+             ihop löparnas rader, och utan dem hade en namnändring skapat en
+             andra tävling i stället för att ändra den som finns. */
+          <details className="text-xs">
+            <summary className="cursor-pointer list-none text-[11px] text-[var(--ink-3)] hover:text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+              Redigera
+            </summary>
+            <form action={updatePlannedCompetition} className="mt-2 flex flex-col gap-2">
+              <input type="hidden" name="prev_name" value={race.name} />
+              <input type="hidden" name="prev_competition_date" value={race.date} />
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1">
+                  Namn
+                  <input name="name" defaultValue={race.name} required className={fieldClass} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  Datum
+                  <input
+                    type="date"
+                    name="competition_date"
+                    defaultValue={race.date}
+                    required
+                    className={fieldClass}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  Prioritet
+                  <select name="priority" defaultValue={race.priority} className={fieldClass}>
+                    <option value="A">A-lopp</option>
+                    <option value="B">B-lopp</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  Plats
+                  <input name="location" defaultValue={race.location ?? ""} className={fieldClass} />
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" className={smallButtonClass}>
+                  Spara
+                </button>
+              </div>
+            </form>
+
+            <form action={deletePlannedCompetition} className="mt-2">
+              <input type="hidden" name="name" value={race.name} />
+              <input type="hidden" name="competition_date" value={race.date} />
+              <button
+                type="submit"
+                className={`${smallButtonClass} text-[var(--status-concern-ink)]`}
+              >
+                Ta bort tävlingen
+              </button>
+            </form>
+          </details>
         )}
       </div>
     );
@@ -172,6 +221,20 @@ export default async function TavlingarPage() {
           fyller du i under Lopp.
         </p>
       </div>
+
+      {/* Tidslinjen överst: hela säsongen framför en, i ett svep. Listan
+          nedanför svarar på "vad står på tur"; bandet svarar på "hur ligger de
+          mot varandra" — om tre lopp klumpar ihop sig i maj eller om det är
+          två månader utan något. */}
+      <RaceTimeline
+        races={upcoming.map((r) => ({
+          name: r.name,
+          date: r.date,
+          priority: r.priority,
+          athletes: r.athletes.size,
+        }))}
+        todayKey={todayKey}
+      />
 
       {canEdit && (
         <section className="flex flex-col gap-3">
@@ -193,10 +256,9 @@ export default async function TavlingarPage() {
               </label>
               <label className="flex flex-col gap-1 text-sm">
                 Prioritet
-                <select name="priority" defaultValue="C" className={fieldClass}>
+                <select name="priority" defaultValue="B" className={fieldClass}>
                   <option value="A">A-lopp</option>
                   <option value="B">B-lopp</option>
-                  <option value="C">Träningstävling</option>
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-sm">
