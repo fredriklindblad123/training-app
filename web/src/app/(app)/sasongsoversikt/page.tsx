@@ -893,141 +893,101 @@ async function ArsplanOverview({
    * alla löpares block, så förklaringen täcker varje färg som faktiskt syns
    * i någon rad. */
 
+  /* Blocken gruppen faktiskt planerar i, framåt. Samma horisont som den
+   * enskilda löparens vy — historiken hör hemma i block-listan nedanför. */
+  const yearStart = `${currentYear}-01-01`;
+  const planBlocks = sortedAllBlocks.filter((b) => b.end_date >= yearStart);
+
+  /* Gemensam axel för löparremsorna. Utan ett fast spann auto-skalar varje
+   * remsa till SIN löpares block, och samma kalendermånad hamnar då på olika
+   * x för olika löpare — remsorna går inte att läsa mot varandra, vilket är
+   * hela poängen med att lägga dem under varandra. */
+  const rangeFrom = planBlocks.length > 0 ? planBlocks[0].start_date : yearStart;
+  const rangeTo =
+    planBlocks.length > 0
+      ? planBlocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), planBlocks[0].end_date)
+      : `${currentYear}-12-31`;
+
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
-        {/* Ingen tidslinje och därmed ingen förklaring här (2026-09-16).
-            Staplarna visade ett helt år i tio centimeter, en rad per löpare —
-            block på några veckor blev några pixlar breda och gick inte att
-            läsa. Bandet finns kvar i den enskilda löparens vy, där det har
-            plats att vara läsbart. Raden här säger i stället i klartext vilket
-            block och vilken tävling som gäller. */}
-        {/* Raderna bär löparens HELA läge, inte bara namnet (2026-09-17).
-            Förut stod bara aktivt block och nästa A-tävling, och allt annat
-            krävde att man klickade in på var och en. För en tränare med fyra
-            adepter blev det fyra sidladdningar för att svara på "hur ligger
-            gruppen till". Nu står blockets namn, fas och hur långt in i det
-            man är, nästa lopp med nedräkning, och hur många block som är
-            upplagda — och kortet länkar fortfarande in till hela vyn för den
-            som ska ändra något. */}
-        {athleteSummaries.map(({ athlete, activeBlock, myBlocks, nextBlock, upcomingRaces }) => {
-          const shown = activeBlock ?? nextBlock;
-          const blockWeek =
-            activeBlock != null
-              ? Math.floor(
-                  (Date.parse(`${today}T00:00:00Z`) -
-                    Date.parse(`${activeBlock.start_date}T00:00:00Z`)) /
-                    (7 * 86_400_000),
-                ) + 1
-              : null;
-          const blockWeeks =
-            shown != null
-              ? Math.max(
-                  1,
-                  Math.ceil(
-                    (Date.parse(`${shown.end_date}T00:00:00Z`) -
-                      Date.parse(`${shown.start_date}T00:00:00Z`) +
-                      86_400_000) /
-                      (7 * 86_400_000),
-                  ),
-                )
-              : null;
-          const daysToBlock =
-            shown != null && shown.start_date > today
-              ? Math.round(
-                  (Date.parse(`${shown.start_date}T00:00:00Z`) -
-                    Date.parse(`${today}T00:00:00Z`)) /
-                    86_400_000,
-                )
-              : null;
+      {/* GRUPPENS PLAN överst, en gång (2026-09-17).
+          Sidan visade tidigare ett kort per löpare med block och nästa lopp.
+          Adepterna tränar i grupp och delar samma block, så korten blev fyra
+          nästan identiska rutor som beskrev löparna i stället för planen —
+          rapporterat. Den här tidslinjen är planen: säsongsbandet, blocken med
+          namn och längd, och tävlingarna. Skillnaderna mellan löparna syns i
+          remsorna under. */}
+      {planBlocks.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+            Säsongen
+          </h2>
+          <SeasonTimeline blocks={planBlocks} />
+        </section>
+      )}
 
-          return (
-            <Link
-              key={athlete.id}
-              href={`/sasongsoversikt?athlete=${athlete.id}`}
-              className="grid grid-cols-1 gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)] sm:grid-cols-[10rem_1fr_1fr_auto]"
-            >
-              <div className="display self-center text-base font-semibold text-[var(--foreground)]">
-                {athlete.fullName ?? "Namnlös löpare"}
-              </div>
+      <section className="flex flex-col gap-3">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+          Löparna
+        </h2>
+        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+          En remsa per löpare på samma tidsaxel som ovan. Luckor är block hon
+          inte är taggad på. Klicka för hennes egen säsong.
+        </p>
 
-              <div className="flex flex-col gap-0.5">
-                <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-                  Block
+        <div className="flex flex-col gap-2">
+          {athleteSummaries.map(({ athlete, activeBlock, nextBlock, myBlocks, upcomingRaces }) => {
+            const shown = activeBlock ?? nextBlock;
+            const strip = myBlocks.filter((b) => b.end_date >= yearStart);
+            return (
+              <Link
+                key={athlete.id}
+                href={`/sasongsoversikt?athlete=${athlete.id}`}
+                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)]"
+              >
+                <span className="display w-28 shrink-0 text-sm font-semibold text-[var(--foreground)]">
+                  {athlete.fullName ?? "Namnlös"}
                 </span>
-                {shown ? (
-                  <>
-                    <span className="text-sm font-medium text-[var(--foreground)]">
+
+                {/* Remsan bär informationen: var hon har block och var det är
+                    tomt. Namnen står i tidslinjen ovanför och behöver inte
+                    upprepas fyra gånger. */}
+                <span className="min-w-[12rem] flex-1">
+                  <SeasonTimeline
+                    blocks={strip}
+                    compact
+                    rangeStart={rangeFrom}
+                    rangeEnd={rangeTo}
+                  />
+                </span>
+
+                <span className="tabular w-40 shrink-0 text-xs text-[var(--ink-3)]">
+                  {strip.length} block
+                  {/* Avvikelsen är det intressanta: att en löpare har färre
+                      block än de andra är något tränaren vill se direkt. */}
+                  {strip.length !== planBlocks.length && (
+                    <span className="text-[var(--status-watch-ink)]">
+                      {" "}
+                      · {planBlocks.length - strip.length} saknas
+                    </span>
+                  )}
+                  <span className="block">
+                    {upcomingRaces.length > 0
+                      ? `Nästa: ${upcomingRaces[0].name.slice(0, 18)} ${upcomingRaces[0].competition_date.slice(5)}`
+                      : "Ingen tävling inlagd"}
+                  </span>
+                  {shown && (
+                    <span className="block truncate">
+                      {activeBlock ? "Nu: " : "Nästa block: "}
                       {shown.name}
                     </span>
-                    <span className="tabular flex items-center gap-1.5 text-xs text-[var(--ink-3)]">
-                      <span
-                        aria-hidden
-                        className="inline-block h-2 w-2 shrink-0 rounded-sm"
-                        style={{ backgroundColor: PHASE_COLOR_VARS[shown.phase] }}
-                      />
-                      {PHASE_LABELS[shown.phase]}
-                      {/* Har blocket inte börjat står nedräkningen i stället
-                          för veckonumret — "vecka -2 av 8" vore obegripligt. */}
-                      {daysToBlock != null
-                        ? ` · om ${daysToBlock} d`
-                        : blockWeek != null && blockWeeks != null
-                          ? ` · v ${blockWeek}/${blockWeeks}`
-                          : ""}
-                    </span>
-                  </>
-                ) : (
-                  <span className="text-sm text-[var(--ink-3)]">Inget block upplagt</span>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-0.5">
-                <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-                  Kommande tävlingar
+                  )}
                 </span>
-                {upcomingRaces.length === 0 ? (
-                  <span className="text-sm text-[var(--ink-3)]">Ingen inlagd</span>
-                ) : (
-                  <>
-                    {/* Det närmaste loppet i klartext med nedräkning, resten
-                        som kompakta rader under. Att räkna ned till alla tre
-                        hade gjort kortet till en tabell; det är det första man
-                        planerar mot. */}
-                    <span className="text-sm font-medium text-[var(--foreground)]">
-                      {upcomingRaces[0].name}
-                    </span>
-                    <span className="tabular text-xs text-[var(--ink-3)]">
-                      {upcomingRaces[0].competition_date} ·{" "}
-                      {(() => {
-                        const d = Math.round(
-                          (Date.parse(`${upcomingRaces[0].competition_date}T00:00:00Z`) -
-                            Date.parse(`${today}T00:00:00Z`)) /
-                            86_400_000,
-                        );
-                        return d === 0 ? "idag" : d === 1 ? "imorgon" : `${d} dagar kvar`;
-                      })()}
-                      {upcomingRaces[0].priority === "A" ? " · A-lopp" : ""}
-                    </span>
-                    {upcomingRaces.slice(1).map((r) => (
-                      <span
-                        key={`${r.competition_date}|${r.name}`}
-                        className="tabular truncate text-xs text-[var(--ink-3)]"
-                      >
-                        {r.competition_date.slice(5)} {r.name}
-                        {r.priority === "A" ? " · A" : ""}
-                      </span>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div className="tabular self-center text-xs text-[var(--ink-3)] sm:text-right">
-                {myBlocks.length} {myBlocks.length === 1 ? "block" : "block"} totalt
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Tävlingstabellen är borta härifrån (2026-09-17). Tävlingarna har en
           egen flik sedan i går, med tidslinje, redigering och koppling av
