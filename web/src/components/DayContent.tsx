@@ -10,6 +10,7 @@ import {
   type PlannedWorkout,
 } from "@/lib/plan-matching";
 import { dateKey } from "@/lib/calendar-utils";
+import { mergeSplitsBetweenRests, type RawSplit } from "@/lib/splits";
 import {
   saveManualActivity,
   deleteManualActivity,
@@ -424,28 +425,33 @@ export async function DayContent({
                     </tr>
                   </thead>
                   <tbody>
-                    {a.activity_splits
-                      .sort(
-                        (x: { split_index: number }, y: { split_index: number }) =>
-                          x.split_index - y.split_index,
-                      )
-                      .map(
-                        (s: {
-                          split_index: number;
-                          distance_meters: number | null;
-                          duration_seconds: number | null;
-                          avg_pace_seconds_per_km: number | null;
-                          avg_hr: number | null;
-                        }) => (
-                          <tr key={s.split_index} className="border-t border-[var(--line)]">
-                            <td className="py-1 pr-3">{s.split_index}</td>
-                            <td className="pr-3">{formatKm(s.distance_meters)}</td>
-                            <td className="pr-3">{formatDuration(s.duration_seconds)}</td>
-                            <td className="pr-3">{formatPace(s.avg_pace_seconds_per_km)}</td>
-                            <td>{s.avg_hr ? Math.round(s.avg_hr) : "–"}</td>
+                    {/* Varven slås ihop mellan vilorna. Klockan delar en
+                        repetition mitt itu vid varje kilometer, så 5×1600 m
+                        låg som tio rader: 1000 + 600, 1000 + 600 … Tabellen
+                        visade dem rått och passet gick inte att känna igen.
+                        Se lib/splits.ts för regeln och när den INTE gäller. */}
+                    {(() => {
+                      let repNr = 0;
+                      return mergeSplitsBetweenRests(a.activity_splits as RawSplit[]).map((s) => {
+                        if (!s.isRest) repNr += 1;
+                        const pace =
+                          s.distanceMeters > 0 ? s.durationSeconds / (s.distanceMeters / 1000) : null;
+                        return (
+                          <tr
+                            key={s.splitIndex}
+                            className={`border-t border-[var(--line)] ${
+                              s.isRest ? "text-[var(--ink-3)]" : ""
+                            }`}
+                          >
+                            <td className="py-1 pr-3">{s.isRest ? "vila" : repNr}</td>
+                            <td className="pr-3">{formatKm(s.distanceMeters)}</td>
+                            <td className="pr-3">{formatDuration(s.durationSeconds)}</td>
+                            <td className="pr-3">{formatPace(pace)}</td>
+                            <td>{s.avgHr ? Math.round(s.avgHr) : "–"}</td>
                           </tr>
-                        ),
-                      )}
+                        );
+                      });
+                    })()}
                   </tbody>
                 </table>
               </div>
