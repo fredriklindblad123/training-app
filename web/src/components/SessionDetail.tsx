@@ -45,13 +45,14 @@ export type SplitRow = {
  *
  * Regeln: hitta den största gruppen varv som hör ihop, och visa bara den.
  *
- *   TID först. Ligger flera varv på samma sekund är passet tidsbaserat —
- *   "6×3 min" — och distansen är ett utfall, inte ett mål. Det var precis den
- *   feltolkningen som rapporterades: appen påstod personbästa på 750 m när
- *   målet var tre minuter och tiden per definition inte kunde bli bättre.
+ *   DISTANS först, och bara på en riktig sträcka (canonicalDistance från
+ *   databasen). Att sträckan är kanonisk är beviset för att den var MÅLET:
+ *   1600 och 400 är sträckor man väljer, 757 m är hur långt man hann.
  *
- *   DISTANS annars, och bara på en riktig sträcka (canonicalDistance från
- *   databasen). 757 m är ingen sträcka, det är hur långt man hann.
+ *   TID annars. Ligger flera varv på samma sekund utan att träffa en sträcka
+ *   är passet tidsbaserat — "6×3 min" — och distansen är ett utfall. Det var
+ *   den feltolkningen som gav "personbästa på 750 m" när målet var tre
+ *   minuter och tiden per definition inte kunde bli bättre.
  *
  * Hittas ingen grupp visas alla varv och etiketten säger bara antalet — ett
  * ärligt "det här är vad klockan spelade in".
@@ -84,12 +85,17 @@ function minutesLabel(seconds: number): string {
 }
 
 function selectReps(splits: SplitRow[]): { reps: SplitRow[]; label: string } {
-  const byTime = largestCluster(splits, (s) => s.durationSeconds);
-  if (byTime.length >= 3) {
-    const secs = byTime[0].durationSeconds as number;
-    return { reps: byTime, label: `${byTime.length}×${minutesLabel(secs)}` };
-  }
-
+  /* DISTANS FÖRST när den är en riktig sträcka, tid annars.
+   *
+   * Ordningen var tvärtom och gav fel svar på ett verkligt pass: 5×1600 m
+   * sprungna på 384–392 sekunder är jämna i BÅDA måtten, och en tidsregel
+   * som prövas först kallade dem "5×6,5 min". En löpare som kör 1600-metrar
+   * tänker i meter.
+   *
+   * Att sträckan är kanonisk (canonicalDistance, satt i databasen) är just
+   * beviset för att den var MÅLET och inte ett utfall: 1600 och 400 är
+   * sträckor man väljer, 757 m är hur långt man hann på tre minuter. Saknas
+   * en kanonisk grupp är passet tidsbaserat, och då bär tiden etiketten. */
   const byDistance = largestCluster(splits, (s) => s.canonicalDistance ?? null);
   if (byDistance.length >= 2) {
     const d = byDistance[0].canonicalDistance as number;
@@ -100,6 +106,12 @@ function selectReps(splits: SplitRow[]): { reps: SplitRow[]; label: string } {
           ? `${byDistance.length}×${(d / 1000).toFixed(1).replace(".", ",")} km`
           : `${byDistance.length}×${d} m`,
     };
+  }
+
+  const byTime = largestCluster(splits, (s) => s.durationSeconds);
+  if (byTime.length >= 3) {
+    const secs = byTime[0].durationSeconds as number;
+    return { reps: byTime, label: `${byTime.length}×${minutesLabel(secs)}` };
   }
 
   return { reps: splits, label: `${splits.length} varv` };
