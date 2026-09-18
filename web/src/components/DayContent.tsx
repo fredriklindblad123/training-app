@@ -10,7 +10,6 @@ import {
   type PlannedWorkout,
 } from "@/lib/plan-matching";
 import { dateKey } from "@/lib/calendar-utils";
-import { mergeSplitsBetweenRests, type RawSplit } from "@/lib/splits";
 import {
   saveManualActivity,
   deleteManualActivity,
@@ -142,6 +141,35 @@ export async function DayContent({
   // Garmin-listan. Flera per dag stöds, även när dagen redan har Garmin-pass
   // — ett styrkepass på kvällen efter morgonens löpning är normalfallet.
   const garminActivities = (activities ?? []).filter((a) => a.source !== "manual");
+  /* Varven hopslagna, hämtade från databasen — INTE uträknade här.
+   *
+   * Regeln (klockan delar en repetition mitt itu vid varje kilometer, vilorna
+   * definierar var repetitionerna går) låg tidigare som en TS-kopia bredvid
+   * SQL-versionen som dashboarden använder. Två implementationer av samma
+   * domänregel glider isär, det är inte en fråga om om utan när. Nu finns ett
+   * facit: funktionen merged_splits.
+   *
+   * En extra runda, inte en per pass: funktionen tar hela dagens aktiviteter
+   * som lista. */
+  const activityIds = (activities ?? []).map((a) => (a as { id: string }).id);
+  const { data: mergedSplitRows } = activityIds.length
+    ? await supabase.rpc("merged_splits", { activity_ids: activityIds })
+    : { data: [] };
+
+  type MergedSplitRow = {
+    activity_id: string;
+    split_index: number;
+    parts: number;
+    is_rest: boolean;
+    distance_meters: number | null;
+    duration_seconds: number | null;
+    avg_hr: number | null;
+  };
+  const splitsByActivity = new Map<string, MergedSplitRow[]>();
+  for (const r of (mergedSplitRows ?? []) as MergedSplitRow[]) {
+    splitsByActivity.set(r.activity_id, [...(splitsByActivity.get(r.activity_id) ?? []), r]);
+  }
+
   const manualActivities = (activities ?? []).filter((a) => a.source === "manual");
   const hasOutcome = garminActivities.length > 0 || manualActivities.length > 0;
 
@@ -425,29 +453,31 @@ export async function DayContent({
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Varven slås ihop mellan vilorna. Klockan delar en
-                        repetition mitt itu vid varje kilometer, så 5×1600 m
-                        låg som tio rader: 1000 + 600, 1000 + 600 … Tabellen
-                        visade dem rått och passet gick inte att känna igen.
-                        Se lib/splits.ts för regeln och när den INTE gäller. */}
+                    {/* Varven kommer färdigt hopslagna från merged_splits.
+                        Klockan delar en repetition mitt itu vid varje
+                        kilometer, så 5×1600 m låg som tio rader: 1000 + 600,
+                        1000 + 600 … Tabellen visade dem rått och passet gick
+                        inte att känna igen. Regeln och dess undantag står i
+                        migrationen merged_splits_single_source. */}
                     {(() => {
                       let repNr = 0;
-                      return mergeSplitsBetweenRests(a.activity_splits as RawSplit[]).map((s) => {
-                        if (!s.isRest) repNr += 1;
-                        const pace =
-                          s.distanceMeters > 0 ? s.durationSeconds / (s.distanceMeters / 1000) : null;
+                      return (splitsByActivity.get(a.id) ?? []).map((s) => {
+                        if (!s.is_rest) repNr += 1;
+                        const dist = s.distance_meters ?? 0;
+                        const dur = s.duration_seconds ?? 0;
+                        const pace = dist > 0 ? dur / (dist / 1000) : null;
                         return (
                           <tr
-                            key={s.splitIndex}
+                            key={s.split_index}
                             className={`border-t border-[var(--line)] ${
-                              s.isRest ? "text-[var(--ink-3)]" : ""
+                              s.is_rest ? "text-[var(--ink-3)]" : ""
                             }`}
                           >
-                            <td className="py-1 pr-3">{s.isRest ? "vila" : repNr}</td>
-                            <td className="pr-3">{formatKm(s.distanceMeters)}</td>
-                            <td className="pr-3">{formatDuration(s.durationSeconds)}</td>
+                            <td className="py-1 pr-3">{s.is_rest ? "vila" : repNr}</td>
+                            <td className="pr-3">{formatKm(dist)}</td>
+                            <td className="pr-3">{formatDuration(dur)}</td>
                             <td className="pr-3">{formatPace(pace)}</td>
-                            <td>{s.avgHr ? Math.round(s.avgHr) : "–"}</td>
+                            <td>{s.avg_hr ? Math.round(s.avg_hr) : "–"}</td>
                           </tr>
                         );
                       });
