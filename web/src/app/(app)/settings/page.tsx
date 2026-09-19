@@ -35,13 +35,23 @@ export default async function SettingsPage({
     .from("garmin_connections")
     .select("status, last_synced_at, last_error")
     .maybeSingle();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select(
-      "lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr, lt2_source, lt2_measured_on, goal_event, goal_seconds",
-    )
-    .maybeSingle();
   const scoped = await getScopedProfile(supabase);
+  /* Frågan MÅSTE scopas till den egna raden. RLS låter en coach läsa sina
+   * länkade löpares profiler ("profiles: coach läser länkad löpares rad"), så
+   * ett oscopat select returnerar coachens rad plus en per adept — och
+   * .maybeSingle() svarar då med null, inte med den första raden. Följden var
+   * att hela formuläret på den här sidan stod tomt för varje coach, även när
+   * värdena fanns sparade. scoped.userId är redan hämtat, så det kostar
+   * ingen extra rundtur. */
+  const { data: profile } = scoped
+    ? await supabase
+        .from("profiles")
+        .select(
+          "lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr, lt2_source, lt2_measured_on, goal_event, goal_seconds",
+        )
+        .eq("id", scoped.userId)
+        .maybeSingle()
+    : { data: null };
 
   // K8: ett fälttest är en uppskattning, ett laktattest en mätning — visa
   // alltid vilket ett sparat LT2 bygger på, aldrig som en anonym siffra.
