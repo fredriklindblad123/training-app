@@ -25,6 +25,7 @@ import { EasyDiscipline } from "@/components/EasyDiscipline";
 import { LoadStrip } from "@/components/LoadStrip";
 import { TrainingGears } from "@/components/TrainingGears";
 import { Vo2maxCard } from "@/components/Vo2maxCard";
+import { ReportLinks, type AthleteReport } from "@/components/ReportLinks";
 import { LactateCurve } from "@/components/LactateCurve";
 import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
@@ -40,6 +41,11 @@ import {
 } from "@/lib/training-gears";
 import { computeEasyDiscipline, easyBandFrom } from "@/lib/easy-discipline";
 import { computeLoadRamp, RAMP_WARN } from "@/lib/load-ramp";
+import {
+  computeContinuityStreaks,
+  type ContinuitySession,
+  type InterruptionDay,
+} from "@/lib/continuity";
 import {
   paceBasisFromGoal,
   paceBasisFromRace,
@@ -231,6 +237,7 @@ export default async function TrendsPage({
     profileResult,
     { data: plannedRows },
     { data: competitionRows },
+    { data: reportRows },
   ] = await Promise.all([
     (() => {
       let q = supabase
@@ -279,6 +286,11 @@ export default async function TrendsPage({
       if (endDateExclusive) q = q.lt("competition_date", endDateExclusive);
       return q.order("competition_date");
     })(),
+    supabase
+      .from("athlete_reports")
+      .select("id, title, url, summary, published_on")
+      .eq("user_id", scopedUserId)
+      .order("published_on", { ascending: false }),
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
@@ -535,6 +547,39 @@ export default async function TrendsPage({
   // --- Rampen -------------------------------------------------------------
   // Ersätter det staplade belastningsdiagrammet. Innevarande vecka utesluts
   // av computeLoadRamp — en halvfärdig vecka mot fyra hela visar alltid fall.
+  /* --- Svit utan sjukdom eller skada ------------------------------------
+   * Egen fråga med eget fönster: en svit är per definition längre än den
+   * valda perioden. Tre år bakåt, samma gräns som dashboarden använder, så
+   * att båda vyerna räknar på samma underlag och inte kan visa olika svitar.
+   * Bara datum och dagtyp hämtas — passens innehåll behövs inte här. */
+  const streakFrom = toDateKey(
+    new Date(new Date(`${todayKey}T00:00:00`).getTime() - 3 * 365 * 86_400_000),
+  );
+  const [{ data: streakActivityRows }, { data: streakDiaryRows }] = await Promise.all([
+    supabase
+      .from("activities")
+      .select("start_time, category")
+      .eq("user_id", scopedUserId)
+      .gte("start_time", streakFrom)
+      .order("start_time"),
+    supabase
+      .from("diary_entries")
+      .select("entry_date, day_type")
+      .eq("user_id", scopedUserId)
+      .gte("entry_date", streakFrom)
+      .in("day_type", ["sick", "injured"]),
+  ]);
+
+  const streaks = computeContinuityStreaks(
+    ((streakDiaryRows ?? []) as { entry_date: string; day_type: string }[]).map<InterruptionDay>(
+      (e) => ({ date: e.entry_date, dayType: e.day_type as "sick" | "injured" }),
+    ),
+    ((streakActivityRows ?? []) as { start_time: string; category: string | null }[]).map<
+      ContinuitySession
+    >((a) => ({ date: a.start_time.slice(0, 10), category: a.category ?? "easy" })),
+    todayKey,
+  );
+
   const loadRamp = computeLoadRamp(weekSeries, weeklyLoadTotals, isoWeekStart(todayKey));
 
   /* Aggregatet för hopfällt läge. Rampen är det enda av de tre talen som
@@ -604,6 +649,8 @@ export default async function TrendsPage({
         </div>
       </div>
 
+      <ReportLinks reports={(reportRows ?? []) as AthleteReport[]} />
+
       {/* Toppen är en dom, inte ett lager av nyckeltal. Här låg tidigare
           CV-rutan, efterlevnadskortet och fyra nyckeltal — ett dussin tal
           före första diagrammet, med Efterlevnad visad två gånger. CV och
@@ -630,13 +677,8 @@ export default async function TrendsPage({
       {gears?.lt1 != null && gears?.lt2 != null && (
         <CollapsibleSection
           title="Träningens tre växlar"
-          meta="Vad de tre formerna är, och var träningen faktiskt hamnar"
-          headline={
-            <span className="text-sm text-[var(--ink-2)]">
-              Din aeroba tröskel ligger på {gears.lt1}, den anaeroba på {gears.lt2} — {gears.lt2 - gears.lt1}{" "}
-              slags arbetsområde mellan dem.
-            </span>
-          }
+          meta={`Trösklar ${gears.lt1} och ${gears.lt2} · ${gears.lt2 - gears.lt1} slags arbetsområde`}
+          headline={<span className="text-sm text-[var(--ink-2)]">{gearsHeadline}</span>}
         >
           <LactateCurve lt1={gears.lt1} lt2={gears.lt2} />
 
@@ -813,7 +855,7 @@ export default async function TrendsPage({
       )}
 
       {/* ===== Fråga 3: håller jag ihop? ===== */}
-      <LoadStrip ramp={loadRamp} loadCv={loadCv} headline={loadHeadline}>
+      <LoadStrip ramp={loadRamp} loadCv={loadCv} headline={loadHeadline} streaks={streaks}>
         {activeBlock && blockCompliance && (
           <ComplianceCard
             title={activeBlock.name}

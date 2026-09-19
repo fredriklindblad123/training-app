@@ -3,6 +3,7 @@ import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { RAMP_WARN, type LoadRamp } from "@/lib/load-ramp";
 import { weekRangeLabel } from "@/lib/week-series";
+import type { ContinuityStreaks } from "@/lib/continuity";
 
 /* ------------------------------------------------------------------------ *
  * LoadStrip — "Kontinuitet"
@@ -66,10 +67,13 @@ export function LoadStrip({
   ramp,
   loadCv,
   headline,
+  streaks,
   children,
 }: {
   ramp: LoadRamp | null;
   loadCv: number | null;
+  /** Sviter utan sjukdom eller skada, räknade över tre år. */
+  streaks?: ContinuityStreaks | null;
   /** Aggregatet som syns när sektionen är hopfälld. */
   headline?: string;
   /** Efterlevnadskortet, när ett block är valt. */
@@ -77,7 +81,7 @@ export function LoadStrip({
 }) {
   // Inget att visa → sektionen ritas inte alls. En rad med streck är sämre
   // än ingen rad.
-  if (ramp == null && loadCv == null && children == null) return null;
+  if (ramp == null && loadCv == null && streaks == null && children == null) return null;
 
   return (
     <CollapsibleSection
@@ -90,7 +94,7 @@ export function LoadStrip({
         något är steget mellan veckorna, jämnheten, och om planen blev gjord.
       </p>
 
-      <StatRow columns={2}>
+      <StatRow columns={3}>
         <StatCell>
           <Stat
             label="Ramp"
@@ -103,6 +107,23 @@ export function LoadStrip({
               ramp
                 ? `${weekRangeLabel(ramp.week)} mot ${ramp.baseWeeks} föregående`
                 : "för få veckor med belastning"
+            }
+          />
+        </StatCell>
+        <StatCell>
+          {/* Sviten mäts i AVSLUTADE veckor utan en enda sjuk- eller
+              skadedag. Personbästa visas först när underlaget är minst tolv
+              veckor — en svit räknad på ett par månader är inget riktvärde
+              (K6 fallgrop 3, samma regel som dashboardens svitkort). */}
+          <Stat
+            label="Veckor i rad"
+            value={streaks ? streaks.currentWeeksWithoutInterruption : "—"}
+            sub={
+              streaks == null
+                ? "ingen historik"
+                : streaks.totalCompletedWeeks >= 12
+                  ? `utan sjukdom eller skada · bäst ${streaks.bestWeeksWithoutInterruption}`
+                  : "utan sjukdom eller skada"
             }
           />
         </StatCell>
