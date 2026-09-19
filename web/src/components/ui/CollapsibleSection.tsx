@@ -12,6 +12,7 @@ export function CollapsibleSection({
   title,
   headline,
   meta,
+  accent,
   defaultOpen = false,
   children,
 }: {
@@ -20,6 +21,11 @@ export function CollapsibleSection({
   headline?: ReactNode;
   /** Kort etikett till höger om rubriken, t.ex. växelns syfte. */
   meta?: ReactNode;
+  /** CSS-färg för en prick före rubriken. Används av de tre växlarna, så
+   * att sektionen bär samma märke som sitt band i laktatkurvan och i
+   * växeldiagrammet — färgen är den enda tråd som håller ihop de tre
+   * ställena där samma träningsform beskrivs. */
+  accent?: string;
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
@@ -31,7 +37,14 @@ export function CollapsibleSection({
       <summary className="flex cursor-pointer list-none items-start gap-3 p-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+            <h2 className="display flex items-center gap-2 text-xl leading-tight font-semibold text-[var(--foreground)]">
+              {accent && (
+                <span
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: accent }}
+                  aria-hidden="true"
+                />
+              )}
               {title}
             </h2>
             {meta && <span className="text-xs text-[var(--ink-3)]">{meta}</span>}

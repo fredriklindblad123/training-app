@@ -32,6 +32,7 @@ import {
   computeTrainingGears,
   gearSeparation,
   gearVerdict,
+  GEAR_COLOR_VAR,
   GEAR_PURPOSE,
   type Gear,
   type GearKey,
@@ -625,6 +626,22 @@ export default async function TrendsPage({
         </section>
       )}
 
+      {/* ===== Bakgrunden: varför banden ser ut som de gör ===== */}
+      {gears?.lt1 != null && gears?.lt2 != null && (
+        <CollapsibleSection
+          title="Så beter sig laktatet"
+          meta="Bakgrunden till de tre banden"
+          headline={
+            <span className="text-sm text-[var(--ink-2)]">
+              Din aeroba tröskel ligger på {gears.lt1}, den anaeroba på {gears.lt2} — {gears.lt2 - gears.lt1}{" "}
+              slags arbetsområde mellan dem.
+            </span>
+          }
+        >
+          <LactateCurve lt1={gears.lt1} lt2={gears.lt2} />
+        </CollapsibleSection>
+      )}
+
       {/* ===== Träningens tre växlar: sidans ingång ===== */}
       {gears && (
         <CollapsibleSection
@@ -673,21 +690,68 @@ export default async function TrendsPage({
         </CollapsibleSection>
       )}
 
-      {/* ===== Bakgrunden: varför banden ser ut som de gör ===== */}
-      {gears?.lt1 != null && gears?.lt2 != null && (
-        <CollapsibleSection
-          title="Så beter sig laktatet"
-          meta="Bakgrunden till de tre banden"
-          headline={
+      {/* ===== Växel 1 ===== */}
+      <CollapsibleSection
+        title="Distans"
+        accent={GEAR_COLOR_VAR.distans}
+        meta={GEAR_PURPOSE.distans}
+        headline={
+          gearByKey.has("distans") ? (
             <span className="text-sm text-[var(--ink-2)]">
-              Din aeroba tröskel ligger på {gears.lt1}, den anaeroba på {gears.lt2} — {gears.lt2 - gears.lt1}{" "}
-              slags arbetsområde mellan dem.
+              {gearVerdict(gearByKey.get("distans") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
             </span>
-          }
-        >
-          <LactateCurve lt1={gears.lt1} lt2={gears.lt2} />
-        </CollapsibleSection>
-      )}
+          ) : undefined
+        }
+      >
+      {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
+
+      </CollapsibleSection>
+
+      {/* ===== Växel 2 ===== */}
+      <CollapsibleSection
+        title="Tröskel"
+        accent={GEAR_COLOR_VAR.troskel}
+        meta={GEAR_PURPOSE.troskel}
+        headline={
+          gearByKey.has("troskel") ? (
+            <span className="text-sm text-[var(--ink-2)]">
+              {gearVerdict(gearByKey.get("troskel") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
+            </span>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+            Tröskelpassens nyckelpass
+          </h3>
+          <SessionQuality
+            groups={thresholdGroups}
+            racePace={racePace}
+            showRaceReference={false}
+          />
+        </div>
+      </CollapsibleSection>
+
+      {/* ===== Växel 3 ===== */}
+      <CollapsibleSection
+        title="Intervall"
+        accent={GEAR_COLOR_VAR.intervall}
+        meta={GEAR_PURPOSE.intervall}
+        headline={
+          gearByKey.has("intervall") ? (
+            <span className="text-sm text-[var(--ink-2)]">
+              {gearVerdict(gearByKey.get("intervall") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
+            </span>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+            Intervallpassens nyckelpass
+          </h3>
+          <SessionQuality groups={intervalGroups} racePace={racePace} />
+        </div>
+      </CollapsibleSection>
 
       {/* ===== Utfallen: blir motorn större? ===== */}
       {(vo2max || efPoints.length > 0) && (
@@ -756,66 +820,6 @@ export default async function TrendsPage({
 
         </CollapsibleSection>
       )}
-
-      {/* ===== Växel 1 ===== */}
-      <CollapsibleSection
-        title="Distans"
-        meta={GEAR_PURPOSE.distans}
-        headline={
-          gearByKey.has("distans") ? (
-            <span className="text-sm text-[var(--ink-2)]">
-              {gearVerdict(gearByKey.get("distans") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
-            </span>
-          ) : undefined
-        }
-      >
-      {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
-
-      </CollapsibleSection>
-
-      {/* ===== Växel 2 ===== */}
-      <CollapsibleSection
-        title="Tröskel"
-        meta={GEAR_PURPOSE.troskel}
-        headline={
-          gearByKey.has("troskel") ? (
-            <span className="text-sm text-[var(--ink-2)]">
-              {gearVerdict(gearByKey.get("troskel") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
-            </span>
-          ) : undefined
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-            Tröskelpassens nyckelpass
-          </h3>
-          <SessionQuality
-            groups={thresholdGroups}
-            racePace={racePace}
-            showRaceReference={false}
-          />
-        </div>
-      </CollapsibleSection>
-
-      {/* ===== Växel 3 ===== */}
-      <CollapsibleSection
-        title="Intervall"
-        meta={GEAR_PURPOSE.intervall}
-        headline={
-          gearByKey.has("intervall") ? (
-            <span className="text-sm text-[var(--ink-2)]">
-              {gearVerdict(gearByKey.get("intervall") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
-            </span>
-          ) : undefined
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-            Intervallpassens nyckelpass
-          </h3>
-          <SessionQuality groups={intervalGroups} racePace={racePace} />
-        </div>
-      </CollapsibleSection>
 
       {/* ===== Fråga 3: håller jag ihop? ===== */}
       <LoadStrip ramp={loadRamp} loadCv={loadCv} headline={loadHeadline}>
