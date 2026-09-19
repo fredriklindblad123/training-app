@@ -444,20 +444,6 @@ export default async function TrendsPage({
     (diaryEntries ?? []).map((e) => [e.entry_date as string, e.day_type as string | null]),
   );
 
-  const gears = computeTrainingGears(
-    sessions,
-    gearReps,
-    thresholdProfile.lt1Hr,
-    thresholdProfile.lt2Hr,
-    thresholdProfile.maxHr,
-  );
-  const gearByKey = new Map<GearKey, Gear>((gears?.gears ?? []).map((g) => [g.key, g]));
-
-  // Nyckelpassen delas på växel: tröskelpass hör hemma i tröskelsektionen,
-  // allt annat kvalitetsarbete i intervallsektionen.
-  const thresholdGroups = signatureGroups.filter((g) => g.category === "threshold");
-  const intervalGroups = signatureGroups.filter((g) => g.category !== "threshold");
-
   // --- Måltempo -----------------------------------------------------------
   // Egen fråga, med eget fönster: den valda perioden kan sakna lopp helt
   // (ett förberedelseblock gör det per definition), men träningen i den
@@ -488,6 +474,21 @@ export default async function TrendsPage({
       competition_date: r.competitions.competition_date,
     })),
   );
+
+  const gears = computeTrainingGears(
+    sessions,
+    gearReps,
+    thresholdProfile.lt1Hr,
+    thresholdProfile.lt2Hr,
+    thresholdProfile.maxHr,
+    racePace ? racePace.per400 * 2.5 : null,
+  );
+  const gearByKey = new Map<GearKey, Gear>((gears?.hr.gears ?? []).map((g) => [g.key, g]));
+
+  // Nyckelpassen delas på växel: tröskelpass hör hemma i tröskelsektionen,
+  // allt annat kvalitetsarbete i intervallsektionen.
+  const thresholdGroups = signatureGroups.filter((g) => g.category === "threshold");
+  const intervalGroups = signatureGroups.filter((g) => g.category !== "threshold");
 
   // --- Är lugnt verkligen lugnt? -----------------------------------------
   // Kringgår Garmins zonhinkar helt — bara passets snittpuls mot ett band ur

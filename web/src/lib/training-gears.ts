@@ -52,16 +52,29 @@ export type Gear = {
   /** null när perioden saknar underlag för växeln. */
   actual: GearStats | null;
   /** Andel av underlaget som hamnade över växelns tak, 0–1. null för
-   * intervall, som inte har något meningsfullt tak. */
+   * intervall, som inte har något meningsfullt tak, och i fartvyn. */
   shareOverCeiling: number | null;
 };
 
-export type TrainingGears = {
+/** En vy av samma tre växlar: puls eller fart. Axeln är alltid orienterad så
+ * att hårdare arbete ligger till höger — i fartvyn betyder det att skalan
+ * går från långsamt till snabbt, alltså fallande sekunder per kilometer. */
+export type GearView = {
   gears: Gear[];
-  lt1: number;
-  lt2: number;
   axisMin: number;
   axisMax: number;
+  /** Referenslinjer: LT1/LT2 i pulsvyn, tävlingsfart i fartvyn. */
+  markers: { value: number; label: string }[];
+  /** Var målbanden kommer ifrån — skrivs ut i UI:t. */
+  source: string;
+};
+
+export type TrainingGears = {
+  hr: GearView;
+  /** null när tävlingsfart saknas — då går fartmålen inte att härleda. */
+  pace: GearView | null;
+  lt1: number;
+  lt2: number;
 };
 
 /** En repetition ur ett kvalitetspass, redan filtrerad på `split_type`. */
@@ -93,6 +106,35 @@ export const GEAR_MIN_SESSION_SECONDS = 20 * 60;
 const EASY_LOWER_MARGIN = 25;
 const EASY_UPPER_MARGIN = 8;
 
+/* ------------------------- fartmålen ------------------------------------ *
+ * Fartbanden härleds ur tävlingsfarten (lib/race-pace.ts), inte ur pulsen.
+ * Två skäl:
+ *
+ *  1. Att härleda dem ur hennes eget utfall går inte. Farten på tröskel- och
+ *     intervallvarv är i praktiken densamma oavsett om pulsen låg i bandet
+ *     eller inte (3:41–4:00 mot 3:43–3:57 per km), och för distans finns bara
+ *     en handfull pass med puls i målbandet. Utfallet bär alltså ingen
+ *     information om vilken fart som hör till vilken växel.
+ *  2. Tävlingsfarten är *oberoende av trösklarna*. När LT1 och LT2 är
+ *     skattade värden ger fartvyn en andra, fristående bild av samma fråga.
+ *
+ * Multiplarna är konvention, inte naturlag, och skrivs ut i UI:t. De är
+ * kalibrerade mot 1500 m som referensgren; för en 800-löpare blir de för
+ * snabba och bör då läsas som en grov riktning.                            */
+const PACE_MULTIPLIERS: Record<GearKey, [number, number]> = {
+  // Lugn distans: klart långsammare än tröskel. Undre gränsen 1,70 ligger
+  // där Alices egen puls faktiskt hamnar i målbandet (under 5:30/km).
+  distans: [1.7, 1.95],
+  // Tröskelfart, strax långsammare än 3000-fart.
+  troskel: [1.15, 1.27],
+  // Från 1500-fart till VO2max-fart. Bandet är brett med flit: växeln
+  // rymmer både 400:or i loppfart och 1000:or i 3000-fart, och ett smalt
+  // band hade underkänt de längre repetitionerna för att de är långsammare
+  // än 1500-farten — vilket de ska vara. Den repspecifika jämförelsen görs
+  // i stället per passtyp under Passkvalitet, som känner varvlängden.
+  intervall: [0.95, 1.18],
+};
+
 /** Intervallmålets tak när maxpuls saknas: LT2 + 17 slag. */
 const INTERVAL_SPAN_WITHOUT_MAX = 17;
 /** Andel av maxpuls som övre gräns när den finns — över det är det lopp. */
@@ -112,64 +154,15 @@ function statsFrom(values: number[]): GearStats | null {
   };
 }
 
-export function computeTrainingGears(
-  sessions: TrainingSession[],
-  reps: GearRep[],
-  lt1Hr: number | null,
-  lt2Hr: number | null,
-  maxHr: number | null,
-): TrainingGears | null {
-  // Båda trösklarna krävs. Att skatta den ena ur den andra hade gett tre
-  // band byggda på en gissning, och hela poängen är att banden är personliga.
-  if (lt1Hr == null || lt2Hr == null || lt1Hr <= 0 || lt2Hr <= lt1Hr) return null;
-
-  const distansHrs = sessions
-    .filter(
-      (s) =>
-        (s.category === "easy" || s.category === "long_run") &&
-        s.durationSeconds >= GEAR_MIN_SESSION_SECONDS &&
-        s.avgHr != null &&
-        s.avgHr > 0,
-    )
-    .map((s) => s.avgHr as number);
-
-  const repHrs = (category: string) =>
-    reps
-      .filter(
-        (r) =>
-          r.category === category &&
-          r.distanceMeters >= GEAR_MIN_REP_METERS &&
-          r.durationSeconds >= GEAR_MIN_REP_SECONDS,
-      )
-      .map((r) => r.avgHr);
-
-  const troskelHrs = repHrs("threshold");
-  const intervallHrs = repHrs("interval");
-
-  const intervalCeiling = maxHr
-    ? Math.round(maxHr * INTERVAL_CEILING_FRACTION)
-    : lt2Hr + INTERVAL_SPAN_WITHOUT_MAX;
-
-  const targets: Record<GearKey, GearBand> = {
-    distans: { low: lt1Hr - EASY_LOWER_MARGIN, high: lt1Hr - EASY_UPPER_MARGIN },
-    troskel: { low: lt1Hr, high: lt2Hr },
-    intervall: { low: lt2Hr, high: Math.max(intervalCeiling, lt2Hr + 6) },
-  };
-
-  const values: Record<GearKey, number[]> = {
-    distans: distansHrs,
-    troskel: troskelHrs,
-    intervall: intervallHrs,
-  };
-
-  /* Taket som räknas som överskridet per växel. Intervall har inget: en
-     repetition som går över LT2 är precis vad den ska göra. */
-  const ceilings: Record<GearKey, number | null> = {
-    distans: lt1Hr,
-    troskel: lt2Hr,
-    intervall: null,
-  };
-
+function buildView(
+  values: Record<GearKey, number[]>,
+  targets: Record<GearKey, GearBand>,
+  ceilings: Record<GearKey, number | null>,
+  markers: { value: number; label: string }[],
+  source: string,
+  /** Fartaxeln går från långsamt till snabbt, alltså fallande värden. */
+  descending = false,
+): GearView | null {
   const gears: Gear[] = (["distans", "troskel", "intervall"] as GearKey[]).map((key) => {
     const vals = values[key];
     const ceiling = ceilings[key];
@@ -179,41 +172,137 @@ export function computeTrainingGears(
       actual: statsFrom(vals),
       shareOverCeiling:
         ceiling != null && vals.length > 0
-          ? vals.filter((v) => v > ceiling).length / vals.length
+          ? vals.filter((v) => (descending ? v < ceiling : v > ceiling)).length / vals.length
           : null,
     };
   });
-
   if (gears.every((g) => g.actual == null)) return null;
 
-  const lows = [
-    ...gears.map((g) => g.target.low),
-    ...gears.flatMap((g) => (g.actual ? [g.actual.p25] : [])),
+  const all = [
+    ...gears.flatMap((g) => [g.target.low, g.target.high]),
+    ...gears.flatMap((g) => (g.actual ? [g.actual.p25, g.actual.p75] : [])),
+    ...markers.map((m) => m.value),
   ];
-  const highs = [
-    ...gears.map((g) => g.target.high),
-    ...gears.flatMap((g) => (g.actual ? [g.actual.p75] : [])),
-  ];
-
+  const pad = (Math.max(...all) - Math.min(...all)) * 0.08;
   return {
     gears,
-    lt1: lt1Hr,
-    lt2: lt2Hr,
-    axisMin: Math.min(...lows) - 6,
-    axisMax: Math.max(...highs) + 6,
+    axisMin: Math.min(...all) - pad,
+    axisMax: Math.max(...all) + pad,
+    markers,
+    source,
   };
+}
+
+export function computeTrainingGears(
+  sessions: TrainingSession[],
+  reps: GearRep[],
+  lt1Hr: number | null,
+  lt2Hr: number | null,
+  maxHr: number | null,
+  racePacePerKm: number | null,
+): TrainingGears | null {
+  // Båda trösklarna krävs. Att skatta den ena ur den andra hade gett tre
+  // band byggda på en gissning, och hela poängen är att banden är personliga.
+  if (lt1Hr == null || lt2Hr == null || lt1Hr <= 0 || lt2Hr <= lt1Hr) return null;
+
+  const easySessions = sessions.filter(
+    (s) =>
+      (s.category === "easy" || s.category === "long_run") &&
+      s.durationSeconds >= GEAR_MIN_SESSION_SECONDS &&
+      s.distanceMeters > 2000,
+  );
+
+  const keepRep = (r: GearRep, category: string) =>
+    r.category === category &&
+    r.distanceMeters >= GEAR_MIN_REP_METERS &&
+    r.durationSeconds >= GEAR_MIN_REP_SECONDS;
+
+  /* ---------------------------- pulsvyn ---------------------------------- */
+  const hrValues: Record<GearKey, number[]> = {
+    distans: easySessions.filter((s) => s.avgHr && s.avgHr > 0).map((s) => s.avgHr as number),
+    troskel: reps.filter((r) => keepRep(r, "threshold")).map((r) => r.avgHr),
+    intervall: reps.filter((r) => keepRep(r, "interval")).map((r) => r.avgHr),
+  };
+
+  const intervalCeiling = maxHr
+    ? Math.round(maxHr * INTERVAL_CEILING_FRACTION)
+    : lt2Hr + INTERVAL_SPAN_WITHOUT_MAX;
+
+  const hr = buildView(
+    hrValues,
+    {
+      distans: { low: lt1Hr - EASY_LOWER_MARGIN, high: lt1Hr - EASY_UPPER_MARGIN },
+      troskel: { low: lt1Hr, high: lt2Hr },
+      intervall: { low: lt2Hr, high: Math.max(intervalCeiling, lt2Hr + 6) },
+    },
+    // Taket per växel. Intervall har inget: ett varv över LT2 gör precis
+    // vad det ska.
+    { distans: lt1Hr, troskel: lt2Hr, intervall: null },
+    [
+      { value: lt1Hr, label: "LT1" },
+      { value: lt2Hr, label: "LT2" },
+    ],
+    "Banden kommer ur aerob och anaerob tröskel i din profil.",
+  );
+  if (hr == null) return null;
+
+  /* ---------------------------- fartvyn ---------------------------------- */
+  const paceOf = (r: GearRep) => r.durationSeconds / (r.distanceMeters / 1000);
+  const pace = racePacePerKm
+    ? buildView(
+        {
+          distans: easySessions.map((s) => s.durationSeconds / (s.distanceMeters / 1000)),
+          troskel: reps.filter((r) => keepRep(r, "threshold")).map(paceOf),
+          intervall: reps.filter((r) => keepRep(r, "interval")).map(paceOf),
+        },
+        {
+          distans: {
+            low: racePacePerKm * PACE_MULTIPLIERS.distans[0],
+            high: racePacePerKm * PACE_MULTIPLIERS.distans[1],
+          },
+          troskel: {
+            low: racePacePerKm * PACE_MULTIPLIERS.troskel[0],
+            high: racePacePerKm * PACE_MULTIPLIERS.troskel[1],
+          },
+          intervall: {
+            low: racePacePerKm * PACE_MULTIPLIERS.intervall[0],
+            high: racePacePerKm * PACE_MULTIPLIERS.intervall[1],
+          },
+        },
+        // I fartvyn är felet att springa för *fort* på distans och tröskel:
+        // taket är bandets snabba kant, och `descending` vänder jämförelsen.
+        {
+          distans: racePacePerKm * PACE_MULTIPLIERS.distans[0],
+          troskel: racePacePerKm * PACE_MULTIPLIERS.troskel[0],
+          intervall: null,
+        },
+        [{ value: racePacePerKm, label: "Tävlingsfart" }],
+        "Banden härleds ur din tävlingsfart, inte ur pulsen — alltså oberoende av trösklarna.",
+        true,
+      )
+    : null;
+
+  return { hr, pace, lt1: lt1Hr, lt2: lt2Hr };
 }
 
 /* ------------------------------- domar ----------------------------------- */
 
-/** Hur nära varandra tröskel och intervall ligger, i slag. `null` när någon
- * av dem saknar underlag. Det är växeldiagrammets huvudtal: är skillnaden
- * liten tränar man samma sak två gånger i veckan under olika namn. */
-export function gearSeparation(g: TrainingGears): number | null {
-  const t = g.gears.find((x) => x.key === "troskel")?.actual;
-  const i = g.gears.find((x) => x.key === "intervall")?.actual;
+/** Formaterar sekunder per kilometer som m:ss. */
+export function formatPacePerKm(secondsPerKm: number): string {
+  const m = Math.floor(secondsPerKm / 60);
+  const sec = Math.round(secondsPerKm - m * 60);
+  return sec === 60 ? `${m + 1}:00` : `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+/** Hur nära varandra tröskel och intervall ligger, i vyns egen enhet.
+ * `null` när någon av dem saknar underlag. Det är växeldiagrammets
+ * huvudtal: är skillnaden liten tränas samma sak två gånger i veckan under
+ * olika namn. Beloppet, inte tecknet — fartvyn räknar åt andra hållet. */
+export function gearSeparation(view: GearView): number | null {
+  const t = view.gears.find((x) => x.key === "troskel")?.actual;
+  const i = view.gears.find((x) => x.key === "intervall")?.actual;
   if (!t || !i) return null;
-  return i.median - t.median;
+  return Math.abs(i.median - t.median);
 }
 
 export function gearVerdict(gear: Gear, lt1: number, lt2: number): string {
