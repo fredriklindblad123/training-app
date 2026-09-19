@@ -5,7 +5,7 @@ import { RAMP_WARN, type LoadRamp } from "@/lib/load-ramp";
 import { weekRangeLabel } from "@/lib/week-series";
 
 /* ------------------------------------------------------------------------ *
- * LoadStrip — "Håller jag ihop?"
+ * LoadStrip — "Kontinuitet"
  *
  * Ersätter det gamla avsnittet "Belastning och återhämtning": ett 380 px
  * diagram med staplad belastning per kategori *plus* fyra SD-normerade
@@ -81,7 +81,7 @@ export function LoadStrip({
 
   return (
     <CollapsibleSection
-      title="Håller jag ihop?"
+      title="Kontinuitet"
       meta="Steget mellan veckorna, jämnheten, och om planen blev gjord"
       headline={headline ? <span className="text-sm text-[var(--ink-2)]">{headline}</span> : undefined}
     >

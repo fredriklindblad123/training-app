@@ -626,11 +626,11 @@ export default async function TrendsPage({
         </section>
       )}
 
-      {/* ===== Bakgrunden: varför banden ser ut som de gör ===== */}
+      {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet ===== */}
       {gears?.lt1 != null && gears?.lt2 != null && (
         <CollapsibleSection
-          title="Så beter sig laktatet"
-          meta="Bakgrunden till de tre banden"
+          title="Träningens tre växlar"
+          meta="Vad de tre formerna är, och var träningen faktiskt hamnar"
           headline={
             <span className="text-sm text-[var(--ink-2)]">
               Din aeroba tröskel ligger på {gears.lt1}, den anaeroba på {gears.lt2} — {gears.lt2 - gears.lt1}{" "}
@@ -639,16 +639,7 @@ export default async function TrendsPage({
           }
         >
           <LactateCurve lt1={gears.lt1} lt2={gears.lt2} />
-        </CollapsibleSection>
-      )}
 
-      {/* ===== Träningens tre växlar: sidans ingång ===== */}
-      {gears && (
-        <CollapsibleSection
-          title="Träningens tre växlar"
-          meta="Bygga motorn, höja farten du kan hålla, höja taket"
-          headline={<span className="text-sm text-[var(--ink-2)]">{gearsHeadline}</span>}
-        >
           <p className="max-w-3xl text-sm text-[var(--ink-2)]">
             De tre formerna ska ligga på åtskilda intensiteter — annars tränas samma sak flera
             gånger i veckan under olika namn. Sektionerna nedan är samma tre växlar, en i taget.

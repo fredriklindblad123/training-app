@@ -11,17 +11,27 @@ import { GEAR_COLOR_VAR, GEAR_LABELS } from "@/lib/training-gears";
  * inte är det är värre än ingen kurva alls.
  *
  * ── Modellen ─────────────────────────────────────────────────────────────
- * Laktatet ligger nära vilovärdet tills det börjar ackumuleras, och stiger
- * sedan allt brantare. Det beskrivs väl av en exponential över en baslinje:
+ * Styckvis, i tre delar — för det är trösklarnas brytpunkter som är hela
+ * poängen. En enda exponential genom båda (den första versionen) blir jämnt
+ * böjd och visar ingenting av det: man ser inte VAR laktatet börjar stiga,
+ * bara att det gör det.
  *
- *     laktat(puls) = 1,0 + a · e^(k · (puls − LT2))
+ *   under LT1   1,0 + 1,0 · t²   där t går från 0 till 1 fram till LT1
+ *   LT1 → LT2   linjärt 2,0 → 4,0
+ *   över LT2    4,0 · e^(g·(puls − LT2))
  *
- * Konstanterna sätts av de två vedertagna referensvärdena — ungefär
- * 2 mmol/l vid LT1 och 4 vid LT2 — vilket ger a = 3 och
- * k = ln(3) / (LT2 − LT1). Kurvan går alltså exakt genom båda trösklarna,
- * och en löpare med tätt liggande trösklar får en brantare kurva än en med
- * glest liggande. Det är rätt beteende: smalt spann mellan trösklarna
- * betyder att laktatet stiger fort.
+ * Kvadraten håller den första delen nära vilovärdet och ger en tydlig knyck
+ * vid LT1. Exponenten är vald efter hur brytpunkten SYNS: lutningen strax
+ * före LT1 är n/(LT1 − start), så en högre exponent ger en brantare
+ * infart och därmed en svagare knyck. Med kvadraten ökar lutningen 2,3
+ * gånger vid LT1 och 2,4 gånger vid LT2 — två jämnstora brytpunkter, vilket
+ * är vad kurvan ska lära ut. Mellandelen är rak: produktionen ökar men omsättningen hänger
+ * med. Vid LT2 tar exponentialen vid och kurvan vänder uppåt.
+ *
+ * Referensvärdena 2 mmol/l vid LT1 och 4 vid LT2 är vedertagna, och kurvan
+ * går exakt genom båda. En löpare med tätt liggande trösklar får en brantare
+ * mellandel än en med glest liggande — smalt spann betyder att laktatet
+ * stiger fort.
  *
  * Referensvärdena 2 och 4 mmol/l är konvention, inte naturlag, och individen
  * kan ligga flera mmol därifrån. Det står i förklaringen.
@@ -37,25 +47,32 @@ const LT1_MMOL = 2;
 const LT2_MMOL = 4;
 
 const H = 150;
-/** Taket på y-axeln. Över tio ligger man i lopp, inte i träning. */
-const MAX_MMOL = 11;
+/** Taket på y-axeln. Däröver ligger man i lopp, inte i träning. */
+const MAX_MMOL = 14;
+/** Hur långt över LT2 kurvan ritas. Kort fönster med flit: det är där
+ *  hockeyklubban ska synas, och en bred högerhalva plattar ut den. */
+const ABOVE_LT2 = 15;
 
 export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
-  const a = LT2_MMOL - BASELINE_MMOL;
-  const k = Math.log((LT2_MMOL - BASELINE_MMOL) / (LT1_MMOL - BASELINE_MMOL)) / (lt2 - lt1);
-  const lactate = (hr: number) => BASELINE_MMOL + a * Math.exp(k * (hr - lt2));
-
-  /* Axeln börjar en bit under distansbandet och slutar där kurvan passerat
-     tio — bortom det är skalan bara brant och säger inget mer. Taket på 25
-     slag över LT2 finns för att axeln inte ska sträcka sig till pulsvärden
-     ingen har: med glest liggande trösklar (150/180) hamnar kurvans tiogräns
-     först vid 213 slag, och en axel som går dit antyder att den nivån är
-     nåbar. */
   const from = lt1 - 32;
-  const to = Math.min(
-    lt2 + Math.ceil(Math.log((MAX_MMOL - BASELINE_MMOL) / a) / k),
-    lt2 + 25,
-  );
+  const to = lt2 + ABOVE_LT2;
+  /** Exponentialens branthet, satt så att kurvan når taket vid axelns slut. */
+  const g = Math.log(MAX_MMOL / LT2_MMOL) / ABOVE_LT2;
+
+  const lactate = (hr: number) => {
+    if (hr <= lt1) {
+      // Nära vilovärdet hela vägen, med en tydlig knyck precis vid LT1.
+      const t = Math.max((hr - from) / (lt1 - from), 0);
+      return BASELINE_MMOL + (LT1_MMOL - BASELINE_MMOL) * t ** 2;
+    }
+    if (hr <= lt2) {
+      // Rak stigning: produktionen ökar, omsättningen hänger med.
+      return LT1_MMOL + (LT2_MMOL - LT1_MMOL) * ((hr - lt1) / (lt2 - lt1));
+    }
+    // Hockeyklubban.
+    return LT2_MMOL * Math.exp(g * (hr - lt2));
+  };
+
   const span = to - from;
 
   const x = (hr: number) => ((hr - from) / span) * 100;
@@ -91,7 +108,7 @@ export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
       <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
         <div className="flex gap-3">
           <div className="relative w-10 shrink-0 text-right" style={{ height: H }} aria-hidden>
-            {[2, 4, 8].map((m) => (
+            {[2, 4, 8, 12].map((m) => (
               <span
                 key={m}
                 className="absolute right-0 -translate-y-1/2 text-[0.65rem] tabular-nums text-[var(--ink-3)]"
@@ -167,7 +184,8 @@ export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
         <p className="mt-2 text-xs text-[var(--ink-3)]">
           Y-axeln är millimol laktat per liter blod. Kurvan är <strong>schematisk</strong> — ingen
           har mätt ditt laktat. Den är ritad genom dina egna trösklar med de vedertagna
-          referensvärdena 2 mmol vid LT1 och 4 vid LT2.
+          referensvärdena 2 mmol vid LT1 och 4 vid LT2: platt upp till aeroba tröskeln, rak
+          stigning mellan trösklarna, och exponentiell därefter.
         </p>
 
         <div className="mt-4 flex flex-col gap-2">
