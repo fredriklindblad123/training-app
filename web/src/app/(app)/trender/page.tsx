@@ -24,6 +24,8 @@ import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality
 import { EasyDiscipline } from "@/components/EasyDiscipline";
 import { LoadStrip } from "@/components/LoadStrip";
 import { TrainingGears } from "@/components/TrainingGears";
+import { Vo2maxCard } from "@/components/Vo2maxCard";
+import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
   computeTrainingGears,
@@ -386,6 +388,7 @@ export default async function TrendsPage({
   );
 
   const efVerdict = efficiencyVerdict(efPoints);
+  const vo2max = computeVo2maxTrend(sessions);
 
   const efRaces: EfficiencyRace[] = [...raceDays].map(([date, label]) => ({ date, label }));
 
@@ -650,18 +653,18 @@ export default async function TrendsPage({
         </section>
       )}
 
-      {/* ===== Växel 1 ===== */}
-      <CollapsibleSection
-        title="Distans"
-        meta={GEAR_PURPOSE.distans}
-        headline={
-          gearByKey.has("distans") ? (
-            <span className="text-sm text-[var(--ink-2)]">
-              {gearVerdict(gearByKey.get("distans") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
-            </span>
-          ) : undefined
-        }
-      >
+      {/* ===== Utfallen: blir motorn större? ===== */}
+      {(vo2max || efPoints.length > 0) && (
+        <CollapsibleSection
+          title="Syreupptag och form"
+          meta="Två skattningar av samma sak, med samma svagheter"
+          headline={
+            vo2max ? (
+              <span className="text-sm text-[var(--ink-2)]">{vo2maxVerdict(vo2max).headline}</span>
+            ) : undefined
+          }
+        >
+          {vo2max && <Vo2maxCard trend={vo2max} />}
       <section className="flex flex-col gap-3">
         <div>
           <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
@@ -715,6 +718,21 @@ export default async function TrendsPage({
         </p>
       </section>
 
+        </CollapsibleSection>
+      )}
+
+      {/* ===== Växel 1 ===== */}
+      <CollapsibleSection
+        title="Distans"
+        meta={GEAR_PURPOSE.distans}
+        headline={
+          gearByKey.has("distans") ? (
+            <span className="text-sm text-[var(--ink-2)]">
+              {gearVerdict(gearByKey.get("distans") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
+            </span>
+          ) : undefined
+        }
+      >
       {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
 
       </CollapsibleSection>
