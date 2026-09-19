@@ -6,6 +6,8 @@ import {
   EASY_LENGTH_LABELS,
   easyVerdict,
   filterByLength,
+  filterByPace,
+  paceBuckets,
   type EasyDiscipline as EasyDisciplineData,
   type EasyLengthBucket,
   type EasyZone,
@@ -15,26 +17,21 @@ import { formatPacePerKm } from "@/lib/training-gears";
 /* ------------------------------------------------------------------------ *
  * EasyDiscipline — "Pulsen på de lugna passen"
  *
- * ── Två variabler, inte en ────────────────────────────────────────────────
- * Första versionen hade snittpuls i höjdled *och* färg efter samma puls —
- * samma tal kodat två gånger, vilket bara gjorde diagrammet redundant. Nu
- * bär höjdled **farten** och färgen **pulsutfallet**. Det gör det till en
- * riktig tvåvariabeldiagram, och frågan den svarar på blir den som faktiskt
- * går att agera på: *vid vilken fart hamnar jag i rätt pulszon?*
+ * ── Puls i höjdled, fart och längd som filter ─────────────────────────────
+ * Ett mellansteg hade farten i höjdled och pulsen som färg. Det lät
+ * förnuftigt — två variabler i stället för en — men gav ett sämre diagram:
+ * sambandet mellan fart och puls är svagt på lugna pass (r ≈ −0,37 över ett
+ * år, alltså omkring 13 % av variationen), så punktsvärmen visade ingen
+ * gradient att läsa. Pulsen är tillbaka i höjdled, där den går att ställa
+ * mot ett tak och ett målband.
  *
- * Läsningen blir en gradient — snabba pass högst upp och röda, långsamma
- * längst ner och gröna — och gränsen mellan färgerna pekar ut den fart där
- * pulsen slutar vara lugn.
+ * Fart och längd är i stället *filter*. Det är den starkare formen för svaga
+ * samband: i stället för att leta efter en lutning håller man den ena
+ * variabeln konstant och ser hur mycket puls som varierar ändå. Filtrerar
+ * man på ett smalt fartspann och pulsen fortfarande spretar, kommer
+ * spridningen från något annat — trötthet, värme, kupering.
  *
- * ── Längdfiltret ─────────────────────────────────────────────────────────
- * Pulsen driver uppåt ju längre passet blir, så ett långpass över taket kan
- * vara drift snarare än för hög fart. Utan möjlighet att hålla längden
- * konstant är jämförelsen mellan ett 4 km-pass och ett 12 km-pass inte
- * ärlig. Domen räknas därför om på det filtrerade urvalet.
- *
- * ── Y-axelns riktning ────────────────────────────────────────────────────
- * Snabbare fart uppåt, som i alla löpappar. Följden är att målbandet hamnar
- * i nederkant — det är avsiktligt och läses som "du ska ner hit".
+ * Båda filtren räknar om domen, så den alltid beskriver det man tittar på.
  *
  * ── Färg ─────────────────────────────────────────────────────────────────
  * Bara två tillstånd bär färg: under taket (status-good) och över taket
@@ -51,31 +48,38 @@ const ZONE_FILL: Record<EasyZone, string> = {
 
 const BUCKETS: EasyLengthBucket[] = ["alla", "kort", "medel", "lang"];
 
-export function EasyDiscipline({
-  data,
-  paceTarget,
-}: {
-  data: EasyDisciplineData;
-  /** Målfart för distans, sekunder per km. Kommer från växeldiagrammets
-   *  fartvy — saknas den ritas inget band, men färgerna fungerar ändå. */
-  paceTarget?: { low: number; high: number } | null;
-}) {
+export function EasyDiscipline({ data }: { data: EasyDisciplineData }) {
   const [bucket, setBucket] = useState<EasyLengthBucket>("alla");
+  const [paceKey, setPaceKey] = useState<string>("alla");
   const { band } = data;
 
-  const points = useMemo(() => filterByLength(data.points, bucket), [data.points, bucket]);
+  /* Fartgränserna räknas på hela underlaget, inte på det längdfiltrerade —
+     annars hade knapparnas etiketter hoppat varje gång man bytte längd. */
+  const buckets = useMemo(
+    () => paceBuckets(data.points, formatPacePerKm),
+    [data.points],
+  );
+  const activePace = buckets?.find((b) => b.key === paceKey) ?? null;
+
+  const points = useMemo(
+    () => filterByPace(filterByLength(data.points, bucket), activePace),
+    [data.points, bucket, activePace],
+  );
   const counts = useMemo(() => countZones(points), [points]);
   const verdict = useMemo(() => easyVerdict(points, band), [points, band]);
 
-  /* Skalan sätts av data och målband tillsammans, aldrig av data ensamt:
-     ligger alla pass snabbare än målet måste målet ändå synas i bilden. */
-  const paces = points.map((p) => p.paceSecondsPerKm);
-  const lo = Math.min(...paces, paceTarget?.low ?? Infinity) - 10;
-  const hi = Math.max(...paces, paceTarget?.high ?? -Infinity) + 10;
+  /* Skalan sätts av data och band tillsammans, aldrig av data ensamt: ligger
+     alla pass över taket måste taket ändå synas, annars ser fördelningen
+     normal ut. Hela underlaget styr skalan, inte det filtrerade — annars
+     hoppar axeln när man byter filter och passen går inte att jämföra
+     mellan urvalen. */
+  const allHrs = data.points.map((p) => p.avgHr);
+  const lo = Math.min(band.low, ...allHrs) - 6;
+  const hi = Math.max(band.ceiling, ...allHrs) + 6;
   const span = hi - lo || 1;
 
-  /** Fart → andel av höjden uppifrån. Snabbare (lägre s/km) hamnar högre. */
-  const top = (pace: number) => ((pace - lo) / span) * 100;
+  /** Puls → andel av höjden uppifrån. Högre puls högre upp. */
+  const top = (hr: number) => ((hi - hr) / span) * 100;
   const left = (i: number) => (points.length === 1 ? 50 : 2 + (i / (points.length - 1)) * 96);
 
   const over = counts["over-ceiling"];
@@ -88,11 +92,11 @@ export function EasyDiscipline({
           Pulsen på de lugna passen
         </h2>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Ett märke per lugnt pass och långpass på minst 20 minuter. Höjdled är farten, färgen är
-          pulsen: röd betyder att passet gick över{" "}
+          Ett märke per lugnt pass och långpass på minst 20 minuter, placerat efter sin
+          snittpuls. Det gröna fältet är målbandet, den streckade linjen{" "}
           {band.source === "lt1" ? "din aeroba tröskel" : "din skattade aeroba tröskel"} på{" "}
-          {band.ceiling} slag. Gränsen mellan färgerna visar vid vilken fart pulsen slutar vara
-          lugn.
+          {band.ceiling} slag — taket för vad ett lugnt pass får vara. Filtrera på längd och fart
+          för att hålla den ena konstant och se hur mycket pulsen ändå varierar.
         </p>
       </div>
 
@@ -105,45 +109,53 @@ export function EasyDiscipline({
             <p className="mt-1 max-w-2xl text-sm text-[var(--ink-2)]">{verdict.detail}</p>
           </div>
 
-          <div
-            className="flex shrink-0 flex-wrap overflow-hidden rounded border border-[var(--line)] text-sm"
-            role="group"
-            aria-label="Passlängd"
-          >
-            {BUCKETS.map((b) => (
-              <button
-                key={b}
-                type="button"
-                onClick={() => setBucket(b)}
-                aria-pressed={bucket === b}
-                className={`px-3 py-1 ${
-                  bucket === b
-                    ? "bg-[var(--foreground)] text-[var(--background)]"
-                    : "text-[var(--ink-2)]"
-                }`}
-              >
-                {EASY_LENGTH_LABELS[b]}
-              </button>
-            ))}
+          <div className="flex shrink-0 flex-col gap-2">
+            <FilterRow label="Längd">
+              {BUCKETS.map((b) => (
+                <FilterButton
+                  key={b}
+                  active={bucket === b}
+                  onClick={() => setBucket(b)}
+                  label={EASY_LENGTH_LABELS[b]}
+                />
+              ))}
+            </FilterRow>
+            {buckets && (
+              <FilterRow label="Fart">
+                <FilterButton
+                  active={paceKey === "alla"}
+                  onClick={() => setPaceKey("alla")}
+                  label="Alla"
+                />
+                {buckets.map((b) => (
+                  <FilterButton
+                    key={b.key}
+                    active={paceKey === b.key}
+                    onClick={() => setPaceKey(b.key)}
+                    label={b.label}
+                  />
+                ))}
+              </FilterRow>
+            )}
           </div>
         </div>
 
         {points.length === 0 ? (
           <p className="mt-6 text-sm text-[var(--ink-3)]">
-            Inga pass i det här längdintervallet.
+            Inga pass matchar filtren.
           </p>
         ) : (
           <>
             <div className="mt-5 flex gap-3">
               {/* Axeletiketterna ligger utanför ritytan så de aldrig skalas med. */}
-              <div className="relative h-52 w-12 shrink-0 sm:h-60" aria-hidden>
-                {[lo + span * 0.1, lo + span * 0.5, lo + span * 0.9].map((v) => (
+              <div className="relative h-52 w-8 shrink-0 sm:h-60" aria-hidden>
+                {[band.ceiling, band.low].map((v) => (
                   <span
                     key={v}
                     className="absolute right-0 -translate-y-1/2 text-[0.65rem] tabular-nums text-[var(--ink-3)]"
                     style={{ top: `${top(v)}%` }}
                   >
-                    {formatPacePerKm(v)}
+                    {v}
                   </span>
                 ))}
               </div>
@@ -151,18 +163,23 @@ export function EasyDiscipline({
               <div
                 className="relative h-52 min-w-0 flex-1 sm:h-60"
                 role="img"
-                aria-label={`Fart och puls för ${points.length} lugna pass. ${over} pass ligger över taket ${band.ceiling} slag.`}
+                aria-label={`Snittpuls för ${points.length} lugna pass mot ett målband på ${band.low} till ${band.high} slag. ${over} pass ligger över taket ${band.ceiling}.`}
               >
-                {paceTarget && (
-                  <div
-                    className="absolute inset-x-0 rounded-sm"
-                    style={{
-                      top: `${top(paceTarget.low)}%`,
-                      height: `${Math.max(top(paceTarget.high) - top(paceTarget.low), 1)}%`,
-                      background: "color-mix(in oklab, var(--status-good) 14%, transparent)",
-                    }}
-                  />
-                )}
+                <div
+                  className="absolute inset-x-0 rounded-sm"
+                  style={{
+                    top: `${top(band.high)}%`,
+                    height: `${Math.max(top(band.low) - top(band.high), 1)}%`,
+                    background: "color-mix(in oklab, var(--status-good) 14%, transparent)",
+                  }}
+                />
+                <div
+                  className="absolute inset-x-0 border-t border-dashed"
+                  style={{
+                    top: `${top(band.ceiling)}%`,
+                    borderColor: "var(--status-concern)",
+                  }}
+                />
                 {points.map((p, i) => (
                   <span
                     key={p.id}
@@ -170,7 +187,7 @@ export function EasyDiscipline({
                     className="absolute block h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[var(--surface)]"
                     style={{
                       left: `${left(i)}%`,
-                      top: `${top(p.paceSecondsPerKm)}%`,
+                      top: `${top(p.avgHr)}%`,
                       background: ZONE_FILL[p.zone],
                     }}
                   />
@@ -178,7 +195,7 @@ export function EasyDiscipline({
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 pl-15 text-xs text-[var(--ink-3)]">
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 pl-11 text-xs text-[var(--ink-3)]">
               <span className="flex items-center gap-1.5">
                 <i
                   className="inline-block h-2 w-2 rounded-full"
@@ -200,17 +217,6 @@ export function EasyDiscipline({
                 />
                 Över taket ({over})
               </span>
-              {paceTarget && (
-                <span className="flex items-center gap-1.5">
-                  <i
-                    className="inline-block h-2 w-3 rounded-sm"
-                    style={{
-                      background: "color-mix(in oklab, var(--status-good) 30%, transparent)",
-                    }}
-                  />
-                  Målfart {formatPacePerKm(paceTarget.low)}–{formatPacePerKm(paceTarget.high)}/km
-                </span>
-              )}
             </div>
           </>
         )}
@@ -236,8 +242,8 @@ export function EasyDiscipline({
           </p>
           <p className="mt-2 text-[var(--ink-2)]">
             Pulsen driver uppåt ju längre passet blir, så ett långpass över taket kan vara drift
-            snarare än för hög fart. Längdfiltret finns för att kunna hålla längden konstant —
-            domen räknas om på det urval du valt.
+            snarare än för hög fart. Längd- och fartfiltren finns för att kunna hålla den ena
+            konstant — domen räknas om på det urval du valt.
           </p>
           <p className="mt-2 text-[var(--ink-2)]">
             Måttet använder bara passets tidsviktade snittpuls och ett tal ur din profil — inga
@@ -248,5 +254,46 @@ export function EasyDiscipline({
         </details>
       </div>
     </section>
+  );
+}
+
+/** En filterrad med sin etikett. Två rader staplade ovanpå varandra behöver
+ * varsin etikett — utan dem är det inte uppenbart att den övre raden gäller
+ * längd och den undre fart. */
+function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-10 shrink-0 text-right text-xs text-[var(--ink-3)]">{label}</span>
+      <div
+        className="flex flex-wrap overflow-hidden rounded border border-[var(--line)] text-sm"
+        role="group"
+        aria-label={label}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function FilterButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`px-3 py-1 whitespace-nowrap ${
+        active ? "bg-[var(--foreground)] text-[var(--background)]" : "text-[var(--ink-2)]"
+      }`}
+    >
+      {label}
+    </button>
   );
 }

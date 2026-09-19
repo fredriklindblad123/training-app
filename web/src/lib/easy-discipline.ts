@@ -94,6 +94,50 @@ export function filterByLength(points: EasyPoint[], bucket: EasyLengthBucket): E
     : points.filter((p) => easyLengthBucket(p.distanceMeters) === bucket);
 }
 
+/* Fartfiltret. Farten förklarar bara en del av pulsen på lugna pass — för
+ * Alice ligger sambandet på r = −0,37 över ett år, alltså ungefär 13 % av
+ * variationen. Just därför är fart mer användbar som *filter* än som axel:
+ * håller man farten konstant syns hur mycket puls som varierar av andra skäl
+ * (trötthet, värme, kupering) i stället för att sambandet ska läsas ur en
+ * punktsvärm där det knappt finns.
+ *
+ * Gränserna är löparens egna tredjedelar, inte fasta tempon. En app som
+ * delar på 5:00 och 5:30 fungerar för en löpare och lägger allt i en hink
+ * för nästa. Etiketterna visar de faktiska tiderna, så indelningen ändå är
+ * konkret. */
+export type PaceBucket = {
+  key: "snabb" | "mitten" | "langsam";
+  label: string;
+  /** Sekunder per km. Inklusive undre, exklusive övre. */
+  from: number;
+  to: number;
+};
+
+export function paceBuckets(
+  points: EasyPoint[],
+  format: (secondsPerKm: number) => string,
+): PaceBucket[] | null {
+  // Under nio pass blir tredjedelarna tre pass styck — för tunt för att en
+  // uppdelning ska säga något.
+  if (points.length < 9) return null;
+  const sorted = [...points].map((p) => p.paceSecondsPerKm).sort((a, b) => a - b);
+  const cut1 = sorted[Math.floor(sorted.length / 3)];
+  const cut2 = sorted[Math.floor((sorted.length * 2) / 3)];
+  if (!(cut1 < cut2)) return null;
+  return [
+    { key: "snabb", label: `Under ${format(cut1)}`, from: -Infinity, to: cut1 },
+    { key: "mitten", label: `${format(cut1)}–${format(cut2)}`, from: cut1, to: cut2 },
+    { key: "langsam", label: `Över ${format(cut2)}`, from: cut2, to: Infinity },
+  ];
+}
+
+export function filterByPace(points: EasyPoint[], bucket: PaceBucket | null): EasyPoint[] {
+  if (!bucket) return points;
+  return points.filter(
+    (p) => p.paceSecondsPerKm >= bucket.from && p.paceSecondsPerKm < bucket.to,
+  );
+}
+
 export function countZones(points: EasyPoint[]): Record<EasyZone, number> {
   const counts: Record<EasyZone, number> = {
     below: 0,
