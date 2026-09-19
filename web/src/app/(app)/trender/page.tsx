@@ -35,7 +35,13 @@ import {
 } from "@/lib/training-gears";
 import { computeEasyDiscipline, easyBandFrom } from "@/lib/easy-discipline";
 import { computeLoadRamp } from "@/lib/load-ramp";
-import { pickRacePace, RACE_PACE_MONTHS, type RaceResultRow } from "@/lib/race-pace";
+import {
+  paceBasisFromGoal,
+  paceBasisFromRace,
+  pickRacePace,
+  RACE_PACE_MONTHS,
+  type RaceResultRow,
+} from "@/lib/race-pace";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 import { addDays as planAddDays, PHASE_LABELS, type PhaseType } from "@/lib/planning";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
@@ -241,7 +247,7 @@ export default async function TrendsPage({
     })(),
     supabase
       .from("profiles")
-      .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr")
+      .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr, goal_event, goal_seconds")
       .eq("id", scopedUserId)
       .maybeSingle(),
     // K2: bara hämtad i blockvy — efterlevnad hör bara hemma där (se
@@ -481,9 +487,19 @@ export default async function TrendsPage({
     thresholdProfile.lt1Hr,
     thresholdProfile.lt2Hr,
     thresholdProfile.maxHr,
-    racePace ? racePace.per400 * 2.5 : null,
+    // Målet går före personbästa: träningsfarter ska utgå från vad löparen
+    // siktar mot. Båda räknas om till 1500-ekvivalent först, så multiplarna
+    // fungerar oavsett målgren.
+    paceBasisFromGoal(
+      profileRow?.goal_event ?? null,
+      profileRow?.goal_seconds != null ? Number(profileRow.goal_seconds) : null,
+    ) ?? paceBasisFromRace(racePace),
   );
-  const gearByKey = new Map<GearKey, Gear>((gears?.hr.gears ?? []).map((g) => [g.key, g]));
+  // Domarna i sektionsrubrikerna är pulsbaserade. Saknas pulsvyn faller de
+  // tillbaka på fartvyns växlar, som har samma nycklar.
+  const gearByKey = new Map<GearKey, Gear>(
+    ((gears?.hr ?? gears?.pace)?.gears ?? []).map((g) => [g.key, g]),
+  );
 
   // Nyckelpassen delas på växel: tröskelpass hör hemma i tröskelsektionen,
   // allt annat kvalitetsarbete i intervallsektionen.

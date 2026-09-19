@@ -30,6 +30,10 @@ const TRACK_EVENTS: { pattern: RegExp; meters: number }[] = [
  * beskriver adepten, långt nog att fånga både inne- och utesäsong. */
 export const RACE_PACE_MONTHS = 24;
 
+/** Grenar som går att välja som mål. Samma uppsättning som TRACK_EVENTS,
+ * i den ordning en medeldistanslöpare möter dem. */
+export const GOAL_EVENTS = ["800m", "1000m", "1500m", "3000m", "5000m"] as const;
+
 export type RaceResultRow = {
   event: string;
   result_seconds: number | null;
@@ -49,6 +53,86 @@ export type RacePace = {
    * ett enda lopp går att väga lägre. */
   races: number;
 };
+
+/* ---------------------- 1500-ekvivalent tid ------------------------------ *
+ * Fartbanden i växeldiagrammet är kalibrerade mot 1500 m. Ett mål på 800 m
+ * har en helt annan loppfart, så samma multiplar hade gett orimligt snabba
+ * band — därför räknas varje måltid först om till den 1500-tid den motsvarar.
+ *
+ * Omräkningen använder Riegels formel, T2 = T1 × (D2/D1)^k. Standardexponenten
+ * 1,06 är kalibrerad för långdistans och gör 800→1500 för snabb; 1,12 ligger
+ * närmare hur medeldistanslöpare faktiskt förhåller sig mellan grenarna.
+ * Kontrollerat mot en löpare med både 800 och 1500 i samma säsong: 2:15,47
+ * på 800 m ger 4:33,9, mot uppmätta 4:41,1 på 1500 m — knappt tre procents
+ * fel, vilket duger för att härleda träningsband men inte för att förutsäga
+ * ett lopp.
+ *
+ * Det här är en konvention, inte en naturlag, och den skrivs ut i UI:t.
+ * Ju längre från 1500 m målgrenen ligger, desto grövre blir omräkningen.    */
+const RIEGEL_EXPONENT = 1.12;
+const REFERENCE_METERS = 1500;
+
+export function equivalent1500Seconds(seconds: number, meters: number): number {
+  if (meters === REFERENCE_METERS) return seconds;
+  return seconds * Math.pow(REFERENCE_METERS / meters, RIEGEL_EXPONENT);
+}
+
+/** Vad fartbanden vilar på. Målet går före personbästa: träningsfarter ska
+ * utgå från vad löparen siktar mot, inte från vad hen redan sprungit. */
+export type PaceBasis = {
+  kind: "mal" | "personbasta";
+  /** Grenen basen uttrycks i, t.ex. 1500. */
+  distanceMeters: number;
+  /** Tiden i den grenen, sekunder. */
+  seconds: number;
+  /** Omräknad till 1500 m, sekunder — det multiplarna utgår från. */
+  equivalent1500: number;
+  /** Referensfarten i sekunder per kilometer. */
+  perKm: number;
+};
+
+export function paceBasisFromGoal(
+  goalEvent: string | null,
+  goalSeconds: number | null,
+): PaceBasis | null {
+  if (!goalEvent || goalSeconds == null || goalSeconds <= 0) return null;
+  const meters = eventDistanceMeters(goalEvent);
+  if (meters == null) return null;
+  const equivalent1500 = equivalent1500Seconds(goalSeconds, meters);
+  return {
+    kind: "mal",
+    distanceMeters: meters,
+    seconds: goalSeconds,
+    equivalent1500,
+    perKm: equivalent1500 / (REFERENCE_METERS / 1000),
+  };
+}
+
+export function paceBasisFromRace(race: RacePace | null): PaceBasis | null {
+  if (!race) return null;
+  const equivalent1500 = equivalent1500Seconds(race.seconds, race.distanceMeters);
+  return {
+    kind: "personbasta",
+    distanceMeters: race.distanceMeters,
+    seconds: race.seconds,
+    equivalent1500,
+    perKm: equivalent1500 / (REFERENCE_METERS / 1000),
+  };
+}
+
+/* Måltid skrivs som "4:32", "4:32.5" eller bara sekunder. Punkt och komma
+ * accepteras båda som decimaltecken — svenska tangentbord ger komma, och att
+ * avvisa det hade varit en onödig fälla. */
+export function parseGoalSeconds(raw: string): number | null {
+  const value = raw.trim().replace(",", ".");
+  if (!value) return null;
+  const parts = value.split(":");
+  if (parts.length > 2) return null;
+  const nums = parts.map(Number);
+  if (nums.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  const seconds = parts.length === 2 ? nums[0] * 60 + nums[1] : nums[0];
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+}
 
 export function eventDistanceMeters(event: string): number | null {
   for (const { pattern, meters } of TRACK_EVENTS) {

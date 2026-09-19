@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { parseGoalSeconds } from "@/lib/race-pace";
 import { createClient } from "@/lib/supabase/server";
 import { triggerGarminSync } from "@/lib/garmin-sync";
 
@@ -120,6 +121,33 @@ export async function saveThresholds(formData: FormData) {
 // (coach_athletes); annars bara inbjuden (allowed_signup_emails) — länken
 // skapas nästa gång formuläret körs efter att personen har signat upp,
 // eftersom coach_athletes.athlete_id måste peka på en riktig profilrad.
+export async function saveGoal(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const event = (formData.get("goal_event") as string | null)?.trim() || null;
+  const seconds = parseGoalSeconds((formData.get("goal_time") as string | null) ?? "");
+
+  // Databasen kräver att båda är satta eller båda tomma
+  // (profiles_goal_pair_check). Ett halvt ifyllt formulär nollar därför
+  // hellre målet än att kastas tillbaka som ett fel.
+  const complete = event != null && seconds != null;
+
+  await supabase
+    .from("profiles")
+    .update({
+      goal_event: complete ? event : null,
+      goal_seconds: complete ? seconds : null,
+    })
+    .eq("id", user.id);
+
+  revalidatePath("/settings");
+  revalidatePath("/trender");
+}
+
 export async function addAthlete(formData: FormData) {
   const supabase = await createClient();
   const {

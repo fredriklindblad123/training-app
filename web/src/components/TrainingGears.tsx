@@ -42,9 +42,13 @@ import {
 type Metric = "puls" | "fart";
 
 export function TrainingGears({ data }: { data: TrainingGearsData }) {
-  const [metric, setMetric] = useState<Metric>("puls");
-  const view: GearView = metric === "fart" && data.pace ? data.pace : data.hr;
-  const descending = metric === "fart" && data.pace != null;
+  // Utan trösklar finns ingen pulsvy — då startar diagrammet i fartläge och
+  // växlingen döljs. En löpare som satt en måltid men aldrig mätt sina
+  // trösklar ska ändå få se sina växlar.
+  const [metric, setMetric] = useState<Metric>(data.hr ? "puls" : "fart");
+  const usePace = (metric === "fart" || data.hr == null) && data.pace != null;
+  const view: GearView = (usePace ? data.pace : data.hr) as GearView;
+  const descending = usePace;
 
   const span = view.axisMax - view.axisMin || 1;
   /** Värde → andel av bredden. Fallande skala i fartvyn, så att snabbare
@@ -93,7 +97,7 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
         </div>
 
         {/* Växlingen visas bara när fartvyn går att räkna fram. */}
-        {data.pace && (
+        {data.pace && data.hr && (
           <div
             className="flex shrink-0 overflow-hidden rounded border border-[var(--line)] text-sm"
             role="group"

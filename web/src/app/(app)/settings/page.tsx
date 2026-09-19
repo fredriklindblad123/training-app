@@ -1,7 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
-import { connectGarmin, syncGarminNow, saveThresholds, addAthlete, removeAthlete } from "./actions";
+import {
+  connectGarmin,
+  syncGarminNow,
+  saveThresholds,
+  saveGoal,
+  addAthlete,
+  removeAthlete,
+} from "./actions";
 import { getScopedProfile } from "@/lib/auth-scope";
 import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
+import { GOAL_EVENTS } from "@/lib/race-pace";
 import { formatDateTime } from "@/lib/format";
 import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 
@@ -30,7 +38,7 @@ export default async function SettingsPage({
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr, lt2_source, lt2_measured_on",
+      "lt1_hr, lt2_hr, threshold_hr_low, threshold_hr_high, max_hr, lt2_source, lt2_measured_on, goal_event, goal_seconds",
     )
     .maybeSingle();
   const scoped = await getScopedProfile(supabase);
@@ -45,6 +53,15 @@ export default async function SettingsPage({
         .filter(Boolean)
         .join(" ")
     : null;
+
+  const goalSeconds = profile?.goal_seconds != null ? Number(profile.goal_seconds) : null;
+  const goalTimeValue =
+    goalSeconds != null
+      ? `${Math.floor(goalSeconds / 60)}:${(goalSeconds % 60).toFixed(2).padStart(5, "0")}`.replace(
+          /\.00$/,
+          "",
+        )
+      : "";
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -210,6 +227,48 @@ export default async function SettingsPage({
               className={primaryButtonClass}
             >
               Spara tröskelband
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+          Måltid
+        </h2>
+        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+          Vad du siktar mot på din huvudgren. Fartbanden i Form-vyns växeldiagram härleds ur
+          måltiden — träningsfarter ska utgå från vad du siktar mot, inte från vad du redan
+          sprungit. Utan mål används ditt bästa resultat de senaste två åren i stället, och har du
+          inga resultat går fartvyn inte att visa.
+        </p>
+        <form action={saveGoal} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-sm">
+            Gren
+            <select name="goal_event" defaultValue={profile?.goal_event ?? ""} className={fieldClass}>
+              <option value="">— ingen —</option>
+              {GOAL_EVENTS.map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Måltid
+            <input
+              type="text"
+              inputMode="decimal"
+              name="goal_time"
+              placeholder="4:32"
+              defaultValue={goalTimeValue}
+              className={fieldClass}
+            />
+            <span className="text-xs text-[var(--ink-3)]">mm:ss eller sekunder</span>
+          </label>
+          <div className="col-span-2 flex items-end sm:col-span-1">
+            <button type="submit" className={primaryButtonClass}>
+              Spara mål
             </button>
           </div>
         </form>

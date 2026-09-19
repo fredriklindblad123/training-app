@@ -21,6 +21,7 @@
 
 import type { TrainingSession } from "@/lib/sessions";
 import { percentile } from "@/lib/stats-utils";
+import { formatRaceTime, type PaceBasis } from "@/lib/race-pace";
 
 export type GearKey = "distans" | "troskel" | "intervall";
 
@@ -70,11 +71,12 @@ export type GearView = {
 };
 
 export type TrainingGears = {
-  hr: GearView;
+  /** null när profilen saknar trösklar — fartvyn fungerar ändå. */
+  hr: GearView | null;
   /** null när tävlingsfart saknas — då går fartmålen inte att härleda. */
   pace: GearView | null;
-  lt1: number;
-  lt2: number;
+  lt1: number | null;
+  lt2: number | null;
 };
 
 /** En repetition ur ett kvalitetspass, redan filtrerad på `split_type`. */
@@ -199,11 +201,14 @@ export function computeTrainingGears(
   lt1Hr: number | null,
   lt2Hr: number | null,
   maxHr: number | null,
-  racePacePerKm: number | null,
+  paceBasis: PaceBasis | null,
 ): TrainingGears | null {
-  // Båda trösklarna krävs. Att skatta den ena ur den andra hade gett tre
-  // band byggda på en gissning, och hela poängen är att banden är personliga.
-  if (lt1Hr == null || lt2Hr == null || lt1Hr <= 0 || lt2Hr <= lt1Hr) return null;
+  /* Vyerna byggs oberoende av varandra. Pulsvyn kräver båda trösklarna — att
+   * skatta den ena ur den andra hade gett band byggda på en gissning, och
+   * hela poängen är att de är personliga. Fartvyn kräver i stället en
+   * måltid eller ett resultat. En löpare som har det ena men inte det andra
+   * ska få den vy som går att räkna fram, inte ingen vy alls. */
+  const hasThresholds = lt1Hr != null && lt2Hr != null && lt1Hr > 0 && lt2Hr > lt1Hr;
 
   const easySessions = sessions.filter(
     (s) =>
@@ -226,29 +231,31 @@ export function computeTrainingGears(
 
   const intervalCeiling = maxHr
     ? Math.round(maxHr * INTERVAL_CEILING_FRACTION)
-    : lt2Hr + INTERVAL_SPAN_WITHOUT_MAX;
+    : (lt2Hr ?? 0) + INTERVAL_SPAN_WITHOUT_MAX;
 
-  const hr = buildView(
-    hrValues,
-    {
-      distans: { low: lt1Hr - EASY_LOWER_MARGIN, high: lt1Hr - EASY_UPPER_MARGIN },
-      troskel: { low: lt1Hr, high: lt2Hr },
-      intervall: { low: lt2Hr, high: Math.max(intervalCeiling, lt2Hr + 6) },
-    },
-    // Taket per växel. Intervall har inget: ett varv över LT2 gör precis
-    // vad det ska.
-    { distans: lt1Hr, troskel: lt2Hr, intervall: null },
-    [
-      { value: lt1Hr, label: "LT1" },
-      { value: lt2Hr, label: "LT2" },
-    ],
-    "Banden kommer ur aerob och anaerob tröskel i din profil.",
-  );
-  if (hr == null) return null;
+  const hr = hasThresholds
+    ? buildView(
+        hrValues,
+        {
+          distans: { low: (lt1Hr as number) - EASY_LOWER_MARGIN, high: (lt1Hr as number) - EASY_UPPER_MARGIN },
+          troskel: { low: lt1Hr as number, high: lt2Hr as number },
+          intervall: { low: lt2Hr as number, high: Math.max(intervalCeiling, (lt2Hr as number) + 6) },
+        },
+        // Taket per växel. Intervall har inget: ett varv över LT2 gör precis
+        // vad det ska.
+        { distans: lt1Hr as number, troskel: lt2Hr as number, intervall: null },
+        [
+          { value: lt1Hr, label: "LT1" },
+          { value: lt2Hr, label: "LT2" },
+        ],
+        "Banden kommer ur aerob och anaerob tröskel i din profil.",
+      )
+    : null;
 
   /* ---------------------------- fartvyn ---------------------------------- */
   const paceOf = (r: GearRep) => r.durationSeconds / (r.distanceMeters / 1000);
-  const pace = racePacePerKm
+  const racePacePerKm = paceBasis?.perKm ?? null;
+  const pace = racePacePerKm && paceBasis
     ? buildView(
         {
           distans: easySessions.map((s) => s.durationSeconds / (s.distanceMeters / 1000)),
@@ -276,13 +283,29 @@ export function computeTrainingGears(
           troskel: racePacePerKm * PACE_MULTIPLIERS.troskel[0],
           intervall: null,
         },
-        [{ value: racePacePerKm, label: "Tävlingsfart" }],
-        "Banden härleds ur din tävlingsfart, inte ur pulsen — alltså oberoende av trösklarna.",
+        [{ value: racePacePerKm, label: paceBasis.kind === "mal" ? "Målfart" : "Tävlingsfart" }],
+        paceSource(paceBasis),
         true,
       )
     : null;
 
+  if (hr == null && pace == null) return null;
   return { hr, pace, lt1: lt1Hr, lt2: lt2Hr };
+}
+
+/** Var fartbanden kommer ifrån, som en mening. Basen ska alltid vara synlig:
+ * ett målbanden-system som tyst byter referens mellan mål och personbästa är
+ * omöjligt att lita på. */
+function paceSource(basis: PaceBasis): string {
+  const time = formatRaceTime(basis.seconds);
+  const event = `${basis.distanceMeters} m`;
+  const converted =
+    basis.distanceMeters === 1500
+      ? ""
+      : ` (motsvarar ${formatRaceTime(basis.equivalent1500)} på 1500 m)`;
+  return basis.kind === "mal"
+    ? `Banden härleds ur ditt mål ${time} på ${event}${converted} — alltså oberoende av trösklarna.`
+    : `Banden härleds ur ditt bästa resultat ${time} på ${event}${converted}. Sätt en måltid under Inställningar så utgår de från den i stället.`;
 }
 
 /* ------------------------------- domar ----------------------------------- */
