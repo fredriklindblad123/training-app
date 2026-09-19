@@ -84,6 +84,54 @@ function minutesLabel(seconds: number): string {
     : `${(Math.round(m * 10) / 10).toFixed(1).replace(".", ",")} min`;
 }
 
+/* Ett intervallpass har ofta flera olika repetitioner efter varandra —
+ * "4x4min + 4x2min + 6x30sek" är tre grupper, inte en. Den gamla vyn visade
+ * bara den största klungan, så två tredjedelar av passet försvann ur
+ * grafen. Här delas varven i följd upp så fort längden ändras påtagligt.
+ *
+ * Tjugo procents skillnad mot gruppens första varv bryter. Det är löst nog
+ * att fyra fyraminutare på 240–241 sekunder håller ihop, och hårt nog att en
+ * tvåminutare direkt efter startar en ny grupp. */
+const GROUP_BREAK_RATIO = 0.2;
+
+export type RepGroup = { reps: SplitRow[]; label: string; timeBased: boolean };
+
+function groupReps(splits: SplitRow[]): RepGroup[] {
+  const groups: SplitRow[][] = [];
+  for (const split of splits) {
+    const current = groups[groups.length - 1];
+    const first = current?.[0];
+    const sameShape =
+      first != null &&
+      (first.canonicalDistance != null && split.canonicalDistance != null
+        ? first.canonicalDistance === split.canonicalDistance
+        : Math.abs((split.durationSeconds ?? 0) - (first.durationSeconds ?? 0)) /
+            Math.max(first.durationSeconds ?? 1, 1) <=
+          GROUP_BREAK_RATIO);
+    if (sameShape) current.push(split);
+    else groups.push([split]);
+  }
+
+  return groups.map((reps) => {
+    const canonical = reps[0].canonicalDistance;
+    /* Sträckan bär etiketten när den är kanonisk — den är då beviset för att
+       den var målet. Annars är passet tidsbaserat och tiden bär den. */
+    const distanceBased = canonical != null && reps.every((r) => r.canonicalDistance === canonical);
+    const median = [...reps]
+      .map((r) => r.durationSeconds ?? 0)
+      .sort((a, b) => a - b)[Math.floor(reps.length / 2)];
+    return {
+      reps,
+      timeBased: !distanceBased,
+      label: distanceBased
+        ? canonical >= 2000
+          ? `${reps.length}×${(canonical / 1000).toFixed(1).replace(".", ",")} km`
+          : `${reps.length}×${canonical} m`
+        : `${reps.length}×${minutesLabel(median)}`,
+    };
+  });
+}
+
 function selectReps(splits: SplitRow[]): { reps: SplitRow[]; label: string } {
   /* DISTANS FÖRST när den är en riktig sträcka, tid annars.
    *
@@ -238,54 +286,86 @@ export function SessionDetail({
     );
   }
 
-  const { reps: timed, label: repsText } = found;
-  const max = Math.max(...timed.map((s) => s.durationSeconds as number));
-  const fastest = Math.min(...timed.map((s) => s.durationSeconds as number));
+  /* Alla grupper ritas, inte bara den största: ett pass med 4×4 min, 4×2 min
+     och 6×30 sek är tre olika saker och hör alla hemma i grafen. */
+  const groups = groupReps(found.reps);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-        {repsText}
-      </div>
+    <div className="flex flex-col gap-4">
+      {groups.map((group, gi) => {
+        const paces = group.reps.map((r) => repPace(r)).filter((p): p is number => p != null);
+        const fastestPace = paces.length > 0 ? Math.min(...paces) : null;
+        const fastestRep = group.reps.reduce((a, b) =>
+          (a.durationSeconds ?? 0) <= (b.durationSeconds ?? 0) ? a : b,
+        );
 
-      {timed.map((s) => {
-        const secs = s.durationSeconds as number;
-        const best = secs === fastest;
         return (
-          <div key={s.splitIndex} className="flex items-center gap-2">
-            {/* Garmin numrerar varven från noll, och numret räknas dessutom
-                över HELA passet — uppvärmning och vilor inräknade. Här räknas
-                det inom de varv som faktiskt visas, så första repetitionen
-                heter 1. */}
-            <span className="tabular w-5 shrink-0 text-xs text-[var(--ink-3)]">
-              {timed.indexOf(s) + 1}
-            </span>
-            {/* Stapeln ligger i ett EGET spår som får resten av bredden.
-                Procenten räknades först direkt på stapeln, som då satt i samma
-                flexrad som varvnumret och tiden — 100% av raden PLUS två
-                textkolumner blev bredare än kortet, och staplarna gick
-                utanför. */}
-            <span className="flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-[var(--surface-raised)]">
-              <span
-                className="h-full rounded-sm"
-                style={{
-                  // Minst 6% så att även det snabbaste varvet syns som en
-                  // stapel och inte som ett streck.
-                  width: `${Math.max(6, (secs / max) * 100)}%`,
-                  backgroundColor: best ? "var(--status-watch)" : "var(--cat-interval)",
-                }}
-              />
-            </span>
-            <span
-              className={`tabular w-12 shrink-0 text-right text-xs ${
-                best ? "font-semibold text-[var(--status-watch-ink)]" : "text-[var(--ink-2)]"
-              }`}
-            >
-              {formatDuration(secs)}
-            </span>
+          <div key={gi} className="flex flex-col gap-2">
+            <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+              {group.label}
+            </div>
+
+            {group.reps.map((rep, ri) => {
+              const secs = rep.durationSeconds as number;
+              const pace = repPace(rep);
+              /* Stapeln bär FARTEN, inte tiden — samma regel oavsett om
+                 repetitionen är mätt i meter eller minuter. På ett tidsbaserat
+                 pass är alla tider lika långa, så en stapel per tid hade blivit
+                 fjorton likadana streck. Längst stapel = snabbast, vilket också
+                 är rätt håll intuitivt. */
+              const width =
+                pace != null && fastestPace != null
+                  ? Math.max(30, (fastestPace / pace) * 100)
+                  : 100;
+              const best =
+                group.timeBased && pace != null && fastestPace != null
+                  ? pace === fastestPace
+                  : rep === fastestRep;
+
+              return (
+                <div key={rep.splitIndex} className="flex items-center gap-2">
+                  {/* Garmin numrerar varven från noll och räknar över HELA
+                      passet, vilor inräknade. Här räknas det inom gruppen, så
+                      första repetitionen heter 1. */}
+                  <span className="tabular w-5 shrink-0 text-xs text-[var(--ink-3)]">
+                    {ri + 1}
+                  </span>
+                  {/* Stapeln ligger i ett eget spår som får resten av bredden;
+                      låg den i samma flexrad som texterna blev raden bredare än
+                      kortet och staplarna gick utanför. */}
+                  <span className="flex h-2.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-[var(--surface-raised)]">
+                    <span
+                      className="h-full rounded-sm"
+                      style={{
+                        width: `${width}%`,
+                        backgroundColor: best ? "var(--status-watch)" : "var(--cat-interval)",
+                      }}
+                    />
+                  </span>
+                  <span
+                    className={`tabular w-11 shrink-0 text-right text-xs ${
+                      best ? "font-semibold text-[var(--status-watch-ink)]" : "text-[var(--ink-2)]"
+                    }`}
+                  >
+                    {group.timeBased ? formatKm(rep.distanceMeters ?? 0) : formatDuration(secs)}
+                  </span>
+                  <span className="tabular w-16 shrink-0 text-right text-xs text-[var(--ink-3)]">
+                    {pace != null ? formatPace(pace) : "—"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         );
       })}
     </div>
   );
+}
+
+/** Sekunder per kilometer för en repetition. `null` när sträckan saknas. */
+function repPace(rep: SplitRow): number | null {
+  const meters = rep.distanceMeters ?? 0;
+  const secs = rep.durationSeconds ?? 0;
+  if (meters <= 0 || secs <= 0) return null;
+  return secs / (meters / 1000);
 }

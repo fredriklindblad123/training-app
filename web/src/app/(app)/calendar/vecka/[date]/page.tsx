@@ -306,16 +306,29 @@ export default async function WeekPage({
                 >
                   {SV_WEEKDAYS_SHORT[i]} {d.getDate()}
                 </span>
-                {showStatus && diaryStatus && (
+                {/* Samma språk som månadsvyn: en tränad dag utan loggat pass
+                    ritas som ett pass, inte som en bricka. Se motiveringen
+                    där. */}
+                {showStatus && diaryStatus === "training" && (
+                  <span
+                    className="flex items-center gap-1.5 text-[11px] text-[var(--foreground)]"
+                    title="Dagboken säger träning, men inget pass är loggat"
+                  >
+                    <span
+                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: "var(--cat-strength)" }}
+                      aria-hidden="true"
+                    />
+                    Träning
+                  </span>
+                )}
+
+                {showStatus && diaryStatus && diaryStatus !== "training" && (
                   <span
                     className={`rounded px-1 py-0.5 text-[10px] text-white ${STATUS_COLOR[diaryStatus]}`}
-                    title={
-                      diaryStatus === "training"
-                        ? "Dagboken säger träning, men inget pass är loggat"
-                        : STATUS_LABEL[diaryStatus]
-                    }
+                    title={STATUS_LABEL[diaryStatus]}
                   >
-                    {diaryStatus === "training" ? "Ej loggat" : STATUS_LABEL[diaryStatus]}
+                    {STATUS_LABEL[diaryStatus]}
                   </span>
                 )}
               </div>

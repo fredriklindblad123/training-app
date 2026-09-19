@@ -265,7 +265,28 @@ export default async function MonthPage({
                 </span>
               ))}
 
-              {showStatus && diaryStatus && (
+              {/* En dag märkt som tränad utan loggat pass ritas som passen —
+                  prick plus etikett, i egen färg — och inte som en färgad
+                  bricka. Det är oftast styrka eller alternativ träning, och
+                  det hör hemma i samma visuella språk som resten av dagens
+                  innehåll. Sjuk och skadad är undantag och behåller brickan:
+                  de säger något om dagen, inte om ett pass.
+
+                  Etiketten är "Träning" och inte "Styrka" med flit —
+                  diary_entries.day_type har bara training/rest/sick/injured,
+                  så appen VET inte vilken sorts träning det var. */}
+              {showStatus && diaryStatus === "training" && (
+                <span className="flex items-center gap-1.5 text-[11px] text-[var(--foreground)]">
+                  <span
+                    className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: "var(--cat-strength)" }}
+                    aria-hidden="true"
+                  />
+                  Träning
+                </span>
+              )}
+
+              {showStatus && diaryStatus && diaryStatus !== "training" && (
                 <span
                   className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[diaryStatus]}`}
                 >
