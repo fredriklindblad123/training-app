@@ -77,6 +77,8 @@ function largestCluster(
 }
 
 function minutesLabel(seconds: number): string {
+  // Korta ryck heter sekunder. "0,5 min" är ingen som säger om en 30:a.
+  if (seconds < 60) return `${Math.round(seconds / 5) * 5} sek`;
   const m = seconds / 60;
   // Hela minuter är det normala (3 min, 90 sek skrivs som 1,5 min).
   return Number.isInteger(Math.round(m * 10) / 10) && Math.abs(m - Math.round(m)) < 0.02
@@ -286,9 +288,12 @@ export function SessionDetail({
     );
   }
 
-  /* Alla grupper ritas, inte bara den största: ett pass med 4×4 min, 4×2 min
-     och 6×30 sek är tre olika saker och hör alla hemma i grafen. */
-  const groups = groupReps(found.reps);
+  /* Alla varv grupperas, inte bara den klunga selectReps pekade ut: ett pass
+     med 4×4 min, 4×2 min och 6×30 sek är tre olika saker och hör alla hemma i
+     grafen. selectReps används bara för att avgöra OM passet är repbaserat
+     (se ovan) — den väljer den största klungan och skulle här ha dolt två
+     tredjedelar av passet. */
+  const groups = groupReps(all);
 
   return (
     <div className="flex flex-col gap-4">

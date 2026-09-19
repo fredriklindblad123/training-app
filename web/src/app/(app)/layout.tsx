@@ -168,7 +168,14 @@ export default async function AppLayout({
       {/* Plats för den klistrade bottenraden. Utan den lägger sig menyn över
           sidans sista sektion — syntes i säsongsöversikten, där
           tävlingsbanan hamnade delvis bakom flikarna. Rapporterat. */}
-      <main className="flex flex-1 flex-col pb-28 sm:pb-24">{children}</main>
+      {/* Maxbredd på allt innehåll. Utan den sträcker sig varje diagram hela
+          vägen ut på en bred skärm: intervallstaplarna blir två meter långa
+          streck och växeldiagrammets band en horisont. Gränsen ligger på
+          sidan (inte per diagram) så att alla vyer följer samma mått och nya
+          sektioner ärver det automatiskt. */}
+      <main className="flex flex-1 flex-col pb-28 sm:pb-24">
+        <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col">{children}</div>
+      </main>
 
       {/* Navigeringen, inom räckhåll för tummen. Suspense eftersom
           komponenten läser searchParams för att bära löparvalet mellan

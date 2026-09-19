@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import { RAMP_WARN, type LoadRamp } from "@/lib/load-ramp";
 import { weekRangeLabel } from "@/lib/week-series";
 
@@ -64,10 +65,13 @@ function signed(change: number): string {
 export function LoadStrip({
   ramp,
   loadCv,
+  headline,
   children,
 }: {
   ramp: LoadRamp | null;
   loadCv: number | null;
+  /** Aggregatet som syns när sektionen är hopfälld. */
+  headline?: string;
   /** Efterlevnadskortet, när ett block är valt. */
   children?: ReactNode;
 }) {
@@ -76,16 +80,15 @@ export function LoadStrip({
   if (ramp == null && loadCv == null && children == null) return null;
 
   return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Håller jag ihop?
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Belastningens <em>nivå</em> är ett Garmin-internt tal utan jämförbarhet — det som betyder
-          något är steget mellan veckorna, jämnheten, och om planen blev gjord.
-        </p>
-      </div>
+    <CollapsibleSection
+      title="Håller jag ihop?"
+      meta="Steget mellan veckorna, jämnheten, och om planen blev gjord"
+      headline={headline ? <span className="text-sm text-[var(--ink-2)]">{headline}</span> : undefined}
+    >
+      <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+        Belastningens <em>nivå</em> är ett Garmin-internt tal utan jämförbarhet — det som betyder
+        något är steget mellan veckorna, jämnheten, och om planen blev gjord.
+      </p>
 
       <StatRow columns={2}>
         <StatCell>
@@ -134,6 +137,6 @@ export function LoadStrip({
           ett facit, på det ställe där man tittar på dagsformen.
         </p>
       </details>
-    </section>
+    </CollapsibleSection>
   );
 }

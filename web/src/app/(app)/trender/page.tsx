@@ -29,6 +29,7 @@ import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
   computeTrainingGears,
+  gearSeparation,
   gearVerdict,
   GEAR_PURPOSE,
   type Gear,
@@ -36,7 +37,7 @@ import {
   type GearRep,
 } from "@/lib/training-gears";
 import { computeEasyDiscipline, easyBandFrom } from "@/lib/easy-discipline";
-import { computeLoadRamp } from "@/lib/load-ramp";
+import { computeLoadRamp, RAMP_WARN } from "@/lib/load-ramp";
 import {
   paceBasisFromGoal,
   paceBasisFromRace,
@@ -500,6 +501,17 @@ export default async function TrendsPage({
   );
   // Domarna i sektionsrubrikerna är pulsbaserade. Saknas pulsvyn faller de
   // tillbaka på fartvyns växlar, som har samma nycklar.
+  /* Aggregatet för hopfällt läge: hur nära varandra tröskel och intervall
+     ligger. Det är växeldiagrammets huvudtal — är skillnaden liten tränas
+     samma sak två gånger i veckan under olika namn. */
+  const gearSeparationBeats = gears?.hr ? gearSeparation(gears.hr) : null;
+  const gearsHeadline =
+    gearSeparationBeats == null
+      ? "Tre träningsformer mot dina egna trösklar."
+      : gearSeparationBeats <= 5
+        ? `Tröskel och intervall skiljer bara ${gearSeparationBeats} slag i median — växlarna har smält ihop.`
+        : `Tröskel och intervall skiljer ${gearSeparationBeats} slag i median.`;
+
   const gearByKey = new Map<GearKey, Gear>(
     ((gears?.hr ?? gears?.pace)?.gears ?? []).map((g) => [g.key, g]),
   );
@@ -522,6 +534,15 @@ export default async function TrendsPage({
   // Ersätter det staplade belastningsdiagrammet. Innevarande vecka utesluts
   // av computeLoadRamp — en halvfärdig vecka mot fyra hela visar alltid fall.
   const loadRamp = computeLoadRamp(weekSeries, weeklyLoadTotals, isoWeekStart(todayKey));
+
+  /* Aggregatet för hopfällt läge. Rampen är det enda av de tre talen som
+     säger något utan att man öppnar sektionen. */
+  const loadHeadline =
+    loadRamp == null
+      ? "För få veckor med belastning för att mäta steget."
+      : Math.abs(loadRamp.change) > RAMP_WARN
+        ? `Steget mellan veckorna var ${loadRamp.change > 0 ? "+" : ""}${Math.round(loadRamp.change * 100)} % — större än tumregeln.`
+        : `Steget mellan veckorna var ${loadRamp.change > 0 ? "+" : ""}${Math.round(loadRamp.change * 100)} %, inom det normala.`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -605,17 +626,15 @@ export default async function TrendsPage({
 
       {/* ===== Träningens tre växlar: sidans ingång ===== */}
       {gears && (
-        <section className="flex flex-col gap-3">
-          <div>
-            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-              Träningens tre växlar
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-              Medeldistansträning är tre olika jobb: bygga motorn, höja farten du kan hålla, och
-              höja taket. De ska ligga på åtskilda intensiteter — annars tränas samma sak flera
-              gånger i veckan under olika namn. Sektionerna nedan är samma tre växlar, en i taget.
-            </p>
-          </div>
+        <CollapsibleSection
+          title="Träningens tre växlar"
+          meta="Bygga motorn, höja farten du kan hålla, höja taket"
+          headline={<span className="text-sm text-[var(--ink-2)]">{gearsHeadline}</span>}
+        >
+          <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+            De tre formerna ska ligga på åtskilda intensiteter — annars tränas samma sak flera
+            gånger i veckan under olika namn. Sektionerna nedan är samma tre växlar, en i taget.
+          </p>
 
           <TrainingGears data={gears} />
 
@@ -650,7 +669,7 @@ export default async function TrendsPage({
 
             </div>
           </details>
-        </section>
+        </CollapsibleSection>
       )}
 
       {/* ===== Utfallen: blir motorn större? ===== */}
@@ -782,7 +801,7 @@ export default async function TrendsPage({
       </CollapsibleSection>
 
       {/* ===== Fråga 3: håller jag ihop? ===== */}
-      <LoadStrip ramp={loadRamp} loadCv={loadCv}>
+      <LoadStrip ramp={loadRamp} loadCv={loadCv} headline={loadHeadline}>
         {activeBlock && blockCompliance && (
           <ComplianceCard
             title={activeBlock.name}
