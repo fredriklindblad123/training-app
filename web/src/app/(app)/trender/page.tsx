@@ -25,6 +25,7 @@ import { EasyDiscipline } from "@/components/EasyDiscipline";
 import { LoadStrip } from "@/components/LoadStrip";
 import { TrainingGears } from "@/components/TrainingGears";
 import { Vo2maxCard } from "@/components/Vo2maxCard";
+import { LactateCurve } from "@/components/LactateCurve";
 import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
@@ -669,6 +670,22 @@ export default async function TrendsPage({
 
             </div>
           </details>
+        </CollapsibleSection>
+      )}
+
+      {/* ===== Bakgrunden: varför banden ser ut som de gör ===== */}
+      {gears?.lt1 != null && gears?.lt2 != null && (
+        <CollapsibleSection
+          title="Så beter sig laktatet"
+          meta="Bakgrunden till de tre banden"
+          headline={
+            <span className="text-sm text-[var(--ink-2)]">
+              Din aeroba tröskel ligger på {gears.lt1}, den anaeroba på {gears.lt2} — {gears.lt2 - gears.lt1}{" "}
+              slags arbetsområde mellan dem.
+            </span>
+          }
+        >
+          <LactateCurve lt1={gears.lt1} lt2={gears.lt2} />
         </CollapsibleSection>
       )}
 
