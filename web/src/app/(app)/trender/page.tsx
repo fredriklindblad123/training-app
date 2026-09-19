@@ -23,6 +23,16 @@ import { coefficientOfVariation, isoWeekStart, median, weekLabel } from "@/lib/s
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { EasyDiscipline } from "@/components/EasyDiscipline";
 import { LoadStrip } from "@/components/LoadStrip";
+import { TrainingGears } from "@/components/TrainingGears";
+import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
+import {
+  computeTrainingGears,
+  gearVerdict,
+  GEAR_PURPOSE,
+  type Gear,
+  type GearKey,
+  type GearRep,
+} from "@/lib/training-gears";
 import { computeEasyDiscipline, easyBandFrom } from "@/lib/easy-discipline";
 import { computeLoadRamp } from "@/lib/load-ramp";
 import { pickRacePace, RACE_PACE_MONTHS, type RaceResultRow } from "@/lib/race-pace";
@@ -96,6 +106,45 @@ function buildRaceDays(
     }
   }
   return raceDays;
+}
+
+/** Hämtar alla varv för en uppsättning aktiviteter.
+ *
+ * PostgREST returnerar som standard högst 1000 rader, och varvfrågan hade
+ * ingen paginering: en 52-veckorsvy med 3131 varv kapades tyst till 1000, så
+ * passkvalitetsvyn byggde sina jämförelser på ungefär en tredjedel av
+ * underlaget utan att säga något. Felet syntes inte i 12-veckorsvyn, som
+ * ligger under gränsen.
+ *
+ * Aktiviteterna chunkas dessutom: `in.(...)` hamnar i frågesträngen, och
+ * flera hundra uuid:n blir en URL ingen vill felsöka.
+ */
+const SPLIT_PAGE_SIZE = 1000;
+const ACTIVITY_CHUNK = 80;
+
+async function fetchAllSplits(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  activityIds: string[],
+): Promise<SignatureLap[]> {
+  const out: SignatureLap[] = [];
+  for (let i = 0; i < activityIds.length; i += ACTIVITY_CHUNK) {
+    const chunk = activityIds.slice(i, i + ACTIVITY_CHUNK);
+    for (let from = 0; ; from += SPLIT_PAGE_SIZE) {
+      const { data } = await supabase
+        .from("activity_splits")
+        .select(
+          "activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr",
+        )
+        .in("activity_id", chunk)
+        .order("activity_id")
+        .order("split_index")
+        .range(from, from + SPLIT_PAGE_SIZE - 1);
+      const rows = (data ?? []) as SignatureLap[];
+      out.push(...rows);
+      if (rows.length < SPLIT_PAGE_SIZE) break;
+    }
+  }
+  return out;
 }
 
 export default async function TrendsPage({
@@ -265,17 +314,12 @@ export default async function TrendsPage({
   }
 
   let signatureGroups: SignatureGroup[] = [];
+  const gearReps: GearRep[] = [];
   if (activityIds.length > 0) {
-    const { data: lapRows } = await supabase
-      .from("activity_splits")
-      .select(
-        "activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr",
-      )
-      .in("activity_id", activityIds)
-      .order("split_index");
+    const lapRows = await fetchAllSplits(supabase, activityIds);
 
     const lapsByActivity = new Map<string, SignatureLap[]>();
-    for (const lap of (lapRows ?? []) as SignatureLap[]) {
+    for (const lap of lapRows) {
       lapsByActivity.set(lap.activity_id, [...(lapsByActivity.get(lap.activity_id) ?? []), lap]);
     }
 
@@ -291,6 +335,30 @@ export default async function TrendsPage({
       .filter((o): o is NonNullable<typeof o> => o != null && o.date !== "");
 
     signatureGroups = groupBySignature(occurrences);
+
+    /* Växlarnas underlag ur samma varv som signaturerna redan hämtat.
+     *
+     * Bara varven ur passets *dominerande* aktivitet räknas. Ett
+     * intervallpass består ofta av tre aktiviteter — uppvärmning, huvudpass,
+     * nerjogg — och alla tre ärver passets kategori. Tar man varv från alla
+     * hamnar uppvärmningens kilometrar bland intervallrepetitionerna: mätt
+     * så sjönk intervallernas undre kvartil från 181 till 171 slag, alltså
+     * tio slag av ren uppvärmning. Dominerande aktivitet är den som avgjorde
+     * kategorin, och därmed den som bär kvalitetsarbetet. */
+    for (const session of sessions) {
+      if (session.category !== "threshold" && session.category !== "interval") continue;
+      for (const lap of lapsByActivity.get(session.dominantActivity.id) ?? []) {
+        if (lap.split_type !== "active") continue;
+        if (lap.distance_meters == null || lap.avg_hr == null) continue;
+        if (lap.duration_seconds == null) continue;
+        gearReps.push({
+          category: session.category,
+          distanceMeters: lap.distance_meters,
+          durationSeconds: lap.duration_seconds,
+          avgHr: lap.avg_hr,
+        });
+      }
+    }
   }
 
   // --- C. Formkurva (P1.4) — beräknad på passnivå, aldrig per aktivitet -----
@@ -375,6 +443,20 @@ export default async function TrendsPage({
   const blockDayTypeByDate = new Map<string, string | null>(
     (diaryEntries ?? []).map((e) => [e.entry_date as string, e.day_type as string | null]),
   );
+
+  const gears = computeTrainingGears(
+    sessions,
+    gearReps,
+    thresholdProfile.lt1Hr,
+    thresholdProfile.lt2Hr,
+    thresholdProfile.maxHr,
+  );
+  const gearByKey = new Map<GearKey, Gear>((gears?.gears ?? []).map((g) => [g.key, g]));
+
+  // Nyckelpassen delas på växel: tröskelpass hör hemma i tröskelsektionen,
+  // allt annat kvalitetsarbete i intervallsektionen.
+  const thresholdGroups = signatureGroups.filter((g) => g.category === "threshold");
+  const intervalGroups = signatureGroups.filter((g) => g.category !== "threshold");
 
   // --- Måltempo -----------------------------------------------------------
   // Egen fråga, med eget fönster: den valda perioden kan sakna lopp helt
@@ -501,12 +583,73 @@ export default async function TrendsPage({
         </section>
       )}
 
-      {/* ================= C. Formkurva (P1.4) ============================= */}
+      {/* ===== Träningens tre växlar: sidans ingång ===== */}
+      {gears && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+              Träningens tre växlar
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
+              Medeldistansträning är tre olika jobb: bygga motorn, höja farten du kan hålla, och
+              höja taket. De ska ligga på åtskilda intensiteter — annars tränas samma sak flera
+              gånger i veckan under olika namn. Sektionerna nedan är samma tre växlar, en i taget.
+            </p>
+          </div>
+
+          <TrainingGears data={gears} />
+
+          {/* Intensitetsfördelningen svarar på samma fråga som diagrammet
+              ovan, fast ur Garmins zonhinkar i stället för ur dina egna
+              trösklar. Den ligger kvar, men nedfälld och intill sin bättre
+              informerade granne — inte som en andra sanning längre ner. */}
+          <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+            <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
+              Samma fråga ur Garmins pulszoner
+            </summary>
+            <div className="flex flex-col gap-3 border-t border-[var(--line)] p-4">
       <section className="flex flex-col gap-3">
         <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h3>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
+            Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
+            {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
+            Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
+          </p>
+        </div>
+
+        <IntensityChart
+          weeks={intensityWeeks}
+          defaultModelId={
+            activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
+          }
+          profile={thresholdProfile}
+          emptyLabel="Ingen pulszondata i perioden."
+        />
+      </section>
+
+            </div>
+          </details>
+        </section>
+      )}
+
+      {/* ===== Växel 1 ===== */}
+      <CollapsibleSection
+        title="Distans"
+        meta={GEAR_PURPOSE.distans}
+        headline={
+          gearByKey.has("distans") ? (
+            <span className="text-sm text-[var(--ink-2)]">
+              {gearVerdict(gearByKey.get("distans") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
+            </span>
+          ) : undefined
+        }
+      >
+      <section className="flex flex-col gap-3">
+        <div>
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
             Formkurva (Efficiency Factor)
-          </h2>
+          </h3>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt rätt håll.
             Bara lugna pass och långpass på minst 20 minuter med registrerad snittpuls räknas —
@@ -555,39 +698,53 @@ export default async function TrendsPage({
         </p>
       </section>
 
-      {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h2>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
-            {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
-            Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
-          </p>
-        </div>
-
-        <IntensityChart
-          weeks={intensityWeeks}
-          defaultModelId={
-            activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
-          }
-          profile={thresholdProfile}
-          emptyLabel="Ingen pulszondata i perioden."
-        />
-      </section>
-
-      {/* Sist av de tre: den mest specifika diagnosen, och den enda som
-          går utanför Garmins pulszoner. Fördelningen ovan svarar på hur
-          mixen ser ut; den här på om de lugna passen faktiskt är lugna. */}
       {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
 
-      {/* ============ P2.1: passkvalitet ============ */}
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Passkvalitet: återkommande nyckelpass
-        </h2>
-        <SessionQuality groups={signatureGroups} racePace={racePace} />
-      </section>
+      </CollapsibleSection>
+
+      {/* ===== Växel 2 ===== */}
+      <CollapsibleSection
+        title="Tröskel"
+        meta={GEAR_PURPOSE.troskel}
+        headline={
+          gearByKey.has("troskel") ? (
+            <span className="text-sm text-[var(--ink-2)]">
+              {gearVerdict(gearByKey.get("troskel") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
+            </span>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+            Tröskelpassens nyckelpass
+          </h3>
+          <SessionQuality
+            groups={thresholdGroups}
+            racePace={racePace}
+            showRaceReference={false}
+          />
+        </div>
+      </CollapsibleSection>
+
+      {/* ===== Växel 3 ===== */}
+      <CollapsibleSection
+        title="Intervall"
+        meta={GEAR_PURPOSE.intervall}
+        headline={
+          gearByKey.has("intervall") ? (
+            <span className="text-sm text-[var(--ink-2)]">
+              {gearVerdict(gearByKey.get("intervall") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
+            </span>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+            Intervallpassens nyckelpass
+          </h3>
+          <SessionQuality groups={intervalGroups} racePace={racePace} />
+        </div>
+      </CollapsibleSection>
 
       {/* ===== Fråga 3: håller jag ihop? ===== */}
       <LoadStrip ramp={loadRamp} loadCv={loadCv}>

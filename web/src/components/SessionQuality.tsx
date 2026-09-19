@@ -206,9 +206,13 @@ function SignatureCard({ group, racePace }: { group: SignatureGroup; racePace: R
 export function SessionQuality({
   groups,
   racePace,
+  showRaceReference = true,
 }: {
   groups: SignatureGroup[];
   racePace: RacePace | null;
+  /** Referensrutan för tävlingsfart. Av i tröskelsektionen, där ingen
+   * jämförelse mot loppfart visas och rutan bara hade varit brus. */
+  showRaceReference?: boolean;
 }) {
   if (groups.length === 0) {
     return (
@@ -233,7 +237,8 @@ export function SessionQuality({
       {/* Referensen skrivs alltid ut. Ett måltempo som styr hur alla pass
           läses får inte vara en osynlig default — grenen, tiden och hur många
           lopp den vilar på ska gå att ifrågasätta. */}
-      {racePace ? (
+      {showRaceReference &&
+        (racePace ? (
         <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
           <strong className="font-medium text-[var(--foreground)]">
             Tävlingsfart: {racePace.per400.toFixed(1)} s per 400 m
@@ -243,12 +248,12 @@ export function SessionQuality({
           Intervallfarten jämförs mot den. Tröskelpass får ingen jämförelse: de{" "}
           <em>ska</em> ligga långsammare än loppfart.
         </p>
-      ) : (
-        <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
+        ) : (
+          <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
           Ingen jämförelse mot tävlingsfart: det saknas registrerade resultat på 800–5000 m från
-          de senaste två åren. Lägg in resultat under <em>Resultat</em> så räknas farten fram.
-        </p>
-      )}
+            de senaste två åren. Lägg in resultat under <em>Resultat</em> så räknas farten fram.
+          </p>
+        ))}
       {groups.map((g) => (
         <SignatureCard
           key={`${g.category ?? "okänd"}|${g.distanceMeters}`}
