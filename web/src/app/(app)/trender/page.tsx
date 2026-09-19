@@ -501,30 +501,6 @@ export default async function TrendsPage({
         </section>
       )}
 
-      {/* ===== Fråga 1: tränar jag rätt saker? ===== */}
-      {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
-
-      {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h2>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
-            {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
-            Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
-          </p>
-        </div>
-
-        <IntensityChart
-          weeks={intensityWeeks}
-          defaultModelId={
-            activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
-          }
-          profile={thresholdProfile}
-          emptyLabel="Ingen pulszondata i perioden."
-        />
-      </section>
-
       {/* ================= C. Formkurva (P1.4) ============================= */}
       <section className="flex flex-col gap-3">
         <div>
@@ -578,6 +554,32 @@ export default async function TrendsPage({
           att se riktningen över månader, aldrig för att bedöma ett enskilt pass.
         </p>
       </section>
+
+      {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
+      <section className="flex flex-col gap-3">
+        <div>
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h2>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
+            Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
+            {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
+            Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
+          </p>
+        </div>
+
+        <IntensityChart
+          weeks={intensityWeeks}
+          defaultModelId={
+            activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
+          }
+          profile={thresholdProfile}
+          emptyLabel="Ingen pulszondata i perioden."
+        />
+      </section>
+
+      {/* Sist av de tre: den mest specifika diagnosen, och den enda som
+          går utanför Garmins pulszoner. Fördelningen ovan svarar på hur
+          mixen ser ut; den här på om de lugna passen faktiskt är lugna. */}
+      {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
 
       {/* ============ P2.1: passkvalitet ============ */}
       <section className="flex flex-col gap-3">
