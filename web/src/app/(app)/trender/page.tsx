@@ -715,7 +715,14 @@ export default async function TrendsPage({
         </p>
       </section>
 
-      {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
+      {easyDiscipline && (
+        <EasyDiscipline
+          data={easyDiscipline}
+          /* Målfartsbandet för distans kommer från växeldiagrammets fartvy,
+             så de två sektionerna aldrig visar olika mål för samma sak. */
+          paceTarget={gears?.pace?.gears.find((g) => g.key === "distans")?.target ?? null}
+        />
+      )}
 
       </CollapsibleSection>
 

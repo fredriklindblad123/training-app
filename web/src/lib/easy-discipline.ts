@@ -64,8 +64,46 @@ export type EasyPoint = {
   avgHr: number;
   durationSeconds: number;
   distanceMeters: number;
+  /** Sekunder per kilometer — diagrammets höjdled. */
+  paceSecondsPerKm: number;
   zone: EasyZone;
 };
+
+/* Längdfiltret. Ett distanspass på 4 km och ett på 12 km är inte samma sak:
+ * pulsen driver uppåt ju längre passet blir, så ett långpass som ligger över
+ * taket kan vara drift snarare än för hög fart. Att kunna hålla längden
+ * konstant är det som gör jämförelsen mellan passen ärlig. */
+export type EasyLengthBucket = "alla" | "kort" | "medel" | "lang";
+
+export const EASY_LENGTH_LABELS: Record<EasyLengthBucket, string> = {
+  alla: "Alla",
+  kort: "0–5 km",
+  medel: "5–8 km",
+  lang: "Över 8 km",
+};
+
+export function easyLengthBucket(distanceMeters: number): Exclude<EasyLengthBucket, "alla"> {
+  if (distanceMeters < 5000) return "kort";
+  if (distanceMeters <= 8000) return "medel";
+  return "lang";
+}
+
+export function filterByLength(points: EasyPoint[], bucket: EasyLengthBucket): EasyPoint[] {
+  return bucket === "alla"
+    ? points
+    : points.filter((p) => easyLengthBucket(p.distanceMeters) === bucket);
+}
+
+export function countZones(points: EasyPoint[]): Record<EasyZone, number> {
+  const counts: Record<EasyZone, number> = {
+    below: 0,
+    "in-band": 0,
+    "upper-margin": 0,
+    "over-ceiling": 0,
+  };
+  for (const p of points) counts[p.zone] += 1;
+  return counts;
+}
 
 export type EasyDiscipline = {
   band: EasyBand;
@@ -124,7 +162,8 @@ export function computeEasyDiscipline(
         (EASY_CATEGORIES as readonly string[]).includes(s.category) &&
         s.durationSeconds >= EASY_MIN_SECONDS &&
         s.avgHr != null &&
-        s.avgHr > 0,
+        s.avgHr > 0 &&
+        s.distanceMeters > 0,
     )
     .map((s) => ({
       id: s.id,
@@ -133,6 +172,7 @@ export function computeEasyDiscipline(
       avgHr: s.avgHr as number,
       durationSeconds: s.durationSeconds,
       distanceMeters: s.distanceMeters,
+      paceSecondsPerKm: s.durationSeconds / (s.distanceMeters / 1000),
       zone: zoneFor(s.avgHr as number, band),
     }))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -157,35 +197,47 @@ export function computeEasyDiscipline(
 }
 
 /** Domen, som en mening. Skrivs föreskrivande — vyn ska säga vad man gör åt
- * det, inte bara vad som hänt (docs/tranarloopen.md avsnitt 6). */
-export function easyVerdict(d: EasyDiscipline): { headline: string; detail: string } {
-  const over = d.counts["over-ceiling"];
-  const n = d.points.length;
+ * det, inte bara vad som hänt (docs/tranarloopen.md avsnitt 6).
+ *
+ * Tar punkterna och inte hela mätningen, så att den går att räkna om på en
+ * filtrerad delmängd: läsaren som filtrerar på långpass ska få en dom om
+ * långpassen, inte om allt. */
+export function easyVerdict(
+  points: EasyPoint[],
+  band: EasyBand,
+): { headline: string; detail: string } {
+  const n = points.length;
+  if (n === 0) {
+    return { headline: "Inga pass i urvalet.", detail: "Prova ett annat längdintervall." };
+  }
+  const counts = countZones(points);
+  const over = counts["over-ceiling"];
+  const medianHr = Math.round(median(points.map((p) => p.avgHr)) ?? 0);
   const ceilingWord =
-    d.band.source === "lt1" ? "din aeroba tröskel" : "din skattade aeroba tröskel";
+    band.source === "lt1" ? "din aeroba tröskel" : "din skattade aeroba tröskel";
 
   if (over / n >= 0.5) {
     return {
       headline: `${over} av ${n} lugna pass gick över ${ceilingWord}.`,
       detail:
-        `Medianen ligger på ${d.medianHr} slag, ${d.medianHr - d.band.ceiling} över taket på ` +
-        `${d.band.ceiling}. De lugna passen är i praktiken distanspass i medelfart — de bygger ` +
+        `Medianen ligger på ${medianHr} slag, ${medianHr - band.ceiling} över taket på ` +
+        `${band.ceiling}. De lugna passen är i praktiken distanspass i medelfart — de bygger ` +
         `mindre uthållighet per kilometer än verkligt lugn löpning, och de gör dig tröttare till ` +
-        `kvalitetspassen. Sänk farten tills pulsen ligger på ${d.band.low}–${d.band.high}.`,
+        `kvalitetspassen.`,
     };
   }
   if (over / n >= 0.25) {
     return {
       headline: `${over} av ${n} lugna pass kröp över ${ceilingWord}.`,
       detail:
-        `Medianen ${d.medianHr} slag ligger inom taket, men var fjärde lugnt pass gör det inte. ` +
-        `Det är oftast de längsta passen som glider uppåt. Håll dem på ${d.band.low}–${d.band.high}.`,
+        `Medianen ${medianHr} slag ligger inom taket, men var fjärde lugnt pass gör det inte. ` +
+        `Det är oftast de längsta passen som glider uppåt — prova längdfiltret.`,
     };
   }
   return {
-    headline: `${d.counts["in-band"] + d.counts["upper-margin"]} av ${n} lugna pass låg rätt.`,
+    headline: `${counts["in-band"] + counts["upper-margin"] + counts.below} av ${n} lugna pass låg rätt.`,
     detail:
-      `Medianen ${d.medianHr} slag ligger under taket på ${d.band.ceiling}. Disciplinen på de ` +
+      `Medianen ${medianHr} slag ligger under taket på ${band.ceiling}. Disciplinen på de ` +
       `lugna passen håller — det är den som gör att kvalitetspassen går att köra hårt.`,
   };
 }

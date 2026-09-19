@@ -1,32 +1,45 @@
+"use client";
+
+import { useMemo, useState } from "react";
 import {
+  countZones,
+  EASY_LENGTH_LABELS,
   easyVerdict,
+  filterByLength,
   type EasyDiscipline as EasyDisciplineData,
+  type EasyLengthBucket,
   type EasyZone,
 } from "@/lib/easy-discipline";
+import { formatPacePerKm } from "@/lib/training-gears";
 
 /* ------------------------------------------------------------------------ *
  * EasyDiscipline — "Pulsen på de lugna passen"
  *
- * ── Varför ett punktdiagram och inte staplar ──────────────────────────────
- * Frågan är inte "hur mycket tid låg i bandet" (det vore en stapel) utan
- * "hur många av passen missade bandet, och glider de uppåt över tid". Det är
- * en fråga om spridning och riktning, och då är ett märke per pass mot ett
- * inritat målband den enda formen som visar båda.
+ * ── Två variabler, inte en ────────────────────────────────────────────────
+ * Första versionen hade snittpuls i höjdled *och* färg efter samma puls —
+ * samma tal kodat två gånger, vilket bara gjorde diagrammet redundant. Nu
+ * bär höjdled **farten** och färgen **pulsutfallet**. Det gör det till en
+ * riktig tvåvariabeldiagram, och frågan den svarar på blir den som faktiskt
+ * går att agera på: *vid vilken fart hamnar jag i rätt pulszon?*
  *
- * ── Varför inte SVG ───────────────────────────────────────────────────────
- * Första versionen ritade punkterna i en <svg viewBox="0 0 100 190"> med
- * preserveAspectRatio="none". Det skalar x-axeln till containerns bredd men
- * lämnar y i pixlar — på en bred skärm blev skalfaktorn omkring 19:1 och
- * varje cirkel en utdragen oval. vector-effect hjälper inte, det påverkar
- * bara linjebredder. Punkterna ligger därför i absolut positionerade
- * element: x i procent, y i procent, och märket självt i px så att det
- * förblir runt oavsett bredd.
+ * Läsningen blir en gradient — snabba pass högst upp och röda, långsamma
+ * längst ner och gröna — och gränsen mellan färgerna pekar ut den fart där
+ * pulsen slutar vara lugn.
+ *
+ * ── Längdfiltret ─────────────────────────────────────────────────────────
+ * Pulsen driver uppåt ju längre passet blir, så ett långpass över taket kan
+ * vara drift snarare än för hög fart. Utan möjlighet att hålla längden
+ * konstant är jämförelsen mellan ett 4 km-pass och ett 12 km-pass inte
+ * ärlig. Domen räknas därför om på det filtrerade urvalet.
+ *
+ * ── Y-axelns riktning ────────────────────────────────────────────────────
+ * Snabbare fart uppåt, som i alla löpappar. Följden är att målbandet hamnar
+ * i nederkant — det är avsiktligt och läses som "du ska ner hit".
  *
  * ── Färg ─────────────────────────────────────────────────────────────────
  * Bara två tillstånd bär färg: under taket (status-good) och över taket
  * (status-concern). Mellanmarginalen ritas dämpad, inte gul — den är inte
- * ett fel, bara inte idealet. Tre färger hade gjort diagrammet till en
- * bedömningsskala när det bara behöver svara ja eller nej.
+ * ett fel, bara inte idealet.
  * ------------------------------------------------------------------------ */
 
 const ZONE_FILL: Record<EasyZone, string> = {
@@ -36,29 +49,37 @@ const ZONE_FILL: Record<EasyZone, string> = {
   "over-ceiling": "var(--status-concern)",
 };
 
-export function EasyDiscipline({ data }: { data: EasyDisciplineData }) {
-  const { band, points, counts } = data;
-  const verdict = easyVerdict(data);
+const BUCKETS: EasyLengthBucket[] = ["alla", "kort", "medel", "lang"];
 
-  /* Skalan sätts av data och band tillsammans, aldrig av data ensamt: ligger
-     alla pass över taket måste taket ändå synas, annars ser fördelningen
-     normal ut. Marginal på 6 slag i varje ände så att märken aldrig klistrar
-     i kanten. */
-  const hrs = points.map((p) => p.avgHr);
-  const lo = Math.min(band.low, ...hrs) - 6;
-  const hi = Math.max(band.ceiling, ...hrs) + 6;
+export function EasyDiscipline({
+  data,
+  paceTarget,
+}: {
+  data: EasyDisciplineData;
+  /** Målfart för distans, sekunder per km. Kommer från växeldiagrammets
+   *  fartvy — saknas den ritas inget band, men färgerna fungerar ändå. */
+  paceTarget?: { low: number; high: number } | null;
+}) {
+  const [bucket, setBucket] = useState<EasyLengthBucket>("alla");
+  const { band } = data;
+
+  const points = useMemo(() => filterByLength(data.points, bucket), [data.points, bucket]);
+  const counts = useMemo(() => countZones(points), [points]);
+  const verdict = useMemo(() => easyVerdict(points, band), [points, band]);
+
+  /* Skalan sätts av data och målband tillsammans, aldrig av data ensamt:
+     ligger alla pass snabbare än målet måste målet ändå synas i bilden. */
+  const paces = points.map((p) => p.paceSecondsPerKm);
+  const lo = Math.min(...paces, paceTarget?.low ?? Infinity) - 10;
+  const hi = Math.max(...paces, paceTarget?.high ?? -Infinity) + 10;
   const span = hi - lo || 1;
 
-  /** Puls → andel av höjden uppifrån. Högre puls högre upp. */
-  const top = (hr: number) => ((hi - hr) / span) * 100;
-  /** Passindex → andel av bredden. Jämnt fördelade: avstånden i tid är
-   *  ointressanta här, ordningen bär riktningen. Insatt 2 % i varje ände så
-   *  att första och sista märket får plats. */
-  const left = (i: number) =>
-    points.length === 1 ? 50 : 2 + ((i / (points.length - 1)) * 96);
+  /** Fart → andel av höjden uppifrån. Snabbare (lägre s/km) hamnar högre. */
+  const top = (pace: number) => ((pace - lo) / span) * 100;
+  const left = (i: number) => (points.length === 1 ? 50 : 2 + (i / (points.length - 1)) * 96);
 
   const over = counts["over-ceiling"];
-  const tone = over / points.length >= 0.25 ? "var(--status-concern)" : "var(--status-good)";
+  const tone = points.length > 0 && over / points.length >= 0.25 ? "var(--status-concern)" : "var(--status-good)";
 
   return (
     <section className="flex flex-col gap-3">
@@ -67,100 +88,135 @@ export function EasyDiscipline({ data }: { data: EasyDisciplineData }) {
           Pulsen på de lugna passen
         </h2>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Ett märke per lugnt pass och långpass på minst 20 minuter, placerat efter sin snittpuls.
-          Det gröna fältet är målbandet, den streckade linjen{" "}
+          Ett märke per lugnt pass och långpass på minst 20 minuter. Höjdled är farten, färgen är
+          pulsen: röd betyder att passet gick över{" "}
           {band.source === "lt1" ? "din aeroba tröskel" : "din skattade aeroba tröskel"} på{" "}
-          {band.ceiling} slag — taket för vad ett lugnt pass får vara.
+          {band.ceiling} slag. Gränsen mellan färgerna visar vid vilken fart pulsen slutar vara
+          lugn.
         </p>
       </div>
 
       <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-        {/* Domen före diagrammet: vyn ska säga vad man gör, inte kräva att
-            man tolkar en punktsvärm för att komma fram till det själv. */}
-        <p className="text-base font-medium" style={{ color: tone }}>
-          {verdict.headline}
-        </p>
-        <p className="mt-1 max-w-2xl text-sm text-[var(--ink-2)]">{verdict.detail}</p>
-
-        <div className="mt-5 flex gap-3">
-          {/* Axeletiketterna ligger utanför ritytan så de aldrig skalas med. */}
-          <div className="relative h-52 w-8 shrink-0 sm:h-60" aria-hidden>
-            <span
-              className="absolute right-0 -translate-y-1/2 text-[0.65rem] tabular-nums text-[var(--ink-3)]"
-              style={{ top: `${top(band.ceiling)}%` }}
-            >
-              {band.ceiling}
-            </span>
-            <span
-              className="absolute right-0 -translate-y-1/2 text-[0.65rem] tabular-nums text-[var(--ink-3)]"
-              style={{ top: `${top(band.low)}%` }}
-            >
-              {band.low}
-            </span>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-medium" style={{ color: tone }}>
+              {verdict.headline}
+            </p>
+            <p className="mt-1 max-w-2xl text-sm text-[var(--ink-2)]">{verdict.detail}</p>
           </div>
 
           <div
-            className="relative h-52 min-w-0 flex-1 sm:h-60"
-            role="img"
-            aria-label={`Snittpuls för ${points.length} lugna pass mot ett målband på ${band.low} till ${band.high} slag. ${over} pass ligger över taket ${band.ceiling}.`}
+            className="flex shrink-0 flex-wrap overflow-hidden rounded border border-[var(--line)] text-sm"
+            role="group"
+            aria-label="Passlängd"
           >
-            {/* Målbandet först, så märkena hamnar ovanpå. */}
-            <div
-              className="absolute inset-x-0 rounded-sm"
-              style={{
-                top: `${top(band.high)}%`,
-                height: `${top(band.low) - top(band.high)}%`,
-                background: "color-mix(in oklab, var(--status-good) 14%, transparent)",
-              }}
-            />
-            <div
-              className="absolute inset-x-0 border-t border-dashed"
-              style={{
-                top: `${top(band.ceiling)}%`,
-                borderColor: "var(--status-concern)",
-              }}
-            />
-            {points.map((p, i) => (
-              <span
-                key={p.id}
-                title={`${p.date} · ${p.label} · ${p.avgHr} slag`}
-                className="absolute block h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[var(--surface)]"
-                style={{
-                  left: `${left(i)}%`,
-                  top: `${top(p.avgHr)}%`,
-                  background: ZONE_FILL[p.zone],
-                }}
-              />
+            {BUCKETS.map((b) => (
+              <button
+                key={b}
+                type="button"
+                onClick={() => setBucket(b)}
+                aria-pressed={bucket === b}
+                className={`px-3 py-1 ${
+                  bucket === b
+                    ? "bg-[var(--foreground)] text-[var(--background)]"
+                    : "text-[var(--ink-2)]"
+                }`}
+              >
+                {EASY_LENGTH_LABELS[b]}
+              </button>
             ))}
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 pl-11 text-xs text-[var(--ink-3)]">
-          <span className="flex items-center gap-1.5">
-            <i
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ background: "var(--status-good)" }}
-            />
-            I eller under bandet ({counts.below + counts["in-band"]})
-          </span>
-          <span className="flex items-center gap-1.5">
-            <i
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ background: "var(--ink-3)" }}
-            />
-            Mellan bandet och taket ({counts["upper-margin"]})
-          </span>
-          <span className="flex items-center gap-1.5">
-            <i
-              className="inline-block h-2 w-2 rounded-full"
-              style={{ background: "var(--status-concern)" }}
-            />
-            Över taket ({over})
-          </span>
-        </div>
+        {points.length === 0 ? (
+          <p className="mt-6 text-sm text-[var(--ink-3)]">
+            Inga pass i det här längdintervallet.
+          </p>
+        ) : (
+          <>
+            <div className="mt-5 flex gap-3">
+              {/* Axeletiketterna ligger utanför ritytan så de aldrig skalas med. */}
+              <div className="relative h-52 w-12 shrink-0 sm:h-60" aria-hidden>
+                {[lo + span * 0.1, lo + span * 0.5, lo + span * 0.9].map((v) => (
+                  <span
+                    key={v}
+                    className="absolute right-0 -translate-y-1/2 text-[0.65rem] tabular-nums text-[var(--ink-3)]"
+                    style={{ top: `${top(v)}%` }}
+                  >
+                    {formatPacePerKm(v)}
+                  </span>
+                ))}
+              </div>
+
+              <div
+                className="relative h-52 min-w-0 flex-1 sm:h-60"
+                role="img"
+                aria-label={`Fart och puls för ${points.length} lugna pass. ${over} pass ligger över taket ${band.ceiling} slag.`}
+              >
+                {paceTarget && (
+                  <div
+                    className="absolute inset-x-0 rounded-sm"
+                    style={{
+                      top: `${top(paceTarget.low)}%`,
+                      height: `${Math.max(top(paceTarget.high) - top(paceTarget.low), 1)}%`,
+                      background: "color-mix(in oklab, var(--status-good) 14%, transparent)",
+                    }}
+                  />
+                )}
+                {points.map((p, i) => (
+                  <span
+                    key={p.id}
+                    title={`${p.date} · ${p.label} · ${formatPacePerKm(p.paceSecondsPerKm)}/km · ${p.avgHr} slag · ${(p.distanceMeters / 1000).toFixed(1)} km`}
+                    className="absolute block h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-[var(--surface)]"
+                    style={{
+                      left: `${left(i)}%`,
+                      top: `${top(p.paceSecondsPerKm)}%`,
+                      background: ZONE_FILL[p.zone],
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 pl-15 text-xs text-[var(--ink-3)]">
+              <span className="flex items-center gap-1.5">
+                <i
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ background: "var(--status-good)" }}
+                />
+                Under taket ({counts.below + counts["in-band"]})
+              </span>
+              <span className="flex items-center gap-1.5">
+                <i
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ background: "var(--ink-3)" }}
+                />
+                Nära taket ({counts["upper-margin"]})
+              </span>
+              <span className="flex items-center gap-1.5">
+                <i
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ background: "var(--status-concern)" }}
+                />
+                Över taket ({over})
+              </span>
+              {paceTarget && (
+                <span className="flex items-center gap-1.5">
+                  <i
+                    className="inline-block h-2 w-3 rounded-sm"
+                    style={{
+                      background: "color-mix(in oklab, var(--status-good) 30%, transparent)",
+                    }}
+                  />
+                  Målfart {formatPacePerKm(paceTarget.low)}–{formatPacePerKm(paceTarget.high)}/km
+                </span>
+              )}
+            </div>
+          </>
+        )}
 
         <details className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">
-          <summary className="cursor-pointer text-[var(--ink-2)]">Hur bandet räknas fram</summary>
+          <summary className="cursor-pointer text-[var(--ink-2)]">Hur taket räknas fram</summary>
           <p className="mt-2 text-[var(--ink-2)]">
             {band.source === "lt1" ? (
               <>
@@ -170,18 +226,23 @@ export function EasyDiscipline({ data }: { data: EasyDisciplineData }) {
             ) : (
               <>
                 Taket är <strong>skattat till 82 % av din maxpuls</strong>: {band.ceiling} slag.
-                Det är en grov approximation — fyll i aerob tröskel under Inställningar så räknas
-                bandet på ett uppmätt värde i stället.
+                Fyll i aerob tröskel under Inställningar så räknas det på ett angivet värde i
+                stället.
               </>
             )}{" "}
-            Målbandet {band.low}–{band.high} ligger 8–25 slag under taket. Ett pass som ligger
-            precis på tröskeln är inte lugnt, det är så hårt ett lugnt pass får vara utan att bli
-            fel.
+            Grått märke betyder att passet låg under taket men inom {band.high}–{band.ceiling},
+            alltså på gränsen. Ett pass som ligger precis på tröskeln är inte lugnt, det är så
+            hårt ett lugnt pass får vara utan att bli fel.
+          </p>
+          <p className="mt-2 text-[var(--ink-2)]">
+            Pulsen driver uppåt ju längre passet blir, så ett långpass över taket kan vara drift
+            snarare än för hög fart. Längdfiltret finns för att kunna hålla längden konstant —
+            domen räknas om på det urval du valt.
           </p>
           <p className="mt-2 text-[var(--ink-2)]">
             Måttet använder bara passets tidsviktade snittpuls och ett tal ur din profil — inga
             pulszoner. Det är avsiktligt: Garmin levererar sekunder per zon men aldrig gränserna
-            de räknades mot, så zonandelarna i Intensitetsfördelningen ovan ärver klockans
+            de räknades mot, så zonandelarna i Intensitetsfördelningen ärver klockans
             kalibrering. Den här rutan gör inte det.
           </p>
         </details>
