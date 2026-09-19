@@ -18,23 +18,16 @@ import {
   type SeasonKind,
   COMMON_EVENTS,
 } from "@/lib/planning";
-import {
-  SESSION_ACTIVITY_COLUMNS,
-  groupActivitiesIntoSessions,
-  type SessionActivity,
-} from "@/lib/sessions";
+import { SESSION_ACTIVITY_COLUMNS, type SessionActivity } from "@/lib/sessions";
 import { CATEGORY_VALUES, categoryColorVar } from "@/lib/categories";
 import { BAND_LABELS } from "@/lib/intensity";
 import { formatHoursMinutes } from "@/lib/format";
 import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
 import { computeRaceBuildup, BUILDUP_WINDOW_DAYS, type RaceBuildup } from "@/lib/race-buildup";
-import { computeEfficiencyPoints } from "@/lib/efficiency";
-import { isoWeekStart, median } from "@/lib/stats-utils";
 import {
   RaceProgressionChart,
   type RaceProgressionPoint,
   type RaceProgressionSeries,
-  type TrainingSeries,
 } from "@/components/charts/RaceProgressionChart";
 import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
@@ -83,17 +76,6 @@ function formatPct(v: number): string {
  * samma aggregering som formkurvan på /trender redan använder. Råvärde per
  * pass ger annars en hackig, spretig linje i RaceProgressionChart (EF
  * svänger kraftigt med väder/underlag, se varningstexten längre ner). */
-function weeklyMedianPoints(points: { date: string; value: number }[]): { date: string; value: number }[] {
-  const byWeek = new Map<string, number[]>();
-  for (const p of points) {
-    const wk = isoWeekStart(p.date);
-    byWeek.set(wk, [...(byWeek.get(wk) ?? []), p.value]);
-  }
-  return [...byWeek.entries()]
-    .map(([date, values]) => ({ date, value: median(values) as number }))
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
-}
-
 type CompetitionEventRow = {
   id: string;
   event: string;
@@ -460,9 +442,16 @@ export default async function TavlingsresultatPage({
   // array för upprepade) och filtreras mot vad som faktiskt går att välja.
   // Utan tidigare val öppnar sidan på grenen med flest resultat.
   const requestedEvents = grenParam == null ? [] : Array.isArray(grenParam) ? grenParam : [grenParam];
+  /* Tomt urval måste gå att uttrycka i URL:en. Utan en sentinel faller en
+     tom lista tillbaka på förstahandsgrenen, och då gick den sista valda
+     grenen inte att kryssa ur — man var tvungen att välja en annan gren
+     först, vilket ingen gissar sig till. NO_EVENTS är den signalen. */
+  const NO_EVENTS = "inga";
+  const explicitlyEmpty = requestedEvents.includes(NO_EVENTS);
   const validRequestedEvents = requestedEvents.filter((e) => eventOptions.some((o) => o.event === e));
-  const selectedEvents =
-    validRequestedEvents.length > 0
+  const selectedEvents = explicitlyEmpty
+    ? []
+    : validRequestedEvents.length > 0
       ? validRequestedEvents
       : eventOptions[0]
         ? [eventOptions[0].event]
@@ -502,76 +491,6 @@ export default async function TavlingsresultatPage({
   // Garmin-synken startade; LT2 har bara ett sparat värde i taget (skrivs
   // över vid varje nytt tröskeltest, se profiles.lt2_hr) så den blir en
   // enstaka punkt, inte en kurva, tills fler tröskeltest loggas regelbundet.
-  const [{ data: trainingActivityRows }, { data: profileThresholdRow }] = await Promise.all([
-    supabase
-      .from("activities")
-      .select(SESSION_ACTIVITY_COLUMNS)
-      .eq("user_id", scopedUserId)
-      .gte("start_time", TRAINING_DATA_START)
-      .order("start_time"),
-    supabase
-      .from("profiles")
-      .select("lt2_hr, lt2_measured_on")
-      .eq("id", scopedUserId)
-      .maybeSingle(),
-  ]);
-
-  const trainingSessions = groupActivitiesIntoSessions(
-    (trainingActivityRows ?? []) as unknown as SessionActivity[],
-  );
-
-  // EF/VO2max som råvärde per pass ritar en hackig, spretig linje (EF
-  // svänger kraftigt med väder/underlag/uttorkning, se varningen längre ner
-  // på sidan) — samma veckovisa median som /trender redan använder för
-  // formkurvan (isoWeekStart+median) ger en läsbar kurva att jämföra mot
-  // tävlingsutvecklingen i stället för ett moln av punkter.
-  const efPoints = weeklyMedianPoints(
-    computeEfficiencyPoints(trainingSessions).map((p) => ({ date: p.date, value: p.ef * 60 })),
-  );
-  const vo2maxPoints = weeklyMedianPoints(
-    trainingSessions
-      .flatMap((s) => s.activities.map((a) => ({ date: s.date, value: a.vo2max })))
-      .filter((p): p is { date: string; value: number } => p.value != null),
-  );
-  const lt2Points =
-    profileThresholdRow?.lt2_hr != null && profileThresholdRow.lt2_measured_on
-      ? [{ date: profileThresholdRow.lt2_measured_on as string, value: profileThresholdRow.lt2_hr as number }]
-      : [];
-
-  const trainingSeries: TrainingSeries[] = [
-    {
-      id: "ef",
-      label: "Formkurva (EF)",
-      unit: "m/slag",
-      color: "#0891b2",
-      higherIsBetter: true,
-      points: efPoints,
-      insufficientDataNote:
-        efPoints.length < 2 ? "för få lugna/långa pass med puls i perioden ännu" : undefined,
-    },
-    {
-      id: "vo2max",
-      label: "VO2max",
-      unit: "ml/kg/min",
-      color: "#d97706",
-      higherIsBetter: true,
-      points: vo2maxPoints,
-      insufficientDataNote: vo2maxPoints.length < 2 ? "ingen VO2max-skattning från klockan ännu" : undefined,
-    },
-    {
-      id: "lt2",
-      label: "Tröskelpuls (LT2)",
-      unit: "slag/min",
-      color: "#7c3aed",
-      higherIsBetter: true,
-      points: lt2Points,
-      insufficientDataNote:
-        lt2Points.length < 2
-          ? "bara en sparad mätning — tröskelpuls har ingen entydig bättre/sämre-riktning för sig, och räcker inte till en kurva än"
-          : undefined,
-    },
-  ].filter((s) => s.points.length > 0);
-
   // Upptrappningsjämförelsens <select>-fält innehåller lopp i någon av de
   // valda grenarna — det är så "jämför upptrappningen" blir konkret utan
   // att låsa jämförelsen till bara en gren i taget.
@@ -617,7 +536,8 @@ export default async function TavlingsresultatPage({
       ? selectedEvents.filter((e) => e !== event)
       : [...selectedEvents, event];
     const params = new URLSearchParams();
-    for (const e of next) params.append("gren", e);
+    if (next.length === 0) params.append("gren", NO_EVENTS);
+    else for (const e of next) params.append("gren", e);
     if (banaParam) params.set("bana", banaParam);
     if (raceAParam) params.set("raceA", raceAParam);
     if (raceBParam) params.set("raceB", raceBParam);
@@ -904,45 +824,23 @@ export default async function TavlingsresultatPage({
             <div className="flex flex-wrap gap-2 text-sm">
               {eventOptions.map((o) => {
                 const active = selectedEvents.includes(o.event);
-                /* Den sista valda grenen går inte att kryssa ur. Grafen kräver
-                 * minst en kurva, och `selectedEvents` faller tillbaka på
-                 * eventOptions[0] när inget är valt — så ett urkryssande av
-                 * den sista gav förut en länk som såg ut att göra något men
-                 * landade i exakt samma läge (eller värre: bytte till en
-                 * ANNAN gren, om den urkryssade inte råkade vara den med
-                 * flest resultat). Rapporterat 2026-08-27: "jag klickar på
-                 * 800m men den är fortsatt markerad".
+                /* Varje gren går alltid att kryssa ur, även den sista.
                  *
-                 * Fixen är att inte erbjuda klicket alls i stället för att
-                 * uppfinna ett tomt läge: en tom graf svarar inte på någon
-                 * fråga, och resten av sidan (upptrappningsjämförelsen,
-                 * tabellen) förutsätter redan minst en vald gren. */
-                const isOnlySelected = active && selectedEvents.length === 1;
+                 * Förut var den sista valda låst: `selectedEvents` föll
+                 * tillbaka på eventOptions[0] när inget var valt, så ett
+                 * urkryssande landade i samma läge — eller bytte till en
+                 * ANNAN gren om den urkryssade inte råkade ha flest resultat
+                 * ("jag klickar på 800m men den är fortsatt markerad",
+                 * 2026-08-27). Låsningen löste det men skapade ett nytt
+                 * problem: för att byta gren måste man välja den nya FÖRST,
+                 * och klickar man på den gamla händer ingenting alls.
+                 *
+                 * Nu kan tomt urval uttryckas i URL:en (gren=inga), grafen
+                 * visar sin tomma text, och chipen beter sig likadant oavsett
+                 * hur många som är valda. */
                 const chipStyle = active
                   ? { borderColor: eventColor(o.event), backgroundColor: eventColor(o.event), color: "white" }
                   : { borderColor: "var(--line)" };
-
-                if (isOnlySelected) {
-                  return (
-                    <span
-                      key={o.event}
-                      role="button"
-                      aria-pressed
-                      aria-disabled
-                      /* tabIndex, trots att den inte går att aktivera: ARIA:s
-                         mönster för en avstängd men fortfarande meningsbärande
-                         kontroll. Utan den hoppar en skärmläsare som stegar
-                         mellan knappar över just den gren som ÄR vald, vilket
-                         är den enda chipen vars tillstånd betyder något. */
-                      tabIndex={0}
-                      title="Minst en gren måste vara vald — välj en annan gren för att byta."
-                      className="flex cursor-default items-center gap-1.5 rounded border px-3 py-1"
-                      style={chipStyle}
-                    >
-                      {o.event} ({o.count})
-                    </span>
-                  );
-                }
 
                 return (
                   <Link
@@ -985,7 +883,6 @@ export default async function TavlingsresultatPage({
 
             <RaceProgressionChart
               series={series}
-              trainingSeries={trainingSeries}
               emptyLabel="Inga lopp i de valda grenarna med det valda banfiltret."
             />
 
