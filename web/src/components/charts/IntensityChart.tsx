@@ -105,14 +105,20 @@ export function IntensityChart({
   weeks,
   profile,
   emptyLabel = "Ingen zondata i perioden.",
+  defaultModelId,
 }: {
   weeks: IntensityWeek[];
   profile: ThresholdProfile;
   emptyLabel?: string;
+  /** Målmodell att utgå från, vald ur blockets fas. Undefined → första i
+   * listan, som tidigare. */
+  defaultModelId?: string;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
   const [showTable, setShowTable] = useState(false);
-  const [modelId, setModelId] = useState(INTENSITY_MODELS[0].id);
+  // Utgångsläget kommer från blockets fas (se PHASE_INTENSITY_MODEL);
+  // läsaren kan fortfarande byta modell i knappraden nedan.
+  const [modelId, setModelId] = useState(defaultModelId ?? INTENSITY_MODELS[0].id);
 
   const totals = useMemo(() => weeks.map((w) => zoneTotal(w.zoneSeconds)), [weeks]);
   const periodZones = useMemo(() => sumWeeks(weeks), [weeks]);

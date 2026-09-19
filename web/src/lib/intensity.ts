@@ -142,3 +142,28 @@ export const EMPTY_THRESHOLD_PROFILE: ThresholdProfile = {
 export function hasPersonalThresholds(profile: ThresholdProfile): boolean {
   return profile.thresholdHrLow != null && profile.thresholdHrHigh != null;
 }
+
+/* --------------------- målmodell per träningsfas -------------------------- */
+
+// Modellen valdes tidigare för hand ur en lista, med norsk dubbeltröskel som
+// default oavsett var i året man stod. Men blocket vet redan vilken fas det
+// är, och fasen avgör vilken fördelning som är rimlig att jämföra mot: ett
+// grundträningsblock ska inte mätas mot en tävlingsmodell. Valet är kvar i
+// UI:t — det här sätter bara utgångsläget, så att den vanligaste jämförelsen
+// är den man får utan att göra något.
+
+import type { PhaseType } from "@/lib/planning";
+
+export const PHASE_INTENSITY_MODEL: Record<PhaseType, string> = {
+  // Volym vid kontrollerad intensitet: mest lugnt, därefter tröskel, minst
+  // över tröskel.
+  allman: "pyramidal",
+  // Mer specifikt arbete och tröskel med volymen uppe — dubbeltröskelns
+  // hemmaplan.
+  tavlingsforberedande: "norwegian",
+  // Tävlingsfart och korta repetitioner: tydligt polariserat.
+  tavling_form: "polarized",
+  tavling_stabiliserande: "polarized",
+  stabiliserande: "pyramidal",
+  vila: "pyramidal",
+};

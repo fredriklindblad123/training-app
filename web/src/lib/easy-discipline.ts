@@ -1,0 +1,191 @@
+// "Är lugnt verkligen lugnt?" — disciplinen på de lugna passen.
+//
+// ── Varför den här mätningen behövs ──────────────────────────────────────
+// Intensitetsfördelningen (lib/intensity.ts) bygger på Garmins zonhinkar, och
+// de går inte att lita på: klockan levererar sekunder per zon men aldrig
+// pulsgränserna de räknades mot. Står klockan på standardzoner från 220 − ålder
+// hamnar zon 4 kring 163 slag, och ett lugnt pass på 168 stämplas som
+// tröskelarbete. För Alice ger det 68 % "tröskel och över" av träningstiden —
+// en siffra som skulle betyda överträning inom en månad om den vore sann.
+//
+// Den här modulen kringgår hinkarna helt. Den använder bara två tal: passets
+// tidsviktade snittpuls och en personlig tröskel ur `profiles`. Ingen
+// zonindelning inblandad, alltså inte känslig för klockans kalibrering.
+//
+// ── Varför LT1 och inte procent av max ───────────────────────────────────
+// Aerob tröskel (LT1) är den fysiologiskt riktiga taknivån för lugn löpning:
+// över den börjar laktatet ackumuleras och passet slutar vara återhämtning.
+// Finns `profiles.lt1_hr` används den rakt av. Saknas den skattas den till
+// 82 % av maxpuls — en grov men vedertagen approximation som skrivs ut i UI:t
+// så att ingen tror att den är uppmätt.
+//
+// Målbandet läggs *under* taket, inte omkring det. Ett lugnt pass som ligger
+// precis på LT1 är inte lugnt, det är så hårt det får vara utan att bli fel.
+// Marginalen 8–25 slag under LT1 är den vanliga rekommendationen för
+// distanslöpning i förberedelseperiod.
+
+import type { TrainingSession } from "@/lib/sessions";
+import { median } from "@/lib/stats-utils";
+
+/** Samma filter som formkurvan (lib/efficiency.ts): bara pass som *ska* vara
+ * lugna, och bara de som är långa nog att snittpulsen betyder något. En
+ * 10-minuters nerjogg säger inget om disciplinen på distanspassen. */
+export const EASY_CATEGORIES = ["easy", "long_run"] as const;
+export const EASY_MIN_SECONDS = 20 * 60;
+
+/** Marginal under LT1 för målbandet, i slag. */
+const BAND_LOWER_MARGIN = 25;
+const BAND_UPPER_MARGIN = 8;
+
+/** LT1 ≈ 82 % av maxpuls när uppmätt värde saknas. */
+const LT1_FRACTION_OF_MAX = 0.82;
+
+export type EasyBandSource = "lt1" | "max-hr";
+
+export type EasyBand = {
+  /** Aerob tröskel: taket för lugn löpning. */
+  ceiling: number;
+  /** Målbandets undre och övre gräns. */
+  low: number;
+  high: number;
+  /** Om taket är uppmätt eller skattat — avgör hur UI:t formulerar sig. */
+  source: EasyBandSource;
+};
+
+/** Var ett enskilt pass hamnade. `over-ceiling` är det som betyder något:
+ * passet gick över aerob tröskel och var alltså inte ett lugnt pass. */
+export type EasyZone = "below" | "in-band" | "upper-margin" | "over-ceiling";
+
+export type EasyPoint = {
+  id: string;
+  /** YYYY-MM-DD */
+  date: string;
+  label: string;
+  avgHr: number;
+  durationSeconds: number;
+  distanceMeters: number;
+  zone: EasyZone;
+};
+
+export type EasyDiscipline = {
+  band: EasyBand;
+  points: EasyPoint[];
+  /** Antal pass per utfall. Summerar till `points.length`. */
+  counts: Record<EasyZone, number>;
+  /** Median-snittpuls över de lugna passen. Median, inte medelvärde: ett
+   * enstaka pass med tappat pulsband ska inte flytta siffran. */
+  medianHr: number;
+  /** Andel pass över aerob tröskel, 0–1. Vyns huvudtal. */
+  shareOverCeiling: number;
+};
+
+/** Bygger målbandet ur profilens pulsvärden. `null` när underlaget saknas —
+ * då ska UI:t be om värdet i stället för att gissa fram ett band. */
+export function easyBandFrom(
+  lt1Hr: number | null,
+  maxHr: number | null,
+): EasyBand | null {
+  if (lt1Hr != null && lt1Hr > 0) {
+    return {
+      ceiling: lt1Hr,
+      low: lt1Hr - BAND_LOWER_MARGIN,
+      high: lt1Hr - BAND_UPPER_MARGIN,
+      source: "lt1",
+    };
+  }
+  if (maxHr != null && maxHr > 0) {
+    const ceiling = Math.round(maxHr * LT1_FRACTION_OF_MAX);
+    return {
+      ceiling,
+      low: ceiling - BAND_LOWER_MARGIN,
+      high: ceiling - BAND_UPPER_MARGIN,
+      source: "max-hr",
+    };
+  }
+  return null;
+}
+
+function zoneFor(avgHr: number, band: EasyBand): EasyZone {
+  if (avgHr > band.ceiling) return "over-ceiling";
+  if (avgHr > band.high) return "upper-margin";
+  if (avgHr >= band.low) return "in-band";
+  return "below";
+}
+
+export function computeEasyDiscipline(
+  sessions: TrainingSession[],
+  band: EasyBand | null,
+): EasyDiscipline | null {
+  if (band == null) return null;
+
+  const points: EasyPoint[] = sessions
+    .filter(
+      (s) =>
+        (EASY_CATEGORIES as readonly string[]).includes(s.category) &&
+        s.durationSeconds >= EASY_MIN_SECONDS &&
+        s.avgHr != null &&
+        s.avgHr > 0,
+    )
+    .map((s) => ({
+      id: s.id,
+      date: s.date,
+      label: s.dominantActivity.name ?? "Pass",
+      avgHr: s.avgHr as number,
+      durationSeconds: s.durationSeconds,
+      distanceMeters: s.distanceMeters,
+      zone: zoneFor(s.avgHr as number, band),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  if (points.length === 0) return null;
+
+  const counts: Record<EasyZone, number> = {
+    below: 0,
+    "in-band": 0,
+    "upper-margin": 0,
+    "over-ceiling": 0,
+  };
+  for (const p of points) counts[p.zone] += 1;
+
+  return {
+    band,
+    points,
+    counts,
+    medianHr: Math.round(median(points.map((p) => p.avgHr)) ?? 0),
+    shareOverCeiling: counts["over-ceiling"] / points.length,
+  };
+}
+
+/** Domen, som en mening. Skrivs föreskrivande — vyn ska säga vad man gör åt
+ * det, inte bara vad som hänt (docs/tranarloopen.md avsnitt 6). */
+export function easyVerdict(d: EasyDiscipline): { headline: string; detail: string } {
+  const over = d.counts["over-ceiling"];
+  const n = d.points.length;
+  const ceilingWord =
+    d.band.source === "lt1" ? "din aeroba tröskel" : "din skattade aeroba tröskel";
+
+  if (over / n >= 0.5) {
+    return {
+      headline: `${over} av ${n} lugna pass gick över ${ceilingWord}.`,
+      detail:
+        `Medianen ligger på ${d.medianHr} slag, ${d.medianHr - d.band.ceiling} över taket på ` +
+        `${d.band.ceiling}. De lugna passen är i praktiken distanspass i medelfart — de bygger ` +
+        `mindre uthållighet per kilometer än verkligt lugn löpning, och de gör dig tröttare till ` +
+        `kvalitetspassen. Sänk farten tills pulsen ligger på ${d.band.low}–${d.band.high}.`,
+    };
+  }
+  if (over / n >= 0.25) {
+    return {
+      headline: `${over} av ${n} lugna pass kröp över ${ceilingWord}.`,
+      detail:
+        `Medianen ${d.medianHr} slag ligger inom taket, men var fjärde lugnt pass gör det inte. ` +
+        `Det är oftast de längsta passen som glider uppåt. Håll dem på ${d.band.low}–${d.band.high}.`,
+    };
+  }
+  return {
+    headline: `${d.counts["in-band"] + d.counts["upper-margin"]} av ${n} lugna pass låg rätt.`,
+    detail:
+      `Medianen ${d.medianHr} slag ligger under taket på ${d.band.ceiling}. Disciplinen på de ` +
+      `lugna passen håller — det är den som gör att kvalitetspassen går att köra hårt.`,
+  };
+}

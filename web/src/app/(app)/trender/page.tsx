@@ -3,19 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
-import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
-import {
-  ComboChart,
-  type ComboEvent,
-  type ComboLoadStack,
-  type ComboPeriod,
-  type ComboSeries,
-} from "@/components/charts/ComboChart";
 import { IntensityChart, type IntensityWeek } from "@/components/charts/IntensityChart";
 import { EfficiencyChart, type EfficiencyRace } from "@/components/charts/EfficiencyChart";
-import { computeEfficiencyPoints } from "@/lib/efficiency";
+import { computeEfficiencyPoints, efficiencyVerdict } from "@/lib/efficiency";
 import {
   EMPTY_THRESHOLD_PROFILE,
+  PHASE_INTENSITY_MODEL,
   emptyZoneSeconds,
   type ThresholdProfile,
   type ZoneSeconds,
@@ -26,8 +19,13 @@ import {
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
-import { coefficientOfVariation, isoWeekStart, mean, median, weekLabel } from "@/lib/stats-utils";
+import { coefficientOfVariation, isoWeekStart, median, weekLabel } from "@/lib/stats-utils";
 import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
+import { EasyDiscipline } from "@/components/EasyDiscipline";
+import { LoadStrip } from "@/components/LoadStrip";
+import { computeEasyDiscipline, easyBandFrom } from "@/lib/easy-discipline";
+import { computeLoadRamp } from "@/lib/load-ramp";
+import { pickRacePace, RACE_PACE_MONTHS, type RaceResultRow } from "@/lib/race-pace";
 import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
 import { addDays as planAddDays, PHASE_LABELS, type PhaseType } from "@/lib/planning";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
@@ -100,37 +98,6 @@ function buildRaceDays(
   return raceDays;
 }
 
-function formatDateRange(from: string | null, to: string | null): string {
-  if (!from || !to) return "ingen data";
-  return from === to ? from : `${from} – ${to}`;
-}
-
-/** Min/max-datum i en samling dagnycklar. */
-function dateRange(days: Iterable<string>): { from: string | null; to: string | null } {
-  let from: string | null = null;
-  let to: string | null = null;
-  for (const day of days) {
-    if (from == null || day < from) from = day;
-    if (to == null || day > to) to = day;
-  }
-  return { from, to };
-}
-
-/** Veckovisa medelvärden ur dagsvärden. `null` där veckan saknar mätning —
- * aldrig 0, aldrig interpolerat. */
-function weeklyMeans(weekSeries: string[], byDay: Map<string, number[]>): (number | null)[] {
-  const byWeek = new Map<string, number[]>();
-  for (const [day, values] of byDay) {
-    const wk = isoWeekStart(day);
-    byWeek.set(wk, [...(byWeek.get(wk) ?? []), ...values]);
-  }
-  return weekSeries.map((wk) => mean(byWeek.get(wk) ?? []));
-}
-
-function countWeeksWithData(values: (number | null)[]): number {
-  return values.filter((v) => v != null).length;
-}
-
 export default async function TrendsPage({
   searchParams,
 }: {
@@ -200,7 +167,6 @@ export default async function TrendsPage({
   // fungera utan dem, bara med en tydligare brasklapp om zongränserna.
   const [
     { data: activityRows },
-    { data: dailyMetrics },
     { data: diaryEntries },
     profileResult,
     { data: plannedRows },
@@ -214,15 +180,6 @@ export default async function TrendsPage({
         .gte("start_time", startDate);
       if (endDateExclusive) q = q.lt("start_time", endDateExclusive);
       return q.order("start_time");
-    })(),
-    (() => {
-      let q = supabase
-        .from("daily_metrics")
-        .select("metric_date, sleep_seconds, sleep_score, resting_hr, hrv_overnight_avg")
-        .eq("user_id", scopedUserId)
-        .gte("metric_date", startDate);
-      if (endDateExclusive) q = q.lt("metric_date", endDateExclusive);
-      return q.order("metric_date");
     })(),
     (() => {
       let q = supabase
@@ -290,86 +247,6 @@ export default async function TrendsPage({
     sessionsByWeek.set(wk, [...(sessionsByWeek.get(wk) ?? []), session]);
   }
 
-  // --- A. Huvudgrafen: belastning vs återhämtning (P1.1) ---------------------
-
-  const notesByWeek = new Map<string, string[]>();
-  const sickDaysByWeek = new Map<string, string[]>();
-  const injuredDaysByWeek = new Map<string, string[]>();
-  // RPE/känsla kom tidigare från den dagliga incheckningen
-  // (diary_entries.rpe/feeling), borttagen 2026-08-12 — fylldes i för sällan
-  // för att ge meningsfull data. Källan är nu Alices egen Känsla/Upplevd
-  // ansträngning-skattning i Garmin Connect-appen efter varje pass
-  // (activities.garmin_feel/garmin_rpe, se migration
-  // 20260812100000_garmin_feel_rpe.sql), läst av passets dominantActivity —
-  // samma fragment som redan avgör passets kategori och namn på andra håll.
-  const rpeByDay = new Map<string, number>();
-  const feelingByDay = new Map<string, number>();
-  for (const session of sessions) {
-    const feel = session.dominantActivity.garmin_feel;
-    const rpe = session.dominantActivity.garmin_rpe;
-    if (feel != null) feelingByDay.set(session.date, feel);
-    if (rpe != null) rpeByDay.set(session.date, rpe);
-  }
-
-  for (const entry of diaryEntries ?? []) {
-    const day: string = entry.entry_date;
-    const wk = isoWeekStart(day);
-    if (entry.notes) {
-      const label = `${day.slice(8, 10)}/${day.slice(5, 7)}`;
-      notesByWeek.set(wk, [...(notesByWeek.get(wk) ?? []), `${label}: ${entry.notes}`]);
-    }
-    if (entry.day_type === "sick") {
-      sickDaysByWeek.set(wk, [...(sickDaysByWeek.get(wk) ?? []), day]);
-    }
-    if (entry.day_type === "injured") {
-      injuredDaysByWeek.set(wk, [...(injuredDaysByWeek.get(wk) ?? []), day]);
-    }
-  }
-
-  const periods: ComboPeriod[] = weekSeries.map((wk) => ({
-    key: wk,
-    label: weekLabel(wk),
-    fullLabel: weekRangeLabel(wk),
-    // Dagbokens egna ord för veckan. Kopplingen siffra ↔ text är hela poängen
-    // med panelen, så texten kortas inte ner — den kapas bara i antal inlägg.
-    note: (notesByWeek.get(wk) ?? []).slice(0, 4).join("\n") || null,
-  }));
-
-  const load: ComboLoadStack[] = weekSeries.map((wk) => {
-    const stack: ComboLoadStack = {};
-    for (const session of sessionsByWeek.get(wk) ?? []) {
-      if (session.trainingLoad <= 0) continue;
-      stack[session.category] = (stack[session.category] ?? 0) + session.trainingLoad;
-    }
-    return stack;
-  });
-
-  // Dagsvärden → veckovisa medelvärden för återhämtningsserierna.
-  const hrvByDay = new Map<string, number[]>();
-  const rhrByDay = new Map<string, number[]>();
-  const sleepByDay = new Map<string, number[]>();
-  const sleepScoreByDay = new Map<string, number>();
-  const sleepHoursByDay = new Map<string, number>();
-  const hrvValueByDay = new Map<string, number>();
-  const rhrValueByDay = new Map<string, number>();
-
-  for (const metric of dailyMetrics ?? []) {
-    const day: string = metric.metric_date;
-    if (metric.hrv_overnight_avg != null) {
-      hrvByDay.set(day, [metric.hrv_overnight_avg]);
-      hrvValueByDay.set(day, metric.hrv_overnight_avg);
-    }
-    if (metric.resting_hr != null) {
-      rhrByDay.set(day, [metric.resting_hr]);
-      rhrValueByDay.set(day, metric.resting_hr);
-    }
-    if (metric.sleep_seconds != null) {
-      sleepByDay.set(day, [metric.sleep_seconds / 3600]);
-      sleepHoursByDay.set(day, metric.sleep_seconds / 3600);
-    }
-    if (metric.sleep_score != null) sleepScoreByDay.set(day, metric.sleep_score);
-  }
-
   // --- P2.1: passkvalitet för återkommande nyckelpass ------------------------
   // Varven hämtas för periodens aktiviteter och grupperas på signatur, dvs
   // vad som faktiskt genomfördes (antal och längd på aktiva varv) — passnamnen
@@ -416,18 +293,6 @@ export default async function TrendsPage({
     signatureGroups = groupBySignature(occurrences);
   }
 
-  const hrvWeekly = weeklyMeans(weekSeries, hrvByDay);
-  const rhrWeekly = weeklyMeans(weekSeries, rhrByDay);
-  const sleepWeekly = weeklyMeans(weekSeries, sleepByDay);
-  const rpeWeekly = weeklyMeans(
-    weekSeries,
-    new Map([...rpeByDay].map(([day, value]) => [day, [value]])),
-  );
-  const feelingWeekly = weeklyMeans(
-    weekSeries,
-    new Map([...feelingByDay].map(([day, value]) => [day, [value]])),
-  );
-
   // --- C. Formkurva (P1.4) — beräknad på passnivå, aldrig per aktivitet -----
   // Delad med /dashboard (lib/efficiency.ts) — samma pass-urval och formel överallt.
   const efPoints = computeEfficiencyPoints(sessions);
@@ -441,101 +306,13 @@ export default async function TrendsPage({
   }
   const efWeekly = weekSeries.map((wk) => median(efByWeek.get(wk) ?? []));
 
-  const candidateSeries: ComboSeries[] = [
-    {
-      id: "hrv",
-      label: "HRV",
-      values: hrvWeekly,
-      formatKind: "ms",
-      higherIsBetter: true,
-      defaultVisible: true,
-    },
-    {
-      id: "rhr",
-      label: "Vilopuls",
-      values: rhrWeekly,
-      formatKind: "bpm",
-      higherIsBetter: false,
-      defaultVisible: true,
-    },
-    {
-      id: "sleep",
-      label: "Sömn",
-      values: sleepWeekly,
-      formatKind: "hours",
-      higherIsBetter: true,
-      defaultVisible: true,
-    },
-    {
-      id: "ef",
-      /* Hette "Formkurva (m/slag)" till 2026-08-27. Etiketten lovade en
-       * enhet som axeln inte visar: sekundäraxeln här är SD-avvikelse mot
-       * en rullande baslinje, inte meter per hjärtslag. Det fick den här
-       * linjen att se ut att säga emot Formkurva-diagrammet längre ner (som
-       * visar råvärden) när de i själva verket svarar på olika frågor —
-       * rapporterat 2026-08-27. Enheten bor nu i formatteraren i stället,
-       * där råvärdet faktiskt visas: tooltipen. */
-      label: "Formkurva",
-      values: efWeekly,
-      formatKind: "m_per_beat",
-      higherIsBetter: true,
-      // "Fart" i Almgrens fyra axlar (2.3) — ska gå att skilja från
-      // puls-/sömnlagren i en blick, därför en egen färg i stället för bläck
-      // som de övriga, och aktiv från start. Bokstavlig hex snarare än en
-      // CSS-variabel: linjens `stroke` via `var(--...)` visade sig inte slå
-      // igenom i alla webbläsare (staplarnas `fill` gör det, men den här
-      // linjen gjorde det inte) — en ren hexfärg är mer robust och läsbar i
-      // både ljust och mörkt läge.
-      color: "#0891b2",
-      defaultVisible: true,
-    },
-    {
-      id: "rpe",
-      label: "RPE (Garmin)",
-      values: rpeWeekly,
-      formatKind: "decimal1",
-      higherIsBetter: false,
-    },
-    {
-      id: "feeling",
-      label: "Känsla (Garmin)",
-      values: feelingWeekly,
-      formatKind: "decimal1",
-      higherIsBetter: true,
-    },
-  ];
-
-  // Ett lager som aldrig har ett enda värde är en knapp som inte gör något.
-  // Serier utan data lyfts ur diagrammet och redovisas i täckningspanelen.
-  const series = candidateSeries.filter((s) => s.values.some((v) => v != null));
-  const missingSeries = candidateSeries.filter((s) => s.values.every((v) => v == null));
-
   const raceDays = buildRaceDays(
     (competitionRows ?? []) as CompetitionLite[],
     sessions.filter((s) => s.category === "race"),
   );
 
-  const events: ComboEvent[] = [
-    ...[...sickDaysByWeek].map(([wk, days]) => ({
-      periodKey: wk,
-      kind: "sick" as const,
-      label: `Sjuk ${days.length} ${days.length === 1 ? "dag" : "dagar"}`,
-    })),
-    ...[...injuredDaysByWeek].map(([wk, days]) => ({
-      periodKey: wk,
-      kind: "injured" as const,
-      label: `Skadad ${days.length} ${days.length === 1 ? "dag" : "dagar"}`,
-    })),
-    ...[...raceDays].map(([date, label]) => ({
-      periodKey: isoWeekStart(date),
-      kind: "race" as const,
-      label,
-    })),
-  ];
+  const efVerdict = efficiencyVerdict(efPoints);
 
-  // Ingen EF-punkt krävs för att visa flaggan (EfficiencyChart ritar den som
-  // en ren datummarkör) — bra så, för banlopp saknar per definition egen
-  // Garmin-data att räkna EF på.
   const efRaces: EfficiencyRace[] = [...raceDays].map(([date, label]) => ({ date, label }));
 
   // --- B. Intensitetsfördelning (P1.3) --------------------------------------
@@ -572,7 +349,15 @@ export default async function TrendsPage({
   // fönstret är ett faktiskt block: en rullande 12-veckorsvy blandar per
   // definition olika träningsfaser och en låg/hög CV där säger inget om
   // konsekvens, bara att fönstret råkar spänna över olika sorters veckor.
-  const weeklyLoadTotals = load.map((stack) => Object.values(stack).reduce((a, b) => a + b, 0));
+  // Veckans totala träningsbelastning. Stackades tidigare per passkategori
+  // för huvudgrafen — den grafen är borta och ingen läser fördelningen, så
+  // bara summan räknas ut.
+  const weeklyLoadTotals = weekSeries.map((wk) =>
+    (sessionsByWeek.get(wk) ?? []).reduce(
+      (sum, session) => sum + Math.max(session.trainingLoad, 0),
+      0,
+    ),
+  );
   const loadCv =
     activeBlock && weeklyLoadTotals.filter((v) => v > 0).length >= 2
       ? coefficientOfVariation(weeklyLoadTotals)
@@ -591,49 +376,57 @@ export default async function TrendsPage({
     (diaryEntries ?? []).map((e) => [e.entry_date as string, e.day_type as string | null]),
   );
 
-  // Bara datumen behövs här (Datatäckning-tabellen nedan) — Korrelationer
-  // (som annars byggde det här från rpeByDay) flyttades ut 2026-08-13.
-  const rpeDays = new Set(rpeByDay.keys());
+  // --- Måltempo -----------------------------------------------------------
+  // Egen fråga, med eget fönster: den valda perioden kan sakna lopp helt
+  // (ett förberedelseblock gör det per definition), men träningen i den
+  // syftar ändå mot en loppfart. Därför 24 månader bakåt från i dag,
+  // oberoende av periodväljaren.
+  const racePaceFrom = toDateKey(
+    new Date(
+      new Date(`${todayKey}T00:00:00`).setMonth(
+        new Date(`${todayKey}T00:00:00`).getMonth() - RACE_PACE_MONTHS,
+      ),
+    ),
+  );
+  const { data: raceResultRows } = await supabase
+    .from("competition_events")
+    .select("event, result_seconds, competitions!inner(competition_date, user_id)")
+    .eq("competitions.user_id", scopedUserId)
+    .gte("competitions.competition_date", racePaceFrom)
+    .not("result_seconds", "is", null);
 
-  const coverage = [
-    {
-      label: "HRV",
-      weeksWithData: countWeeksWithData(hrvWeekly),
-      range: dateRange(hrvValueByDay.keys()),
-    },
-    {
-      label: "Vilopuls",
-      weeksWithData: countWeeksWithData(rhrWeekly),
-      range: dateRange(rhrValueByDay.keys()),
-    },
-    {
-      label: "Sömn",
-      weeksWithData: countWeeksWithData(sleepWeekly),
-      range: dateRange(sleepHoursByDay.keys()),
-    },
-    {
-      label: "Formkurva",
-      weeksWithData: countWeeksWithData(efWeekly),
-      range: dateRange(efPoints.map((p) => p.date)),
-    },
-    {
-      label: "RPE (Garmin)",
-      weeksWithData: countWeeksWithData(rpeWeekly),
-      range: dateRange(rpeDays),
-    },
-    {
-      label: "Känsla (Garmin)",
-      weeksWithData: countWeeksWithData(feelingWeekly),
-      range: dateRange(feelingByDay.keys()),
-    },
-  ];
+  const racePace = pickRacePace(
+    ((raceResultRows ?? []) as unknown as {
+      event: string;
+      result_seconds: number | null;
+      competitions: { competition_date: string };
+    }[]).map<RaceResultRow>((r) => ({
+      event: r.event,
+      result_seconds: r.result_seconds,
+      competition_date: r.competitions.competition_date,
+    })),
+  );
+
+  // --- Är lugnt verkligen lugnt? -----------------------------------------
+  // Kringgår Garmins zonhinkar helt — bara passets snittpuls mot ett band ur
+  // profilen. Se lib/easy-discipline.ts för varför zonandelarna inte duger
+  // till just den frågan.
+  const easyDiscipline = computeEasyDiscipline(
+    sessions,
+    easyBandFrom(thresholdProfile.lt1Hr, thresholdProfile.maxHr),
+  );
+
+  // --- Rampen -------------------------------------------------------------
+  // Ersätter det staplade belastningsdiagrammet. Innevarande vecka utesluts
+  // av computeLoadRamp — en halvfärdig vecka mot fyra hela visar alltid fall.
+  const loadRamp = computeLoadRamp(weekSeries, weeklyLoadTotals, isoWeekStart(todayKey));
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
 
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Trender</h1>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Form</h1>
           {activeBlock ? (
             <p className="text-sm text-[var(--ink-3)]">
               <strong className="font-medium text-[var(--foreground)]">{activeBlock.name}</strong> (
@@ -686,86 +479,11 @@ export default async function TrendsPage({
         </div>
       </div>
 
-      {/* Pass/distans/tid/belastning och dagens status mot baslinjen visas på
-          /dashboard i stället — den här sidan är för djupdykningen, inte
-          sammanfattningen. Konsekvens (CV) hör bara hemma i blockvy och finns
-          inte på dashboarden, så den är kvar här. */}
-      {loadCv != null && (
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="flex flex-col gap-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-            <dt className="text-sm text-[var(--ink-3)]">Konsekvens (CV)</dt>
-            <dd className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">{loadCv.toFixed(2)}</dd>
-            <dd className="text-xs text-[var(--ink-3)]">lägre = jämnare vecka för vecka</dd>
-          </div>
-        </dl>
-      )}
-
-      {/* K2: efterlevnad för blocket, samma kort som veckovyn använder.
-          Konsekvens (ovan) svarar på om träningen var jämn, det här på om
-          den blev av — besläktade frågor, därför placerade bredvid varandra. */}
-      {activeBlock && blockCompliance && (
-        <ComplianceCard
-          title={activeBlock.name}
-          compliance={blockCompliance}
-          dayTypeByDate={blockDayTypeByDate}
-        />
-      )}
-
-      {/* Periodens nyckeltal, före både påståenden och diagram.
-          Sidan har sex sektioner och ingen av dem svarar på "hur stor var
-          perioden" — det fick man räkna ut själv genom att läsa staplarna.
-          Fyra tal räcker: hur mycket, hur långt, hur ofta, och hur mycket av
-          planen som blev gjord. Tomt urval ger "—", aldrig en nolla som
-          skulle läsas som ett uppmätt värde. */}
-      <StatRow columns={4}>
-        <StatCell>
-          <Stat
-            label="Pass"
-            value={sessions.length > 0 ? sessions.length : "—"}
-            sub={`${weekSeries.length} veckor`}
-          />
-        </StatCell>
-        <StatCell>
-          <Stat
-            label="Distans"
-            value={
-              sessions.length > 0
-                ? (sessions.reduce((n, s) => n + s.distanceMeters, 0) / 1000)
-                    .toFixed(0)
-                : "—"
-            }
-            unit={sessions.length > 0 ? "km" : undefined}
-            sub="genomfört"
-          />
-        </StatCell>
-        <StatCell>
-          <Stat
-            label="Belastning"
-            value={
-              sessions.length > 0
-                ? Math.round(sessions.reduce((n, s) => n + s.trainingLoad, 0))
-                : "—"
-            }
-            sub={
-              weekSeries.length > 0 && sessions.length > 0
-                ? `${Math.round(sessions.reduce((n, s) => n + s.trainingLoad, 0) / weekSeries.length)}/vecka`
-                : undefined
-            }
-          />
-        </StatCell>
-        <StatCell>
-          <Stat
-            label="Efterlevnad"
-            value={
-              blockCompliance && blockCompliance.plannedCount > 0
-                ? `${blockCompliance.completedCount}/${blockCompliance.plannedCount}`
-                : "—"
-            }
-            sub={blockCompliance ? "av planen" : "inget block"}
-          />
-        </StatCell>
-      </StatRow>
-
+      {/* Toppen är en dom, inte ett lager av nyckeltal. Här låg tidigare
+          CV-rutan, efterlevnadskortet och fyra nyckeltal — ett dussin tal
+          före första diagrammet, med Efterlevnad visad två gånger. CV och
+          efterlevnad hör ihop med belastningen och ligger nu i "Håller jag
+          ihop?" längst ner. Kvar överst: påståendena. */}
       {/* L3: påståenden före diagram. Sidan har sex sektioner — den här
           ytan säger vad som är värt att titta på, i stället för att man ska
           skumma alla för att upptäcka det själv. */}
@@ -783,93 +501,8 @@ export default async function TrendsPage({
         </section>
       )}
 
-      {/* ================= A. Belastning vs återhämtning (P1.1) ============= */}
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Belastning och återhämtning
-          </h2>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Staplarna är veckans summerade träningsbelastning, stackad på passkategori. Linjerna
-            nedanför visar avvikelse mot din egen baslinje i SD-enheter — 0 är ditt normala, ±1
-            kanten på ditt normalintervall. Håll pekaren över en vecka för siffrorna och dina egna
-            dagboksord. Baslinjen är rullande åtta veckor bakåt, så linjerna svarar på{" "}
-            <em>&quot;högre eller lägre än de senaste veckorna?&quot;</em> — inte &quot;var ligger
-            nivån?&quot;. Därför kan Formkurvan här peka uppåt samtidigt som Formkurva-diagrammet
-            längre ner pekar nedåt: efter en svacka kan formen vara på väg upp mot den egna senaste
-            tiden och ändå ligga lågt för säsongen. Det diagrammet visar råvärden och en glidande
-            trend, och svarar på den andra frågan.
-          </p>
-        </div>
-
-        <ComboChart
-          periods={periods}
-          load={load}
-          series={series}
-          events={events}
-          loadLabel="Träningsbelastning"
-          height={380}
-          // HRV/vilopuls/sömn (återhämtning) + formkurva (fart) aktiva från
-          // start — fyra i stället för standardtaket på tre.
-          maxVisibleSeries={4}
-          emptyLabel="Inga pass i perioden."
-          ariaLabel="Veckans träningsbelastning per passkategori, med återhämtningsmarkörer"
-        />
-
-        {/* Datatäckning: en serie som saknas ska förklaras, inte tigas ihjäl. */}
-        <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
-          <summary className="cursor-pointer text-[var(--ink-2)]">
-            Datatäckning för lagren ({series.length} av {candidateSeries.length} har data i
-            perioden)
-          </summary>
-          <div className="mt-3 w-full max-w-full overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-            <table className="w-full min-w-max text-left text-sm">
-              <thead>
-                <tr className="text-xs text-[var(--ink-3)]">
-                  <th scope="col" className="py-1 pr-4 font-normal">
-                    Lager
-                  </th>
-                  <th scope="col" className="py-1 pr-4 font-normal">
-                    Veckor med data
-                  </th>
-                  <th scope="col" className="py-1 font-normal">
-                    Period med mätvärden
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {coverage.map((row) => (
-                  <tr key={row.label} className="border-t border-[var(--line)]">
-                    <th scope="row" className="py-1 pr-4 font-normal">
-                      {row.label}
-                    </th>
-                    <td className="py-1 pr-4 tabular-nums">
-                      {row.weeksWithData} av {weeks}
-                    </td>
-                    <td className="py-1 tabular-nums">
-                      {formatDateRange(row.range.from, row.range.to)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-3 text-[var(--ink-2)]">
-            Sömn-, HRV- och vilopulsserierna börjar den dag Garmin-synken började hämta dagsdata —
-            allt före det är tomt, inte noll. Luckor ritas som brutna linjer och fylls aldrig i
-            genom interpolation. Baslinjen kräver dessutom minst fyra mätvärden i ett åtta veckor
-            långt fönster, så de första veckorna med data får ingen punkt alls: en baslinje byggd på
-            ett par mätningar är brus.
-            {missingSeries.length > 0 && (
-              <>
-                {" "}
-                Lager utan ett enda värde i perioden är helt bortlyfta ur diagrammet:{" "}
-                {missingSeries.map((s) => s.label).join(", ")}.
-              </>
-            )}
-          </p>
-        </details>
-      </section>
+      {/* ===== Fråga 1: tränar jag rätt saker? ===== */}
+      {easyDiscipline && <EasyDiscipline data={easyDiscipline} />}
 
       {/* ================= B. Intensitetsfördelning (P1.3) ================== */}
       <section className="flex flex-col gap-3">
@@ -884,6 +517,9 @@ export default async function TrendsPage({
 
         <IntensityChart
           weeks={intensityWeeks}
+          defaultModelId={
+            activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
+          }
           profile={thresholdProfile}
           emptyLabel="Ingen pulszondata i perioden."
         />
@@ -902,6 +538,29 @@ export default async function TrendsPage({
             klarar filtret.
           </p>
         </div>
+
+        {efVerdict && (
+          <p className="text-base font-medium text-[var(--foreground)]">
+            {efVerdict.direction === "oförändrad" ? (
+              <>Oförändrad över perioden ({efVerdict.n} pass).</>
+            ) : (
+              <>
+                {efVerdict.change > 0 ? "+" : "−"}
+                {Math.abs(efVerdict.change * 100).toFixed(1)} % över perioden — riktningen pekar{" "}
+                <span
+                  className={
+                    efVerdict.direction === "upp"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-amber-600 dark:text-amber-400"
+                  }
+                >
+                  {efVerdict.direction === "upp" ? "uppåt" : "nedåt"}
+                </span>{" "}
+                ({efVerdict.n} pass).
+              </>
+            )}
+          </p>
+        )}
 
         <EfficiencyChart
           points={efPoints}
@@ -925,8 +584,19 @@ export default async function TrendsPage({
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Passkvalitet: återkommande nyckelpass
         </h2>
-        <SessionQuality groups={signatureGroups} />
+        <SessionQuality groups={signatureGroups} racePace={racePace} />
       </section>
+
+      {/* ===== Fråga 3: håller jag ihop? ===== */}
+      <LoadStrip ramp={loadRamp} loadCv={loadCv}>
+        {activeBlock && blockCompliance && (
+          <ComplianceCard
+            title={activeBlock.name}
+            compliance={blockCompliance}
+            dayTypeByDate={blockDayTypeByDate}
+          />
+        )}
+      </LoadStrip>
 
       {/* L5 (docs/tranarloopen.md): loopens utgång. Sidan slutar med nästa
           steg, inte med sista diagrammet — det är det som gör sidorna till en

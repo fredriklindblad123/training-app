@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { SignatureOccurrence, SignatureGroupResult } from "@/lib/session-signature";
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
+import { formatRaceTime, per400, type RacePace } from "@/lib/race-pace";
 
 /* P2.1: passkvalitet för återkommande nyckelpass.
  *
@@ -28,13 +29,16 @@ function OccurrenceRow({
   occurrence,
   bestSeconds,
   isBest,
+  distanceMeters,
 }: {
   occurrence: SignatureOccurrence;
   bestSeconds: number;
   isBest: boolean;
+  distanceMeters: number;
 }) {
   const delta = occurrence.meanRepSeconds - bestSeconds;
   const times = occurrence.signature.groups.flatMap((g) => g.times);
+  const pace = per400(occurrence.meanRepSeconds, distanceMeters);
 
   return (
     <tr className="border-t border-[var(--line)]">
@@ -63,6 +67,9 @@ function OccurrenceRow({
         {delta <= 0.05 ? "—" : `+${delta.toFixed(1)}s`}
       </td>
       <td className="py-1.5 pr-3 text-right tabular-nums text-[var(--ink-2)]">
+        {pace != null ? pace.toFixed(1) : "—"}
+      </td>
+      <td className="py-1.5 pr-3 text-right tabular-nums text-[var(--ink-2)]">
         {occurrence.meanRepHr ? Math.round(occurrence.meanRepHr) : "—"}
       </td>
       <td className="py-1.5 tabular-nums text-xs text-[var(--ink-3)]">
@@ -72,7 +79,16 @@ function OccurrenceRow({
   );
 }
 
-function SignatureCard({ group }: { group: SignatureGroup }) {
+/* Jämförelsen mot tävlingsfart är meningsfull för intervallpass men inte för
+ * tröskelpass — tröskelrepetitioner *ska* vara långsammare än loppfart, och
+ * en differens där hade läst som ett underkännande av ett pass som gjorde
+ * precis vad det skulle. Därför visas skillnaden bara för intervaller; för
+ * övriga passtyper visas farten utan omdöme. */
+function showsRaceDelta(category: string | null): boolean {
+  return category === "interval";
+}
+
+function SignatureCard({ group, racePace }: { group: SignatureGroup; racePace: RacePace | null }) {
   const { category, distanceMeters, occurrences } = group;
   const best = occurrences.reduce((a, b) => (a.meanRepSeconds <= b.meanRepSeconds ? a : b));
   // Nyast först — den senaste körningen är den man vill se direkt.
@@ -82,6 +98,15 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
   const first = occurrences[0];
   const changePct =
     ((latest.meanRepSeconds - first.meanRepSeconds) / first.meanRepSeconds) * 100;
+
+  // Senaste genomförandets fart, normaliserad till sekunder per 400 m — den
+  // enda enheten som gör 300:or, 400:or och 1000:or jämförbara med varandra
+  // och med loppfarten.
+  const latestPer400 = per400(latest.meanRepSeconds, distanceMeters);
+  const raceDelta =
+    racePace && latestPer400 != null && showsRaceDelta(category)
+      ? latestPer400 - racePace.per400
+      : null;
 
   return (
     <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4" open={false}>
@@ -104,20 +129,42 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
             {best.meanRepHr ? `vid puls ${Math.round(best.meanRepHr)}` : ""}
           </span>
         </div>
-        <div className="mt-1 text-xs text-[var(--ink-3)]">
-          {first.date} → {latest.date}:{" "}
-          <span
-            className={
-              changePct < -0.5
-                ? "text-emerald-600 dark:text-emerald-400"
-                : changePct > 0.5
-                  ? "text-amber-600 dark:text-amber-400"
-                  : ""
-            }
-          >
-            {changePct > 0 ? "+" : ""}
-            {changePct.toFixed(1)} % i snittid
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-[var(--ink-3)]">
+          <span>
+            {first.date} → {latest.date}:{" "}
+            <span
+              className={
+                changePct < -0.5
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : changePct > 0.5
+                    ? "text-amber-600 dark:text-amber-400"
+                    : ""
+              }
+            >
+              {changePct > 0 ? "+" : ""}
+              {changePct.toFixed(1)} % i snittid
+            </span>
           </span>
+          {latestPer400 != null && (
+            <span className="tabular-nums">
+              senast {latestPer400.toFixed(1)} s/400 m
+              {raceDelta != null && (
+                <>
+                  {" · "}
+                  <span
+                    className={
+                      raceDelta > 0
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-emerald-600 dark:text-emerald-400"
+                    }
+                  >
+                    {raceDelta > 0 ? "+" : "−"}
+                    {Math.abs(raceDelta).toFixed(1)} s mot tävlingsfart
+                  </span>
+                </>
+              )}
+            </span>
+          )}
         </div>
       </summary>
 
@@ -129,6 +176,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
               <th className="pb-1 font-normal">Upplägg</th>
               <th className="pb-1 text-right font-normal">Snitt/rep</th>
               <th className="pb-1 text-right font-normal">Mot bäst</th>
+              <th className="pb-1 text-right font-normal">s/400 m</th>
               <th className="pb-1 pr-3 text-right font-normal">Puls</th>
               <th className="pb-1 font-normal">Varvtider</th>
             </tr>
@@ -140,6 +188,7 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
                 occurrence={o}
                 bestSeconds={best.meanRepSeconds}
                 isBest={o.activityId === best.activityId}
+                distanceMeters={distanceMeters}
               />
             ))}
           </tbody>
@@ -154,7 +203,13 @@ function SignatureCard({ group }: { group: SignatureGroup }) {
   );
 }
 
-export function SessionQuality({ groups }: { groups: SignatureGroup[] }) {
+export function SessionQuality({
+  groups,
+  racePace,
+}: {
+  groups: SignatureGroup[];
+  racePace: RacePace | null;
+}) {
   if (groups.length === 0) {
     return (
       <p className="text-sm text-[var(--ink-3)]">
@@ -175,8 +230,31 @@ export function SessionQuality({ groups }: { groups: SignatureGroup[] }) {
         {" "}En 400:a ur 15×400 är inte fullt jämförbar med en ur 5×400 — därför visas
         upplägget per rad, så du kan väga in det själv.
       </p>
+      {/* Referensen skrivs alltid ut. Ett måltempo som styr hur alla pass
+          läses får inte vara en osynlig default — grenen, tiden och hur många
+          lopp den vilar på ska gå att ifrågasätta. */}
+      {racePace ? (
+        <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
+          <strong className="font-medium text-[var(--foreground)]">
+            Tävlingsfart: {racePace.per400.toFixed(1)} s per 400 m
+          </strong>{" "}
+          — ur {formatRaceTime(racePace.seconds)} på {racePace.distanceMeters} m ({racePace.date}),
+          din bästa tid i den gren du tävlat mest i de senaste två åren ({racePace.races} lopp).
+          Intervallfarten jämförs mot den. Tröskelpass får ingen jämförelse: de{" "}
+          <em>ska</em> ligga långsammare än loppfart.
+        </p>
+      ) : (
+        <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
+          Ingen jämförelse mot tävlingsfart: det saknas registrerade resultat på 800–5000 m från
+          de senaste två åren. Lägg in resultat under <em>Resultat</em> så räknas farten fram.
+        </p>
+      )}
       {groups.map((g) => (
-        <SignatureCard key={`${g.category ?? "okänd"}|${g.distanceMeters}`} group={g} />
+        <SignatureCard
+          key={`${g.category ?? "okänd"}|${g.distanceMeters}`}
+          group={g}
+          racePace={racePace}
+        />
       ))}
     </div>
   );
