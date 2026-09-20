@@ -1,4 +1,3 @@
-import type { createClient } from "@/lib/supabase/server";
 
 function apiBase(): string {
   // VERCEL_URL pekar på den deploy-specifika adressen, som Vercel skyddar
@@ -41,53 +40,16 @@ export async function triggerGarminSync(
 }
 
 /**
- * Vilka användare som ska synkas när `userId` öppnar appen (uttrycklig
- * begäran 2026-08-27).
+ * Vilka användare som ska synkas när någon öppnar appen: en löpare bara sig
+ * själv, en tränare sig själv OCH alla länkade adepter — tränaren tittar på
+ * deras data, så det är deras som behöver vara färsk.
  *
- * En löpare: bara sig själv. En tränare: sig själv OCH alla länkade adepter
- * — tränaren tittar på deras data, så det är deras data som behöver vara
- * färsk när hen loggar in, inte bara hens egen.
- *
- * Läser via den inloggades egen klient, inte service_role: RLS på
- * `coach_athletes` avgör vilka länkar som syns, så listan kan aldrig
- * innehålla en löpare som anroparen inte faktiskt coachar. Det är viktigt,
- * för längre fram skickas de här id:na till en endpoint som med
- * INTERNAL_API_SECRET får synka vilken användare som helst.
- *
- * Fel sväljs medvetet: kan vi inte läsa rollen faller vi tillbaka på att
- * synka bara den inloggade. Att öppna appen får aldrig fallera på att en
- * bakgrundssynk inte gick att planera.
- */
-export async function resolveSyncTargets(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-): Promise<string[]> {
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .single();
-
-  if (profile?.role !== "coach") return [userId];
-
-  const { data: links } = await supabase
-    .from("coach_athletes")
-    .select("athlete_id")
-    .eq("coach_id", userId);
-
-  const athleteIds = (links ?? []).map((l) => l.athlete_id as string);
-  // Set: en tränare som också är sin egen adept ska inte synkas två gånger.
-  return [...new Set([userId, ...athleteIds])];
-}
-
-/**
- * Samma lista, men utan en enda extra fråga.
- *
- * Layouten har redan hämtat profilen och coach-kopplingarna via
- * getScopedProfile — att låta resolveSyncTargets fråga om dem igen vore två
- * nätverksrundor per sidvisning, och det var precis sådana dubbletter som
- * gjorde menyn trög. Den här varianten härleder listan ur det som redan
- * ligger i minnet.
+ * Härledd ur det layouten redan hämtat med getScopedProfile, utan en enda
+ * extra fråga. Det fanns tidigare en variant (resolveSyncTargets) som slog
+ * upp profil och coach-kopplingar på nytt — två nätverksrundor per
+ * sidvisning, precis en sådan dubblett som gjorde menyn trög. Den togs bort
+ * 2026-09-20 när startsidans knapp, dess enda kvarvarande anropare, ersattes
+ * av en redirect.
  */
 export function syncTargetsFromScope(scoped: {
   userId: string;
