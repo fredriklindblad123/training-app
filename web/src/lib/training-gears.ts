@@ -328,23 +328,31 @@ export function gearSeparation(view: GearView): number | null {
   return Math.abs(i.median - t.median);
 }
 
+/* Domarna beskriver, de dömer inte.
+ *
+ * Varje tal här vilar på trösklarna i profilen, och de kan vara satta några
+ * slag fel. "Det är intervallarbete, inte tröskel" lät som ett konstaterande
+ * när det i själva verket var en slutsats med ett villkor. Texterna namnger
+ * därför villkoret, och där det finns två rimliga förklaringar nämns båda —
+ * att träningen ligger fel ELLER att tröskeln gör det. */
 export function gearVerdict(gear: Gear, lt1: number, lt2: number): string {
   const a = gear.actual;
-  if (!a) return "För lite underlag i perioden.";
+  if (!a) return "För lite underlag i perioden för att säga något.";
   const pct = gear.shareOverCeiling != null ? Math.round(gear.shareOverCeiling * 100) : null;
 
   switch (gear.key) {
     case "distans":
       return a.median > lt1
-        ? `Medianpuls ${a.median}, över aerob tröskel ${lt1}. ${pct} % av passen ligger över taket.`
-        : `Medianpuls ${a.median}, under aerob tröskel ${lt1}. Disciplinen håller.`;
+        ? `Medianpuls ${a.median} mot aerob tröskel ${lt1} — ${pct} % av passen ligger över. Värt att titta närmare på.`
+        : `Medianpuls ${a.median}, under aerob tröskel ${lt1}. Ser ut att ligga rätt.`;
     case "troskel":
       return pct != null && pct >= 25
-        ? `${pct} % av varven ligger över anaerob tröskel ${lt2} — det är intervallarbete, inte tröskel.`
+        ? `${pct} % av varven ligger över ${lt2}. Stämmer tröskeln liknar passen mer intervall än tröskel.`
         : `Medianpuls ${a.median}, inom bandet ${lt1}–${lt2}.`;
     case "intervall":
       return a.median >= lt2
         ? `Medianpuls ${a.median}, över anaerob tröskel ${lt2}.`
-        : `Medianpuls ${a.median}, under anaerob tröskel ${lt2} — intervallerna går inte tillräckligt hårt.`;
+        : `Medianpuls ${a.median}, under ${lt2} — antingen går intervallerna inte hårt nog, eller så ligger tröskeln högre än angivet.`;
   }
 }
+

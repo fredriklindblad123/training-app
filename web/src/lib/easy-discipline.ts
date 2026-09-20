@@ -262,17 +262,18 @@ export function easyVerdict(
 
   if (over / n >= 0.5) {
     return {
-      headline: `${over} av ${n} lugna pass gick över ${ceilingWord}.`,
+      headline: `${over} av ${n} lugna pass låg över ${ceilingWord}.`,
       detail:
         `Medianen ligger på ${medianHr} slag, ${medianHr - band.ceiling} över taket på ` +
-        `${band.ceiling}. De lugna passen är i praktiken distanspass i medelfart — de bygger ` +
-        `mindre uthållighet per kilometer än verkligt lugn löpning, och de gör dig tröttare till ` +
-        `kvalitetspassen.`,
+        `${band.ceiling}. Stämmer tröskeln liknar passen mer distansfart än återhämtning — och ` +
+        `då bygger de mindre uthållighet per kilometer än riktigt lugn löpning, samtidigt som de ` +
+        `kostar mer inför kvalitetspassen. Värt att pröva några pass tydligt långsammare och se ` +
+        `om pulsen följer med ner.`,
     };
   }
   if (over / n >= 0.25) {
     return {
-      headline: `${over} av ${n} lugna pass kröp över ${ceilingWord}.`,
+      headline: `${over} av ${n} lugna pass låg strax över ${ceilingWord}.`,
       detail:
         `Medianen ${medianHr} slag ligger inom taket, men var fjärde lugnt pass gör det inte. ` +
         `Det är oftast de längsta passen som glider uppåt — prova längdfiltret.`,
@@ -281,7 +282,7 @@ export function easyVerdict(
   return {
     headline: `${counts["in-band"] + counts["upper-margin"] + counts.below} av ${n} lugna pass låg rätt.`,
     detail:
-      `Medianen ${medianHr} slag ligger under taket på ${band.ceiling}. Disciplinen på de ` +
-      `lugna passen håller — det är den som gör att kvalitetspassen går att köra hårt.`,
+      `Medianen ${medianHr} slag ligger under taket på ${band.ceiling}. Det ser ut att ligga ` +
+      `rätt — och det är den disciplinen som gör att kvalitetspassen går att köra hårt.`,
   };
 }

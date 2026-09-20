@@ -26,6 +26,7 @@ import { LoadStrip } from "@/components/LoadStrip";
 import { TrainingGears } from "@/components/TrainingGears";
 import { Vo2maxCard } from "@/components/Vo2maxCard";
 import { ReportLinks, type AthleteReport } from "@/components/ReportLinks";
+import { FormIntro } from "@/components/FormIntro";
 import { LactateCurve } from "@/components/LactateCurve";
 import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
@@ -259,7 +260,9 @@ export default async function TrendsPage({
     })(),
     supabase
       .from("profiles")
-      .select("threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr, goal_event, goal_seconds")
+      .select(
+        "threshold_hr_low, threshold_hr_high, max_hr, lt1_hr, lt2_hr, goal_event, goal_seconds, lt2_source, lt2_measured_on",
+      )
       .eq("id", scopedUserId)
       .maybeSingle(),
     // K2: bara hämtad i blockvy — efterlevnad hör bara hemma där (se
@@ -523,7 +526,7 @@ export default async function TrendsPage({
     gearSeparationBeats == null
       ? "Tre träningsformer mot dina egna trösklar."
       : gearSeparationBeats <= 5
-        ? `Tröskel och intervall skiljer bara ${gearSeparationBeats} slag i median — växlarna har smält ihop.`
+        ? `Tröskel och intervall skiljer bara ${gearSeparationBeats} slag i median. Stämmer mätningen tränas de som samma sak.`
         : `Tröskel och intervall skiljer ${gearSeparationBeats} slag i median.`;
 
   const gearByKey = new Map<GearKey, Gear>(
@@ -649,6 +652,15 @@ export default async function TrendsPage({
         </div>
       </div>
 
+      {/* Ramen först: vyn ska läsas som vägledning, inte som facit. */}
+      <FormIntro
+        lt1={thresholdProfile.lt1Hr}
+        lt2={thresholdProfile.lt2Hr}
+        lt2Source={(profileRow?.lt2_source as string | null) ?? null}
+        lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
+        hasGarminData={sessions.length > 0}
+      />
+
       <ReportLinks reports={(reportRows ?? []) as AthleteReport[]} />
 
       {/* Toppen är en dom, inte ett lager av nyckeltal. Här låg tidigare
@@ -673,21 +685,33 @@ export default async function TrendsPage({
         </section>
       )}
 
-      {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet ===== */}
-      {gears?.lt1 != null && gears?.lt2 != null && (
-        <CollapsibleSection
-          title="Träningens tre växlar"
-          meta={`Trösklar ${gears.lt1} och ${gears.lt2} · ${gears.lt2 - gears.lt1} slags arbetsområde`}
-          headline={<span className="text-sm text-[var(--ink-2)]">{gearsHeadline}</span>}
-        >
-          <LactateCurve lt1={gears.lt1} lt2={gears.lt2} />
+      {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet =====
+          Sektionen visas ALLTID. Laktatkurvan och förklaringen av de tre
+          formerna är kunskap, inte mätning — den som inte kopplat en klocka
+          eller fyllt i trösklar ska ändå kunna läsa hur medeldistansträning
+          hänger ihop. Diagrammet med eget utfall tillkommer när det finns
+          underlag. */}
+      <CollapsibleSection
+        title="Träningens tre växlar"
+        meta={
+          gears?.lt1 != null && gears?.lt2 != null
+            ? `Trösklar ${gears.lt1} och ${gears.lt2} · ${gears.lt2 - gears.lt1} slags arbetsområde`
+            : "Distans, tröskel och intervall — vad de gör och varför"
+        }
+        headline={
+          <span className="text-sm text-[var(--ink-2)]">
+            {gears ? gearsHeadline : "Så hänger distans, tröskel och intervall ihop."}
+          </span>
+        }
+      >
+        <LactateCurve lt1={gears?.lt1 ?? null} lt2={gears?.lt2 ?? null} />
 
-          <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-            De tre formerna ska ligga på åtskilda intensiteter — annars tränas samma sak flera
-            gånger i veckan under olika namn. Sektionerna nedan är samma tre växlar, en i taget.
-          </p>
+        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+          De tre formerna ska ligga på åtskilda intensiteter — annars tränas samma sak flera
+          gånger i veckan under olika namn. Sektionerna nedan är samma tre växlar, en i taget.
+        </p>
 
-          <TrainingGears data={gears} />
+        {gears && <TrainingGears data={gears} />}
 
           {/* Intensitetsfördelningen svarar på samma fråga som diagrammet
               ovan, fast ur Garmins zonhinkar i stället för ur dina egna
@@ -718,10 +742,9 @@ export default async function TrendsPage({
         />
       </section>
 
-            </div>
-          </details>
-        </CollapsibleSection>
-      )}
+          </div>
+        </details>
+      </CollapsibleSection>
 
       {/* ===== Växel 1 ===== */}
       <CollapsibleSection

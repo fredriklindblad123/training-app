@@ -86,7 +86,7 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
               }}
             >
               {closeEnough(separation, descending)
-                ? `Tröskel och intervall skiljer bara ${fmtDiff(separation, descending)} i median — växlarna har smält ihop.`
+                ? `Tröskel och intervall skiljer bara ${fmtDiff(separation, descending)} i median. Stämmer mätningen tränas de två som samma sak.`
                 : `Tröskel och intervall skiljer ${fmtDiff(separation, descending)} i median.`}
             </p>
           )}

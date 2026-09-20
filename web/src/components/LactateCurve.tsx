@@ -53,7 +53,24 @@ const MAX_MMOL = 14;
  *  hockeyklubban ska synas, och en bred högerhalva plattar ut den. */
 const ABOVE_LT2 = 15;
 
-export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
+/* Exempelvärden när löparen inte fyllt i några trösklar. De ritas ALDRIG
+ * med utskrivna tal — kurvan lär ut formen, och att sätta siffror på någon
+ * annans fysiologi vore att hitta på. Spannet 15 slag är representativt för
+ * en tränad medeldistanslöpare. */
+const EXAMPLE_LT1 = 165;
+const EXAMPLE_LT2 = 180;
+
+export function LactateCurve({
+  lt1: lt1Prop,
+  lt2: lt2Prop,
+}: {
+  /** Null när trösklar saknas — kurvan ritas då som exempel, utan tal. */
+  lt1: number | null;
+  lt2: number | null;
+}) {
+  const example = lt1Prop == null || lt2Prop == null;
+  const lt1 = lt1Prop ?? EXAMPLE_LT1;
+  const lt2 = lt2Prop ?? EXAMPLE_LT2;
   const from = lt1 - 32;
   const to = lt2 + ABOVE_LT2;
   /** Exponentialens branthet, satt så att kurvan når taket vid axelns slut. */
@@ -99,8 +116,9 @@ export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
         </h3>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
           Mjölksyra bildas hela tiden, även i vila. Så länge kroppen hinner omsätta lika mycket som
-          den bildar ligger nivån stilla — det är där de lugna passen hör hemma. Vid aeroba
-          tröskeln ({lt1}) börjar den stiga, vid anaeroba ({lt2}) stiger den snabbare än kroppen
+          den bildar ligger nivån stilla — det är där de lugna passen hör hemma. Vid{" "}
+          <strong>aeroba tröskeln</strong>{example ? "" : ` (${lt1})`} börjar den stiga, vid{" "}
+          <strong>anaeroba</strong>{example ? "" : ` (${lt2})`} stiger den snabbare än kroppen
           hinner städa undan, och därefter går klockan.
         </p>
       </div>
@@ -174,7 +192,7 @@ export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
                   style={{ left: `${x(m.hr)}%` }}
                 >
                   <span className="block font-semibold">{m.label}</span>
-                  <span className="tabular text-[var(--ink-3)]">{m.hr}</span>
+                  {!example && <span className="tabular text-[var(--ink-3)]">{m.hr}</span>}
                 </span>
               ))}
             </div>
@@ -183,28 +201,40 @@ export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
 
         <p className="mt-2 text-xs text-[var(--ink-3)]">
           Y-axeln är millimol laktat per liter blod. Kurvan är <strong>schematisk</strong> — ingen
-          har mätt ditt laktat. Den är ritad genom dina egna trösklar med de vedertagna
-          referensvärdena 2 mmol vid LT1 och 4 vid LT2: platt upp till aeroba tröskeln, rak
-          stigning mellan trösklarna, och exponentiell därefter.
+          har mätt ditt laktat.{" "}
+          {example ? (
+            <>
+              Den visar <strong>formen</strong>, inte dina tal: du har inga trösklar ifyllda, så
+              inga pulsvärden skrivs ut. Fyll i aerob och anaerob tröskel under Inställningar så
+              ritas kurvan genom dina egna.
+            </>
+          ) : (
+            <>
+              Den är ritad genom dina egna trösklar med de vedertagna referensvärdena 2 mmol vid
+              LT1 och 4 vid LT2.
+            </>
+          )}{" "}
+          Formen är platt upp till aeroba tröskeln, rak stigning mellan trösklarna, och
+          exponentiell därefter.
         </p>
 
         <div className="mt-4 flex flex-col gap-2">
           {[
             {
               key: "distans" as const,
-              where: `under ${lt1}`,
+              where: example ? "under aerob tröskel" : `under ${lt1}`,
               what: "Laktatet ligger kvar på vilovärdet. Här byggs motorn: blodvolym, kapillärer, mitokondrier. Det är den enda zonen du kan tillbringa många timmar i varje vecka.",
               section: "Sektionen Distans mäter om de lugna passen faktiskt hamnar här.",
             },
             {
               key: "troskel" as const,
-              where: `${lt1}–${lt2}`,
+              where: example ? "mellan trösklarna" : `${lt1}–${lt2}`,
               what: "Laktatet stiger men kroppen hinner med. Det här är farten du kan hålla länge, och att flytta LT2 uppåt är det som gör tävlingsfarten uthållig.",
               section: "Sektionen Tröskel mäter om tröskelpassen ligger i bandet — eller över det.",
             },
             {
               key: "intervall" as const,
-              where: `över ${lt2}`,
+              where: example ? "över anaerob tröskel" : `över ${lt2}`,
               what: "Laktatet ackumuleras snabbare än det städas undan, och kurvan vänder uppåt. Här höjs taket, men bara i korta doser med vila emellan.",
               section: "Sektionen Intervall mäter om intervallerna når hit, och Syreupptag visar taket de arbetar mot.",
             },
@@ -219,7 +249,7 @@ export function LactateCurve({ lt1, lt2 }: { lt1: number; lt2: number }) {
                 <strong className="font-medium text-[var(--foreground)]">
                   {GEAR_LABELS[row.key]}
                 </strong>{" "}
-                <span className="tabular text-[var(--ink-3)]">({row.where} slag)</span> —{" "}
+                <span className="tabular text-[var(--ink-3)]">({row.where}{example ? "" : " slag"})</span> —{" "}
                 {row.what}{" "}
                 <span className="text-[var(--ink-3)]">{row.section}</span>
               </p>
