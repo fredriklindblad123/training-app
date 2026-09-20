@@ -6,6 +6,7 @@ import {
   saveGoal,
   addAthlete,
   removeAthlete,
+  handleSignupRequest,
 } from "./actions";
 import { getScopedProfile } from "@/lib/auth-scope";
 import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
@@ -36,6 +37,14 @@ export default async function SettingsPage({
     .select("status, last_synced_at, last_error")
     .maybeSingle();
   const scoped = await getScopedProfile(supabase);
+  const { data: signupRequests } =
+    scoped?.role === "coach"
+      ? await supabase
+          .from("signup_requests")
+          .select("id, full_name, email, birth_year, guardian_name, guardian_email, note, created_at")
+          .eq("status", "vantar")
+          .order("created_at")
+      : { data: null };
   /* Frågan MÅSTE scopas till den egna raden. RLS låter en coach läsa sina
    * länkade löpares profiler ("profiles: coach läser länkad löpares rad"), så
    * ett oscopat select returnerar coachens rad plus en per adept — och
@@ -283,6 +292,64 @@ export default async function SettingsPage({
           </div>
         </form>
       </section>
+
+      {scoped?.role === "coach" && (signupRequests ?? []).length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+            Kontoförfrågningar ({(signupRequests ?? []).length})
+          </h2>
+          <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+            Skickade från inloggningssidan. Ett godkännande lägger adressen i listan över tillåtna
+            registreringar — personen skapar sedan kontot själv med eget lösenord. Appen skapar
+            aldrig inloggningar åt någon.
+          </p>
+          <ul className="flex flex-col gap-2">
+            {(signupRequests ?? []).map((r) => (
+              <li
+                key={r.id as string}
+                className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3"
+              >
+                <div className="min-w-0 flex-1 text-sm">
+                  <p className="font-medium text-[var(--foreground)]">
+                    {r.full_name as string}{" "}
+                    <span className="font-normal text-[var(--ink-3)]">{r.email as string}</span>
+                  </p>
+                  <p className="mt-0.5 text-[var(--ink-2)]">
+                    {r.birth_year ? `Född ${r.birth_year}. ` : ""}
+                    Målsman: {(r.guardian_name as string | null) ?? "ej angiven"}
+                    {r.guardian_email ? ` (${r.guardian_email as string})` : ""}. Samtycke lämnat.
+                  </p>
+                  {r.note ? (
+                    <p className="mt-1 text-[var(--ink-2)] italic">{r.note as string}</p>
+                  ) : null}
+                </div>
+                <div className="flex gap-2">
+                  <form action={handleSignupRequest}>
+                    <input type="hidden" name="request_id" value={r.id as string} />
+                    <input type="hidden" name="decision" value="godkand" />
+                    <button
+                      type="submit"
+                      className="rounded bg-[var(--foreground)] px-3 py-1 text-sm text-[var(--background)] hover:opacity-90"
+                    >
+                      Godkänn
+                    </button>
+                  </form>
+                  <form action={handleSignupRequest}>
+                    <input type="hidden" name="request_id" value={r.id as string} />
+                    <input type="hidden" name="decision" value="avvisad" />
+                    <button
+                      type="submit"
+                      className="rounded border border-[var(--line)] px-3 py-1 text-sm hover:bg-[var(--surface-raised)]"
+                    >
+                      Avvisa
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {scoped?.role === "coach" && (
         <section className="flex flex-col gap-3">

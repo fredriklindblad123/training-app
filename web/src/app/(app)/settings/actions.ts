@@ -204,3 +204,46 @@ export async function removeAthlete(formData: FormData) {
   revalidatePath("/blockplan");
   revalidatePath("/flerarsplan");
 }
+
+/* Godkänner eller avvisar en kontoförfrågan.
+ *
+ * Ett godkännande gör två saker: lägger adressen i allowed_signup_emails —
+ * det är den listan auth-hooken hook_restrict_signup_by_email släpper igenom
+ * — och märker förfrågan som hanterad. Kontot skapar personen själv efteråt,
+ * med sitt eget lösenord; appen skapar aldrig inloggningar åt någon.
+ */
+export async function handleSignupRequest(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const id = formData.get("request_id") as string | null;
+  const decision = formData.get("decision") as string | null;
+  if (!id || (decision !== "godkand" && decision !== "avvisad")) return;
+
+  const { data: request } = await supabase
+    .from("signup_requests")
+    .select("email, full_name")
+    .eq("id", id)
+    .maybeSingle();
+  if (!request) return;
+
+  if (decision === "godkand") {
+    await supabase.from("allowed_signup_emails").upsert(
+      {
+        email: (request.email as string).toLowerCase(),
+        note: `Godkänd förfrågan: ${request.full_name as string}`,
+      },
+      { onConflict: "email" },
+    );
+  }
+
+  await supabase
+    .from("signup_requests")
+    .update({ status: decision, handled_at: new Date().toISOString(), handled_by: user.id })
+    .eq("id", id);
+
+  revalidatePath("/settings");
+}
