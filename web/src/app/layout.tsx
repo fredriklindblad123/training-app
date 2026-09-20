@@ -30,7 +30,7 @@ const barlowCondensed = Barlow_Semi_Condensed({
 });
 
 export const metadata: Metadata = {
-  title: "IFK Göteborg Friidrott · Medeldistans",
+  title: "Träningsnavet · IFK Göteborg Friidrott",
   description:
     "Träningsdagbok och planering för medeldistansgruppen i IFK Göteborg Friidrott.",
 };

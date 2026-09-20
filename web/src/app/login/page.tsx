@@ -26,11 +26,38 @@ export default async function LoginPage({
         <ClubMark size="lg" />
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
-            Träningsdagboken
+            Träningsnavet
           </h1>
-          <p className="mt-1 text-sm text-[var(--ink-2)]">
-            Planering och uppföljning för medeldistansgruppen i IFK Göteborg Friidrott.
+          <p className="mt-1.5 max-w-lg text-sm text-[var(--ink-2)]">
+            Planen, passen, resultaten och formen — samlat på ett ställe för medeldistansgruppen i
+            IFK Göteborg Friidrott.
           </p>
+
+          {/* Tre steg, inte tre stycken. Loopen är appens grundidé
+              (docs/tranarloopen.md) och den går att visa snabbare än den går
+              att förklara. */}
+          <ol className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            {[
+              { n: "Planera", d: "tränaren lägger upp säsong, block och veckans pass" },
+              { n: "Genomför", d: "du loggar passen, själv eller via din klocka" },
+              { n: "Följ upp", d: "appen visar hur träningen fördelar sig och hur formen svarar" },
+            ].map((step, i) => (
+              <li key={step.n} className="flex items-center gap-2">
+                {i > 0 && (
+                  <span aria-hidden className="text-[var(--ink-3)]">
+                    →
+                  </span>
+                )}
+                <span
+                  className="font-medium"
+                  style={{ color: "var(--brand-blue)" }}
+                  title={step.d}
+                >
+                  {step.n}
+                </span>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
 

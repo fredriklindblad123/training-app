@@ -6,8 +6,8 @@ import type { MetadataRoute } from "next";
  * globals.css. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "IFK Göteborg Friidrott · Medeldistans",
-    short_name: "IFK Medeldistans",
+    name: "Träningsnavet · IFK Göteborg Friidrott",
+    short_name: "Träningsnavet",
     description:
       "Träningsdagbok och planering för medeldistansgruppen i IFK Göteborg Friidrott.",
     start_url: "/",
