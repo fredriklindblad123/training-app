@@ -29,6 +29,7 @@ import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySe
 import { RecordCard } from "@/components/RecordCard";
 import { SeasonContext } from "@/components/SeasonContext";
 import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
+import { WeekStrip, type WeekStripDay } from "@/components/WeekStrip";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
  * sidan efter inloggning (se app/page.tsx, login/actions.ts,
@@ -309,6 +310,11 @@ export default async function DashboardPage({
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayKey = toDateKey(yesterday);
+  // Veckoremsans fönster: måndag till söndag i innevarande ISO-vecka.
+  const weekStartKey = isoWeekStart(todayKey);
+  const weekEnd = new Date(`${weekStartKey}T00:00:00`);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEndKey = toDateKey(weekEnd);
 
   // Se kommentaren vid kontinuitetsfrågan nedan. Tre år är gott om historik
   // för en 17-årings sviter och håller radantalet långt under PostgREST:s
@@ -325,6 +331,7 @@ export default async function DashboardPage({
     { data: recentSplitRows },
     { data: currentBlockRows },
     { data: nextRaceRow },
+    { data: weekPlannedRows },
   ] = await Promise.all([
     // Bara dagens aktiviteter — sidan äger dagen, inget periodfönster.
     supabase
@@ -427,6 +434,16 @@ export default async function DashboardPage({
       .order("competition_date")
       .limit(1)
       .maybeSingle(),
+    /* Veckans planerade pass, till veckoremsan under dagens pass. Bara typ
+       och datum — remsan ritar en prick per pass, inget innehåll. De
+       genomförda passen kommer ur allSessions, som redan är hämtad. */
+    supabase
+      .from("planned_workouts")
+      .select("scheduled_date, workout_type")
+      .eq("user_id", scopedUserId)
+      .gte("scheduled_date", weekStartKey)
+      .lte("scheduled_date", weekEndKey)
+      .order("scheduled_date"),
   ]);
 
   // --- Status mot baslinje (P1.2) ----------------------------------------
@@ -565,7 +582,45 @@ export default async function DashboardPage({
   /* Senaste passet i helhet — bär varvsektionen när passet inte har några
    * repetitioner. allSessions är redan hämtad och sorterad; sista posten är
    * det senaste passet. */
-  const latestSession = allSessions.length > 0 ? allSessions[allSessions.length - 1] : null;
+  /* --- Veckoremsan ------------------------------------------------------
+   * Sju dagar, måndag till söndag. Genomfört hämtas ur allSessions (redan
+   * i minnet), planerat ur veckans planned_workouts. Ingen matchning mellan
+   * dem görs: remsan visar genomfört där det finns och planerat annars,
+   * samma regel som kalenderns månadsvy följer. En riktig parning hör hemma
+   * i efterlevnadskortet, inte i sju prickar. */
+  const weekPlannedByDate = new Map<string, string[]>();
+  for (const row of (weekPlannedRows ?? []) as { scheduled_date: string; workout_type: string }[]) {
+    const list = weekPlannedByDate.get(row.scheduled_date) ?? [];
+    list.push(row.workout_type);
+    weekPlannedByDate.set(row.scheduled_date, list);
+  }
+
+  const weekDoneByDate = new Map<string, TrainingSession[]>();
+  for (const session of allSessions) {
+    if (session.date < weekStartKey || session.date > weekEndKey) continue;
+    weekDoneByDate.set(session.date, [...(weekDoneByDate.get(session.date) ?? []), session]);
+  }
+
+  const weekDays: WeekStripDay[] = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(`${weekStartKey}T00:00:00`);
+    d.setDate(d.getDate() + i);
+    const key = toDateKey(d);
+    return {
+      date: key,
+      done: (weekDoneByDate.get(key) ?? []).map((session) => session.category),
+      planned: weekPlannedByDate.get(key) ?? [],
+      isToday: key === todayKey,
+      isPast: key < todayKey,
+    };
+  });
+
+  const weekDoneCount = [...weekDoneByDate.values()].reduce((n, list) => n + list.length, 0);
+  const weekKilometres =
+    [...weekDoneByDate.values()]
+      .flat()
+      .reduce((m, session) => m + session.distanceMeters, 0) / 1000;
+
+    const latestSession = allSessions.length > 0 ? allSessions[allSessions.length - 1] : null;
 
   /* --- Sviten som rutor -------------------------------------------------- */
   // En ruta per kalendervecka bakåt, med veckans antal pass och om någon av
@@ -685,6 +740,18 @@ export default async function DashboardPage({
       />
 
 
+      {/* --- Veckan, direkt under dagens pass. Låg tidigare bara som en
+          textlänk längst ner, efter status, form och belastning — men frågan
+          "hur ser resten av veckan ut" kommer direkt efter "vad gör jag
+          idag". ------------------------------------------------------- */}
+      <WeekStrip
+        days={weekDays}
+        doneCount={weekDoneCount}
+        plannedCount={(weekPlannedRows ?? []).length}
+        kilometres={weekKilometres}
+        href={`/calendar/vecka/${todayKey}${athleteQuery}`}
+      />
+
       {/* --- Status mot baslinje (P1.2), plats två direkt efter dagens pass.
           Ersätter den råa nyckeltalsraden som låg här: den visade samma tre
           mått (HRV, vilopuls, sömnpoäng) men bara som dagens siffra. Samma
@@ -783,15 +850,6 @@ export default async function DashboardPage({
           man öppnar appen för. */}
       <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
 
-      {/* --- Utgången: loopens nästa steg efter dagen är veckan. /veckan togs
-          bort 2026-08-13 (dubblerade kalenderns veckovy) — länken pekar dit
-          i stället. ---------------------------------------------------- */}
-      <Link
-        href={`/calendar/vecka/${todayKey}${athleteQuery}`}
-        className="w-fit text-sm underline text-[var(--ink-2)] hover:text-[var(--foreground)]"
-      >
-        Veckans genomgång →
-      </Link>
     </div>
   );
 }
