@@ -47,7 +47,10 @@ function AthleteColumn({
 }) {
   const [y, m, d] = dateKey.split("-").map(Number);
   return (
-    <div className="flex min-w-[26rem] flex-1 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+    /* min-w-0 på telefon: 26 rem är 416 px och därmed bredare än skärmen,
+       vilket drog hela sidan i sidled. Från sm och uppåt står minimibredden
+       kvar — där är den till för att två dagkort inte ska pressas ihop. */
+    <div className="flex min-w-0 flex-1 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 sm:min-w-[26rem]">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           {athlete.fullName ?? "Namnlös löpare"}

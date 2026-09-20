@@ -928,62 +928,72 @@ async function ArsplanOverview({
           för hennes block och veckor.
         </p>
 
-        <div className="flex flex-col gap-2">
-          {athleteSummaries.map(({ athlete, activeBlock, nextBlock, myBlocks, upcomingRaces }) => {
-            const shown = activeBlock ?? nextBlock;
-            const strip = myBlocks.filter((b) => b.end_date >= yearStart);
-            return (
-              <Link
-                key={athlete.id}
-                href={`/sasongsoversikt?athlete=${athlete.id}`}
-                className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)]"
-              >
-                <span className="display w-28 shrink-0 text-sm font-semibold text-[var(--foreground)]">
-                  {athlete.fullName ?? "Namnlös"}
-                </span>
-
-                {/* Bandet visar SÄSONGERNA, inte blocken. Blocknamnen hör
-                    hemma i löparens egen vy; här är frågan vilken säsong hon
-                    är i och när nästa börjar. */}
-                <span className="min-w-[14rem] flex-1">
-                  <AthleteSeasonBand blocks={strip} rangeStart={rangeFrom} rangeEnd={rangeTo} />
-                </span>
-
-                <span className="tabular w-40 shrink-0 text-xs text-[var(--ink-3)]">
-                  {strip.length} block
-                  {/* Avvikelsen är det intressanta: att en löpare har färre
-                      block än de andra är något tränaren vill se direkt. */}
-                  {strip.length !== planBlocks.length && (
-                    <span className="text-[var(--status-watch-ink)]">
-                      {" "}
-                      · {planBlocks.length - strip.length} saknas
-                    </span>
-                  )}
-                  <span className="block">
-                    {upcomingRaces.length > 0
-                      ? `Nästa: ${upcomingRaces[0].name.slice(0, 18)} ${upcomingRaces[0].competition_date.slice(5)}`
-                      : "Ingen tävling inlagd"}
+        {/* Banden och månadsaxeln delar bredd och MÅSTE ligga i linje, så
+            de kan inte brytas ner var för sig på en smal skärm. Hela
+            widgeten rullar därför i sidled i stället — samma lösning som
+            SeasonTimeline och RaceTimeline redan använder. Utan den blev
+            axelraden (7 + 14 + 10 rem plus glapp = drygt 500 px) bredare än
+            en telefonskärm och drog HELA sidan i sidled. */}
+        <div className="overflow-x-auto">
+          <div className="min-w-[34rem]">
+          <div className="flex flex-col gap-2">
+            {athleteSummaries.map(({ athlete, activeBlock, nextBlock, myBlocks, upcomingRaces }) => {
+              const shown = activeBlock ?? nextBlock;
+              const strip = myBlocks.filter((b) => b.end_date >= yearStart);
+              return (
+                <Link
+                  key={athlete.id}
+                  href={`/sasongsoversikt?athlete=${athlete.id}`}
+                  className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)]"
+                >
+                  <span className="display w-28 shrink-0 text-sm font-semibold text-[var(--foreground)]">
+                    {athlete.fullName ?? "Namnlös"}
                   </span>
-                  {shown && (
-                    <span className="block truncate">
-                      {activeBlock ? "Nu: " : "Nästa block: "}
-                      {shown.name}
-                    </span>
-                  )}
-                </span>
-              </Link>
-            );
-          })}
-        </div>
 
-        {/* Månadsaxeln en gång under alla band — de delar spann, så en axel
-            per rad hade varit fyra kopior av samma skala. */}
-        <div className="flex gap-x-4">
-          <span className="w-28 shrink-0" />
-          <span className="min-w-[14rem] flex-1">
-            <SeasonBandAxis rangeStart={rangeFrom} rangeEnd={rangeTo} />
-          </span>
-          <span className="w-40 shrink-0" />
+                  {/* Bandet visar SÄSONGERNA, inte blocken. Blocknamnen hör
+                      hemma i löparens egen vy; här är frågan vilken säsong hon
+                      är i och när nästa börjar. */}
+                  <span className="min-w-[14rem] flex-1">
+                    <AthleteSeasonBand blocks={strip} rangeStart={rangeFrom} rangeEnd={rangeTo} />
+                  </span>
+
+                  <span className="tabular w-40 shrink-0 text-xs text-[var(--ink-3)]">
+                    {strip.length} block
+                    {/* Avvikelsen är det intressanta: att en löpare har färre
+                        block än de andra är något tränaren vill se direkt. */}
+                    {strip.length !== planBlocks.length && (
+                      <span className="text-[var(--status-watch-ink)]">
+                        {" "}
+                        · {planBlocks.length - strip.length} saknas
+                      </span>
+                    )}
+                    <span className="block">
+                      {upcomingRaces.length > 0
+                        ? `Nästa: ${upcomingRaces[0].name.slice(0, 18)} ${upcomingRaces[0].competition_date.slice(5)}`
+                        : "Ingen tävling inlagd"}
+                    </span>
+                    {shown && (
+                      <span className="block truncate">
+                        {activeBlock ? "Nu: " : "Nästa block: "}
+                        {shown.name}
+                      </span>
+                    )}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Månadsaxeln en gång under alla band — de delar spann, så en axel
+              per rad hade varit fyra kopior av samma skala. */}
+          <div className="flex gap-x-4">
+            <span className="w-28 shrink-0" />
+            <span className="min-w-[14rem] flex-1">
+              <SeasonBandAxis rangeStart={rangeFrom} rangeEnd={rangeTo} />
+            </span>
+            <span className="w-40 shrink-0" />
+          </div>
+          </div>
         </div>
       </section>
 
