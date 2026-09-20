@@ -1,4 +1,5 @@
 import { login, requestAccount } from "./actions";
+import { ClubMark } from "@/components/ClubMark";
 
 /* Registrering är spärrad av auth-hooken hook_restrict_signup_by_email: bara
  * adresser i allowed_signup_emails kan skapa konto. Knappen "Skapa konto" låg
@@ -21,13 +22,16 @@ export default async function LoginPage({
 
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-8 px-6 py-12">
-      <div>
-        <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
-          Träningsdagboken
-        </h1>
-        <p className="mt-1 text-sm text-[var(--ink-2)]">
-          Planering och uppföljning för medeldistanslöpare och deras tränare.
-        </p>
+      <div className="flex flex-col gap-4">
+        <ClubMark size="lg" />
+        <div>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
+            Träningsdagboken
+          </h1>
+          <p className="mt-1 text-sm text-[var(--ink-2)]">
+            Planering och uppföljning för medeldistansgruppen i IFK Göteborg Friidrott.
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -88,7 +92,8 @@ export default async function LoginPage({
           <li>
             <strong className="text-[var(--foreground)]">Vad appen är till för.</strong> Du loggar
             din träning och dina tävlingsresultat, och får tillbaka en bild av hur träningen
-            fördelar sig och hur formen utvecklas. Din tränare planerar passen här.
+            fördelar sig och hur formen utvecklas. Din tränare i medeldistansgruppen planerar
+            passen här. Appen används av IFK Göteborg Friidrott och är inte öppen för andra.
           </li>
           <li>
             <strong className="text-[var(--foreground)]">Din tränare ser det du loggar.</strong>{" "}

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { LinkPending } from "@/components/ui/LinkPending";
+import { ClubMark } from "@/components/ClubMark";
 
 /* Raden högst upp: VEM du tittar på och VEM du är.
  *
@@ -79,6 +80,17 @@ export function TopBar({
 
   return (
     <header className="sticky top-0 z-40 flex items-center gap-2 border-b border-[var(--line)] bg-[var(--background)]/90 px-4 py-1.5 backdrop-blur sm:px-6">
+      {/* Avsändaren först. Namnet döljs på små skärmar — där konkurrerar det
+          med adeptväljaren om plats, och skölden ensam räcker som märke. */}
+      <span className="mr-1 shrink-0">
+        <span className="hidden sm:inline-flex">
+          <ClubMark />
+        </span>
+        <span className="inline-flex sm:hidden">
+          <ClubMark showName={false} />
+        </span>
+      </span>
+
       {showAthletes && (
         <div role="group" aria-label="Välj löpare" className="flex items-center gap-1.5">
           {athletes.map((a) => {

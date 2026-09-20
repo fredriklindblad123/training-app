@@ -47,6 +47,15 @@
      i stället för Tailwinds stroke-*-klasser, samma mönster som --cat-* —
      en ring är en SVG-stroke, och det mönstret är det som är beprövat att
      faktiskt färgläggas korrekt i båda teman i den här appen. */
+  /* Klubbfärgerna, uppmätta ur IFK Göteborg Friidrotts logotyp
+     (public/ifk-logga.png): blå #0061AB och guld #F9BB00 är de två kulörer
+     som faktiskt finns i skölden. De används som identitetsmarkörer —
+     sidhuvud, inloggning — och aldrig till mätvärden. Ett mätvärde i
+     klubbens blå hade läst som en bedömning, och kategori- och
+     statusfärgerna äger den betydelsen. */
+  --brand-blue: #0061AB;
+  --brand-gold: #F9BB00;
+
   --status-good: #059669;
   --status-watch: #d97706;
   --status-concern: #dc2626;
@@ -113,6 +122,8 @@
     --zone-4: #6da7ec;
     --zone-5: #9ec5f4;
 
+    --brand-blue: #5AA9E6;
+    --brand-gold: #FFC933;
     --status-good: #34d399;
     --status-watch: #fbbf24;
     --status-concern: #f87171;

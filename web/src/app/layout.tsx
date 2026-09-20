@@ -30,8 +30,9 @@ const barlowCondensed = Barlow_Semi_Condensed({
 });
 
 export const metadata: Metadata = {
-  title: "Träningsapp",
-  description: "Träningsapp för medeldistanslöpare",
+  title: "IFK Göteborg Friidrott · Medeldistans",
+  description:
+    "Träningsdagbok och planering för medeldistansgruppen i IFK Göteborg Friidrott.",
 };
 
 export const viewport: Viewport = {
