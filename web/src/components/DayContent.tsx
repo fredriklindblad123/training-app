@@ -3,11 +3,7 @@ import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
 import { DaySection } from "@/components/DaySection";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { createClient } from "@/lib/supabase/server";
-import {
-  categoryMismatchNote,
-  groupActivitiesIntoSessions,
-  type SessionActivity,
-} from "@/lib/sessions";
+import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
 import {
   matchPlanToSessions,
   summarizeCompliance,
@@ -393,49 +389,28 @@ export async function DayContent({
               })(),
             }}
           >
-            {(() => {
-              /* Brickan visar vad APPEN räknar passet som, inte vad klockan
-                 gissade. Det är appens siffra som används överallt annars —
-                 i veckan, i formvyn, i belastningen — och att kortet visade
-                 klockans råa etikett gjorde att samma pass hette "Distans" i
-                 sammanfattningen och "Tröskel" en rad längre ner.
-
-                 Klockans etikett försvinner inte: den står kvar bredvid,
-                 märkt med var den kommer ifrån, och det är fortfarande den
-                 som kategoriväljaren nedan redigerar. */
-              const sessionCategory = sessionCategoryByActivity.get(a.id);
-              const note = sessionCategory
-                ? categoryMismatchNote(sessionCategory, a.category)
-                : null;
-              return (
-                <>
-                  <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:col-span-4">
-                    <span className="display text-base font-semibold text-[var(--foreground)]">
-                      {a.name ?? "Pass"}
-                    </span>
-                    <span className="text-xs text-[var(--ink-3)]">{a.activity_type}</span>
-                    <CategoryBadge category={sessionCategory ?? a.category} />
-                    {note && (
-                      <span className="text-xs text-[var(--ink-3)]">
-                        {a.category_source === "manual" ? "valt" : "klockan"}:{" "}
-                        {CATEGORY_LABELS[a.category as ActivityCategory]}
-                      </span>
-                    )}
-                  </div>
-                  {note && (
-                    <p className="col-span-2 -mt-1 text-xs text-[var(--ink-3)] sm:col-span-4">
-                      {note}
-                    </p>
-                  )}
-                </>
-              );
-            })()}
+            {/* Kortet visar EN kategori: den appen räknar passet som. Klockans
+                råa etikett stod tidigare bredvid ("klockan: Tröskel") med en
+                rad som förklarade skillnaden, men det var brus — var passet
+                ett distanspass så var det ett distanspass, och vad Garmins
+                träningseffekt gissade är inte läsarens problem. Vill man se
+                eller ändra värdet finns kategoriväljaren nedanför. */}
+            <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:col-span-4">
+              <span className="display text-base font-semibold text-[var(--foreground)]">
+                {a.name ?? "Pass"}
+              </span>
+              <span className="text-xs text-[var(--ink-3)]">{a.activity_type}</span>
+              <CategoryBadge category={sessionCategoryByActivity.get(a.id) ?? a.category} />
+            </div>
             <div className="col-span-2 flex flex-wrap items-center gap-3 sm:col-span-4">
               <form action={updateActivityCategory} className="flex items-center gap-2">
                 <input type="hidden" name="activity_id" value={a.id} />
                 <select
                   name="category"
-                  defaultValue={isActivityCategory(a.category ?? "") ? a.category! : ""}
+                  defaultValue={(() => {
+                    const shown = sessionCategoryByActivity.get(a.id) ?? a.category;
+                    return isActivityCategory(shown ?? "") ? shown! : "";
+                  })()}
                   className={fieldClass}
                 >
                   {CATEGORY_VALUES.map((c) => (
