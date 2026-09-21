@@ -224,7 +224,7 @@ export function LactateCurve({
               key: "distans" as const,
               where: example ? "under aerob tröskel" : `under ${lt1}`,
               what: "Laktatet ligger kvar på vilovärdet. Här byggs motorn: blodvolym, kapillärer, mitokondrier. Det är den enda zonen du kan tillbringa många timmar i varje vecka.",
-              section: "Sektionen Distans mäter om de lugna passen faktiskt hamnar här.",
+              section: "Sektionen Distans mäter om distanspassen faktiskt hamnar här.",
             },
             {
               key: "troskel" as const,

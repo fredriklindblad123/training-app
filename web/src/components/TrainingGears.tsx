@@ -222,7 +222,7 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
       <details className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">
         <summary className="cursor-pointer text-[var(--ink-2)]">Hur växlarna mäts</summary>
         <p className="mt-2 text-[var(--ink-2)]">
-          Distans mäts <strong>per pass</strong> (lugna pass och långpass på minst 20 minuter).
+          Distans mäts <strong>per pass</strong> (distanspass och långpass på minst 20 minuter).
           Tröskel och intervall mäts <strong>per repetition</strong>: aktiva varv på minst 400 m
           och 60 sekunder, och bara ur passets huvudaktivitet — annars hade uppvärmningens
           kilometrar räknats som intervallrepetitioner. Olika enheter är avsiktligt, men det gör

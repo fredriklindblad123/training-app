@@ -252,7 +252,7 @@ export function easyVerdict(
 ): { headline: string; detail: string } {
   const n = points.length;
   if (n === 0) {
-    return { headline: "Inga pass i urvalet.", detail: "Prova ett annat längdintervall." };
+    return { headline: "Inga pass i urvalet.", detail: "Prova ett annat längd- eller fartintervall." };
   }
   const counts = countZones(points);
   const over = counts["over-ceiling"];
@@ -262,7 +262,7 @@ export function easyVerdict(
 
   if (over / n >= 0.5) {
     return {
-      headline: `${over} av ${n} lugna pass låg över ${ceilingWord}.`,
+      headline: `${over} av ${n} distanspass låg över ${ceilingWord}.`,
       detail:
         `Medianen ligger på ${medianHr} slag, ${medianHr - band.ceiling} över taket på ` +
         `${band.ceiling}. Stämmer tröskeln liknar passen mer distansfart än återhämtning — och ` +
@@ -273,14 +273,14 @@ export function easyVerdict(
   }
   if (over / n >= 0.25) {
     return {
-      headline: `${over} av ${n} lugna pass låg strax över ${ceilingWord}.`,
+      headline: `${over} av ${n} distanspass låg strax över ${ceilingWord}.`,
       detail:
-        `Medianen ${medianHr} slag ligger inom taket, men var fjärde lugnt pass gör det inte. ` +
+        `Medianen ${medianHr} slag ligger inom taket, men vart fjärde distanspass gör det inte. ` +
         `Det är oftast de längsta passen som glider uppåt — prova längdfiltret.`,
     };
   }
   return {
-    headline: `${counts["in-band"] + counts["upper-margin"] + counts.below} av ${n} lugna pass låg rätt.`,
+    headline: `${counts["in-band"] + counts["upper-margin"] + counts.below} av ${n} distanspass låg rätt.`,
     detail:
       `Medianen ${medianHr} slag ligger under taket på ${band.ceiling}. Det ser ut att ligga ` +
       `rätt — och det är den disciplinen som gör att kvalitetspassen går att köra hårt.`,

@@ -15,7 +15,7 @@ import {
 import { formatPacePerKm } from "@/lib/training-gears";
 
 /* ------------------------------------------------------------------------ *
- * EasyDiscipline — "Pulsen på de lugna passen"
+ * EasyDiscipline — "Pulsen på distanspassen"
  *
  * ── Puls i höjdled, fart och längd som filter ─────────────────────────────
  * Ett mellansteg hade farten i höjdled och pulsen som färg. Det lät
@@ -89,10 +89,10 @@ export function EasyDiscipline({ data }: { data: EasyDisciplineData }) {
     <section className="flex flex-col gap-3">
       <div>
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Pulsen på de lugna passen
+          Pulsen på distanspassen
         </h2>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Ett märke per lugnt pass och långpass på minst 20 minuter, placerat efter sin
+          Ett märke per distanspass och långpass på minst 20 minuter, placerat efter sin
           snittpuls. Det gröna fältet är målbandet, den streckade linjen{" "}
           {band.source === "lt1" ? "din aeroba tröskel" : "din skattade aeroba tröskel"} på{" "}
           {band.ceiling} slag — taket för vad ett lugnt pass får vara. Filtrera på längd och fart
@@ -163,7 +163,7 @@ export function EasyDiscipline({ data }: { data: EasyDisciplineData }) {
               <div
                 className="relative h-52 min-w-0 flex-1 sm:h-60"
                 role="img"
-                aria-label={`Snittpuls för ${points.length} lugna pass mot ett målband på ${band.low} till ${band.high} slag. ${over} pass ligger över taket ${band.ceiling}.`}
+                aria-label={`Snittpuls för ${points.length} distanspass mot ett målband på ${band.low} till ${band.high} slag. ${over} pass ligger över taket ${band.ceiling}.`}
               >
                 <div
                   className="absolute inset-x-0 rounded-sm"

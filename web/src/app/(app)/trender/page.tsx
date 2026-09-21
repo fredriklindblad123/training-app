@@ -828,7 +828,7 @@ export default async function TrendsPage({
           </h3>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt rätt håll.
-            Bara lugna pass och långpass på minst 20 minuter med registrerad snittpuls räknas —
+            Bara distanspass och långpass på minst 20 minuter med registrerad snittpuls räknas —
             intervaller går inte att jämföra med distanslöpning. {efPoints.length} pass i perioden
             klarar filtret.
           </p>

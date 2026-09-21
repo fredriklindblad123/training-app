@@ -161,7 +161,7 @@ function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: stri
       { label: "Förändring", value: pctChange != null ? formatPctChange(pctChange) : "–" },
     ],
     hint:
-      "Meter per hjärtslag på lugna/långa pass (minst 20 min), senaste 4 veckorna mot de 4 " +
+      "Meter per hjärtslag på distans- och långpass (minst 20 min), senaste 4 veckorna mot de 4 " +
       `veckorna innan — visar om du bättrar dig, inte var du ligger mot ditt vanliga. Under ±` +
       `${(EF_NOISE_THRESHOLD_PCT * 100).toFixed(0)}% räknas som brus. Hela kurvan finns på /trender.`,
   };

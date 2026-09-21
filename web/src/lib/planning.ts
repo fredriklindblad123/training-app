@@ -204,7 +204,7 @@ export const WORKOUT_TYPES = [
 export type WorkoutType = (typeof WORKOUT_TYPES)[number];
 
 export const WORKOUT_LABELS: Record<WorkoutType, string> = {
-  easy: "Lugn distans",
+  easy: "Distans",
   long_run: "Långpass",
   threshold: "Tröskel",
   interval: "Intervaller",

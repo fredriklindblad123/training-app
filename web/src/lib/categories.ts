@@ -15,7 +15,7 @@ export const CATEGORY_VALUES = [
 export type ActivityCategory = (typeof CATEGORY_VALUES)[number];
 
 export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
-  easy: "Lugn distans",
+  easy: "Distans",
   long_run: "Långpass",
   threshold: "Tröskel",
   interval: "Intervaller",
