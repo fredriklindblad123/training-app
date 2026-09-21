@@ -14,8 +14,12 @@ export type StreakWeek = {
   weekStart: string;
   /** Genomförda pass den veckan. Noll ritar en tom ruta. */
   sessions: number;
-  /** Veckan innehöll ett kvalitetspass — tröskel, intervall eller tävling. */
+  /** Veckan innehöll ett kvalitetspass — tröskel, intervall eller tävling.
+   * Påverkar inte längre färgen, men används i rutans titel. */
   quality: boolean;
+  /** Veckan innehöll minst en sjuk- eller skadedag, alltså det som bryter
+   * sviten. */
+  interrupted: boolean;
 };
 
 const MAX_DOTS = 14;
@@ -47,22 +51,31 @@ export function StreakStrip({
           </span>
         </div>
 
-        {/* Rutorna sist på raden så att talet läses först. Kvalitetsveckor får
-            passfärgen för intervall, vanliga veckor tröskelns — samma två
-            färger som resten av appen använder för hårt och lugnt. */}
+        {/* Plupparna sist på raden så att talet läses först.
+        
+            Färgen säger vad sviten handlar om: grön vecka = tränad, röd =
+            bruten av sjukdom eller skada, tom = ingen träning. Tidigare
+            skilde färgerna på kvalitets- och distansveckor, vilket beskrev
+            något annat än rubriken ovanför — en svit bryts inte av att en
+            vecka saknade intervaller. Rött går före grönt: en vecka med både
+            träning och sjukdagar är en bruten vecka, precis som
+            computeContinuityStreaks räknar den. */}
         <div className="flex flex-wrap items-center gap-1" aria-hidden>
           {shown.map((w) => (
             <span
               key={w.weekStart}
-              title={`${w.weekStart}: ${w.sessions} pass`}
-              className="h-3.5 w-3.5 rounded-[3px]"
+              title={`${w.weekStart}: ${
+                w.interrupted
+                  ? `sjuk eller skadad, ${w.sessions} pass`
+                  : `${w.sessions} pass`
+              }`}
+              className="h-3.5 w-3.5 rounded-full"
               style={{
-                backgroundColor:
-                  w.sessions === 0
-                    ? "var(--line)"
-                    : w.quality
-                      ? "var(--cat-interval)"
-                      : "var(--cat-threshold)",
+                backgroundColor: w.interrupted
+                  ? "var(--status-concern)"
+                  : w.sessions > 0
+                    ? "var(--status-good)"
+                    : "var(--line)",
               }}
             />
           ))}

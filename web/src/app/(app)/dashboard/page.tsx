@@ -635,6 +635,12 @@ export default async function DashboardPage({
     if (QUALITY_CATEGORIES.has(s.category)) cur.quality = true;
     weekAgg.set(key, cur);
   }
+  /* Avbrutna veckor: minst en sjuk- eller skadedag. Det är exakt samma
+     definition som computeContinuityStreaks använder för att bryta sviten,
+     så rutorna kan aldrig visa en obruten rad medan siffran säger noll. */
+  const interruptedWeeks = new Set(
+    continuityInterruptions.map((i) => isoWeekStart(i.date)),
+  );
   // Sammanhängande veckoserie, så att en helt tom vecka blir en tom ruta i
   // stället för att försvinna och få sviten att se obruten ut.
   const streakWeeks: StreakWeek[] = [];
@@ -649,6 +655,7 @@ export default async function DashboardPage({
         weekStart: key,
         sessions: agg?.sessions ?? 0,
         quality: agg?.quality ?? false,
+        interrupted: interruptedWeeks.has(key),
       });
       cursor.setUTCDate(cursor.getUTCDate() + 7);
     }
