@@ -33,6 +33,18 @@ export type { EfficiencyPoint };
 
 export type EfficiencyRace = { date: string; label: string };
 
+/* Sjuk- och skadedagar på samma rail som tävlingarna.
+ *
+ * Kurvan faller ofta veckorna runt en sjukdomsperiod, och utan markörerna
+ * ser det ut som formtapp. Att kunna se att dippen sammanfaller med fyra
+ * sjukdagar är skillnaden mellan "något är fel med träningen" och "hon var
+ * sjuk". Tävlingar syns redan; det här är den andra förklaringen till en
+ * oväntad kurva.
+ *
+ * Fyrkant i stället för tävlingens triangel, och statusfärgerna i stället
+ * för passfärgerna — de betyder redan sjukt/skadat på övriga ytor. */
+export type EfficiencyInterruption = { date: string; dayType: "sick" | "injured" };
+
 /** m/s per slag → meter per hjärtslag. */
 const METERS_PER_BEAT = 60;
 
@@ -86,12 +98,15 @@ function monthTicks(fromMs: number, toMs: number): { ms: number; label: string }
 export function EfficiencyChart({
   points,
   races,
+  interruptions = [],
   fromDate,
   toDate,
   emptyLabel = "Inga pass i perioden klarar filtret.",
 }: {
   points: EfficiencyPoint[];
   races: EfficiencyRace[];
+  /** Sjuk- och skadedagar, ritade som fyrkanter på tävlingarnas rail. */
+  interruptions?: EfficiencyInterruption[];
   /** Tidsaxelns fönster (YYYY-MM-DD) — samma som resten av sidan. */
   fromDate: string;
   toDate: string;
@@ -263,6 +278,27 @@ export function EfficiencyChart({
           </g>
         ))}
 
+        {/* --- sjuk- och skadedagar: samma rail, fyrkant --- */}
+        {interruptions.map((i) => (
+          <rect
+            key={`int-${i.date}`}
+            x={xFor(i.date) - 3}
+            y={raceRailY - 3}
+            width={6}
+            height={6}
+            rx={1}
+            style={{
+              fill:
+                i.dayType === "injured" ? "var(--status-watch)" : "var(--status-concern)",
+            }}
+            className="stroke-[var(--surface)]"
+            strokeWidth={1}
+            paintOrder="stroke"
+          >
+            <title>{`${i.dayType === "injured" ? "Skadad" : "Sjuk"} ${formatShortDate(i.date)}`}</title>
+          </rect>
+        ))}
+
         {/* --- trendlinje under punkterna: den är kontext, inte data --- */}
         <path
           d={trendPath}
@@ -352,6 +388,22 @@ export function EfficiencyChart({
               <path d="M 5 1 L 9.5 9 L 0.5 9 Z" style={{ fill: categoryColorVar("race") }} />
             </svg>
             Tävling
+          </span>
+        )}
+        {interruptions.some((i) => i.dayType === "sick") && (
+          <span className="inline-flex items-center gap-1.5">
+            <svg width={10} height={10} aria-hidden="true" className="shrink-0">
+              <rect x={2} y={2} width={6} height={6} rx={1} style={{ fill: "var(--status-concern)" }} />
+            </svg>
+            Sjuk
+          </span>
+        )}
+        {interruptions.some((i) => i.dayType === "injured") && (
+          <span className="inline-flex items-center gap-1.5">
+            <svg width={10} height={10} aria-hidden="true" className="shrink-0">
+              <rect x={2} y={2} width={6} height={6} rx={1} style={{ fill: "var(--status-watch)" }} />
+            </svg>
+            Skadad
           </span>
         )}
       </div>

@@ -4,7 +4,11 @@ import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
 import { IntensityChart, type IntensityWeek } from "@/components/charts/IntensityChart";
-import { EfficiencyChart, type EfficiencyRace } from "@/components/charts/EfficiencyChart";
+import {
+  EfficiencyChart,
+  type EfficiencyInterruption,
+  type EfficiencyRace,
+} from "@/components/charts/EfficiencyChart";
 import { computeEfficiencyPoints, efficiencyTrend, efficiencyVerdict } from "@/lib/efficiency";
 import {
   EMPTY_THRESHOLD_PROFILE,
@@ -407,6 +411,15 @@ export default async function TrendsPage({
 
   const efTrend = efficiencyTrend(efPoints, todayKey);
   const vo2max = computeVo2maxTrend(sessions);
+
+  /* Sjuk- och skadedagar till formkurvan. diaryEntries är redan hämtad för
+     perioden — kurvan visar samma fönster, så ingen ny fråga behövs. */
+  const efInterruptions: EfficiencyInterruption[] = (diaryEntries ?? [])
+    .filter((e) => e.day_type === "sick" || e.day_type === "injured")
+    .map((e) => ({
+      date: e.entry_date as string,
+      dayType: e.day_type as "sick" | "injured",
+    }));
 
   const efRaces: EfficiencyRace[] = [...raceDays].map(([date, label]) => ({ date, label }));
 
@@ -853,6 +866,7 @@ export default async function TrendsPage({
         <EfficiencyChart
           points={efPoints}
           races={efRaces}
+          interruptions={efInterruptions}
           fromDate={startDate}
           toDate={activeBlock ? activeBlock.end_date : todayKey}
           emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
