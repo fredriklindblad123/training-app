@@ -108,6 +108,17 @@
      InsightCard från de neutrala datakorten utan att konkurrera med
      tone-markören (som återanvänder --status-*, se InsightCard.tsx). */
   --surface-action: #64748b;
+
+  /* Avvikelsenotering — "annan typ än planerat" i veckovyn.
+     
+     Den bar tidigare amber, vilket är sjukdagens färg (--day-sick). Att
+     göra något annat än planerat är varken sjukdom eller varning, det är
+     en notering, så tonen ligger medvetet utanför --status-*, --cat-* och
+     --day-* av samma skäl som --surface-action. Mörkare än --ink-3 så att
+     den ändå väger tyngre än dagbokstexten intill. Kontrasten är mätt mot
+     --surface-raised: 4.8:1 respektive 6.0:1, bägge över den amber den
+     ersätter (4.4:1) — texten är 10 px och tål ingen svag ton. */
+  --ink-note: #5a6b7d;
   --surface-insight: rgba(99, 102, 241, 0.06);
 }
 
@@ -175,6 +186,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --ink-note: #94a3b8;
     --surface: #151a1d;
     --surface-raised: #1e262a;
     --line: #263136;

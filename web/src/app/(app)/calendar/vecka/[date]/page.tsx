@@ -402,7 +402,7 @@ export default async function WeekPage({
 
               {/* Avvikelse: bara när båda finns och typerna skiljer sig */}
               {mismatch && (
-                <div className="text-[10px] text-amber-700 dark:text-amber-400">
+                <div className="text-[10px] text-[var(--ink-note)]">
                   Annan typ än planerat
                 </div>
               )}
@@ -446,8 +446,9 @@ export default async function WeekPage({
           <span className={`h-2.5 w-2.5 rounded-full ${COMPETED_COLOR}`} aria-hidden="true" />
           {COMPETED_LABEL} (tävling utan matchande pass)
         </span>
-        <span className="text-amber-700 dark:text-amber-400">
-          Gul text = utfallet blev en annan passtyp än planerat
+        <span>
+          <span className="text-[var(--ink-note)]">Annan typ än planerat</span> = passet blev av,
+          men som en annan typ
         </span>
       </div>
 
