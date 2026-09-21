@@ -32,6 +32,9 @@ export type SessionActivity = {
   max_hr: number | null;
   training_load: number | null;
   category: string | null;
+  /** 'auto' eller 'manual'. Ett manuellt val är ett uttalat besked om vad
+   * passet var, och får därför inte skrivas över av heuristiken nedan. */
+  category_source: string | null;
   hr_zone_1_seconds: number | null;
   hr_zone_2_seconds: number | null;
   hr_zone_3_seconds: number | null;
@@ -50,7 +53,7 @@ export type SessionActivity = {
 /** Kolumnlistan för `.select()` — håll i synk med `SessionActivity`. */
 export const SESSION_ACTIVITY_COLUMNS =
   "id, user_id, name, activity_type, start_time, duration_seconds, distance_meters, " +
-  "avg_hr, max_hr, training_load, category, " +
+  "avg_hr, max_hr, training_load, category, category_source, " +
   "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds, " +
   "garmin_feel, garmin_rpe, vo2max";
 
@@ -313,6 +316,15 @@ export function categorizeSession(
   let category: ActivityCategory =
     raw != null && isActivityCategory(raw) ? raw : "easy";
 
+  /* Ett manuellt satt värde vinner rakt av. Heuristiken nedan finns för att
+     Garmins etiketter är opålitliga — men när någon uttryckligen valt vad
+     passet var finns ingen osäkerhet kvar att kompensera för, och att ändå
+     nedgradera valet gör kategoriväljaren meningslös för just de pass där
+     den behövs mest. Rapporterat 2026-09-21. */
+  if (dominantActivity.category_source === "manual" && isActivityCategory(raw ?? "")) {
+    return { category, dominantActivity };
+  }
+
   // Att Alice delar passet i uppvärmning + huvudpass + nerjogg är i sig ett
   // belägg — hon gör det bara på kvalitetspass. Tre fragment räcker som
   // signal även när fragmenten fått Garmins automatiska namn ("Göteborg
@@ -367,24 +379,21 @@ export function categoryMismatchNote(
   if (activityCategory == null || !isActivityCategory(activityCategory)) return null;
   if (activityCategory === sessionCategory) return null;
 
-  const from = CATEGORY_LABELS[activityCategory];
-  const to = CATEGORY_LABELS[sessionCategory];
+  const from = CATEGORY_LABELS[activityCategory].toLowerCase();
 
   if (QUALITY_CATEGORIES.has(activityCategory) && sessionCategory === "easy") {
     return (
-      `Räknas som ${to} i passet. Klockan sätter ${from.toLowerCase()} utifrån träningseffekten, ` +
-      `och den etiketten hamnar ofta på en rak distansjogg — utan varv eller ett namn som pekar ` +
-      `på kvalitetsarbete finns inget belägg för att det var ett ${from.toLowerCase()}pass.`
+      `Klockan sätter ${from} utifrån träningseffekten, och den etiketten hamnar ofta på en rak ` +
+      `distansjogg — utan varv eller ett namn som pekar på kvalitetsarbete finns inget belägg ` +
+      `för ett ${from}pass. Välj kategori nedan om du vill överstyra.`
     );
   }
   if (activityCategory === "easy" && QUALITY_CATEGORIES.has(sessionCategory)) {
     return (
-      `Räknas som ${to} i passet. Klockan satte ${from.toLowerCase()} — korta ryck ger låg ` +
-      `träningseffekt — men passets namn säger vad det var.`
+      `Klockan satte ${from} — korta ryck ger låg träningseffekt — men passets namn säger vad ` +
+      `det var.`
     );
   }
-  if (sessionCategory === "long_run") {
-    return `Räknas som ${to} i passet, på längden.`;
-  }
-  return `Räknas som ${to} i passet.`;
+  if (sessionCategory === "long_run") return "Räknas som långpass på längden.";
+  return `Klockans etikett är ${from}.`;
 }

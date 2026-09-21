@@ -385,28 +385,50 @@ export async function DayContent({
                grid, och ett extra barn hade hamnat i en cell. */
             className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-l-[3px] border-[var(--line)] bg-[var(--surface)] p-4 text-sm sm:grid-cols-4"
             style={{
-              borderLeftColor: isActivityCategory(a.category ?? "")
-                ? (categoryColorVar(a.category as never) as string)
-                : "var(--line)",
+              borderLeftColor: (() => {
+                const shown = sessionCategoryByActivity.get(a.id) ?? a.category;
+                return isActivityCategory(shown ?? "")
+                  ? (categoryColorVar(shown as never) as string)
+                  : "var(--line)";
+              })(),
             }}
           >
-            <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:col-span-4">
-              <span className="display text-base font-semibold text-[var(--foreground)]">
-                {a.name ?? "Pass"}
-              </span>
-              <span className="text-xs text-[var(--ink-3)]">{a.activity_type}</span>
-              <CategoryBadge category={a.category} />
-            </div>
             {(() => {
+              /* Brickan visar vad APPEN räknar passet som, inte vad klockan
+                 gissade. Det är appens siffra som används överallt annars —
+                 i veckan, i formvyn, i belastningen — och att kortet visade
+                 klockans råa etikett gjorde att samma pass hette "Distans" i
+                 sammanfattningen och "Tröskel" en rad längre ner.
+
+                 Klockans etikett försvinner inte: den står kvar bredvid,
+                 märkt med var den kommer ifrån, och det är fortfarande den
+                 som kategoriväljaren nedan redigerar. */
               const sessionCategory = sessionCategoryByActivity.get(a.id);
               const note = sessionCategory
                 ? categoryMismatchNote(sessionCategory, a.category)
                 : null;
-              return note ? (
-                <p className="col-span-2 -mt-1 text-xs text-[var(--ink-3)] sm:col-span-4">
-                  {note}
-                </p>
-              ) : null;
+              return (
+                <>
+                  <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:col-span-4">
+                    <span className="display text-base font-semibold text-[var(--foreground)]">
+                      {a.name ?? "Pass"}
+                    </span>
+                    <span className="text-xs text-[var(--ink-3)]">{a.activity_type}</span>
+                    <CategoryBadge category={sessionCategory ?? a.category} />
+                    {note && (
+                      <span className="text-xs text-[var(--ink-3)]">
+                        {a.category_source === "manual" ? "valt" : "klockan"}:{" "}
+                        {CATEGORY_LABELS[a.category as ActivityCategory]}
+                      </span>
+                    )}
+                  </div>
+                  {note && (
+                    <p className="col-span-2 -mt-1 text-xs text-[var(--ink-3)] sm:col-span-4">
+                      {note}
+                    </p>
+                  )}
+                </>
+              );
             })()}
             <div className="col-span-2 flex flex-wrap items-center gap-3 sm:col-span-4">
               <form action={updateActivityCategory} className="flex items-center gap-2">
