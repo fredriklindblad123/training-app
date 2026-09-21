@@ -7,6 +7,7 @@ import {
   SV_WEEKDAYS_SHORT,
   STATUS_COLOR,
   STATUS_LABEL,
+  STATUS_COLOR_VAR,
   type DayStatus,
   dateKey,
   daysInMonth,
@@ -279,7 +280,7 @@ export default async function MonthPage({
                 <span className="flex items-center gap-1.5 text-[11px] text-[var(--foreground)]">
                   <span
                     className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: "var(--cat-strength)" }}
+                    style={{ backgroundColor: STATUS_COLOR_VAR.training }}
                     aria-hidden="true"
                   />
                   Träning

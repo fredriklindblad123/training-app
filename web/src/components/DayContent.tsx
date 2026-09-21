@@ -9,7 +9,7 @@ import {
   summarizeCompliance,
   type PlannedWorkout,
 } from "@/lib/plan-matching";
-import { dateKey } from "@/lib/calendar-utils";
+import { dateKey, STATUS_COLOR } from "@/lib/calendar-utils";
 import type { ActivityCategory } from "@/lib/categories";
 import {
   saveManualActivity,
@@ -656,10 +656,17 @@ function PlanStatusBadge({
     missed: "Missat",
     upcoming: "Planerat",
   }[status];
+  /* Genomfört lånar STATUS_COLOR.training — "gjort" ska vara samma grönt
+     som en tränad dag i kalendern, inte en egen emerald.
+
+     Missat var tidigare fylld amber, alltså exakt sjukdagens färg, vilket
+     lät ett missat pass se ut som en sjukdomsdag. Det är en frånvaro, inte
+     ett utfall: streckad ram i dämpad ton, samma språk som PassMarkers
+     streckade ring för "tänkt men inte blivet". */
   const className = {
-    done: "bg-emerald-500 text-white",
+    done: `${STATUS_COLOR.training} text-white`,
     today: "border border-[var(--line)] text-[var(--ink-2)]",
-    missed: "bg-amber-500 text-white",
+    missed: "border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]",
     upcoming: "border border-[var(--line)] text-[var(--ink-2)]",
   }[status];
   return (

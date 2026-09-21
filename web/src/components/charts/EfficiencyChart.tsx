@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { CATEGORY_LABELS, categoryColorVar } from "@/lib/categories";
+import { STATUS_COLOR_VAR } from "@/lib/calendar-utils";
 import { median, robustRange } from "@/lib/stats-utils";
 import type { EfficiencyPoint } from "@/lib/efficiency";
 
@@ -41,8 +42,9 @@ export type EfficiencyRace = { date: string; label: string };
  * sjuk". Tävlingar syns redan; det här är den andra förklaringen till en
  * oväntad kurva.
  *
- * Fyrkant i stället för tävlingens triangel, och statusfärgerna i stället
- * för passfärgerna — de betyder redan sjukt/skadat på övriga ytor. */
+ * Fyrkant i stället för tävlingens triangel, och dagsutfallets färger
+ * (STATUS_COLOR_VAR) — gult för sjuk, rött för skadad, samma som kalendern
+ * och årsvyn. Första versionen valde egna färger och fick dem omvända. */
 export type EfficiencyInterruption = { date: string; dayType: "sick" | "injured" };
 
 /** m/s per slag → meter per hjärtslag. */
@@ -287,10 +289,7 @@ export function EfficiencyChart({
             width={6}
             height={6}
             rx={1}
-            style={{
-              fill:
-                i.dayType === "injured" ? "var(--status-watch)" : "var(--status-concern)",
-            }}
+            style={{ fill: STATUS_COLOR_VAR[i.dayType] }}
             className="stroke-[var(--surface)]"
             strokeWidth={1}
             paintOrder="stroke"
@@ -393,7 +392,7 @@ export function EfficiencyChart({
         {interruptions.some((i) => i.dayType === "sick") && (
           <span className="inline-flex items-center gap-1.5">
             <svg width={10} height={10} aria-hidden="true" className="shrink-0">
-              <rect x={2} y={2} width={6} height={6} rx={1} style={{ fill: "var(--status-concern)" }} />
+              <rect x={2} y={2} width={6} height={6} rx={1} style={{ fill: STATUS_COLOR_VAR.sick }} />
             </svg>
             Sjuk
           </span>
@@ -401,7 +400,7 @@ export function EfficiencyChart({
         {interruptions.some((i) => i.dayType === "injured") && (
           <span className="inline-flex items-center gap-1.5">
             <svg width={10} height={10} aria-hidden="true" className="shrink-0">
-              <rect x={2} y={2} width={6} height={6} rx={1} style={{ fill: "var(--status-watch)" }} />
+              <rect x={2} y={2} width={6} height={6} rx={1} style={{ fill: STATUS_COLOR_VAR.injured }} />
             </svg>
             Skadad
           </span>

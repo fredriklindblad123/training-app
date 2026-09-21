@@ -635,10 +635,15 @@ export default async function DashboardPage({
   }
   /* Avbrutna veckor: minst en sjuk- eller skadedag. Det är exakt samma
      definition som computeContinuityStreaks använder för att bryta sviten,
-     så rutorna kan aldrig visa en obruten rad medan siffran säger noll. */
-  const interruptedWeeks = new Set(
-    continuityInterruptions.map((i) => isoWeekStart(i.date)),
-  );
+     så rutorna kan aldrig visa en obruten rad medan siffran säger noll.
+     Vilken sorts avbrott sparas också — remsan färgar sjuk gult och skada
+     rött, som resten av appen. Skada vinner när veckan hade båda. */
+  const interruptedWeeks = new Map<string, "sick" | "injured">();
+  for (const i of continuityInterruptions) {
+    const key = isoWeekStart(i.date);
+    if (interruptedWeeks.get(key) === "injured") continue;
+    interruptedWeeks.set(key, i.dayType);
+  }
   // Sammanhängande veckoserie, så att en helt tom vecka blir en tom ruta i
   // stället för att försvinna och få sviten att se obruten ut.
   const streakWeeks: StreakWeek[] = [];
@@ -653,7 +658,7 @@ export default async function DashboardPage({
         weekStart: key,
         sessions: agg?.sessions ?? 0,
         quality: agg?.quality ?? false,
-        interrupted: interruptedWeeks.has(key),
+        interrupted: interruptedWeeks.get(key) ?? null,
         isCurrent: key === thisWeek,
       });
       cursor.setUTCDate(cursor.getUTCDate() + 7);

@@ -24,6 +24,19 @@ export const STATUS_COLOR: Record<DayStatus, string> = {
   injured: "bg-red-600",
 };
 
+/** Samma färger som STATUS_COLOR, men som CSS-variabler.
+ *
+ * Kalendern ritar med Tailwind-klasserna ovan; diagram, svg-markörer och
+ * inline-stilar kan inte göra det och valde tidigare egna färger — därför
+ * blev sjuk gult i månadsvyn och rött i formkurvan. Variablerna är
+ * definierade i globals.css och speglar klassernas hex-värden exakt. */
+export const STATUS_COLOR_VAR: Record<DayStatus, string> = {
+  training: "var(--day-trained)",
+  rest: "var(--day-rest)",
+  sick: "var(--day-sick)",
+  injured: "var(--day-injured)",
+};
+
 export const STATUS_LABEL: Record<DayStatus, string> = {
   training: "Tränade",
   rest: "Ledig",

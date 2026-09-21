@@ -53,6 +53,23 @@
      sidhuvud, inloggning — och aldrig till mätvärden. Ett mätvärde i
      klubbens blå hade läst som en bedömning, och kategori- och
      statusfärgerna äger den betydelsen. */
+  /* Dagens UTFALL — sjuk, skadad, vilade, tränade.
+     
+     Ett eget system vid sidan av passkategorierna (--cat-*) och
+     mätvärdesstatusen (--status-*), för de svarar på olika frågor: vad
+     passet var, hur ett mätvärde ligger, respektive vad som hände med
+     dagen. Värdena speglar Tailwind-klasserna i lib/calendar-utils.ts
+     (STATUS_COLOR) exakt — kalendern ritar med klasserna, diagram och
+     svitpluppar med variablerna, och utan den kopplingen blev sjuk gult i
+     en vy och rött i en annan. Rapporterat 2026-09-21.
+
+     Tävlade saknas här med flit: den färgen är passkategorins --cat-race,
+     som redan betyder tävling överallt annars. Se COMPETED_COLOR. */
+  --day-trained: #10b981;   /* emerald-500 */
+  --day-rest: #38bdf8;      /* sky-400     */
+  --day-sick: #f59e0b;      /* amber-500   */
+  --day-injured: #dc2626;   /* red-600     */
+
   --brand-blue: #0061AB;
   --brand-gold: #F9BB00;
 

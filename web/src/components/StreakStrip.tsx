@@ -9,6 +9,8 @@
  * poängen är att se det senaste och att sviten lever.
  */
 
+import { STATUS_COLOR_VAR, STATUS_LABEL } from "@/lib/calendar-utils";
+
 export type StreakWeek = {
   /** Måndagens datum, till etiketten. */
   weekStart: string;
@@ -17,14 +19,20 @@ export type StreakWeek = {
   /** Veckan innehöll ett kvalitetspass — tröskel, intervall eller tävling.
    * Påverkar inte längre färgen, men används i rutans titel. */
   quality: boolean;
-  /** Veckan innehöll minst en sjuk- eller skadedag, alltså det som bryter
-   * sviten. */
-  interrupted: boolean;
+  /** Vad som bröt veckan, om något. Skada väger tyngre än sjukdom när båda
+   * förekommer — den är det allvarligare avbrottet. */
+  interrupted: "sick" | "injured" | null;
   /** Innevarande vecka. Ritas ihålig, se motiveringen vid plupparna. */
   isCurrent: boolean;
 };
 
 const MAX_DOTS = 14;
+
+/** Avbrottet vinner över träningen: en vecka med båda är en bruten vecka. */
+function dotColor(w: StreakWeek): string {
+  if (w.interrupted) return STATUS_COLOR_VAR[w.interrupted];
+  return w.sessions > 0 ? STATUS_COLOR_VAR.training : "var(--line)";
+}
 
 export function StreakStrip({
   currentWeeks,
@@ -55,13 +63,16 @@ export function StreakStrip({
 
         {/* Plupparna sist på raden så att talet läses först.
         
-            Färgen säger vad sviten handlar om: grön vecka = tränad, röd =
-            bruten av sjukdom eller skada, tom = ingen träning. Tidigare
+            Färgen säger vad sviten handlar om: grön vecka = tränad, gul =
+            bruten av sjukdom, röd = av skada, tom = ingen träning. Tidigare
             skilde färgerna på kvalitets- och distansveckor, vilket beskrev
             något annat än rubriken ovanför — en svit bryts inte av att en
-            vecka saknade intervaller. Rött går före grönt: en vecka med både
-            träning och sjukdagar är en bruten vecka, precis som
-            computeContinuityStreaks räknar den.
+            vecka saknade intervaller. Avbrottet går före grönt: en vecka med
+            både träning och sjukdagar är en bruten vecka, precis som
+            computeContinuityStreaks räknar den. Avbrottet får dagsutfallets
+            färg — gult för sjuk, rött för skadad, samma som kalendern och
+            årsvyn. Första versionen gav rött åt båda, vilket sa att en
+            förkylning och en skada är samma sak.
 
             Innevarande vecka ritas IHÅLIG. Den räknas inte in i sviten förrän
             den är slut (se lib/continuity.ts) — annars skulle sviten se
@@ -74,7 +85,7 @@ export function StreakStrip({
               key={w.weekStart}
               title={`${w.weekStart}: ${
                 w.interrupted
-                  ? `sjuk eller skadad, ${w.sessions} pass`
+                  ? `${STATUS_LABEL[w.interrupted].toLowerCase()}, ${w.sessions} pass`
                   : `${w.sessions} pass`
               }${w.isCurrent ? " — pågående vecka, räknas när den är slut" : ""}`}
               className="h-3.5 w-3.5 rounded-full"
@@ -82,21 +93,9 @@ export function StreakStrip({
                 w.isCurrent
                   ? {
                       backgroundColor: "transparent",
-                      border: `2px solid ${
-                        w.interrupted
-                          ? "var(--status-concern)"
-                          : w.sessions > 0
-                            ? "var(--status-good)"
-                            : "var(--line)"
-                      }`,
+                      border: `2px solid ${dotColor(w)}`,
                     }
-                  : {
-                      backgroundColor: w.interrupted
-                        ? "var(--status-concern)"
-                        : w.sessions > 0
-                          ? "var(--status-good)"
-                          : "var(--line)",
-                    }
+                  : { backgroundColor: dotColor(w) }
               }
             />
           ))}

@@ -7,12 +7,16 @@ import { WORKOUT_LABELS, type WorkoutType } from "@/lib/planning";
  * heter samma sak oavsett vilken tidshorisont man tittar i. */
 
 /** Tävlade är ett eget utfall vid sidan om dagbokens day_type
- * (STATUS_COLOR/STATUS_LABEL i calendar-utils.ts) — en egen violett färg,
- * skild från tränades grönt. Passkategorin "race" (--cat-race) ligger för
- * nära emerald för att gå att skilja från "tränade" i en liten ruta. */
-export const COMPETED_COLOR = "bg-violet-600";
+ * (STATUS_COLOR/STATUS_LABEL i calendar-utils.ts) och får passkategorin
+ * "race" egna magenta, --cat-race. Den färgen betyder redan tävling på tio
+ * andra ytor — säsongstidslinjen, dagvyn, detaljplanen, formkurvan — så en
+ * egen violett här gjorde bara att samma sak hade två färger. Violetten var
+ * dessutom styrkepassens (--cat-strength), vilket satte en tävlingsruta och
+ * en styrkemarkör i samma kulör i veckovyn. Magentan går utmärkt att skilja
+ * från tränades emerald. */
+export const COMPETED_COLOR = "bg-[var(--cat-race)]";
 export const COMPETED_BADGE_COLOR =
-  "bg-violet-100 text-violet-800 dark:bg-violet-950/40 dark:text-violet-300";
+  "bg-[color-mix(in_oklab,var(--cat-race)_16%,transparent)] text-[var(--cat-race)]";
 export const COMPETED_LABEL = "Tävlade";
 
 export type YearOutcome = "trained" | "competed" | "sick" | "injured";

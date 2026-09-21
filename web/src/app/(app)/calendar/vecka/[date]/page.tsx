@@ -19,6 +19,7 @@ import { formatKm } from "@/lib/format";
 import {
   SV_WEEKDAYS_SHORT,
   STATUS_COLOR,
+  STATUS_COLOR_VAR,
   STATUS_LABEL,
   type DayStatus,
 } from "@/lib/calendar-utils";
@@ -28,6 +29,7 @@ import {
   typeLabel,
   unmatchedCompetitions,
   COMPETED_BADGE_COLOR,
+  COMPETED_COLOR,
   COMPETED_LABEL,
 } from "@/lib/day-outcome";
 import { BlockBand, type BandBlock } from "@/components/BlockBand";
@@ -316,7 +318,7 @@ export default async function WeekPage({
                   >
                     <span
                       className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: "var(--cat-strength)" }}
+                      style={{ backgroundColor: STATUS_COLOR_VAR.training }}
                       aria-hidden="true"
                     />
                     Träning
@@ -441,7 +443,7 @@ export default async function WeekPage({
           Styrka nämnd i loggen (inget pass med volym)
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-violet-600" aria-hidden="true" />
+          <span className={`h-2.5 w-2.5 rounded-full ${COMPETED_COLOR}`} aria-hidden="true" />
           {COMPETED_LABEL} (tävling utan matchande pass)
         </span>
         <span className="text-amber-700 dark:text-amber-400">
