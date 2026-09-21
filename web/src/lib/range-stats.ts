@@ -58,7 +58,21 @@ export type RangeStats = {
   /** Genomförda pass som inte fanns i planen. */
   unplannedCount: number;
   competitionCount: number;
+  /** Genomförda distanspass (kategorin "easy"). Den aeroba grunden är
+   * volymen som bär allt annat, och den syns inte i kvalitetskolumnen —
+   * där räknas bara tröskel, intervall, tävling och test. */
+  easyCompleted: number;
+  /** Sjuk- respektive skaddagar ur dagboken inom spannet. Noll är ett
+   * giltigt svar och ska visas som noll, inte som tomt: skillnaden mellan
+   * "inga sjukdagar" och "ingen dagbok förd" går annars förlorad. */
+  sickDays: number;
+  injuredDays: number;
 };
+
+/** En dagboksdag som bryter träningen. Samma form som InterruptionDay i
+ * lib/continuity.ts — den modulen äger begreppet, det här är bara
+ * datumspannets räkning av det. */
+export type RangeInterruption = { date: string; dayType: "sick" | "injured" };
 
 function withinRange(dateKey: string, start: string, end: string): boolean {
   return dateKey >= start && dateKey <= end;
@@ -74,11 +88,16 @@ export function computeRangeStats({
   planned,
   sessions,
   competitionDates,
+  interruptions = [],
 }: {
   range: RangeStatsInput;
   planned: (PlannedWorkout & { training_factor?: string | null })[];
   sessions: TrainingSession[];
   competitionDates: string[];
+  /** Valfri: /sasongsoversikt hämtar ingen dagbok och skickar ingenting,
+   * och får då noll sjuk- och skaddagar — vilket är sant för den sidan,
+   * som inte visar kolumnerna. */
+  interruptions?: RangeInterruption[];
 }): RangeStats {
   const rangePlanned = planned.filter((p) =>
     withinRange(p.scheduled_date, range.startDate, range.endDate),
@@ -104,6 +123,10 @@ export function computeRangeStats({
   const qualityPlannedCount = rangePlanned.filter((p) =>
     (QUALITY_WORKOUT_TYPES as readonly string[]).includes(p.workout_type as WorkoutType),
   ).length;
+
+  const rangeInterruptions = interruptions.filter((i) =>
+    withinRange(i.date, range.startDate, range.endDate),
+  );
 
   const matches = matchPlanToSessions(rangePlanned, rangeSessions);
   const compliance = summarizeCompliance(matches);
@@ -131,5 +154,8 @@ export function computeRangeStats({
     competitionCount: competitionDates.filter((d) =>
       withinRange(d, range.startDate, range.endDate),
     ).length,
+    easyCompleted: rangeSessions.filter((s) => s.category === "easy").length,
+    sickDays: rangeInterruptions.filter((i) => i.dayType === "sick").length,
+    injuredDays: rangeInterruptions.filter((i) => i.dayType === "injured").length,
   };
 }

@@ -14,7 +14,11 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import type { PlannedWorkout } from "@/lib/plan-matching";
-import { computeRangeStats, type RangeStats } from "@/lib/range-stats";
+import {
+  computeRangeStats,
+  type RangeInterruption,
+  type RangeStats,
+} from "@/lib/range-stats";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
@@ -35,6 +39,7 @@ import {
   workoutTypeColorVar,
   type WorkoutType,
 } from "@/lib/planning";
+import { STATUS_COLOR_VAR } from "@/lib/calendar-utils";
 import { buttonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
 
@@ -117,7 +122,6 @@ export default async function UppfoljningPage({
   }
 
   const { period: periodParam, datum, block: blockParam } = await searchParams;
-  const kind: PeriodKind = isPeriodKind(periodParam) ? periodParam : "vecka";
   const todayKey = toDateKey(new Date());
   const anchorDate = datum && /^\d{4}-\d{2}-\d{2}$/.test(datum) ? datum : todayKey;
 
@@ -133,10 +137,23 @@ export default async function UppfoljningPage({
     .order("start_date");
   const blocks = (blockRows ?? []) as PeriodBlock[];
 
+  /* Förvalet är BLOCK, inte vecka (begäran 2026-09-21). En tränare öppnar
+     sidan för att se hur perioden går, och en enskild vecka svarar sällan på
+     det — särskilt inte en vecka som just börjat, där allt ser tomt ut.
+     resolveBlockPeriod väljer av sig själv det block som innehåller idag.
+
+     Faller tillbaka på vecka när det inte finns några block alls: då hade
+     block-läget bara visat "Inga block upplagda än", vilket är en sämre
+     första anblick än en vecka med riktiga siffror i. */
+  const blockPeriod = resolveBlockPeriod(blocks, blockParam, todayKey);
+  const kind: PeriodKind = isPeriodKind(periodParam)
+    ? periodParam
+    : blockPeriod
+      ? "block"
+      : "vecka";
+
   const period: ResolvedPeriod | null =
-    kind === "block"
-      ? resolveBlockPeriod(blocks, blockParam, todayKey)
-      : resolveDatePeriod(kind, anchorDate);
+    kind === "block" ? blockPeriod : resolveDatePeriod(kind, anchorDate);
 
   const athleteIds = athletes.map((a) => a.id);
 
@@ -146,9 +163,14 @@ export default async function UppfoljningPage({
    * här sidan hela perioden, inte bara en dag, så antalet rader per fråga
    * växer med granulariteten. RLS filtrerar bort allt coachen inte får se,
    * oavsett vad `.in()` råkar innehålla. */
-  const [{ data: plannedRows }, { data: activityRows }, { data: competitionRows }] =
+  const [
+    { data: plannedRows },
+    { data: activityRows },
+    { data: competitionRows },
+    { data: interruptionRows },
+  ] =
     period == null || athleteIds.length === 0
-      ? [{ data: [] }, { data: [] }, { data: [] }]
+      ? [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
       : await Promise.all([
           supabase
             .from("planned_workouts")
@@ -179,6 +201,20 @@ export default async function UppfoljningPage({
             .in("user_id", athleteIds)
             .gte("competition_date", period.startDate)
             .lte("competition_date", period.endDate),
+          /* Sjuk- och skaddagar (begäran 2026-09-21). De hör hemma här av
+             samma skäl som efterlevnaden gör det: en löpare med tre pass av
+             åtta planerade läses helt olika beroende på om hon var sjuk i
+             fyra dagar. Utan kolumnen ser raden bara ut som slarv.
+
+             Samma tabell och samma filter som dashboardens svit använder,
+             så en vecka som bryter sviten där också räknas som sjuk här. */
+          supabase
+            .from("diary_entries")
+            .select("user_id, entry_date, day_type")
+            .in("user_id", athleteIds)
+            .in("day_type", ["sick", "injured"])
+            .gte("entry_date", period.startDate)
+            .lte("entry_date", period.endDate),
         ]);
 
   /* Grupperingen till pass görs PER LÖPARE, aldrig på den blandade listan:
@@ -207,6 +243,16 @@ export default async function UppfoljningPage({
             .filter((c) => c.user_id === athlete.id)
             .map((c) => c.competition_date);
 
+          const interruptions: RangeInterruption[] = (
+            (interruptionRows ?? []) as {
+              user_id: string;
+              entry_date: string;
+              day_type: string;
+            }[]
+          )
+            .filter((e) => e.user_id === athlete.id)
+            .map((e) => ({ date: e.entry_date, dayType: e.day_type as "sick" | "injured" }));
+
           return {
             athlete,
             stats: computeRangeStats({
@@ -214,6 +260,7 @@ export default async function UppfoljningPage({
               planned,
               sessions,
               competitionDates,
+              interruptions,
             }),
           };
         });
@@ -317,7 +364,7 @@ export default async function UppfoljningPage({
       {period && rows.length > 0 && (
         <>
           {/* Överblicken före detaljen: summan över hela gruppen, så man ser om
-              perioden alls blev gjord innan man läser åtta kolumner per löpare.
+              perioden alls blev gjord innan man läser tio kolumner per löpare.
               Räknas ur samma `rows` som tabellen nedanför och kan därför aldrig
               säga något annat. */}
           <StatRow columns={4}>
@@ -349,16 +396,18 @@ export default async function UppfoljningPage({
           </StatRow>
 
           {/* Tabellen scrollar i sin egen behållare — sidan i sig ska aldrig
-              scrolla i sidled, och åtta kolumner får inte plats på en telefon. */}
+              scrolla i sidled, och tio kolumner får inte plats på en telefon. */}
           <div className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-            <table className="w-full min-w-3xl border-collapse text-sm">
+            <table className="w-full min-w-4xl border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[var(--line)] text-left text-[0.6875rem] tracking-wider text-[var(--ink-3)] uppercase">
                   <th scope="col" className="px-3 py-2.5 font-semibold">Löpare</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Planerat</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Genomfört</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Efterlevnad</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Frånvaro</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Kvalitet</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Distanspass</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Distans</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Tid</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Tävlingar</th>
@@ -402,11 +451,58 @@ export default async function UppfoljningPage({
                           `${stats.completedCount} av ${stats.plannedCount + stats.plannedRestDays} · ${pct(share)}`
                         )}
                       </td>
+                      {/* Frånvaron står direkt efter efterlevnaden med flit:
+                          "3 av 8 · 38 %" läses helt olika beroende på om
+                          löparen var sjuk fyra av dagarna, och den
+                          förklaringen ska inte ligga sex kolumner bort.
+                          Färgerna är dagsutfallets (STATUS_COLOR_VAR), samma
+                          gult och rött som kalendern och sviten — men
+                          siffrorna är utskrivna med ord, så prickarna bara
+                          bekräftar det texten redan säger. */}
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                        {stats.sickDays === 0 && stats.injuredDays === 0 ? (
+                          <span className="text-[var(--ink-3)]">—</span>
+                        ) : (
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                            {stats.sickDays > 0 && (
+                              <span className="flex items-center gap-1">
+                                <span
+                                  aria-hidden
+                                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: STATUS_COLOR_VAR.sick }}
+                                />
+                                {stats.sickDays} sjuk
+                              </span>
+                            )}
+                            {stats.injuredDays > 0 && (
+                              <span className="flex items-center gap-1">
+                                <span
+                                  aria-hidden
+                                  className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                  style={{ backgroundColor: STATUS_COLOR_VAR.injured }}
+                                />
+                                {stats.injuredDays} skadad
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </td>
                       <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
                         {stats.qualityPlanned === 0 ? (
                           <span className="text-[var(--ink-3)]">—</span>
                         ) : (
                           `${stats.qualityCompleted} av ${stats.qualityPlanned}`
+                        )}
+                      </td>
+                      {/* Genomförda distanspass. Kvalitetskolumnen räknar bara
+                          tröskel, intervall, tävling och test — den aeroba
+                          grunden, som är merparten av veckan, syntes inte
+                          någonstans i tabellen. */}
+                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                        {stats.easyCompleted === 0 ? (
+                          <span className="text-[var(--ink-3)]">0</span>
+                        ) : (
+                          stats.easyCompleted
                         )}
                       </td>
                       <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
