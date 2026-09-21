@@ -828,7 +828,9 @@ export default async function TrendsPage({
           </h3>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt rätt håll.
-            Bara distanspass och långpass på minst 20 minuter med registrerad snittpuls räknas —
+            Farten är <strong>höjdjusterad</strong> — en kuperad runda räknas om till vad den
+            motsvarar på plant underlag, annars hade backarna sett ut som sämre form. Bara
+            distanspass och långpass på minst 20 minuter med registrerad snittpuls räknas;
             intervaller går inte att jämföra med distanslöpning. {efPoints.length} pass i perioden
             klarar filtret.
           </p>
@@ -858,10 +860,11 @@ export default async function TrendsPage({
 
         <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
           <strong className="font-medium text-[var(--foreground)]">Läs kurvan försiktigt.</strong>{" "}
-          Efficiency Factor påverkas kraftigt av värme, uttorkning, stress, höjd och underlag. En
-          dipp i juli är sannolikt vädret, inte formen. Kurvan är dessutom räknad på rå fart — ett
-          kuperat pass ser sämre ut än ett platt även när ansträngningen är densamma. Använd den för
-          att se riktningen över månader, aldrig för att bedöma ett enskilt pass.
+          Efficiency Factor påverkas kraftigt av värme, uttorkning, stress och underlag. En dipp i
+          juli är sannolikt vädret, inte formen. Kuperingen är däremot borträknad: farten är
+          höjdjusterad med Garmins grade-adjusted pace, så ett backigt pass ska inte längre se
+          sämre ut än ett platt. Använd kurvan för att se riktningen över månader, aldrig för att
+          bedöma ett enskilt pass.
         </p>
       </section>
 

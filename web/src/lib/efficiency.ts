@@ -24,6 +24,27 @@ export type EfficiencyPoint = {
 export const EF_MIN_SECONDS = 20 * 60;
 export const EF_CATEGORIES = ["easy", "long_run"] as const;
 
+/* ------------------------- höjdjusteringen ------------------------------ *
+ * Backar påverkar EF kraftigt: uppför kommer man kortare per hjärtslag utan
+ * att formen ändrats det minsta. Kurvan räknar därför på Garmins
+ * grade-adjusted pace (avg_gap_seconds_per_km) — den fart passet motsvarar
+ * på plant underlag — i stället för på rå fart.
+ *
+ * För Alice skiljer det 6–12 sekunder per kilometer på verkliga distanspass,
+ * alltså 2–4 %. Det är samma storleksordning som brustöskeln på två procent,
+ * så utan justeringen kunde ett kuperat pass ensamt vända riktningen.
+ *
+ * Justeringen är Garmins egen modell, inte en egen omräkning ur höjdmeter.
+ * Saknas den för ett fragment används rå fart för just det fragmentet —
+ * 111 av 117 pass har värdet, och att kasta de sex vore att tappa data för
+ * att slippa en fallback.
+ *
+ * Höjdtaket fångar barometerglapp. Alices vattenlöpning i bassäng ligger som
+ * "running" med 1 141 höjdmeter på 2,1 km, alltså 532 m/km — det finns ingen
+ * löpterräng som är så brant över ett helt pass, och farten (18:38/km) visar
+ * att det inte är löpning alls. Sådana pass säger ingenting om formen.  */
+const EF_MAX_ELEVATION_PER_KM = 100;
+
 /** m/s per slag → meter per hjärtslag, samma omräkning som EfficiencyChart. */
 export const METERS_PER_BEAT = 60;
 
@@ -40,16 +61,41 @@ export function computeEfficiencyPoints(sessions: TrainingSession[]): Efficiency
         s.avgHr > 0 &&
         s.distanceMeters > 0,
     )
+    .filter((s) => {
+      const climbPerKm = sessionElevation(s) / (s.distanceMeters / 1000);
+      return climbPerKm <= EF_MAX_ELEVATION_PER_KM;
+    })
     .map((s) => ({
       id: s.id,
       date: s.date,
-      ef: s.distanceMeters / s.durationSeconds / (s.avgHr as number),
+      ef: gradeAdjustedDistance(s) / s.durationSeconds / (s.avgHr as number),
       label: s.dominantActivity.name ?? "Pass",
       category: s.category as EfficiencyPoint["category"],
       durationSeconds: s.durationSeconds,
       distanceMeters: s.distanceMeters,
       avgHr: s.avgHr as number,
     }));
+}
+
+/** Summerad stigning över passets fragment. */
+function sessionElevation(session: TrainingSession): number {
+  return session.activities.reduce((m, a) => m + (a.elevation_gain ?? 0), 0);
+}
+
+/**
+ * Passets distans omräknad till plant underlag.
+ *
+ * Per fragment, eftersom uppvärmning och huvudpass kan ligga i olika terräng:
+ * har fragmentet en grade-adjusted pace blir den justerade sträckan
+ * varaktighet ÷ GAP, annars används fragmentets faktiska sträcka.
+ */
+function gradeAdjustedDistance(session: TrainingSession): number {
+  return session.activities.reduce((metres, a) => {
+    const gap = a.avg_gap_seconds_per_km;
+    const duration = a.duration_seconds ?? 0;
+    if (gap != null && gap > 0 && duration > 0) return metres + (duration / gap) * 1000;
+    return metres + (a.distance_meters ?? 0);
+  }, 0);
 }
 
 /* ------------------------- ETT mått på riktningen ------------------------ */

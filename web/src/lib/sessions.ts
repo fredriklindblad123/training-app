@@ -48,6 +48,13 @@ export type SessionActivity = {
   /** Garmins egen skattning (vO2MaxValue), satt sällan — bara när klockan
    * räknar om den, inte på varje pass. */
   vo2max: number | null;
+  /** Höjdmeter uppför. Används av formkurvan, både till höjdjusteringen och
+   * till att kasta pass med orimliga värden (barometerglapp). */
+  elevation_gain: number | null;
+  /** Garmins grade-adjusted pace, sekunder per kilometer: den fart passet
+   * motsvarar på plant underlag. Formkurvan räknar på den i stället för rå
+   * fart, se lib/efficiency.ts. */
+  avg_gap_seconds_per_km: number | null;
 };
 
 /** Kolumnlistan för `.select()` — håll i synk med `SessionActivity`. */
@@ -55,7 +62,7 @@ export const SESSION_ACTIVITY_COLUMNS =
   "id, user_id, name, activity_type, start_time, duration_seconds, distance_meters, " +
   "avg_hr, max_hr, training_load, category, category_source, " +
   "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds, " +
-  "garmin_feel, garmin_rpe, vo2max";
+  "garmin_feel, garmin_rpe, vo2max, elevation_gain, avg_gap_seconds_per_km";
 
 /** Ett träningspass: aggregatet av de fragment som hör ihop. */
 export type TrainingSession = {
