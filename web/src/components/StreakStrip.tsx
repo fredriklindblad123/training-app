@@ -20,6 +20,8 @@ export type StreakWeek = {
   /** Veckan innehöll minst en sjuk- eller skadedag, alltså det som bryter
    * sviten. */
   interrupted: boolean;
+  /** Innevarande vecka. Ritas ihålig, se motiveringen vid plupparna. */
+  isCurrent: boolean;
 };
 
 const MAX_DOTS = 14;
@@ -59,7 +61,13 @@ export function StreakStrip({
             något annat än rubriken ovanför — en svit bryts inte av att en
             vecka saknade intervaller. Rött går före grönt: en vecka med både
             träning och sjukdagar är en bruten vecka, precis som
-            computeContinuityStreaks räknar den. */}
+            computeContinuityStreaks räknar den.
+
+            Innevarande vecka ritas IHÅLIG. Den räknas inte in i sviten förrän
+            den är slut (se lib/continuity.ts) — annars skulle sviten se
+            bruten ut bara för att det är tisdag. Ritad som en fylld plupp
+            bland de andra blev det i stället tre gröna intill siffran två,
+            vilket såg ut som ett räknefel. Rapporterat 2026-09-21. */}
         <div className="flex flex-wrap items-center gap-1" aria-hidden>
           {shown.map((w) => (
             <span
@@ -68,15 +76,28 @@ export function StreakStrip({
                 w.interrupted
                   ? `sjuk eller skadad, ${w.sessions} pass`
                   : `${w.sessions} pass`
-              }`}
+              }${w.isCurrent ? " — pågående vecka, räknas när den är slut" : ""}`}
               className="h-3.5 w-3.5 rounded-full"
-              style={{
-                backgroundColor: w.interrupted
-                  ? "var(--status-concern)"
-                  : w.sessions > 0
-                    ? "var(--status-good)"
-                    : "var(--line)",
-              }}
+              style={
+                w.isCurrent
+                  ? {
+                      backgroundColor: "transparent",
+                      border: `2px solid ${
+                        w.interrupted
+                          ? "var(--status-concern)"
+                          : w.sessions > 0
+                            ? "var(--status-good)"
+                            : "var(--line)"
+                      }`,
+                    }
+                  : {
+                      backgroundColor: w.interrupted
+                        ? "var(--status-concern)"
+                        : w.sessions > 0
+                          ? "var(--status-good)"
+                          : "var(--line)",
+                    }
+              }
             />
           ))}
         </div>
@@ -88,9 +109,10 @@ export function StreakStrip({
         )}
       </div>
 
-      {/* Rutorna är dekorativa; samma besked i text för den som inte ser dem. */}
+      {/* Plupparna är dekorativa; samma besked i text för den som inte ser dem. */}
       <span className="sr-only">
-        {`Nuvarande svit ${currentWeeks} veckor, personbästa ${bestWeeks} veckor.`}
+        {`Nuvarande svit ${currentWeeks} avslutade veckor, personbästa ${bestWeeks} veckor. ` +
+          "Innevarande vecka räknas först när den är slut."}
       </span>
     </section>
   );

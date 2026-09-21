@@ -656,6 +656,7 @@ export default async function DashboardPage({
         sessions: agg?.sessions ?? 0,
         quality: agg?.quality ?? false,
         interrupted: interruptedWeeks.has(key),
+        isCurrent: key === thisWeek,
       });
       cursor.setUTCDate(cursor.getUTCDate() + 7);
     }
