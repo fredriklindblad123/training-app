@@ -111,37 +111,15 @@ function trailingCount(values: number[], predicate: (v: number) => boolean): num
 export function buildInsights(input: InsightInput): Insight[] {
   const out: Insight[] = [];
 
-  // --- Formkurvan ---------------------------------------------------------
-  // Den enda regeln som får peka åt två håll. En fallande formkurva är värd
-  // att veta om, men formuleras som en observation — EF påverkas kraftigt av
-  // värme, stress och underlag (P1.4), så en dipp är ofta vädret och inte
-  // formen. Därför "att-bevaka", aldrig ett larm.
-  if (input.efWeekly && input.efWeekly.length >= MIN_STREAK_WEEKS) {
-    const up = trailingRun(input.efWeekly, "up");
-    const down = trailingRun(input.efWeekly, "down");
-    const last = input.efWeekly[input.efWeekly.length - 1];
-    if (up >= MIN_STREAK_WEEKS && last != null) {
-      out.push({
-        id: "ef-up",
-        phase: "block",
-        headline: `Formkurvan har stigit ${up} veckor i rad.`,
-        detail: `Senaste veckan ${last.toFixed(2)} m/slag. Stigande värde vid samma puls betyder att du kommer längre per hjärtslag.`,
-        href: "/trender",
-        tone: "positiv",
-        priority: 2,
-      });
-    } else if (down >= MIN_STREAK_WEEKS && last != null) {
-      out.push({
-        id: "ef-down",
-        phase: "block",
-        headline: `Formkurvan har fallit ${down} veckor i rad.`,
-        detail: `Senaste veckan ${last.toFixed(2)} m/slag. Värt att lägga märke till — men kurvan påverkas också av värme, stress och underlag, så en enskild period säger inte allt.`,
-        href: "/trender",
-        tone: "att-bevaka",
-        priority: 2,
-      });
-    }
-  }
+  /* Formkurvan har ingen insiktsregel längre.
+   *
+   * Den räknade veckor i rad uppåt eller nedåt, vilket är ett TREDJE sätt
+   * att mäta samma kurva — dashboardens nyckeltal och Form-vyns dom jämför
+   * båda fyra veckor mot fyra. De gav olika svar samtidigt ("stigit 3 veckor
+   * i rad" bredvid "oförändrad över perioden"), och ett mått som säger emot
+   * sig själv är värre än inget mått. Riktningen står nu på de två ytor som
+   * faktiskt visar kurvan, båda ur efficiencyTrend i lib/efficiency.ts.
+   * Borttagen 2026-09-21. */
 
   // --- Tröskelandelen -----------------------------------------------------
   // Det vanligaste felet hos ambitiösa juniorer är att de lugna passen blir

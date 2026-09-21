@@ -52,55 +52,105 @@ export function computeEfficiencyPoints(sessions: TrainingSession[]): Efficiency
     }));
 }
 
-/* ------------------------------ domraden --------------------------------- */
+/* ------------------------- ETT mått på riktningen ------------------------ */
 
-// Diagrammet visade riktningen men sa den aldrig. Att läsa en lutning ur en
-// punktsvärm med fyra veckors rullande median är inte gratis — och eftersom
-// EF svarar kraftigt på värme, underlag och kupering är det lätt att läsa in
-// en trend som inte finns. Därför räknas domen fram en gång, med uttalade
-// krav på underlag, i stället för att varje läsare gissar sin egen.
+/* Formkurvans riktning räknades tidigare på tre olika sätt, på tre olika
+ * ställen: dashboardens nyckeltal jämförde fyra veckor mot fyra, insikterna
+ * räknade veckor i rad uppåt, och Form-vyns dom jämförde periodens första
+ * tredjedel mot dess sista. De gav olika svar samtidigt — "stigit 3 veckor i
+ * rad" bredvid "oförändrad över perioden" — vilket gör hela måttet omöjligt
+ * att lita på. Rapporterat 2026-09-21.
+ *
+ * Det här är nu det enda facit. Metoden är dashboardens, för den är minst
+ * känslig för brus: median över ett fönster mot median över fönstret innan,
+ * med en tröskel under vilken ingen riktning påstås. Varken veckoräkning
+ * eller ändpunktsjämförelse klarar det — EF svänger kraftigt med värme,
+ * kupering och uttorkning (se brasklappen i EfficiencyChart).
+ */
 
-/** Minsta antal pass i vardera änden innan en riktning får påstås. Tre: två
- * pass kan vara två varma dagar i rad. */
-const VERDICT_MIN_POINTS = 3;
+/** Fönstrets längd i dagar. Fyra veckor: kort nog att fånga en förändring,
+ *  långt nog att en varm vecka inte ensam bestämmer riktningen. */
+export const EF_WINDOW_DAYS = 28;
+/** Minsta antal pass i VARDERA fönstret innan något påstås. */
+export const EF_MIN_POINTS = 3;
+/** Under den här förändringen påstås ingen riktning. Två procent ligger inom
+ *  det brus väder och underlag ensamt kan orsaka mellan två månader. */
+export const EF_NOISE_PCT = 0.02;
 
-/** Under den här förändringen påstås ingen riktning. 1,5 % ligger inom det
- * brus väder och underlag ensamt kan orsaka mellan två månader. */
-const VERDICT_MIN_CHANGE = 0.015;
-
-export type EfficiencyVerdict = {
-  /** Relativ förändring, 0,042 = +4,2 %. */
-  change: number;
+export type EfficiencyTrend = {
+  /** Median för det senaste fönstret, meter per hjärtslag. */
+  current: number | null;
+  /** Median för fönstret dessförinnan. */
+  baseline: number | null;
+  /** Relativ förändring, 0,042 = +4,2 %. null när underlaget inte räcker. */
+  changePct: number | null;
   direction: "upp" | "ner" | "oförändrad";
-  /** Antal pass bakom jämförelsen totalt. */
+  /** Antal pass bakom de två fönstren tillsammans. */
   n: number;
+  /** Antal pass i det senaste respektive föregående fönstret. Anropare visar
+   * dem för att kunna säga "bygger underlag, 2 av 3 pass". */
+  recentCount: number;
+  priorCount: number;
 };
 
-/**
- * Jämför första och sista tredjedelen av perioden, median mot median.
- *
- * Median och inte medelvärde: ett enda pass med tappat pulsband eller i
- * motvind ska inte kunna vända domen. Tredjedelar och inte första/sista
- * punkten: ändpunkter är de mest brusiga värdena i serien, och att bygga en
- * trend på två av dem vore precis det misstag diagrammets brasklapp varnar
- * för. `null` när underlaget inte räcker — hellre ingen dom än en påhittad.
- */
-export function efficiencyVerdict(points: EfficiencyPoint[]): EfficiencyVerdict | null {
-  if (points.length < VERDICT_MIN_POINTS * 2) return null;
+function shift(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
-  const sorted = [...points].sort((a, b) => a.date.localeCompare(b.date));
-  const third = Math.floor(sorted.length / 3);
-  if (third < VERDICT_MIN_POINTS) return null;
+export function efficiencyTrend(points: EfficiencyPoint[], todayKey: string): EfficiencyTrend {
+  const recentFrom = shift(todayKey, -EF_WINDOW_DAYS);
+  const priorFrom = shift(todayKey, -EF_WINDOW_DAYS * 2);
 
-  const firstMedian = median(sorted.slice(0, third).map((p) => p.ef));
-  const lastMedian = median(sorted.slice(-third).map((p) => p.ef));
-  if (firstMedian == null || lastMedian == null || firstMedian <= 0) return null;
+  const recent = points
+    .filter((p) => p.date >= recentFrom)
+    .map((p) => p.ef * METERS_PER_BEAT);
+  const prior = points
+    .filter((p) => p.date >= priorFrom && p.date < recentFrom)
+    .map((p) => p.ef * METERS_PER_BEAT);
 
-  const change = lastMedian / firstMedian - 1;
+  const current = recent.length >= EF_MIN_POINTS ? median(recent) : null;
+  const baseline = prior.length >= EF_MIN_POINTS ? median(prior) : null;
+  const changePct =
+    current != null && baseline != null && baseline > 0 ? (current - baseline) / baseline : null;
+
   return {
-    change,
+    current,
+    baseline,
+    changePct,
     direction:
-      Math.abs(change) < VERDICT_MIN_CHANGE ? "oförändrad" : change > 0 ? "upp" : "ner",
-    n: sorted.length,
+      changePct == null || Math.abs(changePct) < EF_NOISE_PCT
+        ? "oförändrad"
+        : changePct > 0
+          ? "upp"
+          : "ner",
+    n: recent.length + prior.length,
+    recentCount: recent.length,
+    priorCount: prior.length,
   };
+}
+
+/** Domen, som en mening. Samma tal som dashboardens nyckeltal visar. */
+export function efficiencyVerdict(trend: EfficiencyTrend): string {
+  if (trend.current == null) {
+    return "För få distanspass med puls i perioden för att säga något om riktningen.";
+  }
+  if (trend.changePct == null) {
+    return `Senaste fyra veckorna ${trend.current.toFixed(2)} m/slag. För få pass innan för att jämföra mot.`;
+  }
+  const pct = `${trend.changePct > 0 ? "+" : "−"}${Math.abs(trend.changePct * 100).toFixed(1)} %`;
+  if (trend.direction === "oförändrad") {
+    return (
+      `Oförändrad: ${trend.current.toFixed(2)} m/slag de senaste fyra veckorna mot ` +
+      `${trend.baseline!.toFixed(2)} de fyra innan (${pct}, inom bruset).`
+    );
+  }
+  return (
+    `${trend.direction === "upp" ? "Stigande" : "Fallande"}: ${trend.current.toFixed(2)} m/slag ` +
+    `de senaste fyra veckorna mot ${trend.baseline!.toFixed(2)} de fyra innan (${pct}).`
+  );
 }

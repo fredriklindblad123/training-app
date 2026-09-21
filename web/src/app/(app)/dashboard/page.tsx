@@ -6,8 +6,14 @@ import { KpiRing } from "@/components/KpiRing";
 import type { TrendDirection } from "@/components/ui/TrendMark";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
-import { computeEfficiencyPoints, METERS_PER_BEAT } from "@/lib/efficiency";
-import { median } from "@/lib/stats-utils";
+import {
+  computeEfficiencyPoints,
+  efficiencyTrend,
+  EF_MIN_POINTS,
+  EF_NOISE_PCT,
+  EF_WINDOW_DAYS,
+  type EfficiencyPoint,
+} from "@/lib/efficiency";
 import { isoWeekStart } from "@/lib/stats-utils";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
@@ -55,11 +61,8 @@ import { WeekStrip, type WeekStripDay } from "@/components/WeekStrip";
  * inte på frågan den här ringen faktiskt ska svara på: förbättrar jag mig?
  * Därför jämförs senaste fönstret alltid mot det *föregående* fönstret,
  * inte mot ett fast startvärde — jämförelsen flyttar sig framåt med tiden. */
-const EF_TREND_WINDOW_DAYS = 28;
-const EF_TREND_MIN_POINTS = 3;
 /** Under den här förändringen räknas formen som oförändrad — EF svänger
  * naturligt någon procent mellan enskilda pass utan att något ändrats. */
-const EF_NOISE_THRESHOLD_PCT = 0.02;
 
 /** Hur långt tillbaka VO2max-ringen jämför. Garmins skattning uppdateras
  * sällan och oregelbundet, så ett kort fönster (som EF:s 28 dagar) skulle
@@ -108,25 +111,20 @@ function formatPctChange(pctChange: number): string {
   return `${pctChange >= 0 ? "+" : ""}${(pctChange * 100).toFixed(1)}%`;
 }
 
-/** Formkurvan (P1.4): senaste 4 veckorna mot de 4 veckorna innan — samma
- * pass-urval som /trender (lib/efficiency.ts), bara lugna/långa pass, så en
- * hård intervallvecka inte får kurvan att se sämre ut än den är. */
+/** Formkurvan som nyckeltal.
+ *
+ * Talen kommer från efficiencyTrend i lib/efficiency.ts — samma funktion som
+ * Form-vyns dom använder, så de två ytorna aldrig kan säga olika saker om
+ * samma kurva. Urvalet är distans- och långpass, så en hård intervallvecka
+ * inte får kurvan att se sämre ut än den är. */
 function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: string) {
-  const recentFrom = shiftDateKey(todayKey, -EF_TREND_WINDOW_DAYS);
-  const priorFrom = shiftDateKey(todayKey, -EF_TREND_WINDOW_DAYS * 2);
-
-  const recent = efPoints.filter((p) => p.date >= recentFrom).map((p) => p.ef * METERS_PER_BEAT);
-  const prior = efPoints
-    .filter((p) => p.date >= priorFrom && p.date < recentFrom)
-    .map((p) => p.ef * METERS_PER_BEAT);
-
-  const current = recent.length >= EF_TREND_MIN_POINTS ? median(recent) : null;
-  const baseline = prior.length >= EF_TREND_MIN_POINTS ? median(prior) : null;
-  const pctChange =
-    current != null && baseline != null && baseline > 0 ? (current - baseline) / baseline : null;
+  const t = efficiencyTrend(efPoints as EfficiencyPoint[], todayKey);
+  const { current, baseline, changePct: pctChange } = t;
+  const recent = { length: t.recentCount };
+  const prior = { length: t.priorCount };
 
   const { fill } = ringFillAndStatus(current, baseline, "higher_is_better");
-  const status = trendRingStatus(pctChange, EF_NOISE_THRESHOLD_PCT);
+  const status = trendRingStatus(pctChange, EF_NOISE_PCT);
 
   return {
     label: "Formkurva",
@@ -137,7 +135,7 @@ function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: stri
     trend:
       pctChange != null
         ? {
-            direction: trendDirection(pctChange, EF_NOISE_THRESHOLD_PCT),
+            direction: trendDirection(pctChange, EF_NOISE_PCT),
             text: formatPctChange(pctChange),
           }
         : null,
@@ -145,25 +143,25 @@ function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: stri
     targetText: pctChange != null ? "senaste 4 v" : undefined,
     detailRows: [
       {
-        label: `Senaste ${EF_TREND_WINDOW_DAYS} dagarna`,
+        label: `Senaste ${EF_WINDOW_DAYS} dagarna`,
         value:
           current != null
             ? `${current.toFixed(2)} m/slag (${recent.length} pass)`
-            : `bygger underlag (${recent.length} av ${EF_TREND_MIN_POINTS} pass)`,
+            : `bygger underlag (${recent.length} av ${EF_MIN_POINTS} pass)`,
       },
       {
-        label: `${EF_TREND_WINDOW_DAYS} dagarna innan dess`,
+        label: `${EF_WINDOW_DAYS} dagarna innan dess`,
         value:
           baseline != null
             ? `${baseline.toFixed(2)} m/slag (${prior.length} pass)`
-            : `bygger underlag (${prior.length} av ${EF_TREND_MIN_POINTS} pass)`,
+            : `bygger underlag (${prior.length} av ${EF_MIN_POINTS} pass)`,
       },
       { label: "Förändring", value: pctChange != null ? formatPctChange(pctChange) : "–" },
     ],
     hint:
       "Meter per hjärtslag på distans- och långpass (minst 20 min), senaste 4 veckorna mot de 4 " +
       `veckorna innan — visar om du bättrar dig, inte var du ligger mot ditt vanliga. Under ±` +
-      `${(EF_NOISE_THRESHOLD_PCT * 100).toFixed(0)}% räknas som brus. Hela kurvan finns på /trender.`,
+      `${(EF_NOISE_PCT * 100).toFixed(0)}% räknas som brus. Hela kurvan finns på /trender.`,
   };
 }
 

@@ -5,7 +5,7 @@ import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
 import { IntensityChart, type IntensityWeek } from "@/components/charts/IntensityChart";
 import { EfficiencyChart, type EfficiencyRace } from "@/components/charts/EfficiencyChart";
-import { computeEfficiencyPoints, efficiencyVerdict } from "@/lib/efficiency";
+import { computeEfficiencyPoints, efficiencyTrend, efficiencyVerdict } from "@/lib/efficiency";
 import {
   EMPTY_THRESHOLD_PROFILE,
   PHASE_INTENSITY_MODEL,
@@ -405,7 +405,7 @@ export default async function TrendsPage({
     sessions.filter((s) => s.category === "race"),
   );
 
-  const efVerdict = efficiencyVerdict(efPoints);
+  const efTrend = efficiencyTrend(efPoints, todayKey);
   const vo2max = computeVo2maxTrend(sessions);
 
   const efRaces: EfficiencyRace[] = [...raceDays].map(([date, label]) => ({ date, label }));
@@ -834,28 +834,19 @@ export default async function TrendsPage({
           </p>
         </div>
 
-        {efVerdict && (
-          <p className="text-base font-medium text-[var(--foreground)]">
-            {efVerdict.direction === "oförändrad" ? (
-              <>Oförändrad över perioden ({efVerdict.n} pass).</>
-            ) : (
-              <>
-                {efVerdict.change > 0 ? "+" : "−"}
-                {Math.abs(efVerdict.change * 100).toFixed(1)} % över perioden — riktningen pekar{" "}
-                <span
-                  className={
-                    efVerdict.direction === "upp"
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-amber-600 dark:text-amber-400"
-                  }
-                >
-                  {efVerdict.direction === "upp" ? "uppåt" : "nedåt"}
-                </span>{" "}
-                ({efVerdict.n} pass).
-              </>
-            )}
-          </p>
-        )}
+        <p
+          className="text-base font-medium"
+          style={{
+            color:
+              efTrend.direction === "upp"
+                ? "var(--status-good)"
+                : efTrend.direction === "ner"
+                  ? "var(--status-watch)"
+                  : "var(--foreground)",
+          }}
+        >
+          {efficiencyVerdict(efTrend)}
+        </p>
 
         <EfficiencyChart
           points={efPoints}
