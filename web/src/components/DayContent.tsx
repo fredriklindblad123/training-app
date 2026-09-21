@@ -3,13 +3,18 @@ import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
 import { DaySection } from "@/components/DaySection";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { createClient } from "@/lib/supabase/server";
-import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
+import {
+  categoryMismatchNote,
+  groupActivitiesIntoSessions,
+  type SessionActivity,
+} from "@/lib/sessions";
 import {
   matchPlanToSessions,
   summarizeCompliance,
   type PlannedWorkout,
 } from "@/lib/plan-matching";
 import { dateKey } from "@/lib/calendar-utils";
+import type { ActivityCategory } from "@/lib/categories";
 import {
   saveManualActivity,
   deleteManualActivity,
@@ -199,6 +204,20 @@ export async function DayContent({
 
   // Sammanfattningsrader: målet är att man ska slippa öppna en sektion för att
   // veta om den innehåller något.
+  /* Passets kategori, men BARA för den aktivitet som avgjorde den.
+     Dagvyn visar två tal — passets i sammanfattningen, aktivitetens på
+     kortet — och när de skiljer sig såg appen ut att motsäga sig själv.
+     Kartan låter kortet förklara skillnaden i stället.
+     
+     Uppvärmning och nerjogg utelämnas med flit. De ÄR lugna fragment i ett
+     intervallpass, och att påpeka det på varje sådant kort hade gett en not
+     på åtta av tretton aktiviteter — brus, inte förklaring. Skillnaden är
+     bara förvirrande på det fragment kategorin faktiskt kom ifrån. */
+  const sessionCategoryByActivity = new Map<string, ActivityCategory>();
+  for (const session of daySessions) {
+    sessionCategoryByActivity.set(session.dominantActivity.id, session.category);
+  }
+
   const dayKm = daySessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
   const daySeconds = daySessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
 
@@ -378,6 +397,17 @@ export async function DayContent({
               <span className="text-xs text-[var(--ink-3)]">{a.activity_type}</span>
               <CategoryBadge category={a.category} />
             </div>
+            {(() => {
+              const sessionCategory = sessionCategoryByActivity.get(a.id);
+              const note = sessionCategory
+                ? categoryMismatchNote(sessionCategory, a.category)
+                : null;
+              return note ? (
+                <p className="col-span-2 -mt-1 text-xs text-[var(--ink-3)] sm:col-span-4">
+                  {note}
+                </p>
+              ) : null;
+            })()}
             <div className="col-span-2 flex flex-wrap items-center gap-3 sm:col-span-4">
               <form action={updateActivityCategory} className="flex items-center gap-2">
                 <input type="hidden" name="activity_id" value={a.id} />

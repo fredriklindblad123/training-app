@@ -15,7 +15,7 @@
 // behåller sitt värde i dagvyn, och ändringen är trivialt reversibel.
 
 import type { ActivityCategory } from "@/lib/categories";
-import { isActivityCategory } from "@/lib/categories";
+import { CATEGORY_LABELS, isActivityCategory } from "@/lib/categories";
 
 /** Aktivitetsraden som grupperingen behöver. Namnen matchar kolumnerna i
  * `activities` rakt av, så en `select(SESSION_ACTIVITY_COLUMNS)` kan skickas
@@ -344,4 +344,47 @@ export function categorizeSession(
   }
 
   return { category, dominantActivity };
+}
+
+/* ---------------------- när pass och aktivitet skiljer sig -------------- */
+
+/**
+ * Förklarar varför PASSETS kategori skiljer sig från en enskild AKTIVITETS.
+ *
+ * De två talen är olika saker och båda är riktiga: aktivitetens kategori är
+ * klockans gissning (eller ett manuellt val) för det fragmentet, passets är
+ * vad `categorizeSession` ovan kommer fram till när fragmenten lagts ihop.
+ * Men när dagvyn visar "Lugn distans" i sammanfattningen och "Tröskel" på
+ * kortet under, utan ett ord om varför, ser appen bara ut att motsäga sig
+ * själv. Rapporterat 2026-09-21.
+ *
+ * `null` när de är lika, vilket de är för de allra flesta pass.
+ */
+export function categoryMismatchNote(
+  sessionCategory: ActivityCategory,
+  activityCategory: string | null,
+): string | null {
+  if (activityCategory == null || !isActivityCategory(activityCategory)) return null;
+  if (activityCategory === sessionCategory) return null;
+
+  const from = CATEGORY_LABELS[activityCategory];
+  const to = CATEGORY_LABELS[sessionCategory];
+
+  if (QUALITY_CATEGORIES.has(activityCategory) && sessionCategory === "easy") {
+    return (
+      `Räknas som ${to} i passet. Klockan sätter ${from.toLowerCase()} utifrån träningseffekten, ` +
+      `och den etiketten hamnar ofta på en rak distansjogg — utan varv eller ett namn som pekar ` +
+      `på kvalitetsarbete finns inget belägg för att det var ett ${from.toLowerCase()}pass.`
+    );
+  }
+  if (activityCategory === "easy" && QUALITY_CATEGORIES.has(sessionCategory)) {
+    return (
+      `Räknas som ${to} i passet. Klockan satte ${from.toLowerCase()} — korta ryck ger låg ` +
+      `träningseffekt — men passets namn säger vad det var.`
+    );
+  }
+  if (sessionCategory === "long_run") {
+    return `Räknas som ${to} i passet, på längden.`;
+  }
+  return `Räknas som ${to} i passet.`;
 }

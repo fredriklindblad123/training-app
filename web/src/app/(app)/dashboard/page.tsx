@@ -674,7 +674,20 @@ export default async function DashboardPage({
     >
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Dashboard</h1>
 
-      {/* --- Dagens pass, allra överst.
+      {/* --- Veckan överst. Låg först som en textlänk längst ner, sedan
+          under dagens pass, och ligger nu före det: veckan är sammanhanget
+          dagen ska läsas i. Ser man att det är tredje kvalitetspasset på
+          fyra dagar betyder "Intervaller" något annat än om det vore det
+          första. ---------------------------------------------------- */}
+      <WeekStrip
+        days={weekDays}
+        doneCount={weekDoneCount}
+        plannedCount={(weekPlannedRows ?? []).length}
+        kilometres={weekKilometres}
+        href={`/calendar/vecka/${todayKey}${athleteQuery}`}
+      />
+
+      {/* --- Dagens pass, efter veckan.
           Den första frågan en löpare har när hon öppnar appen är vad som
           gäller idag — inte hur formkurvan ser ut över sex veckor. Kortet låg
           tidigare längst NED, under tre ringsektioner och statusrutan.
@@ -739,18 +752,6 @@ export default async function DashboardPage({
         href={todayHref}
       />
 
-
-      {/* --- Veckan, direkt under dagens pass. Låg tidigare bara som en
-          textlänk längst ner, efter status, form och belastning — men frågan
-          "hur ser resten av veckan ut" kommer direkt efter "vad gör jag
-          idag". ------------------------------------------------------- */}
-      <WeekStrip
-        days={weekDays}
-        doneCount={weekDoneCount}
-        plannedCount={(weekPlannedRows ?? []).length}
-        kilometres={weekKilometres}
-        href={`/calendar/vecka/${todayKey}${athleteQuery}`}
-      />
 
       {/* --- Status mot baslinje (P1.2), plats två direkt efter dagens pass.
           Ersätter den råa nyckeltalsraden som låg här: den visade samma tre
