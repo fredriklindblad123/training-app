@@ -85,11 +85,26 @@ export type ReviewInput = {
   phase: PhaseType | null;
 };
 
-/** Reps kortare än så här säger inget om uthållig fart — de är för korta
- * för att pulsen eller farten ska hinna bli representativ. Samma gränser
- * som växlarna använder (GEAR_MIN_REP_*). */
-const MIN_REP_METERS = 400;
-const MIN_REP_SECONDS = 60;
+/* Minsta rep som räknas som arbete. Gränserna är satta för att sålla bort
+ * STEGRINGAR, inget annat — de är korta accelerationer i slutet av ett pass
+ * (typiskt 20–30 sekunder, 130–150 m) och hör inte till huvudsetet.
+ *
+ * Först stod här 400 m och 60 s, lånat från växlarnas GEAR_MIN_REP_*. Det
+ * var fel lån: växlarna vill ha rep som är långa nog för en stabil
+ * fartuppskattning över en hel historik, medan den här läsningen ska
+ * beskriva ETT pass. Medeldistansträning består till stor del av kortare
+ * rep, och gränsen tog bort dem. Alices intervallpass 2026-09-22 är
+ * tidsbaserat — 45 till 76 sekunder, 214 till 368 m — och varenda rep föll
+ * ur, så passet fick ingen läsning alls. Rapporterat samma dag.
+ *
+ * Med 180 m och 40 s hittar läsningen nu exakt de rep passens egna namn
+ * utlovar: "10x400m" ger tio rep i stället för tre, "15x400m" ger femton i
+ * stället för tretton, "15x90sek" ger femton, och 2026-09-22 ger arton med
+ * de sex avslutande stegringarna korrekt bortsållade. Farten står still
+ * där den redan var riktig. Verifierat mot samtliga kvalitetspass sedan
+ * juli 2026. */
+const MIN_REP_METERS = 180;
+const MIN_REP_SECONDS = 40;
 
 /* Uppvärmning och nerjogg är INTE markerade som vila i merged_splits — de
  * är vanliga varv, bara långa. Ett filter på storlek släpper därför igenom
