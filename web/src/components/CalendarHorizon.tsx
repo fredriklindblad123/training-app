@@ -12,25 +12,34 @@ import { buttonClass, fieldClass } from "@/components/ui/controls";
  * hela huvudmenyn (föregående/nästa, rubrik, hoppa-till-datum, horisont) —
  * exakt samma rad i dag-, vecko-, månads- och årsvyn, bara med olika hrefs. */
 
-export type Horizon = "day" | "week" | "month" | "year";
+export type Horizon = "day" | "week" | "month" | "block" | "year";
 
 export function HorizonToggle({
   current,
   dayHref,
   weekHref,
   monthHref,
+  blockHref,
   yearHref,
 }: {
   current: Horizon;
   dayHref: string;
   weekHref: string;
   monthHref: string;
+  /** Null när löparen inte har några block alls — då ritas ingen flik.
+   * Övriga horisonter finns alltid; ett block är något någon lagt upp. */
+  blockHref: string | null;
   yearHref: string;
 }) {
+  /* Block ligger mellan Månad och År (begäran 2026-09-21). Ordningen är
+     växande tidsspann, och ett block är längre än en månad men kortare än
+     ett år — det är också den ordning tränaren tänker i när hon zoomar ut
+     från veckan mot säsongen. */
   const items: { key: Horizon; label: string; href: string }[] = [
     { key: "day", label: "Dag", href: dayHref },
     { key: "week", label: "Vecka", href: weekHref },
     { key: "month", label: "Månad", href: monthHref },
+    ...(blockHref ? [{ key: "block" as const, label: "Block", href: blockHref }] : []),
     { key: "year", label: "År", href: yearHref },
   ];
 
@@ -68,6 +77,7 @@ export function CalendarNav({
   dayHref,
   weekHref,
   monthHref,
+  blockHref,
   yearHref,
   athleteId,
 }: {
@@ -80,6 +90,8 @@ export function CalendarNav({
   dayHref: string;
   weekHref: string;
   monthHref: string;
+  /** Se HorizonToggle: null döljer fliken. */
+  blockHref: string | null;
   yearHref: string;
   /** Fas 0-uppföljning: en coachs valda löpare — skickas med som dolt fält
    * i "hoppa till datum"-formuläret (GET till /calendar/goto), som annars
@@ -126,6 +138,7 @@ export function CalendarNav({
           dayHref={dayHref}
           weekHref={weekHref}
           monthHref={monthHref}
+          blockHref={blockHref}
           yearHref={yearHref}
         />
       </div>

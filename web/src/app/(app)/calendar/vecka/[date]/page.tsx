@@ -24,6 +24,7 @@ import {
   type DayStatus,
 } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
+import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
 import { mentionsStrength } from "@/lib/diary-text";
 import {
   typeLabel,
@@ -95,6 +96,7 @@ export default async function WeekPage({
     { data: competitionRows },
     { data: availabilityRows },
     { data: blockRows },
+    allBlocks,
   ] = await Promise.all([
     // Rutnätet visar inga varvtider och ingen fotrad — varvdata, repgrupper,
     // incheckning och sömn/HRV hämtas därför inte här längre. Allt det hör
@@ -145,6 +147,9 @@ export default async function WeekPage({
       .lte("start_date", nextExclusive)
       .gte("end_date", from)
       .order("start_date"),
+    // Hela listan, till Block-fliken: blockRows ovan täcker bara veckan,
+    // men fliken ska peka på det block som pågår nu.
+    athleteBlocks(supabase, scopedUserId),
   ]);
 
   const sessions = groupActivitiesIntoSessions(
@@ -238,6 +243,7 @@ export default async function WeekPage({
         dayHref={todayDayHref}
         weekHref={todayWeekHref}
         monthHref={todayMonthHref}
+        blockHref={blockHrefFor(allBlocks, todayKey, athleteQuery)}
         yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />

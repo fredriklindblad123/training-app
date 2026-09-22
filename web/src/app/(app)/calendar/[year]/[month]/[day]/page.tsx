@@ -13,6 +13,7 @@ import {
   isValidDay,
 } from "@/lib/calendar-utils";
 import { BlockBand, type BandBlock } from "@/components/BlockBand";
+import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
 import { getViewMode } from "@/lib/view-mode";
 
 export default async function DayPage({
@@ -57,6 +58,11 @@ export default async function DayPage({
     .lte("start_date", dateStr)
     .gte("end_date", dateStr)
     .order("start_date");
+
+  // Till Block-fliken. blockRows ovan är bara dagens block — står man en dag
+  // som ligger i ett glapp finns inget där, men fliken ska ändå peka på
+  // nästa block.
+  const allBlocks = await athleteBlocks(supabase, scopedUserId);
 
   /* Dagens tävling. Dagvyn var den ENDA kalendervyn som inte visade
      tävlingar — år, månad och vecka gjorde det redan. En löpare som öppnade
@@ -110,6 +116,7 @@ export default async function DayPage({
         dayHref={todayDayHref}
         weekHref={todayWeekHref}
         monthHref={todayMonthHref}
+        blockHref={blockHrefFor(allBlocks, todayStr, athleteQuery)}
         yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />

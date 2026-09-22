@@ -19,6 +19,7 @@ import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { YearGrid, type YearOutcome, type PlannedDay, type BlockDay } from "@/components/YearGrid";
 import { typeLabel } from "@/lib/day-outcome";
 import { getViewMode } from "@/lib/view-mode";
+import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
 
 export default async function YearPage({
   params,
@@ -55,6 +56,7 @@ export default async function YearPage({
     { data: plannedWorkouts },
     { data: seasonBlocks },
     { data: activities },
+    allBlocks,
   ] = await Promise.all([
     getDayStatuses(supabase, scopedUserId, `${year}-01-01`, `${year + 1}-01-01`),
     // Årets tävlingar, för Tävlade-utfallet i årsvyn — se raceDates nedan.
@@ -86,6 +88,9 @@ export default async function YearPage({
       .eq("user_id", scopedUserId)
       .gte("start_time", `${year}-01-01`)
       .lt("start_time", `${year + 1}-01-01`),
+    // Se månadsvyn: seasonBlocks ovan är årets block, men Block-fliken ska
+    // peka på det som pågår nu.
+    athleteBlocks(supabase, scopedUserId),
   ]);
 
   const blocks = (seasonBlocks ?? []) as BandBlock[];
@@ -208,6 +213,7 @@ export default async function YearPage({
         dayHref={todayDayHref}
         weekHref={todayWeekHref}
         monthHref={todayMonthHref}
+        blockHref={blockHrefFor(allBlocks, todayKey, athleteQuery)}
         yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />

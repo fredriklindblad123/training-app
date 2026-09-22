@@ -16,14 +16,39 @@ import { PHASE_LABELS, type PhaseType } from "@/lib/planning";
  * ut som att något inte laddat.
  */
 
+/** Cellen som länk när det finns något att gå till, annars som ren ruta.
+ * Formen är identisk i båda fallen — bara hovertillståndet skiljer — så
+ * raden inte hoppar beroende på om säsongen är upplagd. Utan länk får
+ * cellen inte bli ett <a>: "Inget block just nu" innehåller redan en egen
+ * länk till Säsongsöversikt, och länk i länk är ogiltig HTML. */
+function CellShell({ href, children }: { href: string | null; children: React.ReactNode }) {
+  const className = "flex flex-col gap-1 bg-[var(--surface)] px-3 py-3";
+  if (!href) return <div className={className}>{children}</div>;
+  return (
+    <Link href={href} className={`${className} transition-colors hover:bg-[var(--surface-raised)]`}>
+      {children}
+    </Link>
+  );
+}
+
 export function SeasonContext({
   block,
   nextRace,
   todayKey,
+  athleteQuery = "",
 }: {
-  block: { name: string; phase: string; startDate: string; endDate: string } | null;
+  block: {
+    id: string;
+    name: string;
+    phase: string;
+    startDate: string;
+    endDate: string;
+  } | null;
   nextRace: { name: string; date: string; priority: string } | null;
   todayKey: string;
+  /** En coachs valda löpare, så länken in i kalendern håller sig kvar i rätt
+   * adepts data — samma mönster som resten av dashboardens länkar. */
+  athleteQuery?: string;
 }) {
   /* Dagar räknas på rena datumsträngar via UTC-midnatt, aldrig på lokala
    * Date-objekt: sommartidsskiftet gör ett dygn 23 eller 25 timmar långt, och
@@ -49,7 +74,13 @@ export function SeasonContext({
   return (
     <section className="flex flex-col gap-3">
       <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
-        <div className="flex flex-col gap-1 bg-[var(--surface)] px-3 py-3">
+        {/* Blockcellen är en länk in i kalenderns blockhorisont (begäran
+            2026-09-21). Den säger redan "vecka 3 av 8" — den naturliga
+            följdfrågan är vilka veckor det är, och det svaret finns en klick
+            bort i stället för via menyn och tre val. Saknas block är cellen
+            ingen länk: det finns ingenting att gå till, och en död länk är
+            värre än ingen. */}
+        <CellShell href={block ? `/calendar/block/${block.id}${athleteQuery}` : null}>
           <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
             Block
           </span>
@@ -78,7 +109,7 @@ export function SeasonContext({
               </Link>
             </span>
           )}
-        </div>
+        </CellShell>
 
         <div className="flex flex-col gap-1 bg-[var(--surface)] px-3 py-3">
           <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">

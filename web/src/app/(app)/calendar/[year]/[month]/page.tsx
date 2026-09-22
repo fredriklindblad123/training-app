@@ -33,6 +33,7 @@ import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { PassMarker } from "@/components/PassMarker";
 import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/day-outcome";
 import { BlockBand, type BandBlock } from "@/components/BlockBand";
+import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
 import { getViewMode } from "@/lib/view-mode";
 
 export default async function MonthPage({
@@ -71,6 +72,7 @@ export default async function MonthPage({
     { data: availabilityRows },
     { data: competitionRows },
     { data: blockRows },
+    allBlocks,
   ] = await Promise.all([
     supabase
       .from("activities")
@@ -122,6 +124,10 @@ export default async function MonthPage({
       .lte("start_date", monthEndExclusive)
       .gte("end_date", monthStart)
       .order("start_date"),
+    // Hela blocklistan, till Block-fliken. blockRows ovan är bara de block
+    // som överlappar månaden och duger inte: fliken ska peka på det block
+    // som pågår NU, oavsett vilken månad man råkar titta på.
+    athleteBlocks(supabase, scopedUserId),
   ]);
 
   // SESSION_ACTIVITY_COLUMNS är en runtime-sträng, så Supabase-klienten kan
@@ -201,6 +207,7 @@ export default async function MonthPage({
         dayHref={todayDayHref}
         weekHref={todayWeekHref}
         monthHref={todayMonthHref}
+        blockHref={blockHrefFor(allBlocks, todayKey, athleteQuery)}
         yearHref={todayYearHref}
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />

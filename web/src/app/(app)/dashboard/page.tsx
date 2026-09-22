@@ -416,7 +416,7 @@ export default async function DashboardPage({
      * /blockplan använder; ett naivt !inner hade tyst reducerat listan. */
     supabase
       .from("season_blocks")
-      .select("name, phase, start_date, end_date, blockFilter:season_block_athletes!inner(athlete_id)")
+      .select("id, name, phase, start_date, end_date, blockFilter:season_block_athletes!inner(athlete_id)")
       .eq("blockFilter.athlete_id", scopedUserId)
       .gte("end_date", todayKey)
       .order("start_date")
@@ -692,6 +692,7 @@ export default async function DashboardPage({
         block={
           currentBlockRows
             ? {
+                id: currentBlockRows.id as string,
                 name: currentBlockRows.name as string,
                 phase: currentBlockRows.phase as string,
                 startDate: currentBlockRows.start_date as string,
@@ -709,6 +710,7 @@ export default async function DashboardPage({
             : null
         }
         todayKey={todayKey}
+        athleteQuery={athleteQuery}
       />
 
       {/* --- Veckan, mellan säsongen och dagen. Sidan går från grovt till
