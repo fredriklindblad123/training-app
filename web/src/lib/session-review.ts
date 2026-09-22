@@ -208,17 +208,61 @@ function reviewQuality(input: ReviewInput): SessionReview | null {
   const pace = perKm(totalM, totalS);
   const avgM = Math.round(totalM / work.length);
 
-  const repLine = `${work.length} reps på snitt ${avgM} m i ${formatPaceShort(pace)}/km.`;
+  const repLine = `${work.length} rep på snitt ${avgM} m i ${formatPaceShort(pace)}/km.`;
 
+  /* Repens puls mot LT2. Det här är den enda intensitetsfråga ett
+     kvalitetspass kan svara på HELT av egen kraft: den behöver varken plan,
+     mål eller fas, bara passet självt. Duration-viktad, så ett långt rep
+     väger tyngre än ett kort. */
+  const hrReps = work.filter((r) => r.avgHr != null);
+  const repHr =
+    hrReps.length > 0
+      ? Math.round(
+          hrReps.reduce((n, r) => n + (r.avgHr as number) * r.durationSeconds, 0) /
+            hrReps.reduce((n, r) => n + r.durationSeconds, 0),
+        )
+      : null;
+
+  const selfReported = input.lt2Source === "manuell";
+  const lt2 = input.lt2Hr;
+  let intensity: string | null = null;
+  if (repHr != null && lt2 != null && lt2 > 0) {
+    const diff = repHr - lt2;
+    intensity =
+      diff >= 3
+        ? `Snittpuls ${repHr} på reppen, över din tröskelpuls ${lt2}.`
+        : diff <= -3
+          ? `Snittpuls ${repHr} på reppen, under din tröskelpuls ${lt2}.`
+          : `Snittpuls ${repHr} på reppen, i nivå med din tröskelpuls ${lt2}.`;
+  } else if (repHr != null) {
+    intensity = `Snittpuls ${repHr} på reppen.`;
+  }
+
+  const caveat =
+    selfReported && intensity != null
+      ? "Din tröskelpuls är självskattad, så nivån är ungefärlig."
+      : null;
+
+  /* MÅLTIDEN NÄMNS BARA I TÄVLINGSFÖRBEREDANDE FASER.
+   *
+   * Först jämfördes varje kvalitetspass mot målfarten, och fasen ändrade
+   * bara formuleringen när farten hamnade UTANFÖR bandet. Låg den innanför
+   * stod det "det ligger i intervallbandet ditt mål 4:32 innebär" även i
+   * ett allmänt block — precis det jämförandet som inte hör hemma där.
+   * Rapporterat 2026-09-22.
+   *
+   * I ett allmänt förberedande block, eller i ett glapp mellan block, är
+   * målfarten helt enkelt inte måttstocken. Då beskriver kortet passet och
+   * dess intensitet, och låter bli att döma. */
   const basis = paceBasisFromGoal(input.goalEvent, input.goalSeconds);
-  if (!basis) {
+  const racePhase = input.phase != null && RACE_PACE_PHASES.includes(input.phase);
+
+  if (!racePhase || !basis) {
     return {
       headline: repLine,
       tone: "neutral",
-      lines: [
-        "Lägg in ett måltid under Inställningar, så kan passet också jämföras mot farten målet kräver.",
-      ],
-      caveat: null,
+      lines: intensity ? [intensity] : [],
+      caveat,
     };
   }
 
@@ -230,17 +274,14 @@ function reviewQuality(input: ReviewInput): SessionReview | null {
   const bandText = `${formatPaceShort(low)}–${formatPaceShort(high)}/km`;
   const goalText = `${formatRaceTime(basis.seconds)} på ${input.goalEvent}`;
 
-  const racePhase = input.phase != null && RACE_PACE_PHASES.includes(input.phase);
+  const lines = intensity ? [intensity] : [];
 
-  /* Utanför bandet åt det långsamma hållet är INTE ett underkänt pass i ett
-     allmänt block — det är vad ett allmänt block går ut på. Därför avgör
-     fasen vad avvikelsen betyder, inte avvikelsen själv. */
   if (pace >= low && pace <= high) {
     return {
       headline: repLine,
       tone: "good",
-      lines: [`Det ligger i ${label} ditt mål ${goalText} innebär (${bandText}).`],
-      caveat: null,
+      lines: [...lines, `Farten ligger i ${label} ditt mål ${goalText} innebär (${bandText}).`],
+      caveat,
     };
   }
   if (pace < low) {
@@ -248,20 +289,20 @@ function reviewQuality(input: ReviewInput): SessionReview | null {
       headline: repLine,
       tone: "note",
       lines: [
+        ...lines,
         `Snabbare än ${label} för ${goalText} (${bandText}). Hårt arbete — frågan är om nästa pass blir lidande.`,
       ],
-      caveat: null,
+      caveat,
     };
   }
   return {
     headline: repLine,
-    tone: racePhase ? "note" : "neutral",
+    tone: "note",
     lines: [
-      racePhase
-        ? `Lugnare än ${label} för ${goalText} (${bandText}). Så här nära tävling brukar reppen ligga närmare målfarten.`
-        : `Lugnare än ${label} för ${goalText} (${bandText}) — vilket är meningen så här långt från tävling. Tävlingsfarten kommer när blocket byter fas.`,
+      ...lines,
+      `Lugnare än ${label} för ${goalText} (${bandText}). Så här nära tävling brukar reppen ligga närmare målfarten.`,
     ],
-    caveat: null,
+    caveat,
   };
 }
 
