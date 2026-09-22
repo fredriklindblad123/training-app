@@ -37,7 +37,14 @@ import {
   isActivityCategory,
 } from "@/lib/categories";
 import { analyzeDiaryNote } from "@/lib/diary-text";
-import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
+import { SessionReviewCard } from "@/components/SessionReview";
+import { reviewSession, type ReviewRep } from "@/lib/session-review";
+import {
+  WORKOUT_LABELS,
+  workoutTypeColorVar,
+  type PhaseType,
+  type WorkoutType,
+} from "@/lib/planning";
 import { estimateLt2, LT2_SOURCE_LABELS, type Lt2Estimate } from "@/lib/threshold-test";
 import type { SignatureLap } from "@/lib/session-signature";
 import { fieldClass, primaryButtonClass, smallButtonClass } from "@/components/ui/controls";
@@ -118,7 +125,9 @@ export async function DayContent({
       // se lib/threshold-test.ts) och dess källa/datum.
       supabase
         .from("profiles")
-        .select("lt2_hr, lt2_source, lt2_measured_on")
+        .select(
+          "lt2_hr, lt2_source, lt2_measured_on, lt1_hr, max_hr, goal_event, goal_seconds",
+        )
         .eq("id", scopedUserId)
         .maybeSingle(),
     ]);
@@ -171,6 +180,20 @@ export async function DayContent({
     splitsByActivity.set(r.activity_id, [...(splitsByActivity.get(r.activity_id) ?? []), r]);
   }
 
+  /* Blockets fas för dagen. Jämförelsen mot måltiden är fasberoende: i ett
+     allmänt block SKA reppen ligga lugnare än tävlingsfart, så utan fasen
+     hade varje höstpass sett ut att missa målet. Ligger dagen i ett glapp
+     mellan block blir fasen null och jämförelsen görs utan fasomdöme. */
+  const { data: dayBlockRow } = await supabase
+    .from("season_blocks")
+    .select("phase, season_block_athletes!inner(athlete_id)")
+    .eq("season_block_athletes.athlete_id", scopedUserId)
+    .lte("start_date", dateStr)
+    .gte("end_date", dateStr)
+    .limit(1)
+    .maybeSingle();
+  const dayPhase = (dayBlockRow?.phase as PhaseType | undefined) ?? null;
+
   const manualActivities = (activities ?? []).filter((a) => a.source === "manual");
   const hasOutcome = garminActivities.length > 0 || manualActivities.length > 0;
 
@@ -182,6 +205,41 @@ export async function DayContent({
   // fast här räcker varaktighet: vi vill ha den faktiska testinsatsen, inte
   // uppvärmningen. Splitsen läses direkt av den aktiviteten så att
   // varv-index inte blandas ihop mellan flera Garmin-aktiviteter samma dag.
+  /* En läsning per genomfört pass. Reppen tas ur merged_splits för passets
+     DOMINERANDE aktivitet, inte ur alla fragment: uppvärmningens kilometer
+     är inga reps, och att blanda in dem drog intervallernas snittfart åt
+     fel håll (samma fallgrop som växlarna gick i, se training-gears.ts). */
+  const sessionReviews = daySessions
+    .map((session) => {
+      const dominantId = session.dominantActivity?.id ?? null;
+      const reps: ReviewRep[] = dominantId
+        ? (splitsByActivity.get(dominantId) ?? [])
+            .filter((r) => !r.is_rest && r.distance_meters != null && r.duration_seconds != null)
+            .map((r) => ({
+              distanceMeters: Number(r.distance_meters),
+              durationSeconds: Number(r.duration_seconds),
+              avgHr: r.avg_hr != null ? Number(r.avg_hr) : null,
+            }))
+        : [];
+
+      const review = reviewSession({
+        category: session.category,
+        avgHr: session.avgHr,
+        distanceMeters: session.distanceMeters,
+        durationSeconds: session.durationSeconds,
+        reps,
+        lt1Hr: profile?.lt1_hr ?? null,
+        lt2Hr: profile?.lt2_hr ?? null,
+        maxHr: profile?.max_hr ?? null,
+        lt2Source: profile?.lt2_source ?? null,
+        goalEvent: profile?.goal_event ?? null,
+        goalSeconds: profile?.goal_seconds ?? null,
+        phase: dayPhase,
+      });
+      return review ? { sessionId: session.id, category: session.category, review } : null;
+    })
+    .filter((r) => r !== null);
+
   const plannedTest = (plannedWorkouts ?? []).find((p) => p.workout_type === "test") ?? null;
   const testActivity =
     plannedTest && garminActivities.length > 0
@@ -299,6 +357,8 @@ export async function DayContent({
 
   return (
     <>
+      <SessionReviewCard reviews={sessionReviews} />
+
       <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />
 
       {plannedTest && hasOutcome && lt2Estimate && (

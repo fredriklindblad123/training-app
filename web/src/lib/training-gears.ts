@@ -123,7 +123,7 @@ const EASY_UPPER_MARGIN = 8;
  * Multiplarna är konvention, inte naturlag, och skrivs ut i UI:t. De är
  * kalibrerade mot 1500 m som referensgren; för en 800-löpare blir de för
  * snabba och bör då läsas som en grov riktning.                            */
-const PACE_MULTIPLIERS: Record<GearKey, [number, number]> = {
+export const PACE_MULTIPLIERS: Record<GearKey, [number, number]> = {
   // Lugn distans: klart långsammare än tröskel. Undre gränsen 1,70 ligger
   // där Alices egen puls faktiskt hamnar i målbandet (under 5:30/km).
   distans: [1.7, 1.95],
