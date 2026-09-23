@@ -45,11 +45,15 @@ inte gjort. Säg ut när ett underlag är självskattat. Rita hellre ingenting
 | Agent | När |
 |---|---|
 | `dataverifiering` | innan ett nytt mått byggs, och när en siffra ser fel ut |
-| `ux` | gränssnitt, svensk copy, ton, och allt som behöver ses renderat |
+| `ux` | gränssnitt, svensk copy, ton, och allt som behöver ses renderat (har Playwright) |
 | `medeldistans` | fysiologi, periodisering, passval |
 | `implementation` | avgränsade byggjobb, kör i egen worktree |
 
 Kodgranskning görs med `/code-review ultra`, inte med en egen agent.
+
+Playwright-MCP:n ligger i `.mcp.json` och följer med repot. En ändring i
+gränssnittet är inte klar förrän den setts renderad — kontrollera alltid
+390 px bredd, sidan ska aldrig scrolla i sidled.
 
 ## Dokumentation
 
