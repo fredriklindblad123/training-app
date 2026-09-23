@@ -34,20 +34,27 @@ Rättad och verifierad i körande app: vyn öppnar nu på V.39.
 
 | # | Vy | Avvikelse | Norm | Allvar |
 |---|---|---|---|---|
-| 1 | Dashboard | Dagens pass visar "Distans" och direkt under "Pulszon: Zon 4 — Tröskelarbete · 71 % av tiden" | Formvyn kringgår Garmins zoner helt, för de är opålitliga i det här materialet (68,4 % "tröskel" mot 67,2 % gråzon mätt på %max) | Hög |
 | 2 | Hela appen | "Intervall" i Träningens tre växlar och träningsfaktorerna, "Intervaller" i passkategorier och planering | En passtyp ska heta en sak | Medel |
 | 3 | Bottenmenyn | "Uppföljn" och "Inställn" är avhuggna mitt i ordet; alla andra flikar är hela ord | Hela ord, eller ett annat kortare ord | Medel |
 | 4 | Hela appen | Fem formuleringar för tomt tillstånd: "Inget planerat", "inget planerat", "Inget planerat pass den här dagen.", "Inget planerat den här perioden.", "Ingen data i perioden." | En formulering per sorts tomhet | Låg |
 | 5 | Dashboard | H1 är "Dashboard" | Alla andra vyer har svenskt substantiv: Form, Uppföljning, Resultat, Inställningar, Tävlingar | Låg |
 | 6 | Dashboard | Belastning +57,6 % mot årets snitt visas i grönt som en förbättring | Ett stort belastningshopp är en risksignal, inte en prestation. Vilopuls +4,9 % flaggas gult, så systemet kan skilja | Att ta ställning till |
 
-### Om nummer 1
+## Prövat och avfärdat
 
-Det är samma motsägelse som rapporterades 2026-09-13 ("reggats som lugn
-distans, men tittar man i passet står det tröskel"), i en annan skepnad.
-Kategorin kommer från appens egen klassificering, pulszonen från klockan,
-och de säger olika saker om samma pass på samma kort. Antingen ska zonen
-bort, eller så ska den förklaras som klockans uppfattning och inte appens.
+**"Distans" plus "Zon 4 — Tröskelarbete" på samma kort är ingen
+motsägelse.** Det fanns med som en avvikelse i första utkastet. Ägaren
+avfärdade den 2026-09-23, med rätta: kategorin säger vilken TYP av pass det
+var, zonen säger hur hårt det BLEV. Två olika påståenden om samma pass, inte
+två svar på samma fråga. Samma uppbyggnad som "Så gick passet"-kortet
+medvetet använder.
+
+Kvar står en smalare observation, om kalibrering snarare än konsekvens:
+Garmins zon 4 heter "Tröskelarbete", men de 95 pass sedan juni 2026 där zon
+4 dominerar har en snittpuls på 170 (spann 140–179), medan Alices egen
+tröskelpuls är 183. Klockans zon 4 ligger alltså under hennes tröskel, och
+etiketten säger något annat än hennes eget värde. Det är samma skäl som fick
+formvyn att kringgå zonerna. Ingen åtgärd vidtagen — noterat.
 
 ---
 
