@@ -137,18 +137,26 @@ export default async function UppfoljningPage({
     .order("start_date");
   const blocks = (blockRows ?? []) as PeriodBlock[];
 
+  const blockPeriod = resolveBlockPeriod(blocks, blockParam, todayKey);
+
   /* Förvalet är BLOCK, inte vecka (begäran 2026-09-21). En tränare öppnar
      sidan för att se hur perioden går, och en enskild vecka svarar sällan på
      det — särskilt inte en vecka som just börjat, där allt ser tomt ut.
-     resolveBlockPeriod väljer av sig själv det block som innehåller idag.
 
-     Faller tillbaka på vecka när det inte finns några block alls: då hade
-     block-läget bara visat "Inga block upplagda än", vilket är en sämre
-     första anblick än en vecka med riktiga siffror i. */
-  const blockPeriod = resolveBlockPeriod(blocks, blockParam, todayKey);
+     Villkoret är att idag FAKTISKT ligger i ett block, inte bara att det
+     finns block. resolveBlockPeriod faller annars tillbaka på det senaste
+     block som redan börjat, och säsongen har glapp: 2026-08-31–09-27 är
+     fyra veckor utan block. Där öppnade sidan på Tävlingsperiod 2026 Aug,
+     en period som tagit slut, och kallade den innevarande. Ligger idag i
+     ett glapp visas veckan, och blockförvalet återkommer av sig självt när
+     nästa block börjar.
+
+     Den uttryckliga Block-knappen påverkas inte: klickar man dit gäller
+     resolveBlockPeriods vanliga fallback, så fliken aldrig blir död. */
+  const todayInBlock = blocks.some((b) => todayKey >= b.start_date && todayKey <= b.end_date);
   const kind: PeriodKind = isPeriodKind(periodParam)
     ? periodParam
-    : blockPeriod
+    : todayInBlock
       ? "block"
       : "vecka";
 
