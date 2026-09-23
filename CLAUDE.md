@@ -55,6 +55,10 @@ Playwright-MCP:n ligger i `.mcp.json` och följer med repot. En ändring i
 gränssnittet är inte klar förrän den setts renderad — kontrollera alltid
 390 px bredd, sidan ska aldrig scrolla i sidled.
 
+`/ux-genomgang [konsekvens|anvandbarhet]` kör en full genomgång av alla
+vyer med ux-agenten och skriver till `docs/ux-genomgang.md`. Kör konsekvens
+först; den inventerar utan att rätta.
+
 ## Dokumentation
 
 `docs/tranarperspektiv.md` (K1–K8, tränarens behov), `docs/tranarloopen.md`
