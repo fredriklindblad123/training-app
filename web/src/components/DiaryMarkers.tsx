@@ -38,7 +38,19 @@ export function DiaryMarkers({
   /** Månads- och blockrutnätet har trängre celler än vecko- och dagvyn. */
   compact?: boolean;
 }) {
-  const strength = mentionsStrength(sessionLog);
+  /* Styrkemarkören svarar på frågan "varför står det något här när inget
+     pass är loggat". Har dagen ett pass är frågan redan besvarad, och en
+     andra prick bredvid passet läses som ett andra pass.
+
+     Villkoret saknades när markören flyttades hit från veckovyn 2026-09-24,
+     och rapporterades samma dag: den 15 september visade både tröskel och
+     styrka i månadsrutnätet. Loggen säger mycket riktigt "Styrka med
+     gummiband" — men sist i en rad som börjar med "Uppvärmning 3km
+     Tröskelintervaller 6x3min". Det är ett tillägg till tröskelpasset, inte
+     ett eget pass. Fyra av sex dagar den veckan såg ut att ha dubbla pass.
+
+     Detaljen går inte förlorad: hela loggen står i dagvyns träningsdagbok. */
+  const strength = !hasSessions && mentionsStrength(sessionLog);
   // "Tränat" utan mer information säger bara att dagen inte var tom. Har
   // dagen pass, eller vet vi att det var styrka, är den raden ren upprepning.
   const bareTraining = dayType === "training" && !hasSessions && !strength;
