@@ -4,9 +4,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import {
   SV_WEEKDAYS_SHORT,
-  STATUS_COLOR,
-  STATUS_LABEL,
-  STATUS_COLOR_VAR,
   type DayStatus,
 } from "@/lib/calendar-utils";
 import { CalendarNav } from "@/components/CalendarHorizon";
@@ -32,6 +29,7 @@ import {
 } from "@/lib/plan-matching";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { PassMarker } from "@/components/PassMarker";
+import { DiaryMarkers } from "@/components/DiaryMarkers";
 import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/day-outcome";
 import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
 import { isoWeekStart, weekLabel } from "@/lib/stats-utils";
@@ -104,7 +102,7 @@ export default async function BlockPage({
       .order("start_time"),
     supabase
       .from("diary_entries")
-      .select("entry_date, day_type")
+      .select("entry_date, day_type, session_log")
       .eq("user_id", scopedUserId)
       .gte("entry_date", start)
       .lte("entry_date", end)
@@ -151,6 +149,11 @@ export default async function BlockPage({
   const plannedByDay = new Map<string, PlannedWorkout[]>();
   for (const pw of (plannedWorkouts ?? []) as unknown as PlannedWorkout[]) {
     plannedByDay.set(pw.scheduled_date, [...(plannedByDay.get(pw.scheduled_date) ?? []), pw]);
+  }
+
+  const diaryLogByDay = new Map<string, string | null>();
+  for (const entry of diaryEntries ?? []) {
+    diaryLogByDay.set(entry.entry_date, (entry.session_log as string | null) ?? null);
   }
 
   const diaryByDay = new Map<string, DayStatus>();
@@ -276,6 +279,7 @@ export default async function BlockPage({
               sessionsByDay={sessionsByDay}
               plannedByDay={plannedByDay}
               diaryByDay={diaryByDay}
+              diaryLogByDay={diaryLogByDay}
               competitionsByDay={competitionsByDay}
             />
           ))}
@@ -307,6 +311,7 @@ function BlockWeekRow({
   sessionsByDay,
   plannedByDay,
   diaryByDay,
+  diaryLogByDay,
   competitionsByDay,
 }: {
   monday: string;
@@ -317,6 +322,7 @@ function BlockWeekRow({
   sessionsByDay: Map<string, TrainingSession[]>;
   plannedByDay: Map<string, PlannedWorkout[]>;
   diaryByDay: Map<string, DayStatus>;
+  diaryLogByDay: Map<string, string | null>;
   competitionsByDay: Map<string, { name: string; priority: string }[]>;
 }) {
   const days = Array.from({ length: 7 }, (_, i) =>
@@ -345,8 +351,6 @@ function BlockWeekRow({
         const planned = plannedByDay.get(key) ?? [];
         const diaryStatus = diaryByDay.get(key) ?? null;
         const comps = unmatchedCompetitions(done, competitionsByDay.get(key) ?? []);
-        const showStatus =
-          diaryStatus != null && (diaryStatus !== "training" || done.length === 0);
         const showPlanned = done.length === 0 && key >= todayKey && planned.length > 0;
         const [y, m, d] = key.split("-").map(Number);
 
@@ -377,24 +381,12 @@ function BlockWeekRow({
               </span>
             ))}
 
-            {showStatus && diaryStatus === "training" && (
-              <span className="flex items-center gap-1.5 text-[11px] text-[var(--foreground)]">
-                <span
-                  className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: STATUS_COLOR_VAR.training }}
-                  aria-hidden="true"
-                />
-                Träning
-              </span>
-            )}
-
-            {showStatus && diaryStatus && diaryStatus !== "training" && (
-              <span
-                className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[diaryStatus]}`}
-              >
-                {STATUS_LABEL[diaryStatus]}
-              </span>
-            )}
+            <DiaryMarkers
+              dayType={diaryStatus}
+              sessionLog={diaryLogByDay.get(key) ?? null}
+              hasSessions={done.length > 0}
+              compact
+            />
 
             {done.map((s) => (
               <span

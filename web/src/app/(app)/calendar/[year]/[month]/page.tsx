@@ -5,9 +5,6 @@ import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import {
   SV_MONTHS,
   SV_WEEKDAYS_SHORT,
-  STATUS_COLOR,
-  STATUS_LABEL,
-  STATUS_COLOR_VAR,
   type DayStatus,
   dateKey,
   daysInMonth,
@@ -31,6 +28,7 @@ import {
 } from "@/lib/plan-matching";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { PassMarker } from "@/components/PassMarker";
+import { DiaryMarkers } from "@/components/DiaryMarkers";
 import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/day-outcome";
 import { BlockBand, type BandBlock } from "@/components/BlockBand";
 import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
@@ -83,7 +81,7 @@ export default async function MonthPage({
       .order("start_time"),
     supabase
       .from("diary_entries")
-      .select("entry_date, day_type")
+      .select("entry_date, day_type, session_log")
       .eq("user_id", scopedUserId)
       .gte("entry_date", monthStart)
       .lt("entry_date", monthEndExclusive)
@@ -151,6 +149,11 @@ export default async function MonthPage({
   const plannedByDay = new Map<string, PlannedWorkout[]>();
   for (const pw of (plannedWorkouts ?? []) as unknown as PlannedWorkout[]) {
     plannedByDay.set(pw.scheduled_date, [...(plannedByDay.get(pw.scheduled_date) ?? []), pw]);
+  }
+
+  const diaryLogByDay = new Map<string, string | null>();
+  for (const entry of diaryEntries ?? []) {
+    diaryLogByDay.set(entry.entry_date, (entry.session_log as string | null) ?? null);
   }
 
   const diaryByDay = new Map<string, DayStatus>();
@@ -248,9 +251,6 @@ export default async function MonthPage({
           const planned = plannedByDay.get(key) ?? [];
           const diaryStatus = diaryByDay.get(key) ?? null;
           const comps = unmatchedCompetitions(done, competitionsByDay.get(key) ?? []);
-          // "Tränade" ovanpå ett synligt pass är ren upprepning — badgen visas
-          // bara när den säger något passlistan inte redan gör.
-          const showStatus = diaryStatus != null && (diaryStatus !== "training" || done.length === 0);
           // Historik visar bara vad som faktiskt gjordes; framåt i tiden
           // (fram till och med idag, om inget redan är genomfört) visas i
           // stället vad som är planerat. Samma gräns som årsvyn (YearGrid).
@@ -273,34 +273,17 @@ export default async function MonthPage({
                 </span>
               ))}
 
-              {/* En dag märkt som tränad utan loggat pass ritas som passen —
-                  prick plus etikett, i egen färg — och inte som en färgad
-                  bricka. Det är oftast styrka eller alternativ träning, och
-                  det hör hemma i samma visuella språk som resten av dagens
-                  innehåll. Sjuk och skadad är undantag och behåller brickan:
-                  de säger något om dagen, inte om ett pass.
-
-                  Etiketten är "Träning" och inte "Styrka" med flit —
-                  diary_entries.day_type har bara training/rest/sick/injured,
-                  så appen VET inte vilken sorts träning det var. */}
-              {showStatus && diaryStatus === "training" && (
-                <span className="flex items-center gap-1.5 text-[11px] text-[var(--foreground)]">
-                  <span
-                    className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: STATUS_COLOR_VAR.training }}
-                    aria-hidden="true"
-                  />
-                  Träning
-                </span>
-              )}
-
-              {showStatus && diaryStatus && diaryStatus !== "training" && (
-                <span
-                  className={`inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[diaryStatus]}`}
-                >
-                  {STATUS_LABEL[diaryStatus]}
-                </span>
-              )}
+              {/* Delad med vecko-, block- och dagvyn (components/DiaryMarkers)
+                  så att en dag ser likadan ut oavsett horisont. Tidigare låg
+                  en egen kopia här som ritade "Träning" i --day-trained, ett
+                  grönt som ligger ΔE 12 från tröskelgrönt och därför lästes
+                  som ett tröskelpass. */}
+              <DiaryMarkers
+                dayType={diaryStatus}
+                sessionLog={diaryLogByDay.get(key) ?? null}
+                hasSessions={done.length > 0}
+                compact
+              />
 
               {done.map((s) => (
                 <span

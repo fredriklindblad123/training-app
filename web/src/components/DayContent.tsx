@@ -9,7 +9,8 @@ import {
   summarizeCompliance,
   type PlannedWorkout,
 } from "@/lib/plan-matching";
-import { dateKey, STATUS_COLOR } from "@/lib/calendar-utils";
+import { dateKey, STATUS_COLOR, type DayStatus } from "@/lib/calendar-utils";
+import { DiaryMarkers } from "@/components/DiaryMarkers";
 import type { ActivityCategory } from "@/lib/categories";
 import {
   saveManualActivity,
@@ -357,6 +358,21 @@ export async function DayContent({
 
   return (
     <>
+      {/* Vad dagboken säger om dagen, utöver passen. Dagvyn visade det här
+          INGENSTANS: en dag märkt som tränad utan loggat pass såg tom ut när
+          man klickade in sig från månadsrutnätet, som ritade en markör för
+          den. Samma komponent som månads-, block- och veckovyn, så svaret är
+          detsamma oavsett var man kom ifrån. Rapporterat 2026-09-24. */}
+      {(diaryEntry?.day_type || diaryEntry?.session_log) && (
+        <div className="flex flex-wrap items-center gap-3">
+          <DiaryMarkers
+            dayType={(diaryEntry.day_type as DayStatus | null) ?? null}
+            sessionLog={diaryEntry.session_log as string | null}
+            hasSessions={daySessions.length > 0}
+          />
+        </div>
+      )}
+
       <SessionReviewCard reviews={sessionReviews} />
 
       <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />

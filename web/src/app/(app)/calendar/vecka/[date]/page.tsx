@@ -25,7 +25,7 @@ import {
 } from "@/lib/calendar-utils";
 import { weekLabel } from "@/lib/stats-utils";
 import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
-import { mentionsStrength } from "@/lib/diary-text";
+import { DiaryMarkers } from "@/components/DiaryMarkers";
 import {
   typeLabel,
   unmatchedCompetitions,
@@ -390,23 +390,18 @@ export default async function WeekPage({
                 </div>
               ))}
 
-              {/* Styrka enligt dagbokstexten. Ingen aktivitet finns — därav
-                  den nedtonade stilen och parentesen. */}
-              {mentionsStrength(diary?.session_log) && (
-                <div
-                  className="flex items-start gap-1.5 text-[11px] leading-snug text-[var(--ink-3)]"
-                  title="Styrka nämnd i träningsloggen — inget pass loggat med volym"
-                >
-                  <span
-                    className="mt-[3px] inline-block h-2.5 w-2.5 shrink-0 rounded-full opacity-60"
-                    style={{ backgroundColor: "var(--cat-strength)" }}
-                    aria-hidden="true"
-                  />
-                  <span>Styrka (ur loggen)</span>
-                </div>
-              )}
+              {/* Delad med månads-, block- och dagvyn, se DiaryMarkers.
+                  Veckovyn var länge den ENDA yta som visade styrkan ur
+                  loggen; nu ritar alla fyra samma sak. */}
+              <DiaryMarkers
+                dayType={diaryStatus}
+                sessionLog={diary?.session_log ?? null}
+                hasSessions={sessions.length > 0}
+              />
 
-              {/* Avvikelse: bara när båda finns och typerna skiljer sig */}
+              {/* Avvikelse: bara när båda finns och typerna skiljer sig.
+                  Hör till plan mot utfall, inte till dagboken, och ligger
+                  därför utanför DiaryMarkers. */}
               {mismatch && (
                 <div className="text-[10px] text-[var(--ink-note)]">
                   Annan typ än planerat
