@@ -505,12 +505,16 @@ export default async function UppfoljningPage({
                       {/* Genomförda distanspass. Kvalitetskolumnen räknar bara
                           tröskel, intervall, tävling och test — den aeroba
                           grunden, som är merparten av veckan, syntes inte
-                          någonstans i tabellen. */}
+                          någonstans i tabellen.
+                          Allt som inte är kvalitet räknas här, inte bara
+                          kategorin "easy": annars saknade Kvalitet + Distanspass
+                          pass som stod i Genomfört-kolumnen (se
+                          distanceCompleted i lib/range-stats.ts). */}
                       <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
-                        {stats.easyCompleted === 0 ? (
+                        {stats.distanceCompleted === 0 ? (
                           <span className="text-[var(--ink-3)]">0</span>
                         ) : (
-                          stats.easyCompleted
+                          stats.distanceCompleted
                         )}
                       </td>
                       <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">

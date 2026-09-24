@@ -134,9 +134,20 @@ export default async function YearPage({
       c.name,
     ]);
   }
+  /* "Tävlade" är ett UTFALL och sätts bara på tävlingar som redan ägt rum.
+     Fram till 2026-09-24 gick varenda rad i `competitions` in i utfallet,
+     framtida datum inräknade: Alice har 12 tävlingar inlagda framåt
+     (2026-10-24 Terräng SM till 2027-09-04), och årsvyn ritade dem som
+     fyllda rutor i tävlingsfärgen — alltså med förklaringsrutans etikett
+     "Tävlade" — för lopp som inte sprungits. Månads- och veckovyn visar
+     samma dagar som en neutral tävlingsbricka ("P1 · Terräng SM"), så årsvyn
+     var den enda ytan som påstod ett utfall. Kommande tävlingar går i stället
+     in i plannedByDate nedan och får rutnätets befintliga framåt-form:
+     ihålig ram, ingen fyllning. */
+  const upcomingRaceDates = [...competitionNamesByDate.keys()].filter((d) => d > todayKey);
   const raceDates = new Set([
     ...raceDatesFromSessions,
-    ...competitionNamesByDate.keys(),
+    ...[...competitionNamesByDate.keys()].filter((d) => d <= todayKey),
   ]);
 
   const outcomeByDate: Record<string, YearOutcome> = {};
@@ -165,6 +176,19 @@ export default async function YearPage({
       colorVar: workoutTypeColorVar(pw.workout_type),
       label: typeLabel(pw.workout_type),
       isQuality,
+    };
+  }
+
+  /* Kommande tävlingar, se raceDates ovan. Skrivs SIST och utan
+     kvalitetsjämförelsen: är det tävling den dagen är det tävlingen man vill
+     se i årshjulet, inte uppvärmningspasset som också står inplanerat.
+     Etiketten är loppets namn, så rutans titel blir "2026-10-24 – Planerat:
+     Terräng SM". */
+  for (const key of upcomingRaceDates) {
+    plannedByDate[key] = {
+      colorVar: workoutTypeColorVar("race"),
+      label: (competitionNamesByDate.get(key) ?? []).join(", "),
+      isQuality: true,
     };
   }
 

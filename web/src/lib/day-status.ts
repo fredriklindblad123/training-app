@@ -5,9 +5,18 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * Bygger en karta datum (YYYY-MM-DD) -> status för intervallet
- * [startDate, endDateExclusive). Aktivitet vinner alltid över en manuellt
- * satt day_type i dagboken (om man loggat "vila" men ändå sprang, räknas
- * det som träning).
+ * [startDate, endDateExclusive). Ett loggat pass gör dagen till träningsdag
+ * när dagboken säger "vila" — har man sprungit har man sprungit.
+ *
+ * Men BARA över "vila". Fram till 2026-09-24 skrev aktivitetsloopen nedan
+ * över allt dagboken sagt, sjuk och skadad inräknat, och regeln var motiverad
+ * med just vilofallet ("om man loggat vila men ändå sprang"). Den lånade
+ * tröskeln gav årsvyn ett eget svar om samma dag: 2026-02-02 är märkt
+ * `injured` i dagboken och har en aktivitet (Vattenlöpning) — månadsvyn,
+ * veckovyn, uppföljningens frånvarokolumn och svitremsan säger alla "Skadad"
+ * den dagen, medan årsrutan lyste grön "Tränade". Rehabträning under en skada
+ * upphäver inte skadan, och årsvyn är just den yta man läser för att se var
+ * skadeperioderna ligger.
  */
 export async function getDayStatuses(
   supabase: SupabaseServerClient,
@@ -42,7 +51,13 @@ export async function getDayStatuses(
     }
   }
   for (const activity of activities ?? []) {
-    statuses.set(activity.start_time.slice(0, 10), "training");
+    const key = activity.start_time.slice(0, 10);
+    // Sjuk och skadad står kvar även om ett pass loggats den dagen — se
+    // kommentaren ovanför funktionen. "Vila" ligger aldrig i kartan, så en
+    // vilodag med pass blir träningsdag av sig själv.
+    const existing = statuses.get(key);
+    if (existing === "sick" || existing === "injured") continue;
+    statuses.set(key, "training");
   }
 
   return statuses;

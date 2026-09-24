@@ -58,10 +58,18 @@ export type RangeStats = {
   /** Genomförda pass som inte fanns i planen. */
   unplannedCount: number;
   competitionCount: number;
-  /** Genomförda distanspass (kategorin "easy"). Den aeroba grunden är
-   * volymen som bär allt annat, och den syns inte i kvalitetskolumnen —
-   * där räknas bara tröskel, intervall, tävling och test. */
-  easyCompleted: number;
+  /** Genomförda distanspass: alla pass som INTE är kvalitet (tröskel,
+   * intervall, tävling, test). Den aeroba grunden är volymen som bär allt
+   * annat, och den syns inte i kvalitetskolumnen.
+   *
+   * Hette `easyCompleted` och räknade bara kategorin "easy" fram till
+   * 2026-09-24. Då föll långpass, styrka och alternativ träning mellan
+   * stolarna: för Alice i blocket "Tävlingsperiod 2026 Aug" visade
+   * uppföljningen Genomfört 23 men Distanspass 13 och 9 genomförda
+   * kvalitetspass — ett långpass fanns inte i någon kolumn. Samma blocks
+   * nyckeltalsrad (PeriodStatTiles, som räknar pass minus kvalitet) sa
+   * samtidigt Distanspass 14. Definitionen är nu densamma på båda ytorna. */
+  distanceCompleted: number;
   /** Sjuk- respektive skaddagar ur dagboken inom spannet. Noll är ett
    * giltigt svar och ska visas som noll, inte som tomt: skillnaden mellan
    * "inga sjukdagar" och "ingen dagbok förd" går annars förlorad. */
@@ -154,7 +162,12 @@ export function computeRangeStats({
     competitionCount: competitionDates.filter((d) =>
       withinRange(d, range.startDate, range.endDate),
     ).length,
-    easyCompleted: rangeSessions.filter((s) => s.category === "easy").length,
+    // Samma uppdelning som components/PeriodStatTiles.tsx: allt som inte är
+    // kvalitet är distans. Kolumnerna Kvalitet och Distanspass ska tillsammans
+    // göra rätt för varje pass i Genomfört-kolumnen.
+    distanceCompleted: rangeSessions.filter(
+      (s) => !(QUALITY_WORKOUT_TYPES as readonly string[]).includes(s.category),
+    ).length,
     sickDays: rangeInterruptions.filter((i) => i.dayType === "sick").length,
     injuredDays: rangeInterruptions.filter((i) => i.dayType === "injured").length,
   };
