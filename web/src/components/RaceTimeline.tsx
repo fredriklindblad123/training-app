@@ -58,6 +58,14 @@ function monthTicks(fromKey: string, toKey: string): { key: string; label: strin
   return out;
 }
 
+/* Tävlingsfärgen är --cat-race oavsett prioritet. B-lopp bar tidigare
+ * --status-watch, som är mätvärdesstatusens gula "se upp" — så ett B-lopp
+ * blev orange i tränarvyerna och magenta i adeptens dagvy, och gulen sa
+ * dessutom "varning" om ett lopp. Rapporterat 2026-09-26.
+ *
+ * Prioriteten bärs nu av FYLLNAD i stället för kulör: A-lopp fyllda, B-lopp
+ * ihåliga ringar. Samma språk som PassMarker (fylld = genomfört, ihålig =
+ * planerat), och hue behåller en enda betydelse. */
 export function RaceTimeline({ races, todayKey }: { races: TimelineRace[]; todayKey: string }) {
   if (races.length === 0) return null;
 
@@ -128,8 +136,9 @@ export function RaceTimeline({ races, todayKey }: { races: TimelineRace[]; today
                     aria-hidden
                     className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{
-                      backgroundColor:
-                        race.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
+                      backgroundColor: race.priority === "A" ? "var(--cat-race)" : "transparent",
+                      border: "2px solid var(--cat-race)",
+                      boxSizing: "border-box",
                     }}
                   />
                   <span className="display truncate text-xs font-semibold text-[var(--foreground)]">

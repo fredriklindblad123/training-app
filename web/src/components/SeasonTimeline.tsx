@@ -137,6 +137,14 @@ function axisTicks(
  * Tidigare fanns legenden bara i det icke-kompakta läget, vilket betydde att
  * översikten — den vy där flest romber trängs — var den enda som inte
  * förklarade vad de betydde. */
+/* Tävlingsfärgen är --cat-race oavsett prioritet. B-lopp bar tidigare
+ * --status-watch, som är mätvärdesstatusens gula "se upp" — så ett B-lopp
+ * blev orange i tränarvyerna och magenta i adeptens dagvy, och gulen sa
+ * dessutom "varning" om ett lopp. Rapporterat 2026-09-26.
+ *
+ * Prioriteten bärs nu av FYLLNAD i stället för kulör: A-lopp fyllda, B-lopp
+ * ihåliga ringar. Samma språk som PassMarker (fylld = genomfört, ihålig =
+ * planerat), och hue behåller en enda betydelse. */
 export function SeasonTimelineLegend({ phases }: { phases: PhaseType[] }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[var(--ink-3)]">
@@ -441,8 +449,9 @@ export function SeasonTimeline({
                       className="absolute top-1.5 h-2.5 w-2.5 -translate-x-1/2 rounded-full ring-2 ring-[var(--surface)]"
                       style={{
                         left: `${pct(r.date)}%`,
-                        backgroundColor:
-                          r.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
+                        backgroundColor: r.priority === "A" ? "var(--cat-race)" : "transparent",
+                      border: "2px solid var(--cat-race)",
+                      boxSizing: "border-box",
                       }}
                     />
                   ))}
@@ -482,8 +491,9 @@ export function SeasonTimeline({
                     aria-hidden
                     className="mt-1 inline-block h-2 w-2 shrink-0 rounded-full"
                     style={{
-                      backgroundColor:
-                        r.priority === "A" ? "var(--cat-race)" : "var(--status-watch)",
+                      backgroundColor: r.priority === "A" ? "var(--cat-race)" : "transparent",
+                      border: "2px solid var(--cat-race)",
+                      boxSizing: "border-box",
                     }}
                   />
                   <span className="tabular w-16 shrink-0 text-[var(--ink-3)]">
