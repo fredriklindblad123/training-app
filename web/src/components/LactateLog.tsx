@@ -53,11 +53,14 @@ export function LactateLog({
   addAction: (formData: FormData) => Promise<void>;
   deleteAction: (formData: FormData) => Promise<void>;
 }) {
+  /* Ligger nästlad inuti "Genomförda pass" sedan 2026-09-26, så rubriken är
+   * en etikett och inte en egen h2 — annars konkurrerar den med sektionens
+   * rubrik om samma nivå. */
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+    <section className="flex flex-col gap-3 border-t border-[var(--line)] pt-4">
+      <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
         Laktat
-      </h2>
+      </span>
 
       {readings.length > 0 && (
         <ul className="flex flex-col gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)]">

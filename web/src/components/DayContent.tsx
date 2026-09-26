@@ -392,18 +392,6 @@ export async function DayContent({
 
       <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />
 
-      {/* Laktat under dagens pass. Visas alltid, även tom: hittar man inte
-          formuläret förrän man redan har ett värde att skriva in blir det
-          aldrig använt. Knyts till dagens hårdaste pass, för det är det man
-          sticker på. */}
-      <LactateLog
-        readings={(lactateRows ?? []) as LactateReading[]}
-        activityId={daySessions[0]?.dominantActivity?.id ?? null}
-        entryDate={dateStr}
-        athleteId={scopedUserId}
-        addAction={addLactateReading}
-        deleteAction={deleteLactateReading}
-      />
 
       {plannedTest && hasOutcome && lt2Estimate && (
         <ThresholdTestCard
@@ -633,6 +621,20 @@ export async function DayContent({
           saveAction={saveManualActivity}
           deleteAction={deleteManualActivity}
           athleteId={scopedUserId}
+        />
+
+        {/* Laktatet hör till passet, inte till dagen. Det låg först som en
+            egen sektion ovanför och lästes då som något vid sidan om
+            träningen — men ett stick tas under eller efter ett pass, och
+            frågan man har framför sig är "vad visade mätaren på det här
+            passet". Rapporterat 2026-09-26. */}
+        <LactateLog
+          readings={(lactateRows ?? []) as LactateReading[]}
+          activityId={daySessions[0]?.dominantActivity?.id ?? null}
+          entryDate={dateStr}
+          athleteId={scopedUserId}
+          addAction={addLactateReading}
+          deleteAction={deleteLactateReading}
         />
       </DaySection>
 
