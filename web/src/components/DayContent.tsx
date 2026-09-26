@@ -11,6 +11,7 @@ import {
 } from "@/lib/plan-matching";
 import { dateKey, STATUS_COLOR, type DayStatus } from "@/lib/calendar-utils";
 import { DiaryMarkers } from "@/components/DiaryMarkers";
+import { LactateLog, type LactateReading } from "@/components/LactateLog";
 import type { ActivityCategory } from "@/lib/categories";
 import {
   saveManualActivity,
@@ -24,6 +25,8 @@ import {
   addPlannedRepGroup,
   updatePlannedRepGroup,
   deletePlannedRepGroup,
+  addLactateReading,
+  deleteLactateReading,
 } from "@/app/(app)/calendar/[year]/[month]/[day]/actions";
 import {
   formatDuration,
@@ -194,6 +197,18 @@ export async function DayContent({
     .limit(1)
     .maybeSingle();
   const dayPhase = (dayBlockRow?.phase as PhaseType | undefined) ?? null;
+
+  /* Dagens laktatmätningar. Tabellen och dess actions har funnits sedan
+     juli utan gränssnitt; formuläret är nytt 2026-09-26. Hämtas på dagen,
+     inte per pass, eftersom ett tröskeltest kan ha stick både under och
+     efter passet och alla hör till samma tillfälle. */
+  const { data: lactateRows } = await supabase
+    .from("lactate_readings")
+    .select("id, lactate_mmol, pace_seconds_per_km, heart_rate, context, note, measured_at, activity_id")
+    .eq("user_id", scopedUserId)
+    .gte("measured_at", dateStr)
+    .lt("measured_at", nextDateStr)
+    .order("measured_at");
 
   const manualActivities = (activities ?? []).filter((a) => a.source === "manual");
   const hasOutcome = garminActivities.length > 0 || manualActivities.length > 0;
@@ -376,6 +391,19 @@ export async function DayContent({
       <SessionReviewCard reviews={sessionReviews} />
 
       <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />
+
+      {/* Laktat under dagens pass. Visas alltid, även tom: hittar man inte
+          formuläret förrän man redan har ett värde att skriva in blir det
+          aldrig använt. Knyts till dagens hårdaste pass, för det är det man
+          sticker på. */}
+      <LactateLog
+        readings={(lactateRows ?? []) as LactateReading[]}
+        activityId={daySessions[0]?.dominantActivity?.id ?? null}
+        entryDate={dateStr}
+        athleteId={scopedUserId}
+        addAction={addLactateReading}
+        deleteAction={deleteLactateReading}
+      />
 
       {plannedTest && hasOutcome && lt2Estimate && (
         <ThresholdTestCard

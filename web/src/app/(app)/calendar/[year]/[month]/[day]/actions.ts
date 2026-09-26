@@ -152,10 +152,11 @@ const LACTATE_CONTEXTS = ["test", "workout", "race"];
 // rätt utan extra friktion i UI:t.
 export async function addLactateReading(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  /* Sticket hör till ADEPTEN man tittar på, inte till den inloggade. En
+     tränare som loggar åt Alice sparade tidigare i sitt eget konto — samma
+     fallgrop som resolvedAthleteId ovan finns för. Rapporterat 2026-09-26. */
+  const athleteId = await resolvedAthleteId(supabase, formData);
+  if (!athleteId) return;
 
   const mmolRaw = formData.get("lactate_mmol") as string;
   if (!mmolRaw) return;
@@ -167,13 +168,31 @@ export async function addLactateReading(formData: FormData) {
   const contextRaw = (formData.get("context") as string) || "test";
   const note = (formData.get("note") as string) || null;
 
+  /* Sticket hör till den dag man står på, inte till dagen man råkar skriva
+     in det. measured_at sattes tidigare implicit till insättningstillfället,
+     vilket stämmer bara om man loggar vid banans kant — skriver man in
+     gårdagens test på morgonen hamnade det på fel dag och syntes inte alls i
+     passets dagvy. Klockslaget behålls så att flera stick samma dag ligger i
+     den ordning de togs. Rapporterat 2026-09-26. */
+  const entryDate = formData.get("entry_date") as string | null;
+  const now = new Date();
+  const measuredAt =
+    entryDate && /^\d{4}-\d{2}-\d{2}$/.test(entryDate)
+      ? new Date(
+          `${entryDate}T${String(now.getHours()).padStart(2, "0")}:${String(
+            now.getMinutes(),
+          ).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`,
+        ).toISOString()
+      : now.toISOString();
+
   const paceMin = paceMinRaw ? Number(paceMinRaw) : 0;
   const paceSek = paceSekRaw ? Number(paceSekRaw) : 0;
   const paceSecondsPerKm = paceMinRaw || paceSekRaw ? paceMin * 60 + paceSek : null;
 
   await supabase.from("lactate_readings").insert({
-    user_id: user.id,
+    user_id: athleteId,
     activity_id: activityId,
+    measured_at: measuredAt,
     lactate_mmol: Number(mmolRaw),
     pace_seconds_per_km: paceSecondsPerKm,
     heart_rate: hrRaw ? Number(hrRaw) : null,
@@ -186,10 +205,8 @@ export async function addLactateReading(formData: FormData) {
 
 export async function deleteLactateReading(formData: FormData) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  const athleteId = await resolvedAthleteId(supabase, formData);
+  if (!athleteId) return;
 
   const readingId = formData.get("reading_id") as string;
   if (!readingId) return;
@@ -198,7 +215,7 @@ export async function deleteLactateReading(formData: FormData) {
     .from("lactate_readings")
     .delete()
     .eq("id", readingId)
-    .eq("user_id", user.id);
+    .eq("user_id", athleteId);
 
   revalidatePath("/calendar", "layout");
 }

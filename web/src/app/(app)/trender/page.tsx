@@ -32,6 +32,8 @@ import { Vo2maxCard } from "@/components/Vo2maxCard";
 import { ReportLinks, type AthleteReport } from "@/components/ReportLinks";
 import { FormIntro } from "@/components/FormIntro";
 import { LactateCurve } from "@/components/LactateCurve";
+import { LactateHistory } from "@/components/LactateHistory";
+import type { LactateReading } from "@/components/LactateLog";
 import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
@@ -301,6 +303,17 @@ export default async function TrendsPage({
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
+
+  /* Laktatmätningarna. Hela historiken, inte periodens: de tas sällan — ett
+     par gånger per säsong — och att dölja ett test för att det ligger utanför
+     det valda fönstret vore att dölja det enda riktiga tröskelvärdet som
+     finns. Begäran 2026-09-26. */
+  const { data: lactateRows } = await supabase
+    .from("lactate_readings")
+    .select("id, lactate_mmol, pace_seconds_per_km, heart_rate, context, note, measured_at")
+    .eq("user_id", scopedUserId)
+    .order("measured_at", { ascending: false });
+  const lactateReadings = (lactateRows ?? []) as LactateReading[];
   const thresholdProfile: ThresholdProfile = profileRow
     ? {
         thresholdHrLow: profileRow.threshold_hr_low ?? null,
@@ -718,6 +731,23 @@ export default async function TrendsPage({
         }
       >
         <LactateCurve lt1={gears?.lt1 ?? null} lt2={gears?.lt2 ?? null} />
+
+        {/* Kurvan ovanför är principen; det här är de egna mätningarna.
+            Tröskelvärdena i profilen är självskattade tills ett riktigt test
+            finns, och det här är ytan där de kan bli mätta i stället.
+            Begäran 2026-09-26. */}
+        <CollapsibleSection
+          title="Dina laktatvärden"
+          headline={
+            <span className="text-sm text-[var(--ink-2)]">
+              {lactateReadings.length > 0
+                ? `${lactateReadings.length} loggade stick`
+                : "Inga loggade än"}
+            </span>
+          }
+        >
+          <LactateHistory readings={lactateReadings} lt2Hr={profileRow?.lt2_hr ?? null} />
+        </CollapsibleSection>
 
         <p className="max-w-3xl text-sm text-[var(--ink-2)]">
           De tre formerna ska ligga på åtskilda intensiteter — annars tränas samma sak flera
