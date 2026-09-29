@@ -4,6 +4,7 @@ import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
 import { IntensityChart, type IntensityWeek } from "@/components/charts/IntensityChart";
+import { correctedLapDistance, namedRepDistances } from "@/lib/workout-name";
 import {
   labSourceName,
   loadLatestLabZoneSet,
@@ -397,13 +398,16 @@ export default async function TrendsPage({
      * kategorin, och därmed den som bär kvalitetsarbetet. */
     for (const session of sessions) {
       if (session.category !== "threshold" && session.category !== "interval") continue;
+      // Sträckan i passnamnet vinner över GPS:en när de ligger nära varandra:
+      // "10x400m" på bana är 400 m även när klockan säger 392 (lib/workout-name.ts).
+      const named = namedRepDistances(session.dominantActivity.name);
       for (const lap of lapsByActivity.get(session.dominantActivity.id) ?? []) {
         if (lap.split_type !== "active") continue;
         if (lap.distance_meters == null || lap.avg_hr == null) continue;
         if (lap.duration_seconds == null) continue;
         gearReps.push({
           category: session.category,
-          distanceMeters: lap.distance_meters,
+          distanceMeters: correctedLapDistance(lap.distance_meters, named),
           durationSeconds: lap.duration_seconds,
           avgHr: lap.avg_hr,
           maxHr: lap.max_hr,

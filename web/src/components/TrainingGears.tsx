@@ -248,7 +248,8 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
         </p>
         <p className="mt-2 text-[var(--ink-2)]">
           Golven på 400 m och 60 sekunder finns för att pulsen ska hinna bli meningsfull; på ett
-          200-metersryck ligger den efter hela vägen. Måttet använder inga pulszoner — till
+          200-metersryck ligger den efter hela vägen. Sträckan tas ur passets namn när GPS:en
+          ligger nära den — &rdquo;10x400m&rdquo; på bana räknas som 400 m även om klockan mätte 392. Måttet använder inga pulszoner — till
           skillnad från Intensitetsfördelningen, som bygger på zonindelning.
         </p>
       </details>
