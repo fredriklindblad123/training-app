@@ -40,6 +40,19 @@ export type SessionActivity = {
   hr_zone_3_seconds: number | null;
   hr_zone_4_seconds: number | null;
   hr_zone_5_seconds: number | null;
+  /** Klockans undre gräns för zon 1–5, som den räknade hr_zone_* mot. Null
+   * för pass som inte hämtats med pulskurva (web/api/index.py
+   * _sync_hr_streams, scripts/backfill_hr_streams.py). */
+  hr_zone_bounds: number[] | null;
+  /** Tid i de UPPMÄTTA zonerna (hr_zone_sets), räknad ur pulskurvan av
+   * compute_lab_zones i databasen. Null = ingen kurva eller ingen uppmätt
+   * zonuppsättning — "vet inte", inte "ingen tid". Se lib/zone-sources.ts. */
+  lab_zone_1_seconds: number | null;
+  lab_zone_2_seconds: number | null;
+  lab_zone_3_seconds: number | null;
+  lab_zone_4_seconds: number | null;
+  lab_zone_5_seconds: number | null;
+  lab_zone_set_id: string | null;
   /** Alices egen "Känsla"/"Upplevd ansträngning"-skattning i Garmin Connect-
    * appen, se migration 20260812100000_garmin_feel_rpe.sql. Ersätter den
    * borttagna dagliga incheckningen som källa till subjektiv känsla. */
@@ -62,6 +75,8 @@ export const SESSION_ACTIVITY_COLUMNS =
   "id, user_id, name, activity_type, start_time, duration_seconds, distance_meters, " +
   "avg_hr, max_hr, training_load, category, category_source, " +
   "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds, " +
+  "hr_zone_bounds, lab_zone_1_seconds, lab_zone_2_seconds, lab_zone_3_seconds, lab_zone_4_seconds, " +
+  "lab_zone_5_seconds, lab_zone_set_id, " +
   "garmin_feel, garmin_rpe, vo2max, elevation_gain, avg_gap_seconds_per_km";
 
 /** Ett träningspass: aggregatet av de fragment som hör ihop. */
@@ -91,6 +106,14 @@ export type TrainingSession = {
   hrZone4Seconds: number;
   hrZone5Seconds: number;
   hrZoneTotalSeconds: number;
+  /** Tid i de uppmätta zonerna, summerad som ovan. Null när något fragment
+   * med puls saknar uppmätt zontid — ett halvt pass är ingen jämförelse mot
+   * klockans hela. */
+  labZoneSeconds: [number, number, number, number, number] | null;
+  /** Zonuppsättningen labZoneSeconds räknades mot (hr_zone_sets.id). */
+  labZoneSetId: string | null;
+  /** Klockans gränser för zon 1–5 på det dominerande fragmentet. */
+  garminZoneBounds: number[] | null;
   /** Tidsviktad snittpuls. Ett rakt medelvärde över fragmenten skulle ge en
    * 10-minuters nerjogg samma vikt som ett 40-minuters huvudpass. */
   avgHr: number | null;
@@ -239,6 +262,20 @@ function buildSession(fragments: SessionActivity[]): TrainingSession {
   const hrZone4Seconds = zone("hr_zone_4_seconds");
   const hrZone5Seconds = zone("hr_zone_5_seconds");
 
+  // Uppmätta zoner: bara när varje fragment med puls har dem.
+  const withHr = fragments.filter((f) => num(f.avg_hr) > 0);
+  const labComplete =
+    withHr.length > 0 && withHr.every((f) => f.lab_zone_1_seconds != null);
+  const labZoneSeconds: [number, number, number, number, number] | null = labComplete
+    ? [
+        zone("lab_zone_1_seconds"),
+        zone("lab_zone_2_seconds"),
+        zone("lab_zone_3_seconds"),
+        zone("lab_zone_4_seconds"),
+        zone("lab_zone_5_seconds"),
+      ]
+    : null;
+
   // Tidsviktad snittpuls: bara fragment som har både puls och varaktighet
   // bidrar, annars skulle ett fragment utan pulsband dra ner snittet.
   let hrWeight = 0;
@@ -279,6 +316,11 @@ function buildSession(fragments: SessionActivity[]): TrainingSession {
     hrZone5Seconds,
     hrZoneTotalSeconds:
       hrZone1Seconds + hrZone2Seconds + hrZone3Seconds + hrZone4Seconds + hrZone5Seconds,
+    labZoneSeconds,
+    labZoneSetId: labComplete
+      ? (withHr.find((f) => f.lab_zone_set_id != null)?.lab_zone_set_id ?? null)
+      : null,
+    garminZoneBounds: dominantActivity.hr_zone_bounds ?? null,
     avgHr: hrWeight > 0 ? Math.round(hrSum / hrWeight) : null,
     maxHr: maxHrValues.length > 0 ? Math.max(...maxHrValues) : null,
     category,

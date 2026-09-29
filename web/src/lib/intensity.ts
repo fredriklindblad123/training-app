@@ -11,6 +11,12 @@
 // användas för att räkna om zonerna — bara för att säga hur långt ifrån
 // klockans gissning det ligger. Därför är hela sektionen byggd runt att
 // gränserna redovisas öppet i stället för att antas vara rätt.
+//
+// Uppdatering 2026-09-29: det gick ändå, via två andra Garmin-anrop —
+// pulskurvan sekund för sekund och klockans gränser per pass. Med en uppmätt
+// zonuppsättning (hr_zone_sets) räknas samma kurva mot labbets zoner, och
+// båda visas sida vid sida. Se lib/zone-sources.ts. Stycket ovan gäller
+// fortfarande klockans egna siffror.
 
 /** Sekunder i pulszon 1–5, i den ordningen. */
 export type ZoneSeconds = [number, number, number, number, number];

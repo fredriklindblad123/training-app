@@ -1,4 +1,6 @@
 import { formatDuration, formatHoursMinutes, formatKm, formatPace } from "@/lib/format";
+import { dominantZone, type LabZoneSet } from "@/lib/zone-sources";
+import { ZoneSourceTag } from "@/components/ZoneSources";
 import { ZONE_DESCRIPTIONS, ZONE_LABELS, zoneColorVar } from "@/lib/intensity";
 
 /* Vad ett genomfört pass FAKTISKT innehöll — varvtider eller fart och puls.
@@ -173,25 +175,15 @@ function latestCategoryIsInterval(category: string): boolean {
   return category === "interval";
 }
 
-/** Zonen passet faktiskt tillbringades i.
+/* Zonen passet faktiskt tillbringades i: tyngdpunkten, inte zonen för
+ * medelpulsen (lib/zone-sources.ts dominantZone). För ett jämnt distanspass
+ * är det samma sak, och andelen står utskriven så man ser hur entydigt det
+ * är.
  *
- * Härledd ur klockans egna zontider, inte ur beräknade gränser: gränserna
- * finns inte lagrade i appen (profiles har max_hr och tröskelpuls, men inte
- * zonindelningen), och att räkna fram egna ur maxpuls hade kunnat motsäga de
- * tider Garmin redan rapporterat.
- *
- * Det svarar strikt på "var låg tyngdpunkten", inte "i vilken zon hamnar
- * medelpulsen" — för ett jämnt distanspass är det samma sak, och andelen
- * står utskriven så att man ser hur entydigt det är. */
-function dominantZone(
-  zoneSeconds: [number, number, number, number, number],
-): { index: number; share: number } | null {
-  const total = zoneSeconds.reduce((a, b) => a + b, 0);
-  if (total <= 0) return null;
-  let index = 0;
-  for (let i = 1; i < 5; i++) if (zoneSeconds[i] > zoneSeconds[index]) index = i;
-  return { index, share: zoneSeconds[index] / total };
-}
+ * Finns uppmätta zoner visas de först och klockans zon under, överstruken
+ * och märkt. Klockans gränser kan ligga så lågt att ett lugnt pass hamnar i
+ * zon 4 — för Alice gjorde de det, se
+ * supabase/migrations/20260929140000_lab_hr_zones.sql. */
 
 /** Ett nyckeltal i sammanfattningen för ett distanspass. */
 function Metric({ label, value }: { label: string; value: string }) {
@@ -211,6 +203,7 @@ export function SessionDetail({
   splits,
   summary,
   category,
+  labSet = null,
 }: {
   splits: SplitRow[];
   /** Passet i helhet. Bär sektionen när det inte finns några repetitioner —
@@ -221,7 +214,11 @@ export function SessionDetail({
     avgHr: number | null;
     /** Sekunder i zon 1–5, från klockan. */
     zoneSeconds: [number, number, number, number, number];
+    /** Sekunder i uppmätta zoner, null utan pulskurva. */
+    labZoneSeconds?: [number, number, number, number, number] | null;
   } | null;
+  /** Uppmätt zonuppsättning; null → klockans zon visas som förut. */
+  labSet?: LabZoneSet | null;
   /** Passets kategori. AVGÖR vilken vy som visas — se nedan. */
   category: string;
 }) {
@@ -256,7 +253,9 @@ export function SessionDetail({
   if (!found) {
     if (!summary || summary.distanceMeters <= 0 || summary.durationSeconds <= 0) return null;
     const paceSeconds = summary.durationSeconds / (summary.distanceMeters / 1000);
-    const zone = dominantZone(summary.zoneSeconds);
+    const garminZone = dominantZone(summary.zoneSeconds);
+    const labZone = labSet ? dominantZone(summary.labZoneSeconds ?? null) : null;
+    const zone = labZone ?? garminZone;
     return (
       <div className="flex flex-wrap gap-x-8 gap-y-4">
         <Metric label="Distans" value={formatKm(summary.distanceMeters)} />
@@ -282,6 +281,24 @@ export function SessionDetail({
             <span className="text-xs text-[var(--ink-3)]">
               {ZONE_DESCRIPTIONS[zone.index]} · {Math.round(zone.share * 100)}% av tiden
             </span>
+            {labSet && labZone && (
+              <span className="mt-1 flex flex-col items-start gap-1">
+                <ZoneSourceTag source="lab" labSet={labSet} />
+                {garminZone && (
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--ink-3)]">
+                    <ZoneSourceTag source="garmin" labSet={labSet} />
+                    <span className="text-[var(--ink-2)] line-through decoration-[var(--status-watch)] decoration-2">
+                      {ZONE_LABELS[garminZone.index]} · {Math.round(garminZone.share * 100)}%
+                    </span>
+                  </span>
+                )}
+              </span>
+            )}
+            {labSet && !labZone && (
+              <span className="mt-1">
+                <ZoneSourceTag source="garmin" labSet={labSet} />
+              </span>
+            )}
           </div>
         )}
       </div>

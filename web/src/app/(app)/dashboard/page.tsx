@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { DailyStatus } from "@/components/DailyStatus";
@@ -671,6 +672,7 @@ export default async function DashboardPage({
     sessions.map((s) => ({ category: s.category })),
   );
 
+  const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}${athleteQuery}`;
 
   return (
@@ -754,6 +756,7 @@ export default async function DashboardPage({
             s.hrZone4Seconds,
             s.hrZone5Seconds,
           ] as [number, number, number, number, number],
+          labZoneSeconds: s.labZoneSeconds,
           splits:
             latestSession?.id === s.id
               ? latestSplits.map((r) => ({
@@ -765,6 +768,7 @@ export default async function DashboardPage({
               : [],
         }))}
         href={todayHref}
+        labSet={labZoneSet}
       />
 
 

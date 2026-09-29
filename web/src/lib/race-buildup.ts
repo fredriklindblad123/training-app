@@ -12,6 +12,7 @@ import {
   type SessionActivity,
 } from "@/lib/sessions";
 import { QUALITY_WORKOUT_TYPES, addDays, toDateKey, type WorkoutType } from "@/lib/planning";
+import { bandShares, sumZoneSources } from "@/lib/zone-sources";
 import {
   addZoneSeconds,
   bandsFromZones,
@@ -52,6 +53,9 @@ export type RaceBuildup = {
    * kvalitetspass hittades i de 21 dagarna. */
   lastHardSessionDaysBefore: number | null;
   bandPct: Record<BandKey, number>;
+  /** Samma band mot uppmätta zoner (lib/zone-sources.ts). Null utan
+   * uppmätt zonuppsättning eller pulskurvor i fönstret. */
+  labBandPct: Record<BandKey, number> | null;
 };
 
 function windowStartOf(raceDate: string): string {
@@ -170,5 +174,6 @@ export function computeRaceBuildup(
     hrvTrend: hrvMarker?.deviation ?? null,
     lastHardSessionDaysBefore,
     bandPct,
+    labBandPct: bandShares(sumZoneSources(sessions).lab),
   };
 }

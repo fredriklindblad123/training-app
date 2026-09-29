@@ -60,7 +60,6 @@ import {
   bandsFromZones,
   zoneTotal,
   emptyZoneSeconds,
-  BAND_LABELS,
   type BandKey,
 } from "@/lib/intensity";
 import { formatHoursMinutes } from "@/lib/format";
@@ -78,6 +77,13 @@ import {
 import { matchPlanToSessions, type PlannedWorkout } from "@/lib/plan-matching";
 import { fieldClass, primaryButtonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
+import {
+  bandShares,
+  loadLatestLabZoneSet,
+  sumZoneSources,
+  type LabZoneSet,
+} from "@/lib/zone-sources";
+import { ComparisonTableRow, zoneBandRows, type ComparisonRow } from "@/components/ZoneSources";
 
 /* Hette /sasongsoversikt ("Säsongsöversikt") till 2026-08-27, då den döptes om på uttrycklig
  * begäran: sidan handlar om BLOCK — skapa dem, se dem på tidslinjen, jämföra
@@ -541,6 +547,8 @@ type BlockAggregate = {
   loadCv: number | null;
   categoryPct: Partial<Record<ActivityCategory, number>>;
   bandPct: Record<BandKey, number>;
+  /** Samma band mot uppmätta zoner, null utan sådana (lib/zone-sources.ts). */
+  labBandPct: Record<BandKey, number> | null;
   avgSleepHours: number | null;
   avgHrv: number | null;
   avgRestingHr: number | null;
@@ -684,6 +692,7 @@ async function loadBlockAggregate(
     loadCv,
     categoryPct,
     bandPct,
+    labBandPct: bandShares(sumZoneSources(sessions).lab),
     avgSleepHours: mean(sleepHours),
     avgHrv: mean(hrvValues),
     avgRestingHr: mean(rhrValues),
@@ -711,10 +720,12 @@ function categoryBreakdownLabel(pct: Partial<Record<ActivityCategory, number>>):
 /** Radlista för blockjämförelsetabellen (P1.5) — volym, intensitetsfördelning,
  * sömn, sjuk-/skadedagar och tävlingsresultat, precis den listan
  * insikter-roadmapen efterfrågar för "vad gav det i tävling efteråt". */
+
 function blockComparisonRows(
   a: BlockAggregate,
   b: BlockAggregate,
-): { label: string; a: string; b: string }[] {
+  labSet: LabZoneSet | null,
+): ComparisonRow[] {
   return [
     { label: "Datumintervall", a: `${a.block.start_date} – ${a.block.end_date}`, b: `${b.block.start_date} – ${b.block.end_date}` },
     { label: "Period", a: PERIOD_LABELS[a.block.period], b: PERIOD_LABELS[b.block.period] },
@@ -734,11 +745,7 @@ function blockComparisonRows(
       b: b.loadCv != null ? b.loadCv.toFixed(2) : "för kort period",
     },
     { label: "Passkategorier", a: categoryBreakdownLabel(a.categoryPct), b: categoryBreakdownLabel(b.categoryPct) },
-    {
-      label: `${BAND_LABELS.easy} / ${BAND_LABELS.threshold}`,
-      a: `${formatPct(a.bandPct.easy)} / ${formatPct(a.bandPct.threshold)}`,
-      b: `${formatPct(b.bandPct.easy)} / ${formatPct(b.bandPct.threshold)}`,
-    },
+    ...zoneBandRows(a, b, labSet),
     {
       label: "Snittsömn",
       a: a.avgSleepHours != null ? formatHoursMinutes(a.avgSleepHours * 3600) : "ingen data",
@@ -1422,6 +1429,7 @@ export default async function ArsplanPage({
   // vilket (om något) som är aktivt just nu.
   const compareBlockA = compareAParam ? (blockList.find((b) => b.id === compareAParam) ?? null) : null;
   const compareBlockB = compareBParam ? (blockList.find((b) => b.id === compareBParam) ?? null) : null;
+  const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
   const [compareAggregateA, compareAggregateB] =
     compareBlockA && compareBlockB && compareBlockA.id !== compareBlockB.id
       ? await Promise.all([
@@ -1661,12 +1669,12 @@ export default async function ArsplanPage({
 
           <form action="/sasongsoversikt" method="get" className="flex flex-wrap items-end gap-3 text-sm">
             {athleteParam && <input type="hidden" name="athlete" value={athleteParam} />}
-            <label className="flex flex-col gap-1">
+            <label className="flex min-w-0 max-w-full flex-col gap-1">
               <span className="text-[var(--ink-2)]">Block A</span>
               <select
                 name="compareA"
                 defaultValue={compareAParam ?? ""}
-                className={input}
+                className={`${input} max-w-full`}
               >
                 <option value="" disabled>
                   Välj block
@@ -1678,12 +1686,12 @@ export default async function ArsplanPage({
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1">
+            <label className="flex min-w-0 max-w-full flex-col gap-1">
               <span className="text-[var(--ink-2)]">Block B</span>
               <select
                 name="compareB"
                 defaultValue={compareBParam ?? ""}
-                className={input}
+                className={`${input} max-w-full`}
               >
                 <option value="" disabled>
                   Välj block
@@ -1723,14 +1731,8 @@ export default async function ArsplanPage({
                   </tr>
                 </thead>
                 <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
-                  {blockComparisonRows(compareAggregateA, compareAggregateB).map((row) => (
-                    <tr key={row.label}>
-                      <th scope="row" className="py-1.5 pr-4 font-normal text-[var(--ink-2)]">
-                        {row.label}
-                      </th>
-                      <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
-                      <td className="py-1.5 tabular-nums">{row.b}</td>
-                    </tr>
+                  {blockComparisonRows(compareAggregateA, compareAggregateB, labZoneSet).map((row) => (
+                    <ComparisonTableRow key={row.label} row={row} labSet={labZoneSet} />
                   ))}
                 </tbody>
               </table>

@@ -69,6 +69,11 @@ SPLITS_PER_SYNC = 10
 # stället med scripts/backfill_garmin_feel_rpe.py.
 EVALUATIONS_PER_SYNC = 10
 
+# Pulskurva + klockans zongränser kostar två Garmin-anrop per pass. Samma
+# resonemang som ovan; historik hämtas med scripts/backfill_hr_streams.py.
+HR_STREAMS_PER_SYNC = 10
+HR_STREAM_MAX_CHART_POINTS = 100000
+
 # Andel av passets snabbaste varv som krävs för att räknas som aktivt varv.
 # Separationen i verklig data är knivskarp: ca 4,5 m/s för en 400:a mot
 # 0,8 m/s för joggvila.
@@ -420,6 +425,107 @@ def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
     return written
 
 
+def _parse_hr_stream(details: dict) -> Optional[tuple[list[int], list[int]]]:
+    """(sekunder från start, puls) ur get_activity_details. Samma tolkning som
+    scripts/backfill_hr_streams.py — håll dem i synk."""
+    descriptors = details.get("metricDescriptors") or []
+    idx = {d.get("key"): d.get("metricsIndex") for d in descriptors}
+    ts_i, hr_i = idx.get("directTimestamp"), idx.get("directHeartRate")
+    if ts_i is None or hr_i is None:
+        return None
+    offsets: list[int] = []
+    hr: list[int] = []
+    start: Optional[float] = None
+    last: Optional[int] = None
+    for row in details.get("activityDetailMetrics") or []:
+        metrics = (row or {}).get("metrics") or []
+        if len(metrics) <= max(ts_i, hr_i):
+            continue
+        ts, bpm = metrics[ts_i], metrics[hr_i]
+        if ts is None or bpm is None or bpm <= 0:
+            continue
+        if start is None:
+            start = ts
+        offset = int(round((ts - start) / 1000))
+        if last is not None and offset <= last:
+            continue
+        offsets.append(offset)
+        hr.append(int(round(bpm)))
+        last = offset
+    return (offsets, hr) if len(hr) >= 2 else None
+
+
+def _parse_zone_bounds(zones: object) -> Optional[list[int]]:
+    if not isinstance(zones, list) or len(zones) != 5:
+        return None
+    try:
+        return [int(z["zoneLowBoundary"]) for z in sorted(zones, key=lambda z: z["zoneNumber"])]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _sync_hr_streams(client: Garmin, user_id: str, activities: list[dict]) -> int:
+    """Pulskurva och klockans zongränser för nya pass med puls.
+
+    Kurvan räknas mot uppmätta zoner (hr_zone_sets) av en trigger i databasen
+    (compute_lab_zones), så appen kan visa klockans och labbets zontid sida
+    vid sida. Fel sväljs per pass, precis som för varvdata.
+    """
+    candidates = [
+        a for a in activities
+        if (a.get("averageHR") or 0) > 0 and a.get("activityId") is not None
+    ]
+    if not candidates:
+        return 0
+    candidates.sort(key=lambda a: a.get("startTimeGMT") or "", reverse=True)
+
+    external_ids = [str(a["activityId"]) for a in candidates]
+    rows = _sb_select(
+        "activities",
+        "id,external_id",
+        {"user_id": f"eq.{user_id}", "external_id": f"in.({','.join(external_ids)})"},
+    )
+    id_by_external = {r["external_id"]: r["id"] for r in rows}
+    if not id_by_external:
+        return 0
+    existing = {
+        r["activity_id"]
+        for r in _sb_select(
+            "activity_hr_streams",
+            "activity_id",
+            {"activity_id": f"in.({','.join(id_by_external.values())})"},
+        )
+    }
+
+    written = 0
+    for activity in candidates:
+        if written >= HR_STREAMS_PER_SYNC:
+            break
+        activity_id = id_by_external.get(str(activity["activityId"]))
+        if not activity_id or activity_id in existing:
+            continue
+        try:
+            details = client.get_activity_details(
+                activity["activityId"], maxchart=HR_STREAM_MAX_CHART_POINTS, maxpoly=0
+            )
+            bounds = _parse_zone_bounds(client.get_activity_hr_in_timezones(activity["activityId"]))
+        except Exception:
+            continue
+        stream = _parse_hr_stream(details or {})
+        if stream is None:
+            continue
+        if bounds is not None:
+            _sb_patch("activities", activity_id, {"hr_zone_bounds": bounds})
+        _sb_upsert(
+            "activity_hr_streams",
+            [{"activity_id": activity_id, "user_id": user_id, "offsets": stream[0], "hr": stream[1]}],
+            "activity_id",
+        )
+        written += 1
+
+    return written
+
+
 def _sync_evaluations(client: Garmin, user_id: str, activities: list[dict]) -> int:
     """Hämta Alices egen "Känsla"/"Upplevd ansträngning"-skattning per pass
     (Garmin Connect-appens "Utvärdering", inte klockans egna beräkningar).
@@ -550,6 +656,12 @@ def _sync_one_user(user_id: str, min_interval_minutes: Optional[int] = None) -> 
         # Varvdata är sekundärt och får aldrig fälla synken.
         split_count = 0
 
+    # Pulskurva mot uppmätta zoner, samma resonemang.
+    try:
+        hr_stream_count = _sync_hr_streams(client, user_id, activities)
+    except Exception:
+        hr_stream_count = 0
+
     # Känsla/ansträngning, samma resonemang — sekundärt mot aktiviteterna.
     try:
         evaluation_count = _sync_evaluations(client, user_id, activities)
@@ -569,6 +681,7 @@ def _sync_one_user(user_id: str, min_interval_minutes: Optional[int] = None) -> 
         "sleep_days": sleep_count,
         "split_activities": split_count,
         "evaluated_activities": evaluation_count,
+        "hr_stream_activities": hr_stream_count,
     }
 
 

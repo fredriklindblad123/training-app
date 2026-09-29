@@ -20,10 +20,11 @@ import {
 } from "@/lib/planning";
 import { SESSION_ACTIVITY_COLUMNS, type SessionActivity } from "@/lib/sessions";
 import { PALETTE_CATEGORIES, categoryColorVar } from "@/lib/categories";
-import { BAND_LABELS } from "@/lib/intensity";
 import { formatHoursMinutes } from "@/lib/format";
 import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
 import { computeRaceBuildup, BUILDUP_WINDOW_DAYS, type RaceBuildup } from "@/lib/race-buildup";
+import { loadLatestLabZoneSet, type LabZoneSet } from "@/lib/zone-sources";
+import { ComparisonTableRow, zoneBandRows, type ComparisonRow } from "@/components/ZoneSources";
 import {
   RaceProgressionChart,
   type RaceProgressionPoint,
@@ -67,10 +68,6 @@ const input =
   fieldClass;
 const ghostBtn =
   buttonClass;
-
-function formatPct(v: number): string {
-  return `${Math.round(v * 100)}%`;
-}
 
 /** Ett värde per iso-vecka (medianen av de dagsvärden som föll i veckan) —
  * samma aggregering som formkurvan på /trender redan använder. Råvärde per
@@ -181,7 +178,8 @@ async function loadRaceAggregate(
 function raceComparisonRows(
   a: RaceAggregate,
   b: RaceAggregate,
-): { label: string; a: string; b: string }[] {
+  labSet: LabZoneSet | null,
+): ComparisonRow[] {
   const weeklyLoadLabel = (w: RaceBuildup["weeklyLoad"]) =>
     w.map((v) => Math.round(v)).join(" → ");
   const hrvTrendLabel = (v: number | null) =>
@@ -249,11 +247,7 @@ function raceComparisonRows(
       a: hrvTrendLabel(a.buildup.hrvTrend),
       b: hrvTrendLabel(b.buildup.hrvTrend),
     },
-    {
-      label: `${BAND_LABELS.easy} / ${BAND_LABELS.threshold}`,
-      a: `${formatPct(a.buildup.bandPct.easy)} / ${formatPct(a.buildup.bandPct.threshold)}`,
-      b: `${formatPct(b.buildup.bandPct.easy)} / ${formatPct(b.buildup.bandPct.threshold)}`,
-    },
+    ...zoneBandRows(a.buildup, b.buildup, labSet),
   ];
 }
 
@@ -513,6 +507,7 @@ export default async function TavlingsresultatPage({
     : null;
   // Fristående frågor per valt lopp — aldrig en fråga per tävling i listan,
   // det hade blivit dyrt så fort säsongen har ett tiotal lopp.
+  const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
   const [raceAggregateA, raceAggregateB] =
     compareRaceA && compareRaceB && compareRaceA.id !== compareRaceB.id
       ? await Promise.all([
@@ -988,18 +983,11 @@ export default async function TavlingsresultatPage({
                             </tr>
                           </thead>
                           <tbody className="[&_tr]:border-t [&_tr]:border-[var(--line)]">
-                            {raceComparisonRows(raceAggregateA, raceAggregateB).map((row) => (
-                              <tr key={row.label}>
-                                <th
-                                  scope="row"
-                                  className="py-1.5 pr-4 font-normal text-[var(--ink-2)]"
-                                >
-                                  {row.label}
-                                </th>
-                                <td className="py-1.5 pr-4 tabular-nums">{row.a}</td>
-                                <td className="py-1.5 tabular-nums">{row.b}</td>
-                              </tr>
-                            ))}
+                            {raceComparisonRows(raceAggregateA, raceAggregateB, labZoneSet).map(
+                              (row) => (
+                                <ComparisonTableRow key={row.label} row={row} labSet={labZoneSet} />
+                              ),
+                            )}
                           </tbody>
                         </table>
                       </div>

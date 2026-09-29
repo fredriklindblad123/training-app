@@ -5,6 +5,12 @@ import { buildInsights, insightsForPhase } from "@/lib/insights";
 import { InsightCard } from "@/components/InsightCard";
 import { IntensityChart, type IntensityWeek } from "@/components/charts/IntensityChart";
 import {
+  labSourceName,
+  loadLatestLabZoneSet,
+  sumZoneSources,
+  typicalGarminBounds,
+} from "@/lib/zone-sources";
+import {
   EfficiencyChart,
   type EfficiencyInterruption,
   type EfficiencyRace,
@@ -13,6 +19,7 @@ import { computeEfficiencyPoints, efficiencyTrend, efficiencyVerdict } from "@/l
 import {
   EMPTY_THRESHOLD_PROFILE,
   PHASE_INTENSITY_MODEL,
+  addZoneSeconds,
   emptyZoneSeconds,
   type ThresholdProfile,
   type ZoneSeconds,
@@ -451,16 +458,39 @@ export default async function TrendsPage({
 
   const sessionsWithZoneData = sessions.filter((s) => s.hrZoneTotalSeconds > 0).length;
 
+  // Samma veckor mot uppmätta zoner (lib/zone-sources.ts). Bara när löparen
+  // har en uppmätt zonuppsättning — annars finns inget att jämföra med.
+  const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
+  const zoneSourceTotals = sumZoneSources(sessions);
+  const labIntensityWeeks: IntensityWeek[] | null =
+    labZoneSet && zoneSourceTotals.lab
+      ? weekSeries.map((wk) => {
+          const zoneSeconds: ZoneSeconds = emptyZoneSeconds();
+          for (const session of sessionsByWeek.get(wk) ?? []) {
+            if (session.labZoneSeconds) addZoneSeconds(zoneSeconds, session.labZoneSeconds);
+          }
+          return { key: wk, label: weekLabel(wk), fullLabel: weekRangeLabel(wk), zoneSeconds };
+        })
+      : null;
+  const labCoverage =
+    labIntensityWeeks && zoneSourceTotals.sessionsWithLab < zoneSourceTotals.sessionsWithGarmin
+      ? `${zoneSourceTotals.sessionsWithLab} av ${zoneSourceTotals.sessionsWithGarmin} pass med puls`
+      : null;
+
   // L3 (docs/tranarloopen.md): insikterna överst gör att man slipper skumma
   // sidans sex sektioner för att veta vad som är värt att titta närmare på.
   // Andelen räknas som tid i zon 4+5 av veckans totala pulstid — samma
   // definition som Tröskel+-måttet använder.
-  const thresholdShareWeekly = intensityWeeks.map((w) => {
+  const thresholdShareWeekly = (labIntensityWeeks ?? intensityWeeks).map((w) => {
     const total = w.zoneSeconds.reduce((a, b) => a + b, 0);
     return total > 0 ? (w.zoneSeconds[3] + w.zoneSeconds[4]) / total : null;
   });
   const blockInsights = insightsForPhase(
-    buildInsights({ efWeekly, thresholdShareWeekly }),
+    buildInsights({
+      efWeekly,
+      thresholdShareWeekly,
+      thresholdShareSource: labIntensityWeeks && labZoneSet ? labSourceName(labZoneSet) : null,
+    }),
     "block",
   );
 
@@ -757,12 +787,16 @@ export default async function TrendsPage({
         {gears && <TrainingGears data={gears} />}
 
           {/* Intensitetsfördelningen svarar på samma fråga som diagrammet
-              ovan, fast ur Garmins zonhinkar i stället för ur dina egna
-              trösklar. Den ligger kvar, men nedfälld och intill sin bättre
-              informerade granne — inte som en andra sanning längre ner. */}
+              ovan, fast ur pulszoner i stället för ur dina egna trösklar.
+              Med en uppmätt zonuppsättning (lib/zone-sources.ts) ställs
+              laktattestets zoner mot klockans; utan en finns bara Garmins
+              zonhinkar. Den ligger nedfälld intill sin bättre informerade
+              granne — inte som en andra sanning längre ner. */}
           <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
             <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
-              Samma fråga ur Garmins pulszoner
+              {labIntensityWeeks && labZoneSet
+                ? "Samma fråga ur pulszonerna — laktattest mot klockan"
+                : "Samma fråga ur Garmins pulszoner"}
             </summary>
             <div className="flex flex-col gap-3 border-t border-[var(--line)] p-4">
       <section className="flex flex-col gap-3">
@@ -777,6 +811,10 @@ export default async function TrendsPage({
 
         <IntensityChart
           weeks={intensityWeeks}
+          labWeeks={labIntensityWeeks}
+          labSet={labIntensityWeeks ? labZoneSet : null}
+          garminBounds={typicalGarminBounds(sessions)}
+          labCoverage={labCoverage}
           defaultModelId={
             activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
           }

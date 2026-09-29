@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { LabZoneSet } from "@/lib/zone-sources";
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
 import { describePlannedWorkout, type RepGroupLike } from "@/lib/workout-summary";
@@ -47,6 +48,8 @@ export type TodayDone = {
   avgHr: number | null;
   /** Sekunder i zon 1–5, från klockan. */
   zoneSeconds: [number, number, number, number, number];
+  /** Sekunder i uppmätta zoner, null utan pulskurva/uppmätt uppsättning. */
+  labZoneSeconds: [number, number, number, number, number] | null;
   /** Varven, när passet har några. Tomt för ett distanspass. */
   splits: SplitRow[];
 };
@@ -84,9 +87,12 @@ export function TodaySession({
   planned,
   done,
   href,
+  labSet = null,
 }: {
   planned: TodayPlanned[];
   done: TodayDone[];
+  /** Uppmätt zonuppsättning, se lib/zone-sources.ts. */
+  labSet?: LabZoneSet | null;
   /** Dagens datum i kalendern. */
   href: string;
 }) {
@@ -204,7 +210,9 @@ export function TodaySession({
                     durationSeconds: d.durationSeconds,
                     avgHr: d.avgHr,
                     zoneSeconds: d.zoneSeconds,
+                    labZoneSeconds: d.labZoneSeconds,
                   }}
+                  labSet={labSet}
                 />
               </div>
             </div>

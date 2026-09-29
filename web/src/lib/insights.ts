@@ -69,6 +69,9 @@ export type InsightInput = {
   efWeekly?: (number | null)[];
   /** Andel av veckans pulstid på/över tröskel, 0–1, kronologiskt. */
   thresholdShareWeekly?: (number | null)[];
+  /** Källan till thresholdShareWeekly när den räknats mot uppmätta zoner,
+   * t.ex. "Laktattest 29 sep 2026". Null/undefined = klockans zoner. */
+  thresholdShareSource?: string | null;
   /** Veckovis distans i km, kronologiskt. Sista värdet = senaste veckan. */
   distanceKmWeekly?: number[];
   /** Antal genomförda kvalitetspass per vecka, kronologiskt. */
@@ -134,7 +137,9 @@ export function buildInsights(input: InsightInput): Insight[] {
         id: "threshold-up",
         phase: "block",
         headline: `Andelen tid på eller över tröskel har stigit ${up} veckor i rad.`,
-        detail: `Senaste veckan ${Math.round(last * 100)} %. Räknat på klockans zoner — siffran blir jämförbar mot din egen fysiologi först när ett tröskeltest är gjort.`,
+        detail: input.thresholdShareSource
+          ? `Senaste veckan ${Math.round(last * 100)} %. Räknat på zonerna från ${input.thresholdShareSource}.`
+          : `Senaste veckan ${Math.round(last * 100)} %. Räknat på klockans zoner — siffran blir jämförbar mot din egen fysiologi först när ett tröskeltest är gjort.`,
         href: "/trender",
         tone: "att-bevaka",
         priority: 1,
