@@ -122,8 +122,11 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
         )}
       </div>
 
-      <div className="mt-5 min-w-0 overflow-x-auto">
-        <div className="min-w-[26rem]">
+      {/* Ingen minsta bredd: allt är placerat i procent och skalar ner. En
+          min-w på 26rem gjorde att tröskel och intervall — det diagrammet
+          handlar om — hamnade utanför bild på 390 px och fick scrollas fram. */}
+      <div className="mt-5 min-w-0">
+        <div>
           <GearBlock heading="Så borde de ligga">
             {view.gears.map((g) => (
               <GearRow key={g.key} label={GEAR_LABELS[g.key]}>
@@ -172,7 +175,7 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
           </GearBlock>
 
           {/* Axeln sist, delad av båda blocken. */}
-          <div className="mt-2 grid grid-cols-[5rem_1fr] gap-3">
+          <div className="mt-2 grid grid-cols-[4rem_1fr] gap-2 sm:grid-cols-[5rem_1fr] sm:gap-3">
             <span />
             <div className="relative h-9 border-t border-[var(--line)]">
               {axisTicks(view, descending).map((v) => (
@@ -287,8 +290,8 @@ function GearBlock({ heading, children }: { heading: string; children: React.Rea
 
 function GearRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[5rem_1fr] items-center gap-3">
-      <span className="text-right text-sm text-[var(--ink-2)]">{label}</span>
+    <div className="grid grid-cols-[4rem_1fr] items-center gap-2 sm:grid-cols-[5rem_1fr] sm:gap-3">
+      <span className="text-right text-xs text-[var(--ink-2)] sm:text-sm">{label}</span>
       <span className="relative block h-5.5">{children}</span>
     </div>
   );
