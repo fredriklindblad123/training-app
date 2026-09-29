@@ -5,14 +5,12 @@
 //            compute_lab_zones i databasen. Se
 //            supabase/migrations/20260929140000_lab_hr_zones.sql.
 //
-// Varför båda visas i stället för att labbet bara ersätter klockan: för
-// Alice låg klockans zon 4 på 165 och zon 5 på 181, medan laktattestet
-// 2026-09-29 gav LT1 183. Allt som räknats på klockans zoner — de
-// historiska siffrorna i appen — är alltså missvisande, och det ska synas
-// vilka siffror det gäller, inte tyst bytas ut.
-//
-// Klockans siffror är fortfarande det enda som finns för löpare utan
-// uppmätt zonuppsättning. Då visas de som förut, utan jämförelse.
+// Har löparen en uppmätt zonuppsättning ersätter labbet klockan helt, även
+// bakåt i tiden: pass före testet räknas mot det första testet. Klockans
+// gränser låg för Alice långt under hennes trösklar (zon 4 från 165, LT1
+// 183), så dess siffror visas inte alls då (beslut 2026-09-29). Kolumnerna
+// hr_zone_* ligger kvar i databasen: de är det enda som finns för löpare
+// utan uppmätt zonuppsättning, och för dem visas de som förut.
 //
 // Verifierat mot produktionsdata innan bygget: klockans egna gränser mot
 // pulskurvan ger samma sekunder per zon som Garmin (inom 1–2 %, fem pass).
@@ -27,8 +25,6 @@ import {
   type BandKey,
   type ZoneSeconds,
 } from "@/lib/intensity";
-
-export type ZoneSource = "lab" | "garmin";
 
 /** En uppmätt zonuppsättning (hr_zone_sets). Undre gräns per zon; zon 1 är
  * allt under z2Low. */
@@ -116,32 +112,9 @@ export function labZoneRanges(set: LabZoneSet): string[] {
   ];
 }
 
-/** Samma sak för klockans gränser. Zon 1 börjar vid bounds[0]; allt under
- * räknar klockan inte alls. */
-export function garminZoneRanges(bounds: number[]): string[] {
-  return bounds.map((low, i) => (i < 4 ? `${low}–${bounds[i + 1]}` : `${low}+`));
-}
-
 /** Klockans zontid för ett pass. */
 export function garminZones(s: TrainingSession): ZoneSeconds {
   return [s.hrZone1Seconds, s.hrZone2Seconds, s.hrZone3Seconds, s.hrZone4Seconds, s.hrZone5Seconds];
-}
-
-/** Klockans gränser som oftast förekommer bland passen — de glider en
- * slag hit eller dit när klockan räknar om maxpulsen, och det är den
- * typiska indelningen som ska redovisas, inte ett enskilt pass. */
-export function typicalGarminBounds(sessions: TrainingSession[]): number[] | null {
-  const counts = new Map<string, { bounds: number[]; n: number }>();
-  for (const s of sessions) {
-    if (!s.garminZoneBounds || s.garminZoneBounds.length !== 5) continue;
-    const key = s.garminZoneBounds.join(",");
-    const entry = counts.get(key) ?? { bounds: s.garminZoneBounds, n: 0 };
-    entry.n += 1;
-    counts.set(key, entry);
-  }
-  let best: { bounds: number[]; n: number } | null = null;
-  for (const e of counts.values()) if (!best || e.n > best.n) best = e;
-  return best?.bounds ?? null;
 }
 
 export type ZoneSourceTotals = {

@@ -9,7 +9,6 @@ import {
   labSourceName,
   loadLatestLabZoneSet,
   sumZoneSources,
-  typicalGarminBounds,
 } from "@/lib/zone-sources";
 import {
   EfficiencyChart,
@@ -464,8 +463,8 @@ export default async function TrendsPage({
 
   const sessionsWithZoneData = sessions.filter((s) => s.hrZoneTotalSeconds > 0).length;
 
-  // Samma veckor mot uppmätta zoner (lib/zone-sources.ts). Bara när löparen
-  // har en uppmätt zonuppsättning — annars finns inget att jämföra med.
+  // Samma veckor mot uppmätta zoner (lib/zone-sources.ts). Har löparen en
+  // uppmätt zonuppsättning ersätter de klockans zoner helt.
   const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
   const zoneSourceTotals = sumZoneSources(sessions);
   const labIntensityWeeks: IntensityWeek[] | null =
@@ -794,14 +793,13 @@ export default async function TrendsPage({
 
           {/* Intensitetsfördelningen svarar på samma fråga som diagrammet
               ovan, fast ur pulszoner i stället för ur dina egna trösklar.
-              Med en uppmätt zonuppsättning (lib/zone-sources.ts) ställs
-              laktattestets zoner mot klockans; utan en finns bara Garmins
-              zonhinkar. Den ligger nedfälld intill sin bättre informerade
+              Med en uppmätt zonuppsättning (lib/zone-sources.ts) räknas den
+              mot laktattestets zoner; utan en finns bara Garmins zonhinkar. Den ligger nedfälld intill sin bättre informerade
               granne — inte som en andra sanning längre ner. */}
           <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
             <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
               {labIntensityWeeks && labZoneSet
-                ? "Samma fråga ur pulszonerna — laktattest mot klockan"
+                ? `Samma fråga ur pulszonerna från ${labSourceName(labZoneSet).toLowerCase()}`
                 : "Samma fråga ur Garmins pulszoner"}
             </summary>
             <div className="flex flex-col gap-3 border-t border-[var(--line)] p-4">
@@ -810,7 +808,10 @@ export default async function TrendsPage({
           <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h3>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
-            {sessionsWithZoneData} av {sessions.length} pass i perioden har zondata.
+            {labIntensityWeeks
+              ? zoneSourceTotals.sessionsWithLab
+              : sessionsWithZoneData}{" "}
+            av {sessions.length} pass i perioden har zondata.
             Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
           </p>
         </div>
@@ -819,7 +820,6 @@ export default async function TrendsPage({
           weeks={intensityWeeks}
           labWeeks={labIntensityWeeks}
           labSet={labIntensityWeeks ? labZoneSet : null}
-          garminBounds={typicalGarminBounds(sessions)}
           labCoverage={labCoverage}
           defaultModelId={
             activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined

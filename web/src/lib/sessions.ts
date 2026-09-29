@@ -40,10 +40,6 @@ export type SessionActivity = {
   hr_zone_3_seconds: number | null;
   hr_zone_4_seconds: number | null;
   hr_zone_5_seconds: number | null;
-  /** Klockans undre gräns för zon 1–5, som den räknade hr_zone_* mot. Null
-   * för pass som inte hämtats med pulskurva (web/api/index.py
-   * _sync_hr_streams, scripts/backfill_hr_streams.py). */
-  hr_zone_bounds: number[] | null;
   /** Tid i de UPPMÄTTA zonerna (hr_zone_sets), räknad ur pulskurvan av
    * compute_lab_zones i databasen. Null = ingen kurva eller ingen uppmätt
    * zonuppsättning — "vet inte", inte "ingen tid". Se lib/zone-sources.ts. */
@@ -75,7 +71,7 @@ export const SESSION_ACTIVITY_COLUMNS =
   "id, user_id, name, activity_type, start_time, duration_seconds, distance_meters, " +
   "avg_hr, max_hr, training_load, category, category_source, " +
   "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds, " +
-  "hr_zone_bounds, lab_zone_1_seconds, lab_zone_2_seconds, lab_zone_3_seconds, lab_zone_4_seconds, " +
+  "lab_zone_1_seconds, lab_zone_2_seconds, lab_zone_3_seconds, lab_zone_4_seconds, " +
   "lab_zone_5_seconds, lab_zone_set_id, " +
   "garmin_feel, garmin_rpe, vo2max, elevation_gain, avg_gap_seconds_per_km";
 
@@ -107,13 +103,10 @@ export type TrainingSession = {
   hrZone5Seconds: number;
   hrZoneTotalSeconds: number;
   /** Tid i de uppmätta zonerna, summerad som ovan. Null när något fragment
-   * med puls saknar uppmätt zontid — ett halvt pass är ingen jämförelse mot
-   * klockans hela. */
+   * med puls saknar uppmätt zontid — ett halvt pass vore en halv siffra. */
   labZoneSeconds: [number, number, number, number, number] | null;
   /** Zonuppsättningen labZoneSeconds räknades mot (hr_zone_sets.id). */
   labZoneSetId: string | null;
-  /** Klockans gränser för zon 1–5 på det dominerande fragmentet. */
-  garminZoneBounds: number[] | null;
   /** Tidsviktad snittpuls. Ett rakt medelvärde över fragmenten skulle ge en
    * 10-minuters nerjogg samma vikt som ett 40-minuters huvudpass. */
   avgHr: number | null;
@@ -320,7 +313,6 @@ function buildSession(fragments: SessionActivity[]): TrainingSession {
     labZoneSetId: labComplete
       ? (withHr.find((f) => f.lab_zone_set_id != null)?.lab_zone_set_id ?? null)
       : null,
-    garminZoneBounds: dominantActivity.hr_zone_bounds ?? null,
     avgHr: hrWeight > 0 ? Math.round(hrSum / hrWeight) : null,
     maxHr: maxHrValues.length > 0 ? Math.max(...maxHrValues) : null,
     category,

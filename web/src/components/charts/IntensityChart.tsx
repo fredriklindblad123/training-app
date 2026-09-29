@@ -19,8 +19,8 @@ import {
   type ThresholdProfile,
   type ZoneSeconds,
 } from "@/lib/intensity";
-import { bandShares, labSourceName, type LabZoneSet, type ZoneSource } from "@/lib/zone-sources";
-import { ZoneBandCompare, ZoneBoundsLegend, ZoneSourceTag } from "@/components/ZoneSources";
+import { labSourceName, type LabZoneSet } from "@/lib/zone-sources";
+import { ZoneBoundsLegend } from "@/components/ZoneSources";
 
 /* ------------------------------------------------------------------------ *
  * IntensityChart — intensitetsfördelning (P1.3 i docs/insikter-roadmap.md)
@@ -107,7 +107,6 @@ export function IntensityChart({
   weeks: garminWeeks,
   labWeeks = null,
   labSet = null,
-  garminBounds = null,
   labCoverage = null,
   profile,
   emptyLabel = "Ingen zondata i perioden.",
@@ -115,12 +114,10 @@ export function IntensityChart({
 }: {
   /** Klockans zontid per vecka. */
   weeks: IntensityWeek[];
-  /** Samma veckor räknade mot uppmätta zoner (lib/zone-sources.ts). Null
-   * när löparen saknar uppmätt zonuppsättning — då visas bara klockan. */
+  /** Samma veckor räknade mot uppmätta zoner (lib/zone-sources.ts). När de
+   * finns ersätter de klockans helt. Null utan uppmätt zonuppsättning. */
   labWeeks?: IntensityWeek[] | null;
   labSet?: LabZoneSet | null;
-  /** Klockans typiska gränser, för att visa varför de är missvisande. */
-  garminBounds?: number[] | null;
   /** "12 av 14 pass" när labbsiffran inte täcker alla pass. */
   labCoverage?: string | null;
   profile: ThresholdProfile;
@@ -134,15 +131,9 @@ export function IntensityChart({
   // Utgångsläget kommer från blockets fas (se PHASE_INTENSITY_MODEL);
   // läsaren kan fortfarande byta modell i knappraden nedan.
   const [modelId, setModelId] = useState(defaultModelId ?? INTENSITY_MODELS[0].id);
-  // Uppmätta zoner som standard när de finns — det är de som stämmer.
+  // Uppmätta zoner ersätter klockans när de finns.
   const hasLab = labSet != null && labWeeks != null;
-  const [source, setSource] = useState<ZoneSource>(hasLab ? "lab" : "garmin");
-  const weeks = hasLab && source === "lab" ? (labWeeks as IntensityWeek[]) : garminWeeks;
-  const labPeriodShares = useMemo(
-    () => (labWeeks ? bandShares(sumWeeks(labWeeks)) : null),
-    [labWeeks],
-  );
-  const garminPeriodShares = useMemo(() => bandShares(sumWeeks(garminWeeks)), [garminWeeks]);
+  const weeks = hasLab ? (labWeeks as IntensityWeek[]) : garminWeeks;
 
   const totals = useMemo(() => weeks.map((w) => zoneTotal(w.zoneSeconds)), [weeks]);
   const periodZones = useMemo(() => sumWeeks(weeks), [weeks]);
@@ -187,42 +178,15 @@ export function IntensityChart({
         <div className="flex flex-col gap-3 rounded border border-[var(--line)] p-3 text-sm">
           <div className="flex flex-col gap-1">
             <div className="font-medium text-[var(--foreground)]">
-              Två zonindelningar, samma pulskurva
+              Zongränser: {labSourceName(labSet)}
             </div>
             <p className="text-[var(--ink-2)]">
-              Pulsen sekund för sekund är räknad mot zonerna från {labSourceName(labSet)}.{" "}
-              {garminBounds && garminBounds[3] < labSet.z4Low
-                ? `Klockans zon 4 börjar redan vid ${garminBounds[3]}, mot ${labSet.z4Low} enligt testet, så dess siffror lägger lugnare löpning i zon 4–5.`
-                : "Klockans zoner stämmer inte med de uppmätta."}{" "}
-              Klockans siffror står kvar överstrukna för jämförelse. Graf och målmodell nedan följer
-              den källa du väljer.
+              Pulsen sekund för sekund är räknad mot zonerna från testet, även för pass före
+              testet.
+              {labCoverage && ` Bygger på ${labCoverage}; pass utan pulskurva räknas inte med.`}
             </p>
           </div>
-          <ZoneBoundsLegend labSet={labSet} garminBounds={garminBounds} />
-          <ZoneBandCompare
-            labSet={labSet}
-            lab={labPeriodShares}
-            garmin={garminPeriodShares}
-            coverage={labCoverage}
-          />
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Zonkälla i grafen">
-            <span className="text-xs text-[var(--ink-3)]">Grafen visar:</span>
-            {(["lab", "garmin"] as ZoneSource[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                aria-pressed={source === k}
-                onClick={() => setSource(k)}
-                className={`rounded border px-2 py-1 ${
-                  source === k
-                    ? "border-[var(--foreground)]"
-                    : "border-[var(--line)] opacity-70 hover:opacity-100"
-                }`}
-              >
-                <ZoneSourceTag source={k} labSet={labSet} />
-              </button>
-            ))}
-          </div>
+          <ZoneBoundsLegend labSet={labSet} />
         </div>
       )}
       {!hasLab && (
@@ -567,9 +531,9 @@ export function IntensityChart({
 
             <p className="text-xs text-[var(--ink-3)]">
               {model.source} Modellen är en referenspunkt, inte ett facit — appen påstår inte att
-              någon av dem är rätt för dig. Översättningen från klockans fem zoner till
-              litteraturens tre band (zon 1–2 / zon 3 / zon 4–5) är dessutom en approximation som
-              ärver samma osäkerhet som zongränserna.
+              någon av dem är rätt för dig. Översättningen från fem zoner till litteraturens tre
+              band (zon 1–2 / zon 3 / zon 4–5) är dessutom en approximation som ärver samma
+              osäkerhet som zongränserna.
             </p>
           </div>
 
