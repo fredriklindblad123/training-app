@@ -7,6 +7,7 @@ import { IntensityChart, type IntensityWeek } from "@/components/charts/Intensit
 import { correctedLapDistance, namedRepDistances } from "@/lib/workout-name";
 import {
   labSourceName,
+  loadLactateTestSteps,
   loadLatestLabZoneSet,
   sumZoneSources,
 } from "@/lib/zone-sources";
@@ -39,6 +40,7 @@ import { Vo2maxCard } from "@/components/Vo2maxCard";
 import { ReportLinks, type AthleteReport } from "@/components/ReportLinks";
 import { FormIntro } from "@/components/FormIntro";
 import { LactateCurve } from "@/components/LactateCurve";
+import { LactateTestSection } from "@/components/LactateTestSection";
 import { LactateHistory } from "@/components/LactateHistory";
 import type { LactateReading } from "@/components/LactateLog";
 import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
@@ -466,6 +468,7 @@ export default async function TrendsPage({
   // Samma veckor mot uppmätta zoner (lib/zone-sources.ts). Har löparen en
   // uppmätt zonuppsättning ersätter de klockans zoner helt.
   const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
+  const labTestSteps = labZoneSet ? await loadLactateTestSteps(supabase, labZoneSet.id) : [];
   const zoneSourceTotals = sumZoneSources(sessions);
   const labIntensityWeeks: IntensityWeek[] | null =
     labZoneSet && zoneSourceTotals.lab
@@ -744,6 +747,13 @@ export default async function TrendsPage({
             />
           ))}
         </section>
+      )}
+
+      {/* Det senaste laktattestet, ritat som i testrapporten. Hela testet,
+          oavsett vald period — samma skäl som laktatstickens historik:
+          ett test tas ett par gånger per säsong. Begäran 2026-09-29. */}
+      {labZoneSet && labTestSteps.length > 1 && (
+        <LactateTestSection set={labZoneSet} steps={labTestSteps} />
       )}
 
       {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet =====

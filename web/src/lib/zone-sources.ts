@@ -39,10 +39,16 @@ export type LabZoneSet = {
   z4Low: number;
   z5Low: number;
   maxHr: number | null;
+  /** Testets trösklar. Bara laktattest har dem, och LT2 är inte alltid en
+   * zongräns (Aktivitus: LT2 197, Z4 från 193) — därför egna fält. */
+  lt1Hr: number | null;
+  lt2Hr: number | null;
+  lt1SpeedKmh: number | null;
+  lt2SpeedKmh: number | null;
 };
 
 export const LAB_ZONE_SET_COLUMNS =
-  "id, label, valid_from, source, z2_low, z3_low, z4_low, z5_low, max_hr";
+  "id, label, valid_from, source, z2_low, z3_low, z4_low, z5_low, max_hr, lt1_hr, lt2_hr, lt1_speed_kmh, lt2_speed_kmh";
 
 type LabZoneSetRow = {
   id: string;
@@ -54,7 +60,16 @@ type LabZoneSetRow = {
   z4_low: number;
   z5_low: number;
   max_hr: number | null;
+  lt1_hr: number | null;
+  lt2_hr: number | null;
+  lt1_speed_kmh: number | string | null;
+  lt2_speed_kmh: number | string | null;
 };
+
+/** numeric kommer som sträng från PostgREST. */
+function num(v: number | string | null): number | null {
+  return v == null ? null : Number(v);
+}
 
 export function toLabZoneSet(row: LabZoneSetRow): LabZoneSet {
   return {
@@ -67,6 +82,10 @@ export function toLabZoneSet(row: LabZoneSetRow): LabZoneSet {
     z4Low: row.z4_low,
     z5Low: row.z5_low,
     maxHr: row.max_hr,
+    lt1Hr: row.lt1_hr,
+    lt2Hr: row.lt2_hr,
+    lt1SpeedKmh: num(row.lt1_speed_kmh),
+    lt2SpeedKmh: num(row.lt2_speed_kmh),
   };
 }
 
@@ -84,6 +103,58 @@ export async function loadLatestLabZoneSet(
     .limit(1)
     .maybeSingle();
   return data ? toLabZoneSet(data as LabZoneSetRow) : null;
+}
+
+/** Ett stick i ett stegtest (lactate_test_steps). Vilovärdet före första
+ * steget har ingen fart, puls eller Borg. */
+export type LactateTestStep = {
+  /** Sekunder från teststart när sticket togs — i slutet av steget. */
+  offsetSeconds: number;
+  /** Farten på steget som just avslutats. */
+  speedKmh: number | null;
+  heartRate: number | null;
+  lactateMmol: number | null;
+  rpe: number | null;
+};
+
+type LactateTestStepRow = {
+  offset_seconds: number;
+  speed_kmh: number | string | null;
+  heart_rate: number | null;
+  lactate_mmol: number | string | null;
+  rpe: number | null;
+};
+
+/** Stegen i ett test, i tidsordning. Tom lista för uppsättningar utan
+ * stegdata (manuella zoner, eller ett test som bara matats in som zoner). */
+export async function loadLactateTestSteps(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  zoneSetId: string,
+): Promise<LactateTestStep[]> {
+  const { data } = await supabase
+    .from("lactate_test_steps")
+    .select("offset_seconds, speed_kmh, heart_rate, lactate_mmol, rpe")
+    .eq("zone_set_id", zoneSetId)
+    .order("offset_seconds");
+  return ((data ?? []) as LactateTestStepRow[]).map((r) => ({
+    offsetSeconds: r.offset_seconds,
+    speedKmh: num(r.speed_kmh),
+    heartRate: r.heart_rate,
+    lactateMmol: num(r.lactate_mmol),
+    rpe: r.rpe,
+  }));
+}
+
+/** Sekunder → "4:00". Avrundar till hel sekund först, så att 276,9 blir
+ * 4:37 och inte 4:60. */
+export function mmss(seconds: number): string {
+  const total = Math.round(seconds);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+/** km/h → "4:37/km". */
+export function paceFromKmh(kmh: number): string {
+  return `${mmss(3600 / kmh)}/km`;
 }
 
 const MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];

@@ -124,6 +124,16 @@
      ersätter (4.4:1) — texten är 10 px och tål ingen svag ton. */
   --ink-note: #5a6b7d;
   --surface-insight: rgba(99, 102, 241, 0.06);
+
+  /* Laktattestets fyra serier (components/LactateTestChart.tsx), i samma
+     färgfamiljer som testrapporten: puls röd, fart gul, laktat grön, Borg
+     blå. Egna tokens, inte --status-*: en röd pulskurva är ingen varning.
+     Validerade med dataviz-validatorn; grön↔gul ligger i CVD-golvbandet
+     (ΔE 6,8) och bär därför egna markörformer och direktetiketter. */
+  --lt-hr: #d63a3a;
+  --lt-rpe: #3a7bd5;
+  --lt-speed: #c99400;
+  --lt-lactate: #1b9a5a;
 }
 
 @theme inline {
@@ -173,6 +183,11 @@
        som --zone-* ovan. */
     --surface-action: #94a3b8;
     --surface-insight: rgba(129, 140, 248, 0.1);
+
+    --lt-hr: #e05252;
+    --lt-rpe: #4f8fe0;
+    --lt-speed: #b3861a;
+    --lt-lactate: #2aa566;
   }
 }
 
