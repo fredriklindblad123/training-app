@@ -24,6 +24,9 @@ export type SignatureLap = {
   duration_seconds: number | null;
   avg_hr: number | null;
   max_hr: number | null;
+  /** Snittpuls över varvets andra halva, ur pulskurvan (compute_split_hr).
+   * Bara hämtad där växlarna behöver den — valfri här. */
+  hr_second_half?: number | null;
 };
 
 /** En grupp likadana repetitioner i följd, t.ex. 4 × 600 m. */

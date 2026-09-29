@@ -85,7 +85,34 @@ export type GearRep = {
   distanceMeters: number;
   durationSeconds: number;
   avgHr: number;
+  /** Varvets maxpuls. Intervallrepens mått, se repHr. */
+  maxHr: number | null;
+  /** Snittpuls över varvets andra halva, ur pulskurvan. Tröskelrepens mått. */
+  secondHalfHr: number | null;
 };
+
+/* ------------------------- pulsen per repetition ------------------------ *
+ * Varvets snittpuls underskattar arbetet: pulsen ligger efter i början av
+ * varje rep. Mätt på Alices 147 kvalitetsrep juni–september 2026, medianer:
+ *
+ *                        snitt   andra halvan   max
+ *   intervall 2–5 min     185        192        195
+ *   tröskel   2–5 min     185        191        193
+ *
+ * Tröskel är ett jämnt arbete — andra halvans snitt är den nivå hon faktiskt
+ * låg på när pulsen hunnit ikapp. Intervall mäts med maxpulsen (Fredriks
+ * val 2026-09-29): på korta rep hinner pulsen aldrig plana ut, och toppen är
+ * det som visar hur högt repet tog henne. Max är ett enda mätvärde och drar
+ * uppåt jämfört med andra halvan (2–3 slag i medianen), så växlarna mäts
+ * inte på samma sätt — det står utskrivet i UI:t.
+ *
+ * Saknas måttet (ingen pulskurva för tröskel, ingen maxpuls för intervall)
+ * används varvets snittpuls, som tidigare. */
+export function repHr(r: GearRep): number {
+  if (r.category === "interval") return r.maxHr ?? r.avgHr;
+  if (r.category === "threshold") return r.secondHalfHr ?? r.avgHr;
+  return r.avgHr;
+}
 
 /* Distans mäts per *pass* (ett distanspass har en intensitet), tröskel och
  * intervall per *varv* (ett intervallpass har en per repetition). Olika
@@ -225,8 +252,8 @@ export function computeTrainingGears(
   /* ---------------------------- pulsvyn ---------------------------------- */
   const hrValues: Record<GearKey, number[]> = {
     distans: easySessions.filter((s) => s.avgHr && s.avgHr > 0).map((s) => s.avgHr as number),
-    troskel: reps.filter((r) => keepRep(r, "threshold")).map((r) => r.avgHr),
-    intervall: reps.filter((r) => keepRep(r, "interval")).map((r) => r.avgHr),
+    troskel: reps.filter((r) => keepRep(r, "threshold")).map(repHr),
+    intervall: reps.filter((r) => keepRep(r, "interval")).map(repHr),
   };
 
   const intervalCeiling = maxHr
@@ -348,11 +375,11 @@ export function gearVerdict(gear: Gear, lt1: number, lt2: number): string {
     case "troskel":
       return pct != null && pct >= 25
         ? `${pct} % av varven ligger över ${lt2}. Stämmer tröskeln liknar passen mer intervall än tröskel.`
-        : `Medianpuls ${a.median}, inom bandet ${lt1}–${lt2}.`;
+        : `Puls på repens andra halva, median ${a.median}, inom bandet ${lt1}–${lt2}.`;
     case "intervall":
       return a.median >= lt2
-        ? `Medianpuls ${a.median}, över anaerob tröskel ${lt2}.`
-        : `Medianpuls ${a.median}, under ${lt2} — antingen går intervallerna inte hårt nog, eller så ligger tröskeln högre än angivet.`;
+        ? `Maxpuls per rep, median ${a.median}, över anaerob tröskel ${lt2}.`
+        : `Maxpuls per rep, median ${a.median}, under ${lt2} — antingen går intervallerna inte hårt nog, eller så ligger tröskeln högre än angivet.`;
   }
 }
 

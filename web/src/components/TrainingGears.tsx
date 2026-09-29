@@ -236,10 +236,17 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
           Fartbandens multiplar är konvention, kalibrerade mot 1500 m som referensgren.
         </p>
         <p className="mt-2 text-[var(--ink-2)]">
-          Golven på 400 m och 60 sekunder finns för att snittpulsen ska hinna bli meningsfull; på
-          ett 200-metersryck ligger pulsen efter hela vägen. Följden är att avståndet mellan
-          tröskel och intervall snarast <em>underskattas</em>. Måttet använder inga pulszoner —
-          till skillnad från Intensitetsfördelningen, som ärver klockans zonkalibrering.
+          Pulsen ligger efter i början av varje repetition, så varvets snittpuls underskattar
+          arbetet. <strong>Tröskel</strong> mäts därför med snittpulsen över varje reps{" "}
+          <em>andra halva</em>, när pulsen hunnit ikapp. <strong>Intervall</strong> mäts med
+          varje reps <em>maxpuls</em>, eftersom pulsen sällan hinner plana ut på korta rep. Max
+          är ett enda mätvärde och brukar ligga några slag över andra halvan, så jämför
+          växlarna med det i minnet. Saknas pulskurva för ett rep används varvets snittpuls.
+        </p>
+        <p className="mt-2 text-[var(--ink-2)]">
+          Golven på 400 m och 60 sekunder finns för att pulsen ska hinna bli meningsfull; på ett
+          200-metersryck ligger den efter hela vägen. Måttet använder inga pulszoner — till
+          skillnad från Intensitetsfördelningen, som bygger på zonindelning.
         </p>
       </details>
     </div>

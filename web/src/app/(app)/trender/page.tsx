@@ -164,7 +164,7 @@ async function fetchAllSplits(
       const { data } = await supabase
         .from("activity_splits")
         .select(
-          "activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr",
+          "activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr, hr_second_half",
         )
         .in("activity_id", chunk)
         .order("activity_id")
@@ -406,6 +406,8 @@ export default async function TrendsPage({
           distanceMeters: lap.distance_meters,
           durationSeconds: lap.duration_seconds,
           avgHr: lap.avg_hr,
+          maxHr: lap.max_hr,
+          secondHalfHr: lap.hr_second_half ?? null,
         });
       }
     }

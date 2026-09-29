@@ -74,10 +74,14 @@ def parse_hr_stream(details: dict) -> Optional[tuple[list[int], list[int]]]:
         if len(metrics) <= max(ts_i, hr_i):
             continue
         ts, bpm = metrics[ts_i], metrics[hr_i]
-        if ts is None or bpm is None or bpm <= 0:
+        if ts is None:
             continue
+        # Från passets start, inte första pulsvärdet: varvens tidsfönster
+        # (compute_split_hr) räknas från aktivitetens start_time.
         if start is None:
             start = ts
+        if bpm is None or bpm <= 0:
+            continue
         offset = int(round((ts - start) / 1000))
         if last is not None and offset <= last:
             continue
