@@ -10,6 +10,11 @@ export const CATEGORY_VALUES = [
   "race",
   "strength",
   "cross_training",
+  // Tröskel-/laktattest (2026-09-29). Sätts bara för hand — categorize_activity()
+  // ger den aldrig. Ett stegtest ska inte räknas in i någon av växlarna
+  // (lib/training-gears.ts) eller disciplinen på lugna passen. Sist i listan
+  // och utanför den validerade paletten, se CATEGORY_COLORS nedan.
+  "test",
 ] as const;
 
 export type ActivityCategory = (typeof CATEGORY_VALUES)[number];
@@ -22,6 +27,7 @@ export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   race: "Tävling",
   strength: "Styrka",
   cross_training: "Alternativ träning",
+  test: "Tröskeltest",
 };
 
 // 'repetition' (Räckor) slogs ihop med 'interval' 2026-07-27 — uppdelningen
@@ -42,7 +48,15 @@ export const CATEGORY_COLORS: Record<
   race: { light: "#008300", dark: "#008300" },
   strength: { light: "#4a3aa7", dark: "#9085e9" },
   cross_training: { light: "#e34948", dark: "#e66767" },
+  // Neutral grå, inte en palettslot — se --cat-test i globals.css.
+  test: { light: "#6b7280", dark: "#9ca3af" },
 };
+
+/** Kategorierna som äger den CVD-validerade paletten, utan `test`. För den
+ * som lånar paletten till något annat än passkategorier. */
+export const PALETTE_CATEGORIES = CATEGORY_VALUES.filter(
+  (c): c is Exclude<ActivityCategory, "test"> => c !== "test",
+);
 
 export function isActivityCategory(value: string): value is ActivityCategory {
   return (CATEGORY_VALUES as readonly string[]).includes(value);

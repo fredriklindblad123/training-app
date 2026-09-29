@@ -27,6 +27,10 @@
   --cat-race: #bc3a86;
   --cat-strength: #4a3aa7;
   --cat-cross_training: #e34948;
+  /* Test står utanför paletten med flit: neutral grå, samma tanke som att
+     ett planerat testpass är färglöst (workoutTypeColorVar). Ett stegtest är
+     ingen träningskategori och ska inte konkurrera med dem om en hue. */
+  --cat-test: #6b7280;
 
   /* Ordinal blå ramp för pulszon 1–5 (P1.3). Zonerna är *ordnade* efter
      intensitet, inte fristående kategorier, så de ska ha en enhue-ramp och
@@ -140,6 +144,7 @@
     --cat-race: #d957a8;
     --cat-strength: #9085e9;
     --cat-cross_training: #e66767;
+    --cat-test: #9ca3af;
 
     /* Rampen vänds i mörkt läge: det lägsta steget ska ligga närmast ytan,
        vilket på svart botten betyder mörkast — inte ljusast. Samma hue, samma

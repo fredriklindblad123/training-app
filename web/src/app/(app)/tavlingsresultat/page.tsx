@@ -19,7 +19,7 @@ import {
   COMMON_EVENTS,
 } from "@/lib/planning";
 import { SESSION_ACTIVITY_COLUMNS, type SessionActivity } from "@/lib/sessions";
-import { CATEGORY_VALUES, categoryColorVar } from "@/lib/categories";
+import { PALETTE_CATEGORIES, categoryColorVar } from "@/lib/categories";
 import { BAND_LABELS } from "@/lib/intensity";
 import { formatHoursMinutes } from "@/lib/format";
 import { BASELINE_WINDOW_DAYS, type DailyStatusInput } from "@/lib/daily-status";
@@ -433,7 +433,7 @@ export default async function TavlingsresultatPage({
   // Cyklar den redan validerade kategoripaletten (lib/categories.ts).
   const eventColor = (event: string): string => {
     const idx = eventOptions.findIndex((o) => o.event === event);
-    const category = CATEGORY_VALUES[(idx < 0 ? 0 : idx) % CATEGORY_VALUES.length];
+    const category = PALETTE_CATEGORIES[(idx < 0 ? 0 : idx) % PALETTE_CATEGORIES.length];
     return categoryColorVar(category);
   };
 
