@@ -141,9 +141,14 @@ export function computeInterruptionPrecursor(
   const loadBaselinePerWeek = weeklyLoads.length >= MIN_BASELINE_WEEKS ? median(weeklyLoads) : null;
 
   // Sömn/HRV: hela beräkningen är lib/daily-status.ts, med "idag" flyttat
-  // till periodens startdag så att "senaste veckan" (default CURRENT_WINDOW_DAYS)
-  // blir just veckan omedelbart före avbrottet.
-  const status = computeDailyStatus(input.dailyMetrics, period.startDate, CURRENT_WINDOW_DAYS);
+  // till dagen före avbrottet så att "senaste veckan" (default
+  // CURRENT_WINDOW_DAYS) blir just veckan omedelbart före — startdagen är
+  // redan en sjuk- eller skadedag och hör inte till förloppet.
+  const status = computeDailyStatus(
+    input.dailyMetrics,
+    toDateKey(addDays(periodStartDate, -1)),
+    CURRENT_WINDOW_DAYS,
+  );
   const sleepMarker = status.markers.find((m) => m.spec.key === "sleepHours");
   const hrvMarker = status.markers.find((m) => m.spec.key === "hrv");
 

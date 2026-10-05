@@ -159,13 +159,18 @@ export type DailyStatusInput = {
   sleepScore?: number | null;
 };
 
+/* Fönstret är stängt åt båda hållen. Utan övre gräns räknades allt fram till
+ * idag in så fort `today` låg bakåt i tiden — avbrottstidslinjen på
+ * /sasongsoversikt fick då med själva sjukveckan och allt efter den i
+ * "veckan före", och baslinjen likaså. */
 function valuesInWindow(
   rows: DailyStatusInput[],
   key: keyof Omit<DailyStatusInput, "date">,
   fromDate: string,
+  toDate: string,
 ): number[] {
   return rows
-    .filter((r) => r.date >= fromDate)
+    .filter((r) => r.date >= fromDate && r.date <= toDate)
     .map((r) => r[key])
     .filter((v): v is number => v != null);
 }
@@ -207,8 +212,8 @@ export function computeDailyStatus(
 
   const markers: MarkerStatus[] = STATUS_MARKERS.map((spec) => {
     const key = spec.key as keyof Omit<DailyStatusInput, "date">;
-    const baselineValues = valuesInWindow(rows, key, baselineFrom);
-    const currentValues = valuesInWindow(rows, key, currentFrom);
+    const baselineValues = valuesInWindow(rows, key, baselineFrom, today);
+    const currentValues = valuesInWindow(rows, key, currentFrom, today);
 
     const baseline = median(baselineValues);
     const sd = standardDeviation(baselineValues);
