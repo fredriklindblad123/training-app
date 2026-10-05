@@ -89,6 +89,10 @@ export type GearRep = {
   maxHr: number | null;
   /** Snittpuls över varvets andra halva, ur pulskurvan. Tröskelrepens mått. */
   secondHalfHr: number | null;
+  /** Passet repet hör till — grupperar repen per pass i intervallgrafen. */
+  sessionId?: string;
+  date?: string;
+  sessionName?: string | null;
 };
 
 /* ------------------------- pulsen per repetition ------------------------ *
@@ -130,6 +134,54 @@ export const GEAR_MIN_REP_METERS = 400;
  * uppladdningen till det. */
 export const GEAR_MIN_REP_SECONDS = 60;
 export const GEAR_MIN_SESSION_SECONDS = 20 * 60;
+
+/** Repen som räknas i en växel. Delad mellan växeldiagrammet och
+ * intervallgrafen, så att de aldrig kan börja välja olika rep. */
+export function isGearRep(r: GearRep, category: string): boolean {
+  return (
+    r.category === category &&
+    r.distanceMeters >= GEAR_MIN_REP_METERS &&
+    r.durationSeconds >= GEAR_MIN_REP_SECONDS
+  );
+}
+
+/** Ett intervallpass i intervallgrafen. */
+export type IntervalSessionPeak = {
+  sessionId: string;
+  date: string;
+  name: string | null;
+  /** Medianen av passets repmaxpulser — samma mått som intervallväxeln. */
+  hr: number;
+  reps: number;
+  low: number;
+  high: number;
+};
+
+/* Intervallgrafen ska visa samma värde som växeldiagrammet, bara uppdelat
+ * per pass. Växeldiagrammet tar medianen av alla intervallreps maxpuls
+ * (repHr) i perioden; här tas medianen av varje pass egna rep, ur samma urval
+ * (isGearRep). */
+export function intervalSessionPeaks(reps: GearRep[]): IntervalSessionPeak[] {
+  const bySession = new Map<string, GearRep[]>();
+  for (const r of reps) {
+    if (!r.sessionId || !r.date || !isGearRep(r, "interval")) continue;
+    bySession.set(r.sessionId, [...(bySession.get(r.sessionId) ?? []), r]);
+  }
+  return [...bySession.entries()]
+    .map(([sessionId, rs]) => {
+      const values = rs.map(repHr);
+      return {
+        sessionId,
+        date: rs[0].date as string,
+        name: rs[0].sessionName ?? null,
+        hr: Math.round(percentile(values, 0.5) as number),
+        reps: values.length,
+        low: Math.min(...values),
+        high: Math.max(...values),
+      };
+    })
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
 
 /** Marginal under LT1 för distansmålet, samma som lib/easy-discipline.ts. */
 const EASY_LOWER_MARGIN = 25;
@@ -244,10 +296,7 @@ export function computeTrainingGears(
       s.distanceMeters > 2000,
   );
 
-  const keepRep = (r: GearRep, category: string) =>
-    r.category === category &&
-    r.distanceMeters >= GEAR_MIN_REP_METERS &&
-    r.durationSeconds >= GEAR_MIN_REP_SECONDS;
+  const keepRep = isGearRep;
 
   /* ---------------------------- pulsvyn ---------------------------------- */
   const hrValues: Record<GearKey, number[]> = {

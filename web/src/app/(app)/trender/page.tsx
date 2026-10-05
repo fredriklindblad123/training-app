@@ -50,10 +50,12 @@ import {
   gearVerdict,
   GEAR_COLOR_VAR,
   GEAR_PURPOSE,
+  intervalSessionPeaks,
   type Gear,
   type GearKey,
   type GearRep,
 } from "@/lib/training-gears";
+import { IntervalPeakChart } from "@/components/charts/IntervalPeakChart";
 import { computeEasyDiscipline, easyBandFrom } from "@/lib/easy-discipline";
 import { computeLoadRamp, RAMP_WARN } from "@/lib/load-ramp";
 import {
@@ -406,6 +408,9 @@ export default async function TrendsPage({
           avgHr: lap.avg_hr,
           maxHr: lap.max_hr,
           secondHalfHr: lap.hr_second_half ?? null,
+          sessionId: session.dominantActivity.id,
+          date: session.date,
+          sessionName: session.dominantActivity.name,
         });
       }
     }
@@ -593,6 +598,9 @@ export default async function TrendsPage({
   // Nyckelpassen delas på växel: tröskelpass hör hemma i tröskelsektionen,
   // allt annat kvalitetsarbete i intervallsektionen.
   const thresholdGroups = signatureGroups.filter((g) => g.category === "threshold");
+  const intervalPeaks = intervalSessionPeaks(gearReps);
+  const intervalPeriodMedian =
+    gears?.hr?.gears.find((g) => g.key === "intervall")?.actual?.median ?? null;
   const intervalGroups = signatureGroups.filter((g) => g.category !== "threshold");
 
   // --- Är lugnt verkligen lugnt? -----------------------------------------
@@ -894,6 +902,25 @@ export default async function TrendsPage({
             Intervallpassens nyckelpass
           </h3>
           <SessionQuality groups={intervalGroups} racePace={racePace} />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+            Maxpuls per intervallpass
+          </h3>
+          <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+            Samma mått som intervallen i växeldiagrammet: varje reps maxpuls, för rep på minst
+            400 m och en minut. Pricken är passets median, strecket går från lägsta till högsta
+            rep. Tryck på grafen för att se ett pass.
+          </p>
+          <IntervalPeakChart
+            peaks={intervalPeaks}
+            lt2={thresholdProfile.lt2Hr}
+            periodMedian={intervalPeriodMedian}
+            fromDate={startDate}
+            toDate={activeBlock ? activeBlock.end_date : todayKey}
+            color={GEAR_COLOR_VAR.intervall}
+          />
         </div>
       </CollapsibleSection>
 

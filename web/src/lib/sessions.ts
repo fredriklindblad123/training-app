@@ -161,11 +161,21 @@ const QUALITY_NAME_PATTERN =
  * "long_run". */
 const QUALITY_CATEGORIES: ReadonlySet<string> = new Set(["threshold"]);
 
+/** "Distans + 4x100m", "Distans + 3x45sek": huvudpasset är distans och
+ * tillägget är stegringar. NxM-notationen i QUALITY_NAME_PATTERN gjorde
+ * annars passet till ett intervallpass, och dess enda långa varv hamnade
+ * bland intervallrepen (rapporterat 2026-10-05). Säger namnet uttryckligen
+ * tröskel eller intervall gäller det i stället. */
+function isEasyRunWithStrides(name: string): boolean {
+  return /^\s*(distans|lugn)/i.test(name) && !/tröskel|threshold|tempo|intervall|interval|vo2/i.test(name);
+}
+
 /** Kvalitetskategori ur passnamnet, i fallande specificitet. Behövs åt båda
  * håll: Garmins `training_effect_label` säger ibland TEMPO om en lugn timme
  * (för hög kategori) och ibland BASE om ett kort ryckpass (för låg). När
  * namnet säger vad passet var ska namnet vinna. */
 function qualityCategoryFromName(name: string): ActivityCategory | null {
+  if (isEasyRunWithStrides(name)) return null;
   if (/tröskel|threshold|tempo/i.test(name)) return "threshold";
   if (/intervall|interval|vo2/i.test(name)) return "interval";
   if (QUALITY_NAME_PATTERN.test(name)) return "interval";
@@ -375,7 +385,14 @@ export function categorizeSession(
   const nameCategory = qualityCategoryFromName(dominantActivity.name ?? "");
   const hasQualityEvidence = nameCategory !== null || isStructured;
 
-  if (QUALITY_CATEGORIES.has(category)) {
+  // Namnet säger distans: Garmins intervall- eller tröskeletikett kommer då
+  // från stegringarna, inte från passet.
+  if (
+    (category === "interval" || category === "threshold") &&
+    isEasyRunWithStrides(dominantActivity.name ?? "")
+  ) {
+    category = "easy";
+  } else if (QUALITY_CATEGORIES.has(category)) {
     // Kategorin kommer ofta från `training_effect_label`, och den etiketten
     // säger TEMPO/LACTATE_THRESHOLD även om en rak timmes distansjogg — det
     // är därför 89 vanliga "Distans"-pass ligger som tröskel. Utan belägg är
