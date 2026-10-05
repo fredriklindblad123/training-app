@@ -71,7 +71,7 @@ export function IntervalPeakChart({
   if (peaks.length === 0) {
     return (
       <p className="text-sm text-[var(--ink-3)]">
-        Inga intervallpass med rep på minst 400 m och en minut i perioden.
+        Inga intervallpass i perioden.
       </p>
     );
   }

@@ -135,14 +135,21 @@ export const GEAR_MIN_REP_METERS = 400;
 export const GEAR_MIN_REP_SECONDS = 60;
 export const GEAR_MIN_SESSION_SECONDS = 20 * 60;
 
+/* Intervallrep har inget längdgolv (ändrat 2026-10-05, Fredriks val): alla
+ * aktiva varv i ett intervallpass räknas, också 200 m och 30 s. Golven ovan
+ * finns för att snittpulsen ska hinna ikapp, men intervall mäts med
+ * maxpulsen. Kvar är ett golv mot oavsiktliga varvtryck: i produktionsdatan
+ * låg tre aktiva varv på 6–7 s (30 m) och de kortaste riktiga repen på 14 s
+ * ("10x15sek"), så 10 s skiljer dem åt. Med det stämmer antalet rep med
+ * passnamnet på Alices intervallpass ("3x400m + 3x300m + 5x200m" ger 11). */
+export const INTERVAL_MIN_REP_SECONDS = 10;
+
 /** Repen som räknas i en växel. Delad mellan växeldiagrammet och
  * intervallgrafen, så att de aldrig kan börja välja olika rep. */
 export function isGearRep(r: GearRep, category: string): boolean {
-  return (
-    r.category === category &&
-    r.distanceMeters >= GEAR_MIN_REP_METERS &&
-    r.durationSeconds >= GEAR_MIN_REP_SECONDS
-  );
+  if (r.category !== category) return false;
+  if (category === "interval") return r.durationSeconds >= INTERVAL_MIN_REP_SECONDS;
+  return r.distanceMeters >= GEAR_MIN_REP_METERS && r.durationSeconds >= GEAR_MIN_REP_SECONDS;
 }
 
 /** Ett intervallpass i intervallgrafen. */

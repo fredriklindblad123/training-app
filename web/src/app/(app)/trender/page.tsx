@@ -909,9 +909,9 @@ export default async function TrendsPage({
             Maxpuls per intervallpass
           </h3>
           <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-            Samma mått som intervallen i växeldiagrammet: varje reps maxpuls, för rep på minst
-            400 m och en minut. Pricken är passets median, strecket går från lägsta till högsta
-            rep. Tryck på grafen för att se ett pass.
+            Samma mått som intervallen i växeldiagrammet: varje reps maxpuls, oavsett replängd.
+            Pricken är passets median, strecket går från lägsta till högsta rep. Tryck på grafen
+            för att se ett pass.
           </p>
           <IntervalPeakChart
             peaks={intervalPeaks}

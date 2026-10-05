@@ -226,9 +226,10 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
         <summary className="cursor-pointer text-[var(--ink-2)]">Hur växlarna mäts</summary>
         <p className="mt-2 text-[var(--ink-2)]">
           Distans mäts <strong>per pass</strong> (distanspass och långpass på minst 20 minuter).
-          Tröskel och intervall mäts <strong>per repetition</strong>: aktiva varv på minst 400 m
-          och 60 sekunder, och bara ur passets huvudaktivitet — annars hade uppvärmningens
-          kilometrar räknats som intervallrepetitioner. Olika enheter är avsiktligt, men det gör
+          Tröskel och intervall mäts <strong>per repetition</strong>, bara ur passets
+          huvudaktivitet — annars hade uppvärmningens kilometrar räknats som
+          intervallrepetitioner. Tröskel räknar aktiva varv på minst 400 m och 60 sekunder,
+          intervall alla aktiva varv i passet. Olika enheter är avsiktligt, men det gör
           jämförelsen ungefärlig.
         </p>
         <p className="mt-2 text-[var(--ink-2)]">
@@ -247,8 +248,10 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
           växlarna med det i minnet. Saknas pulskurva för ett rep används varvets snittpuls.
         </p>
         <p className="mt-2 text-[var(--ink-2)]">
-          Golven på 400 m och 60 sekunder finns för att pulsen ska hinna bli meningsfull; på ett
-          200-metersryck ligger den efter hela vägen. Sträckan tas ur passets namn när GPS:en
+          Tröskelns golv på 400 m och 60 sekunder finns för att snittpulsen ska hinna bli
+          meningsfull. Intervall har inget golv, eftersom maxpulsen inte behöver hinna ikapp på
+          samma sätt — bara varv kortare än 10 sekunder räknas bort, de är oavsiktliga
+          varvtryck. Sträckan tas ur passets namn när GPS:en
           ligger nära den — &rdquo;10x400m&rdquo; på bana räknas som 400 m även om klockan mätte 392. Måttet använder inga pulszoner — till
           skillnad från Intensitetsfördelningen, som bygger på zonindelning.
         </p>
