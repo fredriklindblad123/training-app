@@ -7,6 +7,7 @@ import {
   addAthlete,
   removeAthlete,
   handleSignupRequest,
+  changePassword,
 } from "./actions";
 import { getScopedProfile } from "@/lib/auth-scope";
 import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
@@ -28,9 +29,14 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; athleteAdded?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    athleteAdded?: string;
+    password?: string;
+    passwordError?: string;
+  }>;
 }) {
-  const { error, athleteAdded } = await searchParams;
+  const { error, athleteAdded, password, passwordError } = await searchParams;
   const supabase = await createClient();
   const { data: connection } = await supabase
     .from("garmin_connections")
@@ -414,6 +420,63 @@ export default async function SettingsPage({
           </form>
         </section>
       )}
+
+      <section id="losenord" className="flex scroll-mt-20 flex-col gap-3">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+          Byt lösenord
+        </h2>
+        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+          Lösenordet du loggar in i Träningsnavet med. Minst 8 tecken.
+        </p>
+
+        {password === "changed" && (
+          <p className="text-sm text-emerald-700 dark:text-emerald-400">
+            Lösenordet är bytt. Använd det nya nästa gång du loggar in.
+          </p>
+        )}
+        {passwordError && <p className="text-sm text-red-600">{passwordError}</p>}
+
+        <form
+          action={changePassword}
+          className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:max-w-sm"
+        >
+          <label className="flex flex-col gap-1 text-sm">
+            Nuvarande lösenord
+            <input
+              type="password"
+              name="current_password"
+              autoComplete="current-password"
+              required
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Nytt lösenord
+            <input
+              type="password"
+              name="new_password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              className={fieldClass}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Nytt lösenord igen
+            <input
+              type="password"
+              name="repeat_password"
+              autoComplete="new-password"
+              minLength={8}
+              required
+              className={fieldClass}
+            />
+          </label>
+          <button type="submit" className={buttonClass}>
+            Byt lösenord
+          </button>
+        </form>
+      </section>
     </div>
   );
 }

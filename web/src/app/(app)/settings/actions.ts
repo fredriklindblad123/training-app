@@ -49,6 +49,46 @@ export async function connectGarmin(formData: FormData) {
   revalidatePath("/settings");
 }
 
+const MIN_PASSWORD_LENGTH = 8;
+
+/* Byter den inloggades eget lösenord.
+ *
+ * Det nuvarande lösenordet kontrolleras först med en ny inloggning, så att
+ * den som kommer åt en redan inloggad telefon inte kan låsa ute ägaren.
+ * Lösenordsfälten skickas aldrig tillbaka i URL:en — bara utfallet.
+ */
+export async function changePassword(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) return;
+
+  const current = formData.get("current_password") as string | null;
+  const next = formData.get("new_password") as string | null;
+  const repeat = formData.get("repeat_password") as string | null;
+
+  const fail: (message: string) => never = (message) =>
+    redirect(`/settings?passwordError=${encodeURIComponent(message)}#losenord`);
+
+  if (!current || !next || !repeat) fail("Fyll i alla tre fälten.");
+  if (next.length < MIN_PASSWORD_LENGTH)
+    fail(`Det nya lösenordet behöver vara minst ${MIN_PASSWORD_LENGTH} tecken.`);
+  if (next !== repeat) fail("De två nya lösenorden är inte likadana.");
+  if (next === current) fail("Det nya lösenordet är samma som det nuvarande.");
+
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: current,
+  });
+  if (signInError) fail("Det nuvarande lösenordet stämmer inte.");
+
+  const { error: updateError } = await supabase.auth.updateUser({ password: next });
+  if (updateError) fail(`Lösenordet kunde inte bytas: ${updateError.message}`);
+
+  redirect("/settings?password=changed#losenord");
+}
+
 export async function syncGarminNow() {
   const supabase = await createClient();
   const {
