@@ -1,15 +1,16 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { IntervalSessionPeak } from "@/lib/training-gears";
+import type { GearSessionPeak } from "@/lib/training-gears";
 
 /* ------------------------------------------------------------------------ *
- * IntervalPeakChart — maxpulsen per intervallpass.
+ * GearSessionChart — en växels pulsmått per pass (intervall eller tröskel).
  *
- * Samma tal som intervallväxeln i växeldiagrammet, uppdelat per pass: varje
- * prick är medianen av passets repmaxpulser, strecket går från passets lägsta
- * till högsta rep. Medianlinjen är växeldiagrammets värde för hela perioden,
- * så att det syns att de två hör ihop.
+ * Samma tal som växeln i växeldiagrammet, uppdelat per pass: varje prick är
+ * medianen av passets repvärden, strecket går från passets lägsta till högsta
+ * rep. Medianlinjen är växeldiagrammets värde för hela perioden, så att det
+ * syns att de två hör ihop. Intervall mäts med repens maxpuls, tröskel med
+ * snittet över repens andra halva — se repHr i lib/training-gears.ts.
  *
  * viewBox är smal (360) i stället för formkurvans 800: grafen läses mest på
  * telefon, och med en smal viewBox blir texten i SVG:n läsbar i 390 px utan
@@ -49,31 +50,33 @@ function monthTicks(fromMs: number, toMs: number): { ms: number; label: string }
   return out;
 }
 
-export function IntervalPeakChart({
+export function GearSessionChart({
   peaks,
-  lt2,
+  markers,
   periodMedian,
+  label,
+  emptyLabel,
   fromDate,
   toDate,
   color,
 }: {
-  peaks: IntervalSessionPeak[];
-  lt2: number | null;
+  peaks: GearSessionPeak[];
+  /** Referenslinjer, t.ex. LT1 och LT2. */
+  markers: { value: number; label: string }[];
   /** Intervallväxelns median i växeldiagrammet, om den finns. */
   periodMedian: number | null;
   fromDate: string;
   toDate: string;
   color: string;
+  /** Grafens tillgängliga namn, t.ex. "Maxpuls per intervallpass". */
+  label: string;
+  emptyLabel: string;
 }) {
   const [hovered, setHovered] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   if (peaks.length === 0) {
-    return (
-      <p className="text-sm text-[var(--ink-3)]">
-        Inga intervallpass i perioden.
-      </p>
-    );
+    return <p className="text-sm text-[var(--ink-3)]">{emptyLabel}</p>;
   }
 
   const fromMs = dayMs(fromDate);
@@ -82,7 +85,7 @@ export function IntervalPeakChart({
 
   const all = [
     ...peaks.flatMap((p) => [p.low, p.high]),
-    ...(lt2 != null ? [lt2] : []),
+    ...markers.map((m) => m.value),
     ...(periodMedian != null ? [periodMedian] : []),
   ];
   const yMin = Math.floor(Math.min(...all) - 3);
@@ -116,7 +119,7 @@ export function IntervalPeakChart({
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         className="h-auto w-full max-w-2xl touch-pan-y"
         role="img"
-        aria-label="Maxpuls per intervallpass"
+        aria-label={label}
         onPointerMove={handlePointer}
         onPointerDown={handlePointer}
       >
@@ -158,28 +161,28 @@ export function IntervalPeakChart({
           );
         })}
 
-        {lt2 != null && (
-          <g>
+        {markers.map((m) => (
+          <g key={m.label}>
             <line
               x1={PAD_LEFT}
               x2={WIDTH - PAD_RIGHT}
-              y1={yFor(lt2)}
-              y2={yFor(lt2)}
+              y1={yFor(m.value)}
+              y2={yFor(m.value)}
               stroke="var(--ink-3)"
               strokeWidth={1}
               strokeDasharray="3 3"
             />
             <text
               x={WIDTH - PAD_RIGHT - 2}
-              y={yFor(lt2) - 3}
+              y={yFor(m.value) - 3}
               textAnchor="end"
               className="fill-[var(--ink-3)]"
               style={{ fontSize: 9 }}
             >
-              LT2 {lt2}
+              {m.label} {m.value}
             </text>
           </g>
-        )}
+        ))}
 
         {periodMedian != null && (
           <g>
@@ -239,6 +242,9 @@ export function IntervalPeakChart({
         {hoveredPeak.reps > 1
           ? ` — median av ${hoveredPeak.reps} rep, ${hoveredPeak.low}–${hoveredPeak.high}`
           : " — ett rep"}
+        {hoveredPeak.fallbackReps > 0
+          ? ` (${hoveredPeak.fallbackReps === hoveredPeak.reps ? "alla" : hoveredPeak.fallbackReps} med varvets snittpuls)`
+          : ""}
       </p>
     </div>
   );

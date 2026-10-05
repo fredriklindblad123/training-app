@@ -152,26 +152,32 @@ export function isGearRep(r: GearRep, category: string): boolean {
   return r.distanceMeters >= GEAR_MIN_REP_METERS && r.durationSeconds >= GEAR_MIN_REP_SECONDS;
 }
 
-/** Ett intervallpass i intervallgrafen. */
-export type IntervalSessionPeak = {
+/** Ett pass i en växels passgraf (intervall eller tröskel). */
+export type GearSessionPeak = {
   sessionId: string;
   date: string;
   name: string | null;
-  /** Medianen av passets repmaxpulser — samma mått som intervallväxeln. */
+  /** Medianen av passets repvärden (repHr) — samma mått som växeln. */
   hr: number;
   reps: number;
   low: number;
   high: number;
+  /** Rep där växelns mått saknades och varvets snittpuls användes. */
+  fallbackReps: number;
 };
 
-/* Intervallgrafen ska visa samma värde som växeldiagrammet, bara uppdelat
- * per pass. Växeldiagrammet tar medianen av alla intervallreps maxpuls
- * (repHr) i perioden; här tas medianen av varje pass egna rep, ur samma urval
- * (isGearRep). */
-export function intervalSessionPeaks(reps: GearRep[]): IntervalSessionPeak[] {
+/* Passgraferna ska visa samma värde som växeldiagrammet, bara uppdelat per
+ * pass. Växeldiagrammet tar medianen av alla rep i växeln (repHr) under
+ * perioden; här tas medianen av varje pass egna rep, ur samma urval
+ * (isGearRep). Intervall: repens maxpuls. Tröskel: snittet över repens andra
+ * halva. */
+export function gearSessionPeaks(
+  reps: GearRep[],
+  category: "interval" | "threshold",
+): GearSessionPeak[] {
   const bySession = new Map<string, GearRep[]>();
   for (const r of reps) {
-    if (!r.sessionId || !r.date || !isGearRep(r, "interval")) continue;
+    if (!r.sessionId || !r.date || !isGearRep(r, category)) continue;
     bySession.set(r.sessionId, [...(bySession.get(r.sessionId) ?? []), r]);
   }
   return [...bySession.entries()]
@@ -183,8 +189,12 @@ export function intervalSessionPeaks(reps: GearRep[]): IntervalSessionPeak[] {
         name: rs[0].sessionName ?? null,
         hr: Math.round(percentile(values, 0.5) as number),
         reps: values.length,
-        low: Math.min(...values),
-        high: Math.max(...values),
+        // Andra halvans snitt har decimaler; grafen visar hela slag.
+        low: Math.round(Math.min(...values)),
+        high: Math.round(Math.max(...values)),
+        fallbackReps: rs.filter((r) =>
+          category === "interval" ? r.maxHr == null : r.secondHalfHr == null,
+        ).length,
       };
     })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

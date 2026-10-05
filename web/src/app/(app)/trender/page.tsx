@@ -50,12 +50,12 @@ import {
   gearVerdict,
   GEAR_COLOR_VAR,
   GEAR_PURPOSE,
-  intervalSessionPeaks,
+  gearSessionPeaks,
   type Gear,
   type GearKey,
   type GearRep,
 } from "@/lib/training-gears";
-import { IntervalPeakChart } from "@/components/charts/IntervalPeakChart";
+import { GearSessionChart } from "@/components/charts/GearSessionChart";
 import { computeEasyDiscipline, easyBandFrom } from "@/lib/easy-discipline";
 import { computeLoadRamp, RAMP_WARN } from "@/lib/load-ramp";
 import {
@@ -362,6 +362,9 @@ export default async function TrendsPage({
 
   let signatureGroups: SignatureGroup[] = [];
   const gearReps: GearRep[] = [];
+  /** Aktiviteter med minst ett aktivt varv — skiljer "saknar varvdata" från
+   * "inga rep klarar golvet" i listan under tröskelgrafen. */
+  const activitiesWithActiveLaps = new Set<string>();
   if (activityIds.length > 0) {
     const lapRows = await fetchAllSplits(supabase, activityIds);
 
@@ -399,6 +402,7 @@ export default async function TrendsPage({
       const named = namedRepDistances(session.dominantActivity.name);
       for (const lap of lapsByActivity.get(session.dominantActivity.id) ?? []) {
         if (lap.split_type !== "active") continue;
+        activitiesWithActiveLaps.add(session.dominantActivity.id);
         if (lap.distance_meters == null || lap.avg_hr == null) continue;
         if (lap.duration_seconds == null) continue;
         gearReps.push({
@@ -598,9 +602,30 @@ export default async function TrendsPage({
   // Nyckelpassen delas på växel: tröskelpass hör hemma i tröskelsektionen,
   // allt annat kvalitetsarbete i intervallsektionen.
   const thresholdGroups = signatureGroups.filter((g) => g.category === "threshold");
-  const intervalPeaks = intervalSessionPeaks(gearReps);
+  const intervalPeaks = gearSessionPeaks(gearReps, "interval");
   const intervalPeriodMedian =
     gears?.hr?.gears.find((g) => g.key === "intervall")?.actual?.median ?? null;
+  const thresholdPeaks = gearSessionPeaks(gearReps, "threshold");
+  const thresholdPeriodMedian =
+    gears?.hr?.gears.find((g) => g.key === "troskel")?.actual?.median ?? null;
+  /* Tröskelpass som inte kan ritas ska ändå synas, inte falla bort i tysthet. */
+  const measuredThresholdIds = new Set(thresholdPeaks.map((p) => p.sessionId));
+  const unmeasuredThreshold = sessions
+    .filter(
+      (s) => s.category === "threshold" && !measuredThresholdIds.has(s.dominantActivity.id),
+    )
+    .map((s) => ({
+      date: s.date,
+      name: s.dominantActivity.name,
+      reason: activitiesWithActiveLaps.has(s.dominantActivity.id)
+        ? "inget rep på minst 400 m och en minut"
+        : "saknar varvdata",
+    }))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const hrMarkers = (values: [number | null, string][]) =>
+    values
+      .filter((v): v is [number, string] => v[0] != null)
+      .map(([value, label]) => ({ value, label }));
   const intervalGroups = signatureGroups.filter((g) => g.category !== "threshold");
 
   // --- Är lugnt verkligen lugnt? -----------------------------------------
@@ -882,6 +907,47 @@ export default async function TrendsPage({
             showRaceReference={false}
           />
         </div>
+
+        <div className="flex flex-col gap-2">
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+            Puls per tröskelpass
+          </h3>
+          <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+            Samma mått som tröskeln i växeldiagrammet: snittpulsen över varje reps andra halva,
+            när pulsen hunnit ikapp, för rep på minst 400 m och en minut. Pricken är passets
+            median, strecket går från lägsta till högsta rep. Tryck på grafen för att se ett pass.
+          </p>
+          <GearSessionChart
+            peaks={thresholdPeaks}
+            markers={hrMarkers([
+              [thresholdProfile.lt1Hr, "LT1"],
+              [thresholdProfile.lt2Hr, "LT2"],
+            ])}
+            periodMedian={thresholdPeriodMedian}
+            label="Puls per tröskelpass"
+            emptyLabel="Inga tröskelpass med mätbara rep i perioden."
+            fromDate={startDate}
+            toDate={activeBlock ? activeBlock.end_date : todayKey}
+            color={GEAR_COLOR_VAR.troskel}
+          />
+          {unmeasuredThreshold.length > 0 && (
+            <div className="text-sm text-[var(--ink-2)]">
+              <p>
+                {unmeasuredThreshold.length === 1
+                  ? "Ett tröskelpass i perioden går inte att mäta:"
+                  : `${unmeasuredThreshold.length} tröskelpass i perioden går inte att mäta:`}
+              </p>
+              <ul className="mt-1 flex flex-col gap-0.5 text-[var(--ink-3)]">
+                {unmeasuredThreshold.map((u) => (
+                  <li key={`${u.date}-${u.name}`}>
+                    <span className="tabular">{u.date}</span> · {u.name ?? "Namnlöst pass"} —{" "}
+                    {u.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </CollapsibleSection>
 
       {/* ===== Växel 3 ===== */}
@@ -913,10 +979,12 @@ export default async function TrendsPage({
             Pricken är passets median, strecket går från lägsta till högsta rep. Tryck på grafen
             för att se ett pass.
           </p>
-          <IntervalPeakChart
+          <GearSessionChart
             peaks={intervalPeaks}
-            lt2={thresholdProfile.lt2Hr}
+            markers={hrMarkers([[thresholdProfile.lt2Hr, "LT2"]])}
             periodMedian={intervalPeriodMedian}
+            label="Maxpuls per intervallpass"
+            emptyLabel="Inga intervallpass i perioden."
             fromDate={startDate}
             toDate={activeBlock ? activeBlock.end_date : todayKey}
             color={GEAR_COLOR_VAR.intervall}
