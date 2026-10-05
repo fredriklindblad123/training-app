@@ -37,7 +37,6 @@ import { EasyDiscipline } from "@/components/EasyDiscipline";
 import { LoadStrip } from "@/components/LoadStrip";
 import { TrainingGears } from "@/components/TrainingGears";
 import { Vo2maxCard } from "@/components/Vo2maxCard";
-import { ReportLinks, type AthleteReport } from "@/components/ReportLinks";
 import { FormIntro } from "@/components/FormIntro";
 import { LactateCurve } from "@/components/LactateCurve";
 import { LactateTestSection } from "@/components/LactateTestSection";
@@ -253,7 +252,6 @@ export default async function TrendsPage({
     profileResult,
     { data: plannedRows },
     { data: competitionRows },
-    { data: reportRows },
   ] = await Promise.all([
     (() => {
       let q = supabase
@@ -304,11 +302,6 @@ export default async function TrendsPage({
       if (endDateExclusive) q = q.lt("competition_date", endDateExclusive);
       return q.order("competition_date");
     })(),
-    supabase
-      .from("athlete_reports")
-      .select("id, title, url, summary, published_on")
-      .eq("user_id", scopedUserId)
-      .order("published_on", { ascending: false }),
   ]);
 
   const profileRow = profileResult.error ? null : profileResult.data;
@@ -724,8 +717,6 @@ export default async function TrendsPage({
         lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
         hasGarminData={sessions.length > 0}
       />
-
-      <ReportLinks reports={(reportRows ?? []) as AthleteReport[]} />
 
       {/* Toppen är en dom, inte ett lager av nyckeltal. Här låg tidigare
           CV-rutan, efterlevnadskortet och fyra nyckeltal — ett dussin tal
