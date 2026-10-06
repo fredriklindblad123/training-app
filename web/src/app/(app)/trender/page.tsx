@@ -51,6 +51,8 @@ import {
   GEAR_COLOR_VAR,
   GEAR_PURPOSE,
   gearSessionPeaks,
+  INTERVAL_MIN_REP_SECONDS,
+  trimWarmupCooldown,
   type Gear,
   type GearKey,
   type GearRep,
@@ -400,12 +402,19 @@ export default async function TrendsPage({
       // Sträckan i passnamnet vinner över GPS:en när de ligger nära varandra:
       // "10x400m" på bana är 400 m även när klockan säger 392 (lib/workout-name.ts).
       const named = namedRepDistances(session.dominantActivity.name);
-      for (const lap of lapsByActivity.get(session.dominantActivity.id) ?? []) {
+      const sessionReps: GearRep[] = [];
+      const laps = [...(lapsByActivity.get(session.dominantActivity.id) ?? [])].sort(
+        (a, b) => a.split_index - b.split_index,
+      );
+      for (const lap of laps) {
         if (lap.split_type !== "active") continue;
         activitiesWithActiveLaps.add(session.dominantActivity.id);
         if (lap.distance_meters == null || lap.avg_hr == null) continue;
         if (lap.duration_seconds == null) continue;
-        gearReps.push({
+        // Oavsiktliga varvtryck bort före kanttrimningen — ett 7-sekundersvarv
+        // sist i passet skulle annars skymma nerjoggen före det.
+        if (lap.duration_seconds < INTERVAL_MIN_REP_SECONDS) continue;
+        sessionReps.push({
           category: session.category,
           distanceMeters: correctedLapDistance(lap.distance_meters, named),
           durationSeconds: lap.duration_seconds,
@@ -417,6 +426,8 @@ export default async function TrendsPage({
           sessionName: session.dominantActivity.name,
         });
       }
+      // Uppvärmning och nerjogg som Garmin märkt som aktiva varv.
+      gearReps.push(...trimWarmupCooldown(sessionReps));
     }
   }
 

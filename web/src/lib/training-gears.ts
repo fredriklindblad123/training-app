@@ -144,6 +144,68 @@ export const GEAR_MIN_SESSION_SECONDS = 20 * 60;
  * passnamnet på Alices intervallpass ("3x400m + 3x300m + 5x200m" ger 11). */
 export const INTERVAL_MIN_REP_SECONDS = 10;
 
+/* ------------------- uppvärmning och nerjogg i passet --------------------- *
+ * När passet körs som ett Garmin-träningspass ligger uppvärmning och nerjogg
+ * i samma aktivitet som repen, och Garmin märker dem som aktiva varv. De
+ * räknades då som rep: "Tröskel 7x3min" fick 9 rep och lägsta värdet 166.
+ *
+ * Varken längd, fart eller puls ensamt skiljer dem från riktiga rep — mätt
+ * på första och sista aktiva varvet i alla kvalitetspass 2026-10-05:
+ *
+ *   - Första repet har alltid lägre puls; pulsen har inte hunnit upp.
+ *   - I blandade pass ("1200m tröskel + 10x150m") är tröskelrepet 1,4 gånger
+ *     långsammare än sprintarna efter, precis som en uppvärmning.
+ *
+ * Det som skiljer: uppvärmning/nerjogg är minst 1,2 gånger långsammare än
+ * passets övriga rep OCH antingen minst 8 minuter (alla 3 km-uppvärmningar och
+ * 2 km-nerjoggar låg på 9–25 min) eller minst 8 slag lägre i snittpuls
+ * (uppvärmning delad i kilometervarv). Riktiga långa förstarep — 1200 m och
+ * 1600 m tröskel, 6 min — var alla under 6,5 min och låg -1 till +9 slag mot
+ * resten. Bara varven i passets kanter prövas, upprepat så länge kanten
+ * uppfyller regeln. */
+const WARMUP_SLOWER_RATIO = 1.2;
+const WARMUP_MIN_SECONDS = 8 * 60;
+const WARMUP_HR_BELOW = 8;
+/** Färre rep än så kvar ger ingen pålitlig jämförelse — då rörs inget. */
+const WARMUP_MIN_REMAINING = 3;
+
+type LapLike = { distanceMeters: number; durationSeconds: number; avgHr: number };
+
+function isWarmupLike(edge: LapLike, others: LapLike[]): boolean {
+  const paces = others
+    .filter((o) => o.distanceMeters > 0)
+    .map((o) => o.durationSeconds / o.distanceMeters);
+  const hrs = others.map((o) => o.avgHr);
+  const medPace = percentile(paces, 0.5);
+  const medHr = percentile(hrs, 0.5);
+  if (medPace == null || medHr == null || edge.distanceMeters <= 0) return false;
+  const slower = edge.durationSeconds / edge.distanceMeters / medPace >= WARMUP_SLOWER_RATIO;
+  return (
+    slower &&
+    (edge.durationSeconds >= WARMUP_MIN_SECONDS || edge.avgHr <= medHr - WARMUP_HR_BELOW)
+  );
+}
+
+/** Tar bort uppvärmning och nerjogg som Garmin märkt som aktiva varv. `laps`
+ * ska vara ett pass aktiva varv i tidsordning. */
+export function trimWarmupCooldown<T extends LapLike>(laps: T[]): T[] {
+  let from = 0;
+  let to = laps.length; // exklusiv
+  let changed = true;
+  while (changed && to - from > WARMUP_MIN_REMAINING) {
+    changed = false;
+    if (isWarmupLike(laps[from], laps.slice(from + 1, to))) {
+      from++;
+      changed = true;
+    }
+    if (to - from > WARMUP_MIN_REMAINING && isWarmupLike(laps[to - 1], laps.slice(from, to - 1))) {
+      to--;
+      changed = true;
+    }
+  }
+  return laps.slice(from, to);
+}
+
 /** Repen som räknas i en växel. Delad mellan växeldiagrammet och
  * intervallgrafen, så att de aldrig kan börja välja olika rep. */
 export function isGearRep(r: GearRep, category: string): boolean {

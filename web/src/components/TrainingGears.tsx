@@ -229,7 +229,9 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
           Tröskel och intervall mäts <strong>per repetition</strong>, bara ur passets
           huvudaktivitet — annars hade uppvärmningens kilometrar räknats som
           intervallrepetitioner. Tröskel räknar aktiva varv på minst 400 m och 60 sekunder,
-          intervall alla aktiva varv i passet. Olika enheter är avsiktligt, men det gör
+          intervall alla aktiva varv i passet. Uppvärmning och nerjogg som klockan märkt som
+          aktiva varv räknas bort — de känns igen på att de är klart långsammare än passets
+          rep och antingen långa eller med tydligt lägre puls. Olika enheter är avsiktligt, men det gör
           jämförelsen ungefärlig.
         </p>
         <p className="mt-2 text-[var(--ink-2)]">
