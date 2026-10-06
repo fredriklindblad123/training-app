@@ -33,11 +33,25 @@ from garminconnect import Garmin, GarminConnectAuthenticationError
 
 DEFAULT_DELAY_SECONDS = 1.5
 
-# Ett varv räknas som aktivt om farten är minst så här stor andel av passets
-# snabbaste varv. Separationen i verklig data är knivskarp (ca 4,5 m/s för en
-# 400:a mot 0,8 m/s för joggvila), så gränsen är okänslig för exakt värde —
-# den behöver bara ligga tydligt mellan de två grupperna.
-ACTIVE_SPEED_RATIO = 0.55
+# Aktivt eller vila per varv — se _classify_laps. Uppmätt 2026-10-06 mot
+# passnamnen ("8x2min" ska ge åtta rep) på 123 tröskel- och intervallpass.
+#
+# Den gamla regeln (aktivt om minst 55 % av passets snabbaste varv) sattes
+# för stående eller gående vila, ca 0,8 m/s. Joggvila ligger på 2,5–2,8 m/s,
+# över 55 % av en tröskelrep, och märktes aktiv: "8x2min" med 90 s joggvila
+# blev 15 aktiva varv och nyckelpassen såg en rak 5,75 km. 66 % rätt antal rep.
+#
+# Ett varv är vila om det är minst 15 % långsammare än BÅDA sina grannar
+# (vilan ligger mellan två rep), eller långsammare än hälften av passets
+# typiska snabba fart (gång och stillastående, även när två vilovarv ligger i
+# rad). 72 % rätt, och båda de rapporterade passen exakt. Typisk snabb fart är
+# 90:e percentilen, inte maxfarten — ett varv med trasig GPS-sträcka (ett
+# verkligt pass hade 42 949 672 m) gjorde annars hela passet till vila.
+# Resten av missarna är nästan alla banrep där GPS:en mätt 100 m som 13 m.
+REST_SLOWER_THAN_NEIGHBOURS = 0.85
+REST_BELOW_TYPICAL_FAST = 0.5
+# Varv kortare än så är felryckningar; de jämförs aldrig som grannar.
+NEIGHBOUR_MIN_SECONDS = 10
 
 # Under så här många sekunder är varvet nästan alltid en felryckning på
 # klockan snarare än ett riktigt intervall.
@@ -61,10 +75,12 @@ def pace_seconds_per_km(speed_m_per_s: Optional[float]) -> Optional[float]:
 
 
 def classify_laps(laps: list[dict]) -> list[str]:
-    """Aktivt eller vila per varv, utifrån fart relativt passets snabbaste.
+    """Aktivt eller vila per varv, utifrån farten mot grannvarven.
 
-    Garmins eget intensityType duger inte: det är "INTERVAL" för samtliga
-    varv i ett intervallpass, även vilovarven.
+    Reserv när Garmin inte märkt varven ett och ett (garmin_lap_kinds).
+    Varvdatans intensityType duger inte: det är "INTERVAL" för samtliga varv,
+    även vilovarven. Speglar _classify_laps i web/api/index.py; håll dem i
+    synk.
     """
     speeds = []
     for lap in laps:
@@ -72,14 +88,54 @@ def classify_laps(laps: list[dict]) -> list[str]:
         dist = lap.get("distance") or 0
         speeds.append(dist / dur if dur > 0 else 0.0)
 
-    fastest = max(speeds) if speeds else 0.0
-    if fastest <= 0:
+    real = [i for i, lap in enumerate(laps) if (lap.get("duration") or 0) >= NEIGHBOUR_MIN_SECONDS]
+    if not real:
+        return ["active"] * len(laps)
+    ordered = sorted(speeds[i] for i in real)
+    typical_fast = ordered[int(0.9 * (len(ordered) - 1))]
+    if typical_fast <= 0:
         return ["active"] * len(laps)
 
-    return [
-        "active" if s >= fastest * ACTIVE_SPEED_RATIO else "rest"
-        for s in speeds
-    ]
+    kinds = []
+    for i, s in enumerate(speeds):
+        if s < typical_fast * REST_BELOW_TYPICAL_FAST:
+            kinds.append("rest")
+            continue
+        if i not in real:
+            kinds.append("active")
+            continue
+        pos = real.index(i)
+        neighbours = [speeds[real[j]] for j in (pos - 1, pos + 1) if 0 <= j < len(real)]
+        if neighbours and s <= REST_SLOWER_THAN_NEIGHBOURS * min(neighbours):
+            kinds.append("rest")
+        else:
+            kinds.append("active")
+    return kinds
+
+
+# Garmins egen märkning per varv, ur endpointen typedsplits (samma som
+# kolumnen "Typ" i Garmin Connect). Används före fartregeln när den finns.
+# Uppmätt 2026-10-06: märkningen per varv finns i 30 av Alices kvalitetspass
+# och stämmer med passnamnet i ungefär 21 av 23 som går att kontrollera. I de
+# övriga passen täcker en enda INTERVAL_ACTIVE alla varv, vila inräknad
+# (lapIndexes 1–30), och säger då ingenting — där tar fartregeln över.
+GARMIN_ACTIVE_TYPES = {"INTERVAL_ACTIVE"}
+GARMIN_LAP_TYPES = {"INTERVAL_ACTIVE", "INTERVAL_RECOVERY", "INTERVAL_REST", "INTERVAL_WARMUP", "INTERVAL_COOLDOWN"}
+
+
+def garmin_lap_kinds(typed: dict, laps: list[dict]) -> Optional[list[str]]:
+    """Aktivt eller vila per varv ur Garmins typed splits, eller None.
+
+    None när Garmin inte märkt varje varv för sig — då gäller fartregeln.
+    Uppvärmning, nerjogg och vila blir "rest": de är inte repetitioner.
+    """
+    marked = [s for s in (typed or {}).get("splits") or [] if s.get("type") in GARMIN_LAP_TYPES]
+    if not marked or any(len(s.get("lapIndexes") or []) != 1 for s in marked):
+        return None
+    type_by_lap = {s["lapIndexes"][0]: s["type"] for s in marked}
+    if any(lap.get("lapIndex") not in type_by_lap for lap in laps):
+        return None
+    return ["active" if type_by_lap[lap["lapIndex"]] in GARMIN_ACTIVE_TYPES else "rest" for lap in laps]
 
 
 def map_lap(activity_id: str, index: int, lap: dict, split_type: str) -> dict:
@@ -186,7 +242,11 @@ def main() -> None:
             time.sleep(args.delay)
             continue
 
-        kinds = classify_laps(laps)
+        try:
+            typed = client.connectapi(f"/activity-service/activity/{act['external_id']}/typedsplits")
+        except Exception:
+            typed = None
+        kinds = garmin_lap_kinds(typed, laps) or classify_laps(laps)
         rows = [map_lap(act["id"], idx, lap, kind) for idx, (lap, kind) in enumerate(zip(laps, kinds))]
 
         resp = requests.post(
