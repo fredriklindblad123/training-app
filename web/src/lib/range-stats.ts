@@ -75,6 +75,25 @@ export type RangeStats = {
    * "inga sjukdagar" och "ingen dagbok förd" går annars förlorad. */
   sickDays: number;
   injuredDays: number;
+  /* Uppföljningens mått (2026-10-08): ANTAL genomförda pass av varje slag mot
+   * ANTAL planerade, inom perioden fram till idag. Inte parat dag för dag —
+   * ett tröskelpass på onsdag i stället för tisdag räknas lika fullt. Planen
+   * räknas bara för dagar som passerat, så "5/5" mitt i ett block betyder
+   * att allt hittills blev gjort. Idag räknas med om löparen tränat idag,
+   * annars slutar fönstret igår (ett pass senare i dag ska inte dra ner).
+   *
+   * Kvalitet = tröskel, intervall, tävling, test. Distans = lugnt och
+   * långpass. Styrka = styrka. Häck räknas inte (Garmin har ingen kategori
+   * för det, så ett gjort häckpass syns som något annat) och inte heller
+   * alternativ träning. */
+  qualityDue: number;
+  qualityDone: number;
+  distanceDue: number;
+  distanceDone: number;
+  strengthDue: number;
+  strengthDone: number;
+  /** Tävlingar i perioden där löparen har ett pass registrerat den dagen. */
+  competitionsDone: number;
 };
 
 /** En dagboksdag som bryter träningen. Samma form som InterruptionDay i
@@ -84,6 +103,12 @@ export type RangeInterruption = { date: string; dayType: "sick" | "injured" };
 
 function withinRange(dateKey: string, start: string, end: string): boolean {
   return dateKey >= start && dateKey <= end;
+}
+
+function shiftDayKey(dateKey: string, days: number): string {
+  const d = new Date(`${dateKey}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 function weeksBetweenDates(start: string, end: string): number {
@@ -97,6 +122,7 @@ export function computeRangeStats({
   sessions,
   competitionDates,
   interruptions = [],
+  today,
 }: {
   range: RangeStatsInput;
   planned: (PlannedWorkout & { training_factor?: string | null })[];
@@ -106,6 +132,9 @@ export function computeRangeStats({
    * och får då noll sjuk- och skaddagar — vilket är sant för den sidan,
    * som inte visar kolumnerna. */
   interruptions?: RangeInterruption[];
+  /** Dagens datum (YYYY-MM-DD) för vad som "har passerat". Utelämnat räknas
+   * allt i spannet som passerat. */
+  today?: string;
 }): RangeStats {
   const rangePlanned = planned.filter((p) =>
     withinRange(p.scheduled_date, range.startDate, range.endDate),
@@ -140,6 +169,32 @@ export function computeRangeStats({
   const compliance = summarizeCompliance(matches);
   const weeks = weeksBetweenDates(range.startDate, range.endDate);
 
+  const kindOf = (t: string): "quality" | "distance" | "strength" | null =>
+    (QUALITY_WORKOUT_TYPES as readonly string[]).includes(t)
+      ? "quality"
+      : t === "easy" || t === "long_run"
+        ? "distance"
+        : t === "strength"
+          ? "strength"
+          : null;
+  const trainedToday = today != null && rangeSessions.some((s) => s.date === today);
+  const cutoff =
+    today == null ? range.endDate : trainedToday ? today : shiftDayKey(today, -1);
+  const due = { quality: 0, distance: 0, strength: 0 };
+  const done = { quality: 0, distance: 0, strength: 0 };
+  for (const p of rangePlanned) {
+    const k = kindOf(p.workout_type);
+    if (k && p.scheduled_date <= cutoff) due[k]++;
+  }
+  for (const s of rangeSessions) {
+    const k = kindOf(s.category);
+    if (k && s.date <= cutoff) done[k]++;
+  }
+  const sessionDates = new Set(rangeSessions.map((s) => s.date));
+  const rangeCompetitions = competitionDates.filter((d) =>
+    withinRange(d, range.startDate, range.endDate),
+  );
+
   return {
     weeks,
     plannedCount,
@@ -170,5 +225,14 @@ export function computeRangeStats({
     ).length,
     sickDays: rangeInterruptions.filter((i) => i.dayType === "sick").length,
     injuredDays: rangeInterruptions.filter((i) => i.dayType === "injured").length,
+    qualityDue: due.quality,
+    qualityDone: done.quality,
+    distanceDue: due.distance,
+    distanceDone: done.distance,
+    strengthDue: due.strength,
+    strengthDone: done.strength,
+    competitionsDone: rangeCompetitions.filter(
+      (d) => (today == null || d <= today) && sessionDates.has(d),
+    ).length,
   };
 }

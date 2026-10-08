@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   getScopedProfile,
-  planningOwnerId,
   viewableAthletes,
   type AthleteOption,
 } from "@/lib/auth-scope";
@@ -39,7 +38,6 @@ import {
   workoutTypeColorVar,
   type WorkoutType,
 } from "@/lib/planning";
-import { STATUS_COLOR_VAR } from "@/lib/calendar-utils";
 import { buttonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
 
@@ -86,16 +84,10 @@ function dayAfter(dateKeyStr: string): string {
   return toDateKey(addDays(new Date(`${dateKeyStr}T00:00:00`), 1));
 }
 
-function pct(n: number): string {
-  return `${Math.round(n * 100)} %`;
-}
-
-/** Efterlevnad som andel, eller null när ingenting var planerat — då finns
- * inget att vara trogen mot, och "0 %" vore direkt missvisande. */
-function complianceShare(stats: RangeStats): number | null {
-  const planned = stats.plannedCount + stats.plannedRestDays;
-  if (planned === 0) return null;
-  return stats.completedCount / planned;
+/** "5/5 · 100 %" — genomförda av passerade. Inget att mäta ger ett streck. */
+function doneOf(done: number, due: number): React.ReactNode {
+  if (due === 0) return <span className="text-[var(--ink-3)]">—</span>;
+  return `${done}/${due} · ${Math.round((done / due) * 100)} %`;
 }
 
 /** Tabellcell som på mobil blir "rubrik över värde" i ett kort. */
@@ -131,15 +123,30 @@ export default async function UppfoljningPage({
 
   const athletes = viewableAthletes(scoped);
 
-  // Blocken ägs av coachen (planningOwnerId), inte av löparna — se
-  // season_block_athletes i migration 20260816100000. Hämtas alltid, inte
-  // bara i block-läget, eftersom väljaren ska kunna byta TILL block.
-  const { data: blockRows } = await supabase
-    .from("season_blocks")
-    .select("id, name, start_date, end_date")
-    .eq("user_id", planningOwnerId(scoped))
-    .order("start_date");
-  const blocks = (blockRows ?? []) as PeriodBlock[];
+  /* Blocken hämtas via löparna (season_block_athletes), inte via vem som
+   * äger dem. Med ägaren som filter såg en andra tränare inga block alls:
+   * Robert, som coachar samma löpare som Daniel, fick "Inga block upplagda än"
+   * trots att hans löpare hade tolv (2026-10-08). Samma väg som
+   * Säsongsöversikten. Hämtas alltid, inte bara i block-läget, eftersom
+   * väljaren ska kunna byta TILL block. */
+  const athleteIdList = athletes.map((a) => a.id);
+  const { data: blockRows } =
+    athleteIdList.length > 0
+      ? await supabase
+          .from("season_blocks")
+          .select("id, name, start_date, end_date, blockFilter:season_block_athletes!inner(athlete_id)")
+          .in("blockFilter.athlete_id", athleteIdList)
+          .order("start_date")
+      : { data: [] };
+  // Ett block med flera löpare kommer en gång; mappas om till PeriodBlock.
+  const blocks: PeriodBlock[] = [
+    ...new Map(
+      ((blockRows ?? []) as (PeriodBlock & { blockFilter?: unknown })[]).map((b) => [
+        b.id,
+        { id: b.id, name: b.name, start_date: b.start_date, end_date: b.end_date },
+      ]),
+    ).values(),
+  ];
 
   const blockPeriod = resolveBlockPeriod(blocks, blockParam, todayKey);
 
@@ -273,6 +280,7 @@ export default async function UppfoljningPage({
               sessions,
               competitionDates,
               interruptions,
+              today: new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" }),
             }),
           };
         });
@@ -391,11 +399,23 @@ export default async function UppfoljningPage({
               />
             </StatCell>
             <StatCell>
-              <Stat
-                label="Genomförda"
-                value={rows.reduce((n, r) => n + r.stats.sessionCount, 0)}
-                sub={`${rows.reduce((n, r) => n + r.stats.unplannedCount, 0)} oplanerade`}
-              />
+              {(() => {
+                const due = rows.reduce(
+                  (n, r) => n + r.stats.qualityDue + r.stats.distanceDue + r.stats.strengthDue,
+                  0,
+                );
+                const done = rows.reduce(
+                  (n, r) => n + r.stats.qualityDone + r.stats.distanceDone + r.stats.strengthDone,
+                  0,
+                );
+                return (
+                  <Stat
+                    label="Efterlevnad"
+                    value={due > 0 ? `${done}/${due}` : "—"}
+                    sub={due > 0 ? `${Math.round((done / due) * 100)} % av planerade hittills` : "inga pass passerade än"}
+                  />
+                );
+              })()}
             </StatCell>
             <StatCell>
               <Stat
@@ -417,11 +437,10 @@ export default async function UppfoljningPage({
                 <tr className="border-b border-[var(--line)] text-left text-[0.6875rem] tracking-wider text-[var(--ink-3)] uppercase">
                   <th scope="col" className="px-3 py-2.5 font-semibold">Löpare</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Planerat</th>
-                  <th scope="col" className="px-3 py-2.5 font-semibold">Genomfört</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Efterlevnad</th>
-                  <th scope="col" className="px-3 py-2.5 font-semibold">Frånvaro</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Kvalitet</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Distanspass</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Styrka</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Distans</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Tid</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Tävlingar</th>
@@ -429,7 +448,6 @@ export default async function UppfoljningPage({
               </thead>
               <tbody className="block sm:table-row-group">
                 {rows.map(({ athlete, stats }) => {
-                  const share = complianceShare(stats);
                   return (
                     <tr key={athlete.id} className="grid grid-cols-2 gap-x-4 gap-y-2 border-b border-[var(--line)] p-3 last:border-0 sm:table-row sm:p-0">
                       <th scope="row" className="col-span-2 text-left font-medium text-[var(--foreground)] sm:px-3 sm:py-2.5">
@@ -446,82 +464,26 @@ export default async function UppfoljningPage({
                           </span>
                         )}
                       </td>
-                      <td data-label="Genomfört" className={FOLLOW_UP_CELL}>
-                        {stats.sessionCount}
-                        {stats.unplannedCount > 0 && (
-                          <span className="text-xs text-[var(--ink-3)]">
-                            {" "}
-                            varav {stats.unplannedCount} oplanerade
-                          </span>
-                        )}
-                      </td>
+                      {/* Antal gjorda pass av varje slag mot antal planerade som
+                          passerat, inom perioden — inte parat dag för dag
+                          (begäran 2026-10-08, se lib/range-stats.ts).
+                          Efterlevnaden är summan av de tre. Ingen färgskala:
+                          rött för vad någon gjort eller inte gjort hör inte
+                          hemma i appen (docs/tranarloopen.md 6). */}
                       <td data-label="Efterlevnad" className={FOLLOW_UP_CELL}>
-                        {/* Ingen färgskala här med flit: docs/tranarloopen.md
-                            avsnitt 6 — rött för vad någon gjort eller inte
-                            gjort hör inte hemma i appen. Talet står för sig. */}
-                        {share == null ? (
-                          <span className="text-[var(--ink-3)]">inget planerat</span>
-                        ) : (
-                          `${stats.completedCount} av ${stats.plannedCount + stats.plannedRestDays} · ${pct(share)}`
-                        )}
-                      </td>
-                      {/* Frånvaron står direkt efter efterlevnaden med flit:
-                          "3 av 8 · 38 %" läses helt olika beroende på om
-                          löparen var sjuk fyra av dagarna, och den
-                          förklaringen ska inte ligga sex kolumner bort.
-                          Färgerna är dagsutfallets (STATUS_COLOR_VAR), samma
-                          gult och rött som kalendern och sviten — men
-                          siffrorna är utskrivna med ord, så prickarna bara
-                          bekräftar det texten redan säger. */}
-                      <td data-label="Frånvaro" className={FOLLOW_UP_CELL}>
-                        {stats.sickDays === 0 && stats.injuredDays === 0 ? (
-                          <span className="text-[var(--ink-3)]">—</span>
-                        ) : (
-                          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            {stats.sickDays > 0 && (
-                              <span className="flex items-center gap-1">
-                                <span
-                                  aria-hidden
-                                  className="inline-block h-2 w-2 shrink-0 rounded-full"
-                                  style={{ backgroundColor: STATUS_COLOR_VAR.sick }}
-                                />
-                                {stats.sickDays} sjuk
-                              </span>
-                            )}
-                            {stats.injuredDays > 0 && (
-                              <span className="flex items-center gap-1">
-                                <span
-                                  aria-hidden
-                                  className="inline-block h-2 w-2 shrink-0 rounded-full"
-                                  style={{ backgroundColor: STATUS_COLOR_VAR.injured }}
-                                />
-                                {stats.injuredDays} skadad
-                              </span>
-                            )}
-                          </span>
+                        {doneOf(
+                          stats.qualityDone + stats.distanceDone + stats.strengthDone,
+                          stats.qualityDue + stats.distanceDue + stats.strengthDue,
                         )}
                       </td>
                       <td data-label="Kvalitet" className={FOLLOW_UP_CELL}>
-                        {stats.qualityPlanned === 0 ? (
-                          <span className="text-[var(--ink-3)]">—</span>
-                        ) : (
-                          `${stats.qualityCompleted} av ${stats.qualityPlanned}`
-                        )}
+                        {doneOf(stats.qualityDone, stats.qualityDue)}
                       </td>
-                      {/* Genomförda distanspass. Kvalitetskolumnen räknar bara
-                          tröskel, intervall, tävling och test — den aeroba
-                          grunden, som är merparten av veckan, syntes inte
-                          någonstans i tabellen.
-                          Allt som inte är kvalitet räknas här, inte bara
-                          kategorin "easy": annars saknade Kvalitet + Distanspass
-                          pass som stod i Genomfört-kolumnen (se
-                          distanceCompleted i lib/range-stats.ts). */}
                       <td data-label="Distanspass" className={FOLLOW_UP_CELL}>
-                        {stats.distanceCompleted === 0 ? (
-                          <span className="text-[var(--ink-3)]">0</span>
-                        ) : (
-                          stats.distanceCompleted
-                        )}
+                        {doneOf(stats.distanceDone, stats.distanceDue)}
+                      </td>
+                      <td data-label="Styrka" className={FOLLOW_UP_CELL}>
+                        {doneOf(stats.strengthDone, stats.strengthDue)}
                       </td>
                       <td data-label="Distans" className={FOLLOW_UP_CELL}>
                         {stats.actualKm.toFixed(1)} km
@@ -535,8 +497,14 @@ export default async function UppfoljningPage({
                       <td data-label="Tid" className={FOLLOW_UP_CELL}>
                         {stats.actualHours.toFixed(1)} h
                       </td>
+                      {/* Genomförda av alla tävlingar i perioden, även kommande:
+                          "0/1" är en tävling som ligger framför. */}
                       <td data-label="Tävlingar" className={FOLLOW_UP_CELL}>
-                        {stats.competitionCount}
+                        {stats.competitionCount === 0 ? (
+                          <span className="text-[var(--ink-3)]">—</span>
+                        ) : (
+                          `${stats.competitionsDone}/${stats.competitionCount}`
+                        )}
                       </td>
                     </tr>
                   );
