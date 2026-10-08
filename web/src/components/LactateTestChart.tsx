@@ -44,7 +44,11 @@ export function LactateTestChart({
   steps: LactateTestStep[];
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(640);
+  /* Börjar på 0, inte på en gissad bredd. En fast startbredd (tidigare 640)
+   * tryckte ut flexbehållaren på mobil, så ResizeObserver mätte den utökade
+   * bredden och svg:n fastnade på 681 px på en 390 px-skärm. Höjden hålls
+   * ändå (minHeight nedan), så sidan hoppar inte när diagrammet ritas. */
+  const [width, setWidth] = useState(0);
   const [hover, setHover] = useState<number | null>(null);
 
   useEffect(() => {
@@ -150,7 +154,8 @@ export function LactateTestChart({
         ))}
       </ul>
 
-      <div ref={wrapRef} className="relative w-full">
+      <div ref={wrapRef} className="relative w-full min-w-0" style={{ minHeight: H }}>
+        {width > 0 && (
         <svg
           width={width}
           height={H}
@@ -248,6 +253,7 @@ export function LactateTestChart({
             onPointerLeave={() => setHover(null)}
           />
         </svg>
+        )}
 
         {hovered && (
           <div

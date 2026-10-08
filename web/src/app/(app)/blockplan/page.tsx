@@ -474,16 +474,22 @@ function WeekGrid({
   }
   const currentMonday = currentMondayKey();
   return (
-    <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+    <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] sm:overflow-x-auto">
       {/* `table-fixed` + fast veckokolumn gör att alla sju dagkolumner blir
           exakt lika breda, och — eftersom varje block renderar samma tabell
           med samma mått — att måndagen i ett block hamnar rakt under
           måndagen i nästa. Utan det auto-anpassar varje tabell sig efter
           sitt EGET innehåll, så två block med olika många löpare eller
           längre passrubriker fick olika kolumnbredder och dagarna
-          hamnade i sicksack mellan blocken (uttrycklig begäran 2026-08-21). */}
-      <table className="w-full min-w-[960px] table-fixed border-collapse text-xs">
-        <thead>
+          hamnade i sicksack mellan blocken (uttrycklig begäran 2026-08-21).
+
+          På mobil får sju dagkolumner inte plats (960 px på en 390 px-skärm).
+          Samma tabell ställs då om med CSS till en lista: varje vecka blir ett
+          kort och dagarna staplas under varandra, med dagnamnet till vänster.
+          En och samma DOM i stället för en separat mobilvy — redigeringen
+          (passkort, "+ nytt pass") finns då bara på ett ställe. */}
+      <table className="block w-full border-collapse text-xs sm:table sm:min-w-[960px] sm:table-fixed">
+        <thead className="hidden sm:table-header-group">
           <tr>
             <th className="w-24 border-b border-[var(--line)] px-1 pb-1 text-left font-medium text-[var(--ink-3)]">
               Vecka
@@ -498,7 +504,7 @@ function WeekGrid({
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="block sm:table-row-group">
           {weeks.map((week) => (
             /* Innevarande vecka får ett ankare (ScrollToAnchor rullar hit vid
                laddning) och en tydligare ram. scroll-mt håller raden fri från
@@ -509,11 +515,11 @@ function WeekGrid({
                  som är idag eller senare, och behöver därför inte veta något
                  om block eller om vilken vecka som är "rätt". */
               data-week={week.weekStart}
-              className={`scroll-mt-28 align-top ${
+              className={`block scroll-mt-28 border-b border-[var(--line)] align-top sm:table-row sm:border-b-0 ${
                 week.weekStart === currentMonday ? "bg-[var(--surface-raised)]/60" : ""
               }`}
             >
-              <td className="border-b border-[var(--line)] px-1 py-2">
+              <td className="block px-2 pt-2 pb-1 sm:table-cell sm:border-b sm:border-[var(--line)] sm:px-1 sm:py-2">
                 <div className="font-medium text-[var(--ink-2)]">
                   v{week.isoWeekNumber}
                   {week.weekStart === currentMonday && (
@@ -524,14 +530,22 @@ function WeekGrid({
               </td>
               {week.days.map((day, di) => {
                 const canEditableDay = canEdit && !week.outside[di];
+                // På mobil visas bara dagar som har något att visa eller där
+                // ett pass kan läggas till — tomma dagar utanför blocket finns
+                // bara för att hålla rutnätets form på stor skärm.
+                const hasContent =
+                  day.competitions.length > 0 || day.passes.length > 0 || canEditableDay;
                 return (
                 <td
                   key={day.date}
-                  className={`border-b border-[var(--line)] px-1 py-2 ${
+                  className={`${hasContent ? "flex" : "hidden"} gap-2 px-2 py-1.5 sm:table-cell sm:border-b sm:border-[var(--line)] sm:px-1 sm:py-2 ${
                     week.outside[di] ? "bg-[var(--surface-raised)]/40" : ""
                   }`}
                 >
-                  <div className="flex flex-col gap-1">
+                  <span className="w-9 shrink-0 pt-0.5 font-medium text-[var(--ink-3)] sm:hidden">
+                    {WEEKDAY_LABELS[di].slice(0, 3)}
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
                     {day.competitions.map((c) => (
                       <CompetitionCard
                         key={c.key}

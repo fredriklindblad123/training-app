@@ -100,7 +100,33 @@ export function RaceTimeline({ races, todayKey }: { races: TimelineRace[]; today
       <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
         Säsongen framför oss
       </h2>
-      <div className="day-surface overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
+      {/* På mobil får etiketterna inte plats längs axeln utan att krocka, så
+          loppen visas där som en lista i datumordning. Tidslinjen är kvar
+          från sm och uppåt. */}
+      <ul className="day-surface flex flex-col divide-y divide-[var(--line)] rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 sm:hidden">
+        {sorted.map((race) => (
+          <li key={`${race.date}|${race.name}`} className="flex items-center gap-2.5 py-2">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{
+                backgroundColor: race.priority === "A" ? "var(--cat-race)" : "transparent",
+                border: "2px solid var(--cat-race)",
+                boxSizing: "border-box",
+              }}
+            />
+            <span className="min-w-0 flex-1">
+              <span className="display block truncate text-sm font-semibold text-[var(--foreground)]">
+                {race.name}
+              </span>
+              <span className="tabular block text-xs text-[var(--ink-3)]">
+                {race.date} · {priorityLabel(race.priority)} · {race.athletes} löpare
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="day-surface hidden overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 sm:block">
         <div className="min-w-[32rem]">
           {/* Månadsrutnätet ritas bakom både linjen och etiketterna, så att man
               kan läsa AV när ett lopp ligger och inte bara att det ligger

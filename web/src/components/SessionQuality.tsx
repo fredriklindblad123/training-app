@@ -41,8 +41,8 @@ function OccurrenceRow({
   const pace = per400(occurrence.meanRepSeconds, distanceMeters);
 
   return (
-    <tr className="border-t border-[var(--line)]">
-      <td className="py-1.5 pr-3 whitespace-nowrap">
+    <tr className="grid grid-cols-4 gap-x-3 gap-y-1 border-t border-[var(--line)] px-3 py-2 sm:table-row sm:p-0">
+      <td className="whitespace-nowrap sm:py-1.5 sm:pr-3">
         {/* Länk till dagvyn — därifrån finns hela passet: varvtabell,
             dagbokstext och nattens sömndata. */}
         <Link
@@ -52,10 +52,10 @@ function OccurrenceRow({
           {occurrence.date}
         </Link>
       </td>
-      <td className="py-1.5 pr-3 whitespace-nowrap text-[var(--ink-2)]">
+      <td className="col-span-3 whitespace-nowrap text-[var(--ink-2)] sm:py-1.5 sm:pr-3">
         {occurrence.signature.label}
       </td>
-      <td className="py-1.5 pr-3 text-right tabular-nums font-medium text-[var(--foreground)]">
+      <td data-label="Snitt/rep" className="font-medium text-[var(--foreground)] tabular-nums sm:py-1.5 sm:pr-3 sm:text-right before:block before:text-[0.65rem] before:text-[var(--ink-3)] before:content-[attr(data-label)] sm:before:content-none">
         {fmtTime(occurrence.meanRepSeconds)}
         {isBest && (
           <span className="ml-1 text-xs font-normal text-emerald-600 dark:text-emerald-400">
@@ -63,16 +63,16 @@ function OccurrenceRow({
           </span>
         )}
       </td>
-      <td className="py-1.5 pr-3 text-right tabular-nums text-[var(--ink-3)]">
+      <td data-label="Mot bäst" className="text-[var(--ink-3)] tabular-nums sm:py-1.5 sm:pr-3 sm:text-right before:block before:text-[0.65rem] before:text-[var(--ink-3)] before:content-[attr(data-label)] sm:before:content-none">
         {delta <= 0.05 ? "—" : `+${delta.toFixed(1)}s`}
       </td>
-      <td className="py-1.5 pr-3 text-right tabular-nums text-[var(--ink-2)]">
+      <td data-label="s/400 m" className="text-[var(--ink-2)] tabular-nums sm:py-1.5 sm:pr-3 sm:text-right before:block before:text-[0.65rem] before:text-[var(--ink-3)] before:content-[attr(data-label)] sm:before:content-none">
         {pace != null ? pace.toFixed(1) : "—"}
       </td>
-      <td className="py-1.5 pr-3 text-right tabular-nums text-[var(--ink-2)]">
+      <td data-label="Puls" className="text-[var(--ink-2)] tabular-nums sm:py-1.5 sm:pr-3 sm:text-right before:block before:text-[0.65rem] before:text-[var(--ink-3)] before:content-[attr(data-label)] sm:before:content-none">
         {occurrence.meanRepHr ? Math.round(occurrence.meanRepHr) : "—"}
       </td>
-      <td className="py-1.5 tabular-nums text-xs text-[var(--ink-3)]">
+      <td className="col-span-4 text-xs text-[var(--ink-3)] tabular-nums sm:py-1.5">
         {times.map((t) => fmtTime(t)).join("  ")}
       </td>
     </tr>
@@ -168,9 +168,13 @@ function SignatureCard({ group, racePace }: { group: SignatureGroup; racePace: R
         </div>
       </summary>
 
-      <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-        <table className="w-full min-w-[36rem] text-sm">
-          <thead>
+      {/* Sju kolumner får inte plats på en telefon. På mobil ställs tabellen
+          om med CSS: varje genomförande blir ett kort med datum och upplägg
+          överst, de fyra talen under med kolumnrubriken ovanför, och
+          varvtiderna sist. */}
+      <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] sm:overflow-x-auto">
+        <table className="block w-full text-sm sm:table sm:min-w-[36rem]">
+          <thead className="hidden sm:table-header-group">
             <tr className="text-left text-xs text-[var(--ink-3)]">
               <th className="pb-1 font-normal">Datum</th>
               <th className="pb-1 font-normal">Upplägg</th>
@@ -181,7 +185,7 @@ function SignatureCard({ group, racePace }: { group: SignatureGroup; racePace: R
               <th className="pb-1 font-normal">Varvtider</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="block sm:table-row-group">
             {shown.map((o) => (
               <OccurrenceRow
                 key={`${o.activityId}`}

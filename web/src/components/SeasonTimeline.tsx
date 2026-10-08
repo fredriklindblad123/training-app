@@ -311,8 +311,11 @@ export function SeasonTimeline({
    */
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
-        <div className="min-w-[36rem]">
+      {/* På mobil står blockets namn ovanför stapeln i stället för i en
+          kolumn bredvid, så stapeln får hela skärmbredden och inget behöver
+          svepas i sidled. */}
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 sm:overflow-x-auto">
+        <div className="sm:min-w-[36rem]">
           {/* SÄSONGSBANDET, överst och på samma axel som blocken.
               Säsongerna låg tidigare som rubriker mellan blockraderna, alltså
               som grupper i en lista. Det bröt kronologin: "Återhämtning ht
@@ -325,7 +328,7 @@ export function SeasonTimeline({
             const groups = groupBlocksBySeason(sortedBlocks);
             return (
               <div className="mb-2 flex items-center gap-3">
-                <div className="w-44 shrink-0" />
+                <div className="hidden w-44 shrink-0 sm:block" />
                 <div className="relative h-6 flex-1">
                   {groups.map((g) => {
                     const from = g.blocks.reduce(
@@ -371,11 +374,11 @@ export function SeasonTimeline({
               );
               const current = b.start_date <= todayKey && todayKey <= b.end_date;
               return (
-                <div key={b.id} className="flex items-center gap-3">
+                <div key={b.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
                   {/* Etikettkolumnen har fast bredd så att alla staplar
                       börjar på samma x — annars flyttar sig axeln beroende på
                       hur långt ett blocknamn råkar vara. */}
-                  <div className="flex w-44 shrink-0 flex-col leading-tight">
+                  <div className="flex w-full shrink-0 flex-col leading-tight sm:w-44">
                     <span
                       className={`display truncate text-sm font-semibold ${
                         current ? "text-[var(--foreground)]" : "text-[var(--ink-2)]"
@@ -394,7 +397,7 @@ export function SeasonTimeline({
                     </span>
                   </div>
 
-                  <div className="relative h-7 flex-1">
+                  <div className="relative h-7 w-full shrink-0 sm:w-auto sm:flex-1">
                     {grid}
                     <div
                       className="absolute top-0 flex h-7 items-center overflow-hidden rounded px-2"
@@ -436,11 +439,11 @@ export function SeasonTimeline({
             if (inRange.length === 0) return null;
 
             return (
-              <div className="mt-2 flex items-center gap-3 border-t border-[var(--line)] pt-2">
-                <div className="display w-44 shrink-0 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+              <div className="mt-2 flex flex-col gap-1 border-t border-[var(--line)] pt-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="display w-full shrink-0 sm:w-44 text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
                   Tävlingar
                 </div>
-                <div className="relative h-5 flex-1">
+                <div className="relative h-5 w-full shrink-0 sm:w-auto sm:flex-1">
                   {grid}
                   {inRange.map((r) => (
                     <span
@@ -463,7 +466,7 @@ export function SeasonTimeline({
           {/* Axeln under staplarna, inskjuten lika mycket som etikettkolumnen
               så att månaderna står i linje med rutnätet ovanför. */}
           <div className="flex">
-            <div className="w-44 shrink-0" />
+            <div className="hidden w-44 shrink-0 sm:block" />
             <div className="flex-1">{monthAxis}</div>
           </div>
         </div>

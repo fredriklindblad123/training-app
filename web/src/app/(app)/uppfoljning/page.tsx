@@ -98,6 +98,10 @@ function complianceShare(stats: RangeStats): number | null {
   return stats.completedCount / planned;
 }
 
+/** Tabellcell som på mobil blir "rubrik över värde" i ett kort. */
+const FOLLOW_UP_CELL =
+  "tabular block text-[var(--ink-2)] before:block before:text-[0.6875rem] before:tracking-wider before:text-[var(--ink-3)] before:uppercase before:content-[attr(data-label)] sm:table-cell sm:px-3 sm:py-2.5 sm:before:content-none";
+
 export default async function UppfoljningPage({
   searchParams,
 }: {
@@ -403,11 +407,13 @@ export default async function UppfoljningPage({
             </StatCell>
           </StatRow>
 
-          {/* Tabellen scrollar i sin egen behållare — sidan i sig ska aldrig
-              scrolla i sidled, och tio kolumner får inte plats på en telefon. */}
-          <div className="overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-            <table className="w-full min-w-4xl border-collapse text-sm">
-              <thead>
+          {/* Tio kolumner får inte plats på en telefon. På stor skärm är det
+              en tabell som scrollar i sin egen behållare; på mobil ställs
+              samma tabell om med CSS så att varje löpare blir ett kort, med
+              kolumnrubriken (data-label) ovanför varje värde. */}
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] sm:overflow-x-auto">
+            <table className="block w-full border-collapse text-sm sm:table sm:min-w-4xl">
+              <thead className="hidden sm:table-header-group">
                 <tr className="border-b border-[var(--line)] text-left text-[0.6875rem] tracking-wider text-[var(--ink-3)] uppercase">
                   <th scope="col" className="px-3 py-2.5 font-semibold">Löpare</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Planerat</th>
@@ -421,17 +427,17 @@ export default async function UppfoljningPage({
                   <th scope="col" className="px-3 py-2.5 font-semibold">Tävlingar</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="block sm:table-row-group">
                 {rows.map(({ athlete, stats }) => {
                   const share = complianceShare(stats);
                   return (
-                    <tr key={athlete.id} className="border-b border-[var(--line)] last:border-0">
-                      <th scope="row" className="px-3 py-2.5 text-left font-medium text-[var(--foreground)]">
+                    <tr key={athlete.id} className="grid grid-cols-2 gap-x-4 gap-y-2 border-b border-[var(--line)] p-3 last:border-0 sm:table-row sm:p-0">
+                      <th scope="row" className="col-span-2 text-left font-medium text-[var(--foreground)] sm:px-3 sm:py-2.5">
                         <Link href={`/dashboard?athlete=${athlete.id}`} className="hover:underline">
                           {athlete.fullName ?? "Namnlös löpare"}
                         </Link>
                       </th>
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Planerat" className={FOLLOW_UP_CELL}>
                         {stats.plannedCount}
                         {stats.plannedRestDays > 0 && (
                           <span className="text-xs text-[var(--ink-3)]">
@@ -440,7 +446,7 @@ export default async function UppfoljningPage({
                           </span>
                         )}
                       </td>
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Genomfört" className={FOLLOW_UP_CELL}>
                         {stats.sessionCount}
                         {stats.unplannedCount > 0 && (
                           <span className="text-xs text-[var(--ink-3)]">
@@ -449,7 +455,7 @@ export default async function UppfoljningPage({
                           </span>
                         )}
                       </td>
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Efterlevnad" className={FOLLOW_UP_CELL}>
                         {/* Ingen färgskala här med flit: docs/tranarloopen.md
                             avsnitt 6 — rött för vad någon gjort eller inte
                             gjort hör inte hemma i appen. Talet står för sig. */}
@@ -467,7 +473,7 @@ export default async function UppfoljningPage({
                           gult och rött som kalendern och sviten — men
                           siffrorna är utskrivna med ord, så prickarna bara
                           bekräftar det texten redan säger. */}
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Frånvaro" className={FOLLOW_UP_CELL}>
                         {stats.sickDays === 0 && stats.injuredDays === 0 ? (
                           <span className="text-[var(--ink-3)]">—</span>
                         ) : (
@@ -495,7 +501,7 @@ export default async function UppfoljningPage({
                           </span>
                         )}
                       </td>
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Kvalitet" className={FOLLOW_UP_CELL}>
                         {stats.qualityPlanned === 0 ? (
                           <span className="text-[var(--ink-3)]">—</span>
                         ) : (
@@ -510,14 +516,14 @@ export default async function UppfoljningPage({
                           kategorin "easy": annars saknade Kvalitet + Distanspass
                           pass som stod i Genomfört-kolumnen (se
                           distanceCompleted i lib/range-stats.ts). */}
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Distanspass" className={FOLLOW_UP_CELL}>
                         {stats.distanceCompleted === 0 ? (
                           <span className="text-[var(--ink-3)]">0</span>
                         ) : (
                           stats.distanceCompleted
                         )}
                       </td>
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Distans" className={FOLLOW_UP_CELL}>
                         {stats.actualKm.toFixed(1)} km
                         {stats.plannedKm != null && (
                           <span className="text-xs text-[var(--ink-3)]">
@@ -526,10 +532,10 @@ export default async function UppfoljningPage({
                           </span>
                         )}
                       </td>
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Tid" className={FOLLOW_UP_CELL}>
                         {stats.actualHours.toFixed(1)} h
                       </td>
-                      <td className="tabular px-3 py-2.5 text-[var(--ink-2)]">
+                      <td data-label="Tävlingar" className={FOLLOW_UP_CELL}>
                         {stats.competitionCount}
                       </td>
                     </tr>
