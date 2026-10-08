@@ -866,16 +866,62 @@ async function ArsplanOverview({
         {sortedAllBlocks.length === 0 ? (
           <p className="text-sm text-[var(--ink-3)]">Inga block skapade ännu.</p>
         ) : (
-          <div className="flex flex-col gap-2">
-            {sortedAllBlocks.map((b) => (
-              <BlockCard
-                key={b.id}
-                block={b}
-                canEdit={canEditPlanning(scoped)}
-                athletes={athletes}
-                selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
-              />
-            ))}
+          /* Indelad i säsonger (begäran 2026-10-08): inomhus, utomhus och
+             perioderna mellan dem, per år — samma indelning som tidslinjen i
+             löparens egen vy (seasonSectionKey), så de två aldrig säger
+             olika saker om vilken säsong ett block hör till. */
+          <div className="flex flex-col gap-6">
+            {/* Block som ligger EFTER VARANDRA med samma säsong bildar en
+                grupp. groupBlocksBySeason slår ihop allt med samma säsong och
+                år, och lade då vårens förberedelse och höstens återhämtning
+                under samma "mellan säsongerna"-rubrik, före utesäsongen. */}
+            {sortedAllBlocks
+              .reduce<{ key: string; blocks: BlockCardBlock[] }[]>((groups, b) => {
+                const key = seasonSectionKey(b).key;
+                const last = groups[groups.length - 1];
+                if (last && last.key === key) last.blocks.push(b);
+                else groups.push({ key, blocks: [b] });
+                return groups;
+              }, [])
+              .map((g, gi) => {
+              const [year, kind] = g.key.split("-");
+              const title =
+                kind === "indoor"
+                  ? `Inomhussäsong ${year}`
+                  : kind === "outdoor"
+                    ? `Utomhussäsong ${year}`
+                    : `Mellan säsongerna ${year}`;
+              const from = g.blocks[0].start_date;
+              const to = g.blocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), g.blocks[0].end_date);
+              // Neutrala toner: kategorifärgerna betyder redan passtyper.
+              const accent = kind === "none" ? "var(--line)" : "var(--ink-2)";
+              return (
+                <section key={`${g.key}-${gi}`} className="flex flex-col gap-2">
+                  <div
+                    className="flex flex-wrap items-baseline justify-between gap-x-3 border-l-4 pl-3"
+                    style={{ borderLeftColor: accent }}
+                  >
+                    <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                      {title}
+                    </h3>
+                    <span className="tabular text-xs text-[var(--ink-3)]">
+                      {from} – {to} · {g.blocks.length} block
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-2 border-l-4 pl-3" style={{ borderLeftColor: accent }}>
+                    {g.blocks.map((b) => (
+                      <BlockCard
+                        key={b.id}
+                        block={b}
+                        canEdit={canEditPlanning(scoped)}
+                        athletes={athletes}
+                        selectedAthleteIds={athleteIdsByBlockId.get(b.id) ?? new Set()}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
       </section>
