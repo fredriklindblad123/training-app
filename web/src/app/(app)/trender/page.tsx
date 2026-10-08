@@ -723,14 +723,6 @@ export default async function TrendsPage({
         </div>
       </div>
 
-      {/* Ramen först: vyn ska läsas som vägledning, inte som facit. */}
-      <FormIntro
-        lt1={thresholdProfile.lt1Hr}
-        lt2={thresholdProfile.lt2Hr}
-        lt2Source={(profileRow?.lt2_source as string | null) ?? null}
-        lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
-        hasGarminData={sessions.length > 0}
-      />
 
       {/* Toppen är en dom, inte ett lager av nyckeltal. Här låg tidigare
           CV-rutan, efterlevnadskortet och fyra nyckeltal — ett dussin tal
@@ -754,12 +746,6 @@ export default async function TrendsPage({
         </section>
       )}
 
-      {/* Det senaste laktattestet, ritat som i testrapporten. Hela testet,
-          oavsett vald period — samma skäl som laktatstickens historik:
-          ett test tas ett par gånger per säsong. Begäran 2026-09-29. */}
-      {labZoneSet && labTestSteps.length > 1 && (
-        <LactateTestSection set={labZoneSet} steps={labTestSteps} />
-      )}
 
       {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet =====
           Sektionen visas ALLTID. Laktatkurvan och förklaringen av de tre
@@ -780,6 +766,15 @@ export default async function TrendsPage({
           </span>
         }
       >
+        {/* Ramen först: vyn ska läsas som vägledning, inte som facit. */}
+        <FormIntro
+          lt1={thresholdProfile.lt1Hr}
+          lt2={thresholdProfile.lt2Hr}
+          lt2Source={(profileRow?.lt2_source as string | null) ?? null}
+          lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
+          hasGarminData={sessions.length > 0}
+        />
+
         <LactateCurve lt1={gears?.lt1 ?? null} lt2={gears?.lt2 ?? null} />
 
         {/* Kurvan ovanför är principen; det här är de egna mätningarna.
@@ -945,6 +940,13 @@ export default async function TrendsPage({
           />
         </div>
       </CollapsibleSection>
+
+      {/* Det senaste laktattestet, ritat som i testrapporten. Hela testet,
+          oavsett vald period — samma skäl som laktatstickens historik:
+          ett test tas ett par gånger per säsong. Begäran 2026-09-29. */}
+      {labZoneSet && labTestSteps.length > 1 && (
+        <LactateTestSection set={labZoneSet} steps={labTestSteps} />
+      )}
 
       {/* ===== Utfallen: blir motorn större? ===== */}
       {(vo2max || efPoints.length > 0) && (

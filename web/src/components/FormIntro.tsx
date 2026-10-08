@@ -32,12 +32,10 @@ export function FormIntro({
   const estimated = lt2Source == null || lt2Source === "manuell";
 
   return (
-    <section className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-      <h2 className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-        Så ska den här vyn läsas
-      </h2>
-
-      <p className="mt-2 max-w-3xl text-sm text-[var(--ink-2)]">
+    /* Inledningen i "Träningens tre växlar" sedan 2026-10-08 — tidigare ett
+       eget kort, "Så ska den här vyn läsas", överst på sidan. */
+    <div className="flex flex-col">
+      <p className="max-w-3xl text-sm text-[var(--ink-2)]">
         Hur distans, tröskel och intervall hänger ihop — och var din träning hamnar. Vägledning
         och underlag för samtal med tränaren, inte betyg.
         {hasGarminData && " Allt bygger på att klockans puls och dina trösklar stämmer."}
@@ -65,6 +63,6 @@ export function FormIntro({
           dem under Inställningar så jämförs din träning mot dem.
         </p>
       )}
-    </section>
+    </div>
   );
 }
