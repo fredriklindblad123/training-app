@@ -18,7 +18,7 @@ import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/cat
  * varv, ska inte få ett omdöme byggt på gissningar — och en tom ruta som
  * säger "kunde inte bedömas" är sämre än ingen ruta. */
 
-const TONE_COLOR: Record<SessionReview["tone"], string> = {
+export const REVIEW_TONE_COLOR: Record<SessionReview["tone"], string> = {
   good: "var(--status-good)",
   neutral: "var(--ink-3)",
   note: "var(--status-watch)",
@@ -55,7 +55,7 @@ export function SessionReviewCard({
 
             <p
               className="text-sm font-medium"
-              style={{ color: TONE_COLOR[review.tone] }}
+              style={{ color: REVIEW_TONE_COLOR[review.tone] }}
             >
               {review.headline}
             </p>

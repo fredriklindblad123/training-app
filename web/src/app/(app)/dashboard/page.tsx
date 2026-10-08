@@ -33,6 +33,8 @@ import {
 } from "@/lib/continuity";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
+import { reviewSession, type ReviewRep, type SessionReview } from "@/lib/session-review";
+import type { PhaseType } from "@/lib/planning";
 import { RecordCard } from "@/components/RecordCard";
 import { SeasonContext } from "@/components/SeasonContext";
 import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
@@ -484,6 +486,66 @@ export default async function DashboardPage({
     (activityRows ?? []) as unknown as SessionActivity[],
   );
 
+  /* "Så gick passet" i dagens pass — samma läsning som dagvyn i kalendern
+   * (components/DayContent.tsx), räknad på samma sätt: repen ur merged_splits
+   * för passets dominerande aktivitet, trösklar och mål ur profilen, och
+   * fasen för blocket dagen ligger i. Två extra frågor, och bara när det finns
+   * ett genomfört pass idag. */
+  const reviewBySession = new Map<string, SessionReview>();
+  if (sessions.length > 0) {
+    const dominantIds = sessions.map((s) => s.dominantActivity.id);
+    const [{ data: reviewProfile }, { data: mergedRows }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("lt1_hr, lt2_hr, max_hr, lt2_source, goal_event, goal_seconds")
+        .eq("id", scopedUserId)
+        .maybeSingle(),
+      supabase.rpc("merged_splits", { activity_ids: dominantIds }),
+    ]);
+    type MergedRow = {
+      activity_id: string;
+      is_rest: boolean;
+      distance_meters: number | null;
+      duration_seconds: number | null;
+      avg_hr: number | null;
+    };
+    const repsByActivity = new Map<string, ReviewRep[]>();
+    for (const r of (mergedRows ?? []) as MergedRow[]) {
+      if (r.is_rest || r.distance_meters == null || r.duration_seconds == null) continue;
+      repsByActivity.set(r.activity_id, [
+        ...(repsByActivity.get(r.activity_id) ?? []),
+        {
+          distanceMeters: Number(r.distance_meters),
+          durationSeconds: Number(r.duration_seconds),
+          avgHr: r.avg_hr != null ? Number(r.avg_hr) : null,
+        },
+      ]);
+    }
+    // Blocket från frågan ovan är det pågående ELLER nästa; bara ett som
+    // redan börjat ger dagens fas.
+    const todayPhase =
+      currentBlockRows && (currentBlockRows.start_date as string) <= todayKey
+        ? ((currentBlockRows.phase as PhaseType | null) ?? null)
+        : null;
+    for (const s of sessions) {
+      const review = reviewSession({
+        category: s.category,
+        avgHr: s.avgHr,
+        distanceMeters: s.distanceMeters,
+        durationSeconds: s.durationSeconds,
+        reps: repsByActivity.get(s.dominantActivity.id) ?? [],
+        lt1Hr: reviewProfile?.lt1_hr ?? null,
+        lt2Hr: reviewProfile?.lt2_hr ?? null,
+        maxHr: reviewProfile?.max_hr ?? null,
+        lt2Source: reviewProfile?.lt2_source ?? null,
+        goalEvent: reviewProfile?.goal_event ?? null,
+        goalSeconds: reviewProfile?.goal_seconds != null ? Number(reviewProfile.goal_seconds) : null,
+        phase: todayPhase,
+      });
+      if (review) reviewBySession.set(s.id, review);
+    }
+  }
+
   // --- Kontinuitet och kvalitetssviter (K6) -------------------------------
   // Egen, ofiltrerad grund (allActivityRows/allInterruptionEntries ovan) —
   // sviterna är personbästa över hela historiken, inte bara idag.
@@ -757,6 +819,7 @@ export default async function DashboardPage({
             s.hrZone5Seconds,
           ] as [number, number, number, number, number],
           labZoneSeconds: s.labZoneSeconds,
+          review: reviewBySession.get(s.id) ?? null,
           splits:
             latestSession?.id === s.id
               ? latestSplits.map((r) => ({

@@ -5,6 +5,8 @@ import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/pla
 import { describePlannedWorkout, type RepGroupLike } from "@/lib/workout-summary";
 import { LinkPending } from "@/components/ui/LinkPending";
 import { SessionDetail, type SplitRow } from "@/components/SessionDetail";
+import { REVIEW_TONE_COLOR } from "@/components/SessionReview";
+import type { SessionReview } from "@/lib/session-review";
 
 /* Dagens pass, överst på adeptens dashboard. Rubriken hette "Idag" fram
  * till 2026-09-15.
@@ -52,6 +54,9 @@ export type TodayDone = {
   labZoneSeconds: [number, number, number, number, number] | null;
   /** Varven, när passet har några. Tomt för ett distanspass. */
   splits: SplitRow[];
+  /** "Så gick passet" — samma läsning som dagvyn. null när underlaget inte
+   * räcker; då visas ingenting hellre än en gissning. */
+  review?: SessionReview | null;
 };
 
 /** Färgstapeln som bär passets typ, i full radhöjd. Vila, test och häck har
@@ -214,6 +219,24 @@ export function TodaySession({
                   }}
                   labSet={labSet}
                 />
+                {d.review && (
+                  <div className="flex flex-col gap-1 border-t border-[var(--line)] pt-2">
+                    <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+                      Så gick passet
+                    </span>
+                    <p className="text-sm font-medium" style={{ color: REVIEW_TONE_COLOR[d.review.tone] }}>
+                      {d.review.headline}
+                    </p>
+                    {d.review.lines.map((line, i) => (
+                      <p key={i} className="text-sm text-[var(--ink-2)]">
+                        {line}
+                      </p>
+                    ))}
+                    {d.review.caveat && (
+                      <p className="text-xs text-[var(--ink-3)]">{d.review.caveat}</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
