@@ -45,7 +45,6 @@ import { computeVo2maxTrend, vo2maxVerdict } from "@/lib/vo2max";
 import { CollapsibleSection } from "@/components/ui/CollapsibleSection";
 import {
   computeTrainingGears,
-  gearSeparation,
   gearVerdict,
   GEAR_COLOR_VAR,
   GEAR_PURPOSE,
@@ -577,13 +576,7 @@ export default async function TrendsPage({
   /* Aggregatet för hopfällt läge: hur nära varandra tröskel och intervall
      ligger. Det är växeldiagrammets huvudtal — är skillnaden liten tränas
      samma sak två gånger i veckan under olika namn. */
-  const gearSeparationBeats = gears?.hr ? gearSeparation(gears.hr) : null;
-  const gearsHeadline =
-    gearSeparationBeats == null
-      ? "Tre träningsformer mot dina egna trösklar."
-      : gearSeparationBeats <= 5
-        ? `Tröskel och intervall skiljer bara ${gearSeparationBeats} slag i median. Stämmer mätningen tränas de som samma sak.`
-        : `Tröskel och intervall skiljer ${gearSeparationBeats} slag i median.`;
+
 
   const gearByKey = new Map<GearKey, Gear>(
     ((gears?.hr ?? gears?.pace)?.gears ?? []).map((g) => [g.key, g]),
@@ -755,14 +748,12 @@ export default async function TrendsPage({
           underlag. */}
       <CollapsibleSection
         title="Träningens tre växlar"
-        meta={
-          gears?.lt1 != null && gears?.lt2 != null
-            ? `Trösklar ${gears.lt1} och ${gears.lt2} · ${gears.lt2 - gears.lt1} slags arbetsområde`
-            : "Distans, tröskel och intervall — vad de gör och varför"
-        }
+        /* Sektionen undervisar — den analyserar inte adeptens träning. Det
+           gör Distans, Tröskel och Intervall nedanför (begäran 2026-10-08). */
+        meta="Distans, tröskel och intervall — vad de gör och varför"
         headline={
           <span className="text-sm text-[var(--ink-2)]">
-            {gears ? gearsHeadline : "Så hänger distans, tröskel och intervall ihop."}
+            Så hänger träningsformerna ihop med laktatet och dina trösklar.
           </span>
         }
       >

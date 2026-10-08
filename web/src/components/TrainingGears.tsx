@@ -5,7 +5,6 @@ import {
   formatPacePerKm,
   GEAR_COLOR_VAR,
   GEAR_LABELS,
-  gearSeparation,
   type Gear,
   type GearView,
   type TrainingGears as TrainingGearsData,
@@ -58,7 +57,6 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
 
   const fmt = (v: number) => (descending ? formatPacePerKm(v) : String(Math.round(v)));
   const unit = descending ? "min/km" : "slag";
-  const separation = gearSeparation(view);
 
   const markers = (
     <>
@@ -76,23 +74,6 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
     <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          {separation != null && (
-            <p
-              className="text-base font-medium"
-              style={{
-                /* Gult, aldrig rött: det här beskriver hur träningen lagts,
-                   och rött för något en människa gjort hör inte hemma i
-                   appen (CLAUDE.md, Ton mot adepterna). */
-                color: closeEnough(separation, descending)
-                  ? "var(--status-watch)"
-                  : "var(--foreground)",
-              }}
-            >
-              {closeEnough(separation, descending)
-                ? `Tröskel och intervall skiljer bara ${fmtDiff(separation, descending)} i median. Stämmer mätningen tränas de två som samma sak.`
-                : `Tröskel och intervall skiljer ${fmtDiff(separation, descending)} i median.`}
-            </p>
-          )}
           <p className="mt-1 max-w-2xl text-sm text-[var(--ink-3)]">{view.source}</p>
         </div>
 
@@ -258,17 +239,6 @@ function axisTicks(view: GearView, descending: boolean): number[] {
   // i fartvyn skulle de krocka med de jämna stegen.
   if (!descending) out.push(...view.markers.map((m) => m.value));
   return [...new Set(out.map((v) => Math.round(v)))].sort((a, b) => a - b);
-}
-
-/** Tröskel och intervall räknas som hopsmälta vid ≤5 slag eller ≤10 s/km. */
-function closeEnough(separation: number, descending: boolean): boolean {
-  return descending ? separation <= 10 : separation <= 5;
-}
-
-function fmtDiff(separation: number, descending: boolean): string {
-  return descending
-    ? `${Math.round(separation)} sekunder per kilometer`
-    : `${Math.round(separation)} slag`;
 }
 
 function GearBlock({ heading, children }: { heading: string; children: React.ReactNode }) {

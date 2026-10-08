@@ -36,8 +36,8 @@ export function FormIntro({
        eget kort, "Så ska den här vyn läsas", överst på sidan. */
     <div className="flex flex-col">
       <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-        Hur distans, tröskel och intervall hänger ihop — och var din träning hamnar. Vägledning
-        och underlag för samtal med tränaren, inte betyg.
+        Vad distans, tröskel och intervall gör med kroppen, och varför de ska hållas isär.
+        Vägledning och underlag för samtal med tränaren, inte betyg.
         {hasGarminData && " Allt bygger på att klockans puls och dina trösklar stämmer."}
       </p>
 
