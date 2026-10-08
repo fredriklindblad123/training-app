@@ -25,7 +25,6 @@ export function LactateTestSection({ set, steps }: { set: LabZoneSet; steps: Lac
     <CollapsibleSection
       title={labSourceName(set)}
       meta={set.label}
-      defaultOpen
       headline={
         set.lt1Hr != null && set.lt2Hr != null ? (
           <span className="text-sm text-[var(--ink-2)]">
@@ -38,10 +37,8 @@ export function LactateTestSection({ set, steps }: { set: LabZoneSet; steps: Lac
       }
     >
       <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-        Stegtest på löpband: farten ökar varje steg, och i slutet av steget mäts puls, laktat
-        och upplevd ansträngning. Fälten bakom är de tre intensitetszonerna testet gav. Borg är{" "}
-        <strong>självskattat</strong>, på skalan 6–20. Laktat och Borg har ingen egen axel —
-        talet står vid varje punkt.
+        Stegtest på löpband: farten ökar varje steg, och puls, laktat och ansträngning mäts i
+        slutet av steget. Ansträngningen (Borg 6–20) är <strong>självskattad</strong>.
       </p>
 
       <LactateTestChart set={set} steps={steps} />

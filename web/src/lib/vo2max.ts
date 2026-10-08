@@ -87,17 +87,15 @@ export function vo2maxVerdict(t: Vo2maxTrend): { headline: string; detail: strin
     return {
       headline: `Syreupptaget ligger stilla på ${t.current}.`,
       detail:
-        `Spannet i perioden är ${span}, och klockan rapporterar heltal — rörelser på ett steg är ` +
-        `brus. Ett platt syreupptag hos en tränad löpare är normalt: taket höjs långsamt, medan ` +
-        `tiderna kan fortsätta förbättras genom löpekonomi och högre tröskelfart.`,
+        `Spannet i perioden är ${span}. Ett stilla syreupptag är normalt — taket höjs långsamt, ` +
+        `och tiderna kan ändå bli bättre.`,
     };
   }
   const word = t.direction === "upp" ? "stigit" : "sjunkit";
   return {
     headline: `Syreupptaget har ${word} till ${t.current}.`,
     detail:
-      `Förändringen är ${t.change > 0 ? "+" : ""}${t.change.toFixed(1)} enheter mellan periodens ` +
-      `första och sista tredjedel, inom spannet ${span}. Talet är en skattning ur fart och puls, ` +
-      `så en varm eller kuperad period kan flytta det utan att kapaciteten ändrats.`,
+      `${t.change > 0 ? "+" : ""}${t.change.toFixed(1)} mellan periodens början och slut, ` +
+      `spann ${span}.`,
   };
 }

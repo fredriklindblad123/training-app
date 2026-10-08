@@ -32,7 +32,6 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import { coefficientOfVariation, isoWeekStart, median, weekLabel } from "@/lib/stats-utils";
-import { SessionQuality, type SignatureGroup } from "@/components/SessionQuality";
 import { EasyDiscipline } from "@/components/EasyDiscipline";
 import { LoadStrip } from "@/components/LoadStrip";
 import { TrainingGears } from "@/components/TrainingGears";
@@ -72,7 +71,7 @@ import {
   RACE_PACE_MONTHS,
   type RaceResultRow,
 } from "@/lib/race-pace";
-import { groupBySignature, toOccurrence, type SignatureLap } from "@/lib/session-signature";
+import type { SignatureLap } from "@/lib/session-signature";
 import { addDays as planAddDays, PHASE_LABELS, type PhaseType } from "@/lib/planning";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { ComplianceCard } from "@/components/ComplianceCard";
@@ -345,24 +344,11 @@ export default async function TrendsPage({
     sessionsByWeek.set(wk, [...(sessionsByWeek.get(wk) ?? []), session]);
   }
 
-  // --- P2.1: passkvalitet för återkommande nyckelpass ------------------------
-  // Varven hämtas för periodens aktiviteter och grupperas på signatur, dvs
-  // vad som faktiskt genomfördes (antal och längd på aktiva varv) — passnamnen
-  // är för inkonsekventa för att gruppera på.
-  const activityIds = sessions.flatMap((s) => s.activities.map((a) => a.id));
-  const dateByActivityId = new Map<string, string>();
-  // Passets kategori, inte fragmentets: uppvärmningen i ett intervallpass är
-  // märkt easy men passet är ett intervallpass, och det är den nivån
-  // grupperingen ska ske på.
-  const categoryByActivityId = new Map<string, string | null>();
-  for (const session of sessions) {
-    for (const a of session.activities) {
-      dateByActivityId.set(a.id, session.date);
-      categoryByActivityId.set(a.id, session.category ?? null);
-    }
-  }
+  // --- Varven för växlarna och passgraferna ---------------------------------
+  // Bara passens dominerande aktivitet: det är den som bär kvalitetsarbetet,
+  // och uppvärmningens och nerjoggens varv används inte (se loopen nedan).
+  const activityIds = sessions.map((s) => s.dominantActivity.id);
 
-  let signatureGroups: SignatureGroup[] = [];
   const gearReps: GearRep[] = [];
   /** Aktiviteter med minst ett aktivt varv — skiljer "saknar varvdata" från
    * "inga rep klarar golvet" i listan under tröskelgrafen. */
@@ -375,18 +361,11 @@ export default async function TrendsPage({
       lapsByActivity.set(lap.activity_id, [...(lapsByActivity.get(lap.activity_id) ?? []), lap]);
     }
 
-    const occurrences = [...lapsByActivity.entries()]
-      .map(([id, laps]) =>
-        toOccurrence(
-          id,
-          dateByActivityId.get(id) ?? "",
-          laps,
-          categoryByActivityId.get(id) ?? null,
-        ),
-      )
-      .filter((o): o is NonNullable<typeof o> => o != null && o.date !== "");
-
-    signatureGroups = groupBySignature(occurrences);
+    /* Nyckelpassen (återkommande pass grupperade på signatur, med
+     * components/SessionQuality.tsx) visades tidigare i tröskel- och
+     * intervallsektionerna. Borttagna ur vyn 2026-10-08 för att förenkla
+     * sidan — komponenten och lib/session-signature.ts finns kvar för när de
+     * behövs igen: groupBySignature(toOccurrence(...)) över lapsByActivity. */
 
     /* Växlarnas underlag ur samma varv som signaturerna redan hämtat.
      *
@@ -610,9 +589,6 @@ export default async function TrendsPage({
     ((gears?.hr ?? gears?.pace)?.gears ?? []).map((g) => [g.key, g]),
   );
 
-  // Nyckelpassen delas på växel: tröskelpass hör hemma i tröskelsektionen,
-  // allt annat kvalitetsarbete i intervallsektionen.
-  const thresholdGroups = signatureGroups.filter((g) => g.category === "threshold");
   const intervalPeaks = gearSessionPeaks(gearReps, "interval");
   const intervalPeriodMedian =
     gears?.hr?.gears.find((g) => g.key === "intervall")?.actual?.median ?? null;
@@ -637,7 +613,6 @@ export default async function TrendsPage({
     values
       .filter((v): v is [number, string] => v[0] != null)
       .map(([value, label]) => ({ value, label }));
-  const intervalGroups = signatureGroups.filter((g) => g.category !== "threshold");
 
   // --- Är lugnt verkligen lugnt? -----------------------------------------
   // Kringgår Garmins zonhinkar helt — bara passets snittpuls mot ett band ur
@@ -691,9 +666,11 @@ export default async function TrendsPage({
   const loadHeadline =
     loadRamp == null
       ? "För få veckor med belastning för att mäta steget."
-      : Math.abs(loadRamp.change) > RAMP_WARN
-        ? `Steget mellan veckorna var ${loadRamp.change > 0 ? "+" : ""}${Math.round(loadRamp.change * 100)} % — större än tumregeln.`
-        : `Steget mellan veckorna var ${loadRamp.change > 0 ? "+" : ""}${Math.round(loadRamp.change * 100)} %, inom det normala.`;
+      : loadRamp.change > RAMP_WARN
+        ? `Senaste veckan +${Math.round(loadRamp.change * 100)} % mot veckorna innan — större ökning än tumregeln.`
+        : loadRamp.change < -RAMP_WARN
+          ? `Senaste veckan ${Math.round(loadRamp.change * 100)} % mot veckorna innan — en lugnare vecka.`
+          : `Senaste veckan ${loadRamp.change > 0 ? "+" : ""}${Math.round(loadRamp.change * 100)} % mot veckorna innan, ett jämnt steg.`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
@@ -705,16 +682,9 @@ export default async function TrendsPage({
             <p className="text-sm text-[var(--ink-3)]">
               <strong className="font-medium text-[var(--foreground)]">{activeBlock.name}</strong> (
               {PHASE_LABELS[activeBlock.phase]}), {activeBlock.start_date} – {activeBlock.end_date}
-              {activeBlock.focus ? ` — ${activeBlock.focus}` : ""}. Räknas per{" "}
-              <strong className="font-medium">pass</strong>, inte per Garmin-aktivitet.
+              {activeBlock.focus ? ` — ${activeBlock.focus}` : ""}.
             </p>
-          ) : (
-            <p className="text-sm text-[var(--ink-3)]">
-              Allt på den här sidan räknas per <strong className="font-medium">pass</strong>, inte
-              per Garmin-aktivitet: uppvärmning, huvudpass och nerjogg slås ihop till ett pass innan
-              något summeras.
-            </p>
-          )}
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-2 text-sm">
           <div className="flex gap-2">
@@ -829,11 +799,6 @@ export default async function TrendsPage({
           <LactateHistory readings={lactateReadings} lt2Hr={profileRow?.lt2_hr ?? null} />
         </CollapsibleSection>
 
-        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-          De tre formerna ska ligga på åtskilda intensiteter — annars tränas samma sak flera
-          gånger i veckan under olika namn. Sektionerna nedan är samma tre växlar, en i taget.
-        </p>
-
         {gears && <TrainingGears data={gears} />}
 
           {/* Intensitetsfördelningen svarar på samma fråga som diagrammet
@@ -908,25 +873,12 @@ export default async function TrendsPage({
           ) : undefined
         }
       >
-        <div className="flex flex-col gap-3">
-          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-            Tröskelpassens nyckelpass
-          </h3>
-          <SessionQuality
-            groups={thresholdGroups}
-            racePace={racePace}
-            showRaceReference={false}
-          />
-        </div>
-
         <div className="flex flex-col gap-2">
           <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
             Puls per tröskelpass
           </h3>
           <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-            Samma mått som tröskeln i växeldiagrammet: snittpulsen över varje reps andra halva,
-            när pulsen hunnit ikapp, för rep på minst 400 m och en minut. Pricken är passets
-            median, strecket går från lägsta till högsta rep. Tryck på grafen för att se ett pass.
+            Pulsen på repens andra halva, ett pass per prick. Tryck för att se passet.
           </p>
           <GearSessionChart
             peaks={thresholdPeaks}
@@ -974,21 +926,12 @@ export default async function TrendsPage({
           ) : undefined
         }
       >
-        <div className="flex flex-col gap-3">
-          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-            Intervallpassens nyckelpass
-          </h3>
-          <SessionQuality groups={intervalGroups} racePace={racePace} />
-        </div>
-
         <div className="flex flex-col gap-2">
           <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
             Maxpuls per intervallpass
           </h3>
           <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-            Samma mått som intervallen i växeldiagrammet: varje reps maxpuls, oavsett replängd.
-            Pricken är passets median, strecket går från lägsta till högsta rep. Tryck på grafen
-            för att se ett pass.
+            Repens maxpuls, ett pass per prick. Tryck för att se passet.
           </p>
           <GearSessionChart
             peaks={intervalPeaks}
@@ -1021,12 +964,8 @@ export default async function TrendsPage({
             Formkurva (Efficiency Factor)
           </h3>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Hur långt du kommer per hjärtslag. Stiger kurvan vid samma puls går formen åt rätt håll.
-            Farten är <strong>höjdjusterad</strong> — en kuperad runda räknas om till vad den
-            motsvarar på plant underlag, annars hade backarna sett ut som sämre form. Bara
-            distanspass och långpass på minst 20 minuter med registrerad snittpuls räknas;
-            intervaller går inte att jämföra med distanslöpning. {efPoints.length} pass i perioden
-            klarar filtret.
+            Hur långt du kommer per hjärtslag på distanspassen. Stiger kurvan går formen åt rätt
+            håll.
           </p>
         </div>
 
@@ -1053,14 +992,14 @@ export default async function TrendsPage({
           emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
         />
 
-        <p className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm text-[var(--ink-2)]">
-          <strong className="font-medium text-[var(--foreground)]">Läs kurvan försiktigt.</strong>{" "}
-          Efficiency Factor påverkas kraftigt av värme, uttorkning, stress och underlag. En dipp i
-          juli är sannolikt vädret, inte formen. Kuperingen är däremot borträknad: farten är
-          höjdjusterad med Garmins grade-adjusted pace, så ett backigt pass ska inte längre se
-          sämre ut än ett platt. Använd kurvan för att se riktningen över månader, aldrig för att
-          bedöma ett enskilt pass.
-        </p>
+        <details className="text-sm">
+          <summary className="cursor-pointer text-[var(--ink-3)]">Så räknas kurvan</summary>
+          <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-[var(--ink-2)]">
+            <li>Distans- och långpass på minst 20 minuter med puls — {efPoints.length} i perioden.</li>
+            <li>Farten är höjdjusterad, så backar ser inte ut som sämre form.</li>
+            <li>Värme, stress och underlag flyttar kurvan. Läs riktningen över månader, inte ett enskilt pass.</li>
+          </ul>
+        </details>
       </section>
 
         </CollapsibleSection>

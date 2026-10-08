@@ -349,10 +349,7 @@ export function EfficiencyChart({
 
       {clippedCount > 0 && (
         <p className="text-xs text-[var(--ink-3)]">
-          Skalan är zoomad till den samlade variationen. {clippedCount} pass sticker ut
-          kraftigt (troligen mätfel eller en avvikande förutsättning) och visas nedtonade mot
-          kanten i stället för att dra ut hela axeln — hovra över dem eller se tabellen för de
-          riktiga värdena.
+          {clippedCount} pass utanför skalan (troligen mätfel) visas nedtonade vid kanten.
         </p>
       )}
 

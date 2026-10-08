@@ -43,16 +43,14 @@ function rampTone(change: number): "neutral" | "watch" {
 function rampNote(ramp: LoadRamp): string | null {
   if (ramp.change > RAMP_WARN) {
     return (
-      `Veckan ${weekRangeLabel(ramp.week)} låg ${signed(ramp.change)} över de ${ramp.baseWeeks} ` +
-      `föregående. Över ungefär 15 % brukar rekommendationen vara en lugnare vecka innan nästa ` +
-      `ökning — tumregeln är ingen gräns, men ett medvetet val är bättre än ett omedvetet.`
+      `${weekRangeLabel(ramp.week)} låg ${signed(ramp.change)} över veckorna innan. Tumregeln är ` +
+      `en lugnare vecka innan nästa ökning.`
     );
   }
   if (ramp.change < -RAMP_WARN) {
     return (
-      `Veckan ${weekRangeLabel(ramp.week)} låg ${signed(ramp.change)} under de ${ramp.baseWeeks} ` +
-      `föregående. Var det planerad vila är allt som det ska; var det ett avbrott är det ` +
-      `upptrappningen efteråt som är värd att hålla igen på.`
+      `${weekRangeLabel(ramp.week)} låg ${signed(ramp.change)} under veckorna innan. Efter ett ` +
+      `avbrott är det upptrappningen som är värd att ta lugnt.`
     );
   }
   return null;
@@ -86,14 +84,9 @@ export function LoadStrip({
   return (
     <CollapsibleSection
       title="Kontinuitet"
-      meta="Steget mellan veckorna, jämnheten, och om planen blev gjord"
+      meta="Steget mellan veckorna, jämnheten och om planen blev gjord"
       headline={headline ? <span className="text-sm text-[var(--ink-2)]">{headline}</span> : undefined}
     >
-      <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-        Belastningens <em>nivå</em> är ett Garmin-internt tal utan jämförbarhet — det som betyder
-        något är steget mellan veckorna, jämnheten, och om planen blev gjord.
-      </p>
-
       <StatRow columns={3}>
         <StatCell>
           <Stat
@@ -147,17 +140,6 @@ export function LoadStrip({
 
       {children}
 
-      <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 text-sm">
-        <summary className="cursor-pointer text-[var(--ink-2)]">
-          Var tog HRV, vilopuls och sömn vägen?
-        </summary>
-        <p className="mt-2 text-[var(--ink-2)]">
-          De ligger på startsidans statuskort, som percentilband mot din egen baslinje. Tidigare
-          visades de även här, som SD-avvikelse mot ett rullande åttaveckorsfönster — samma
-          mätvärden i två olika statistiska ramverk, vilket gav två svar på samma fråga. Nu finns
-          ett facit, på det ställe där man tittar på dagsformen.
-        </p>
-      </details>
     </CollapsibleSection>
   );
 }

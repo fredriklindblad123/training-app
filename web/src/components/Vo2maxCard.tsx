@@ -1,4 +1,3 @@
-import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import { vo2maxVerdict, type Vo2maxTrend } from "@/lib/vo2max";
 
 /* ------------------------------------------------------------------------ *
@@ -48,35 +47,32 @@ export function Vo2maxCard({ trend }: { trend: Vo2maxTrend }) {
           Syreupptag (VO2max)
         </h3>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Hur mycket syre kroppen kan ta upp och använda per minut — det aeroba taket som
-          tröskelfarten och loppfarten ligger under. Talet är Garmins skattning ur förhållandet
-          mellan fart och puls, inte en mätning.
+          Kroppens syretak. Garmins skattning ur fart och puls, inte en mätning.
         </p>
       </div>
 
       <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
         <p className="text-base font-medium text-[var(--foreground)]">{verdict.headline}</p>
-        <p className="mt-1 max-w-2xl text-sm text-[var(--ink-2)]">{verdict.detail}</p>
-
-        <StatRow columns={3}>
-          <StatCell>
-            <Stat label="Nu" value={trend.current} sub="senaste mätningen" />
-          </StatCell>
-          <StatCell>
-            <Stat label="Spann i perioden" value={`${min}–${max}`} sub={`${points.length} dagar`} />
-          </StatCell>
-          <StatCell>
-            <Stat
-              label="Förändring"
-              value={
+        {/* Tre tal på en rad, alltid tre kolumner. Rubriken ovanför säger
+            redan riktningen; här står bara talen den vilar på. */}
+        <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+          {[
+            { label: "Nu", value: String(trend.current) },
+            {
+              label: "Förändring",
+              value:
                 trend.direction === "oförändrad"
                   ? "—"
-                  : `${trend.change > 0 ? "+" : ""}${trend.change.toFixed(1)}`
-              }
-              sub="första mot sista tredjedelen"
-            />
-          </StatCell>
-        </StatRow>
+                  : `${trend.change > 0 ? "+" : ""}${trend.change.toFixed(1)}`,
+            },
+            { label: `Spann, ${points.length} d`, value: `${min}–${max}` },
+          ].map((st) => (
+            <div key={st.label} className="rounded-md bg-[var(--surface-raised)] px-2 py-2">
+              <dt className="text-[0.65rem] tracking-wider text-[var(--ink-3)] uppercase">{st.label}</dt>
+              <dd className="display tabular text-xl font-semibold text-[var(--foreground)]">{st.value}</dd>
+            </div>
+          ))}
+        </dl>
 
         <div className="mt-4 flex gap-3">
           <div className="relative w-8 shrink-0" style={{ height: H }} aria-hidden>
@@ -110,34 +106,20 @@ export function Vo2maxCard({ trend }: { trend: Vo2maxTrend }) {
 
         <details className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">
           <summary className="cursor-pointer text-[var(--ink-2)]">
-            Vad det betyder och hur du påverkar det
+            Vad som höjer det
           </summary>
-          <p className="mt-2 text-[var(--ink-2)]">
-            Syreupptaget sätts av hur mycket blod hjärtat pumpar per slag och hur väl musklerna
-            tar upp syret ur det. Det är taket för vad du kan prestera aerobt — men bara taket.
-            Två löpare med samma syreupptag kan skilja en halvminut på 1500 m, eftersom
-            löpekonomi och hur stor andel av taket du kan hålla avgör resten.
-          </p>
-          <p className="mt-2 text-[var(--ink-2)]">
-            <strong className="text-[var(--foreground)]">Det som höjer det:</strong> arbete nära
-            taket, alltså intervaller på tre till fem minuter i ungefär 3000-meterfart med
-            tillräcklig vila för att kunna hålla farten hela vägen. Det är intervallväxelns
-            uppgift. Men effekten kommer bara om basen bär den: distansvolymen bygger
-            blodvolymen och kapillärnätet som avgör hur mycket syre som kan levereras, och utan
-            den planar intervallerna ut snabbt.
-          </p>
-          <p className="mt-2 text-[var(--ink-2)]">
-            <strong className="text-[var(--foreground)]">Det som inte höjer det:</strong> mer
-            medelhård löpning. Ligger de lugna passen för nära tröskeln tränas varken taket eller
-            basen — du blir tröttare utan att något av de två systemen får rätt stimulans.
-          </p>
-          <p className="mt-2 text-[var(--ink-2)]">
-            <strong className="text-[var(--foreground)]">Läs det försiktigt.</strong> Skattningen
-            bygger på fart vid given puls, så den rör sig av värme, kupering, uttorkning och
-            pulsbandets dagsform. Klockan rapporterar dessutom heltal — ett steg upp eller ner
-            mellan två pass är avrundning, inte kapacitet. Följ riktningen över månader, aldrig
-            mellan två enskilda pass.
-          </p>
+          <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-[var(--ink-2)]">
+            <li>Intervaller på 3–5 minuter i ungefär 3000-meterfart, med vila så farten håller.</li>
+            <li>En stadig distansbas — utan den planar intervallerna snabbt ut.</li>
+            <li>
+              Inte mer medelhård löpning: lugna pass som kryper upp mot tröskeln tränar varken
+              taket eller basen.
+            </li>
+            <li>
+              Talet rör sig av värme och kupering och avrundas till heltal. Följ riktningen över
+              månader.
+            </li>
+          </ul>
         </details>
       </div>
     </div>

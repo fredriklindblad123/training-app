@@ -80,8 +80,11 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
             <p
               className="text-base font-medium"
               style={{
+                /* Gult, aldrig rött: det här beskriver hur träningen lagts,
+                   och rött för något en människa gjort hör inte hemma i
+                   appen (CLAUDE.md, Ton mot adepterna). */
                 color: closeEnough(separation, descending)
-                  ? "var(--status-concern)"
+                  ? "var(--status-watch)"
                   : "var(--foreground)",
               }}
             >
@@ -90,10 +93,7 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
                 : `Tröskel och intervall skiljer ${fmtDiff(separation, descending)} i median.`}
             </p>
           )}
-          <p className="mt-1 max-w-2xl text-sm text-[var(--ink-2)]">
-            De tre formerna ska ligga på åtskilda intensiteter. Ligger de ovanpå varandra tränas
-            samma sak flera gånger i veckan under olika namn. {view.source}
-          </p>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--ink-3)]">{view.source}</p>
         </div>
 
         {/* Växlingen visas bara när fartvyn går att räkna fram. */}
@@ -224,39 +224,25 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
 
       <details className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">
         <summary className="cursor-pointer text-[var(--ink-2)]">Hur växlarna mäts</summary>
-        <p className="mt-2 text-[var(--ink-2)]">
-          Distans mäts <strong>per pass</strong> (distanspass och långpass på minst 20 minuter).
-          Tröskel och intervall mäts <strong>per repetition</strong>, bara ur passets
-          huvudaktivitet — annars hade uppvärmningens kilometrar räknats som
-          intervallrepetitioner. Tröskel räknar aktiva varv på minst 400 m och 60 sekunder,
-          intervall alla aktiva varv i passet. Uppvärmning och nerjogg som klockan märkt som
-          aktiva varv räknas bort — de känns igen på att de är klart långsammare än passets
-          rep och antingen långa eller med tydligt lägre puls. Olika enheter är avsiktligt, men det gör
-          jämförelsen ungefärlig.
-        </p>
-        <p className="mt-2 text-[var(--ink-2)]">
-          <strong>Pulsvyns</strong> band kommer ur trösklarna i din profil. Är de skattade och inte
-          testade flyttar sig alla tre banden om skattningen är fel.{" "}
-          <strong>Fartvyns</strong> band härleds i stället ur din tävlingsfart och är därför
-          oberoende av trösklarna — pekar båda vyerna åt samma håll står slutsatsen på två ben.
-          Fartbandens multiplar är konvention, kalibrerade mot 1500 m som referensgren.
-        </p>
-        <p className="mt-2 text-[var(--ink-2)]">
-          Pulsen ligger efter i början av varje repetition, så varvets snittpuls underskattar
-          arbetet. <strong>Tröskel</strong> mäts därför med snittpulsen över varje reps{" "}
-          <em>andra halva</em>, när pulsen hunnit ikapp. <strong>Intervall</strong> mäts med
-          varje reps <em>maxpuls</em>, eftersom pulsen sällan hinner plana ut på korta rep. Max
-          är ett enda mätvärde och brukar ligga några slag över andra halvan, så jämför
-          växlarna med det i minnet. Saknas pulskurva för ett rep används varvets snittpuls.
-        </p>
-        <p className="mt-2 text-[var(--ink-2)]">
-          Tröskelns golv på 400 m och 60 sekunder finns för att snittpulsen ska hinna bli
-          meningsfull. Intervall har inget golv, eftersom maxpulsen inte behöver hinna ikapp på
-          samma sätt — bara varv kortare än 10 sekunder räknas bort, de är oavsiktliga
-          varvtryck. Sträckan tas ur passets namn när GPS:en
-          ligger nära den — &rdquo;10x400m&rdquo; på bana räknas som 400 m även om klockan mätte 392. Måttet använder inga pulszoner — till
-          skillnad från Intensitetsfördelningen, som bygger på zonindelning.
-        </p>
+        <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-[var(--ink-2)]">
+          <li>
+            <strong className="font-medium text-[var(--foreground)]">Distans:</strong> snittpulsen
+            per pass, för distans- och långpass på minst 20 minuter.
+          </li>
+          <li>
+            <strong className="font-medium text-[var(--foreground)]">Tröskel:</strong> pulsen på
+            andra halvan av varje rep, när den hunnit ikapp. Rep på minst 400 m och en minut.
+          </li>
+          <li>
+            <strong className="font-medium text-[var(--foreground)]">Intervall:</strong> maxpulsen
+            på varje rep, oavsett längd.
+          </li>
+          <li>Uppvärmning och nerjogg räknas bort.</li>
+          <li>
+            Pulsvyns band kommer från dina trösklar, fartvyns från din tävlingsfart. Pekar båda åt
+            samma håll står slutsatsen stadigare.
+          </li>
+        </ul>
       </details>
     </div>
   );

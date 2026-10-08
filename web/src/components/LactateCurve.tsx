@@ -115,11 +115,10 @@ export function LactateCurve({
           Så beter sig laktatet
         </h3>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Mjölksyra bildas hela tiden, även i vila. Så länge kroppen hinner omsätta lika mycket som
-          den bildar ligger nivån stilla — det är där de lugna passen hör hemma. Vid{" "}
-          <strong>aeroba tröskeln</strong>{example ? "" : ` (${lt1})`} börjar den stiga, vid{" "}
-          <strong>anaeroba</strong>{example ? "" : ` (${lt2})`} stiger den snabbare än kroppen
-          hinner städa undan, och därefter går klockan.
+          Ju hårdare du springer, desto mer laktat i blodet. Två punkter delar in träningen i tre
+          växlar: <strong>LT1</strong>{example ? "" : ` (${lt1})`} där laktatet börjar stiga, och{" "}
+          <strong>LT2</strong>{example ? "" : ` (${lt2})`} där det stiger snabbare än kroppen hinner
+          ta hand om det.
         </p>
       </div>
 
@@ -200,84 +199,63 @@ export function LactateCurve({
         </div>
 
         <p className="mt-2 text-xs text-[var(--ink-3)]">
-          Y-axeln är millimol laktat per liter blod. Kurvan är <strong>schematisk</strong> — ingen
-          har mätt ditt laktat.{" "}
-          {example ? (
-            <>
-              Den visar <strong>formen</strong>, inte dina tal: du har inga trösklar ifyllda, så
-              inga pulsvärden skrivs ut. Fyll i aerob och anaerob tröskel under Inställningar så
-              ritas kurvan genom dina egna.
-            </>
-          ) : (
-            <>
-              Den är ritad genom dina egna trösklar med de vedertagna referensvärdena 2 mmol vid
-              LT1 och 4 vid LT2.
-            </>
-          )}{" "}
-          Formen är platt upp till aeroba tröskeln, rak stigning mellan trösklarna, och
-          exponentiell därefter.
+          {example
+            ? "Kurvans form, inte dina värden — fyll i dina trösklar under Inställningar så ritas den genom dem."
+            : "Kurvans form, ritad genom dina trösklar. Laktat i mmol/l."}
         </p>
 
-        <div className="mt-4 flex flex-col gap-2">
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
           {[
             {
               key: "distans" as const,
               where: example ? "under aerob tröskel" : `under ${lt1}`,
-              what: "Laktatet ligger kvar på vilovärdet. Här byggs motorn: blodvolym, kapillärer, mitokondrier. Det är den enda zonen du kan tillbringa många timmar i varje vecka.",
-              section: "Sektionen Distans mäter om distanspassen faktiskt hamnar här.",
+              what: "Bygger motorn. Här ska de flesta timmarna ligga.",
             },
             {
               key: "troskel" as const,
               where: example ? "mellan trösklarna" : `${lt1}–${lt2}`,
-              what: "Laktatet stiger men kroppen hinner med. Det här är farten du kan hålla länge, och att flytta LT2 uppåt är det som gör tävlingsfarten uthållig.",
-              section: "Sektionen Tröskel mäter om tröskelpassen ligger i bandet — eller över det.",
+              what: "Höjer farten du orkar hålla länge.",
             },
             {
               key: "intervall" as const,
               where: example ? "över anaerob tröskel" : `över ${lt2}`,
-              what: "Laktatet ackumuleras snabbare än det städas undan, och kurvan vänder uppåt. Här höjs taket, men bara i korta doser med vila emellan.",
-              section: "Sektionen Intervall mäter om intervallerna når hit, och Syreupptag visar taket de arbetar mot.",
+              what: "Höjer taket. Korta doser med vila emellan.",
             },
           ].map((row) => (
-            <div key={row.key} className="flex gap-2.5">
-              <span
-                className="mt-[7px] inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: GEAR_COLOR_VAR[row.key] }}
-                aria-hidden
-              />
-              <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-                <strong className="font-medium text-[var(--foreground)]">
+            <div
+              key={row.key}
+              className="rounded-md border-l-4 bg-[var(--surface-raised)] px-3 py-2"
+              style={{ borderLeftColor: GEAR_COLOR_VAR[row.key] }}
+            >
+              <p className="flex items-baseline justify-between gap-2">
+                <strong className="display font-semibold text-[var(--foreground)]">
                   {GEAR_LABELS[row.key]}
-                </strong>{" "}
-                <span className="tabular text-[var(--ink-3)]">({row.where}{example ? "" : " slag"})</span> —{" "}
-                {row.what}{" "}
-                <span className="text-[var(--ink-3)]">{row.section}</span>
+                </strong>
+                <span className="tabular text-xs text-[var(--ink-3)]">
+                  {row.where}
+                  {example ? "" : " slag"}
+                </span>
               </p>
+              <p className="mt-0.5 text-sm text-[var(--ink-2)]">{row.what}</p>
             </div>
           ))}
         </div>
 
         <details className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">
           <summary className="cursor-pointer text-[var(--ink-2)]">
-            Varför kurvans form spelar roll
+            Varför växlarna ska hållas isär
           </summary>
-          <p className="mt-2 text-[var(--ink-2)]">
-            Avståndet mellan trösklarna avgör hur brant kurvan är. Ligger de tätt stiger laktatet
-            fort så fort du passerar LT1, och marginalen mellan lugnt och hårt blir smal — då är
-            det extra viktigt att de lugna passen verkligen ligger under. Ligger de glest har du
-            ett brett arbetsområde att träna i.
-          </p>
-          <p className="mt-2 text-[var(--ink-2)]">
-            Det är också därför ett pass mitt emellan trösklarna ger så lite: det är hårt nog att
-            kosta återhämtning, men inte hårt nog att flytta taket, och för hårt för att bygga
-            basen. Den zonen är inte förbjuden — tröskelpassen bor där — men den ska vara ett val,
-            inte något man hamnar i för att de lugna passen kröp uppåt.
-          </p>
-          <p className="mt-2 text-[var(--ink-2)]">
-            Referensvärdena 2 och 4 mmol/l är konvention. En enskild löpare kan ha sin verkliga
-            tröskel flera millimol därifrån, och bara ett laktattest visar var. Kurvan här säger
-            formen, inte talen.
-          </p>
+          <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-[var(--ink-2)]">
+            <li>
+              Ett lugnt pass som kryper upp mot tröskeln kostar återhämtning utan att bygga mer
+              motor.
+            </li>
+            <li>
+              Ligger trösklarna nära varandra är marginalen smal — då är det extra viktigt att
+              distanspassen verkligen är lugna.
+            </li>
+            <li>2 och 4 mmol/l vid trösklarna är riktvärden. Bara ett laktattest visar dina.</li>
+          </ul>
         </details>
       </div>
     </div>

@@ -38,29 +38,17 @@ export function FormIntro({
       </h2>
 
       <p className="mt-2 max-w-3xl text-sm text-[var(--ink-2)]">
-        Sidan är till för att visa <strong>hur medeldistansträning hänger ihop</strong> — vad
-        distans, tröskel och intervall gör med kroppen, och var din egen träning hamnar. Den är
-        vägledande, inte ett facit. Siffrorna är underlag för ett samtal med din tränare, inte ett
-        omdöme om ett pass eller en period.
+        Hur distans, tröskel och intervall hänger ihop — och var din träning hamnar. Vägledning
+        och underlag för samtal med tränaren, inte betyg.
+        {hasGarminData && " Allt bygger på att klockans puls och dina trösklar stämmer."}
       </p>
-
-      {hasGarminData && (
-        <p className="mt-2 max-w-3xl text-sm text-[var(--ink-2)]">
-          Allt som räknas fram här vilar på två antaganden som båda kan vara fel:{" "}
-          <strong>att klockans mätning stämmer</strong> — pulsband glappar, optiska givare låser
-          sig på stegfrekvensen, värme och kupering flyttar både puls och fart — och{" "}
-          <strong>att trösklarna i din profil är rätt</strong>. Ligger en tröskel några slag fel
-          byter halva sidan färg utan att din träning har ändrats det minsta.
-        </p>
-      )}
 
       {hasThresholds && estimated && (
         <p className="mt-3 max-w-3xl rounded border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink-2)]">
-          <strong className="text-[var(--foreground)]">Dina trösklar är inmatade, inte testade.</strong>{" "}
-          LT1 {lt1} och LT2 {lt2} kommer från en uppskattning
-          {lt2MeasuredOn ? ` sparad ${lt2MeasuredOn}` : ""}, inte från ett test. Det gör inte
-          siffrorna värdelösa — men läs allt som bygger på dem som ungefärligt. Ett 30-minuters
-          maxtest, där snittpulsen de sista 20 minuterna ger LT2, skulle göra hela sidan säkrare.
+          <strong className="text-[var(--foreground)]">Dina trösklar är uppskattade, inte testade.</strong>{" "}
+          LT1 {lt1} och LT2 {lt2}
+          {lt2MeasuredOn ? ` (sparade ${lt2MeasuredOn})` : ""} — läs siffrorna som ungefärliga. Ett
+          tröskeltest gör hela sidan säkrare.
         </p>
       )}
 
@@ -73,10 +61,8 @@ export function FormIntro({
 
       {!hasThresholds && (
         <p className="mt-3 max-w-3xl rounded border border-[var(--line)] bg-[var(--surface-raised)] p-3 text-sm text-[var(--ink-2)]">
-          <strong className="text-[var(--foreground)]">Du har inga trösklar ifyllda ännu.</strong>{" "}
-          Avsnitten som jämför din träning mot dem är därför dolda. Förklaringarna av hur
-          träningen fungerar gäller ändå — och fyller du i aerob och anaerob tröskel under
-          Inställningar så räknas resten fram.
+          <strong className="text-[var(--foreground)]">Inga trösklar ifyllda ännu.</strong> Fyll i
+          dem under Inställningar så jämförs din träning mot dem.
         </p>
       )}
     </section>
