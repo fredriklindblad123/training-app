@@ -893,22 +893,37 @@ async function ArsplanOverview({
                     : `Mellan säsongerna ${year}`;
               const from = g.blocks[0].start_date;
               const to = g.blocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), g.blocks[0].end_date);
-              // Neutrala toner: kategorifärgerna betyder redan passtyper.
-              const accent = kind === "none" ? "var(--line)" : "var(--ink-2)";
+              // En säsong är en ruta med rubrikrad; perioderna mellan
+              // säsongerna får streckad ram, så de inte läses som en säsong.
+              const between = kind === "none";
               return (
-                <section key={`${g.key}-${gi}`} className="flex flex-col gap-2">
-                  <div
-                    className="flex flex-wrap items-baseline justify-between gap-x-3 border-l-4 pl-3"
-                    style={{ borderLeftColor: accent }}
+                <section
+                  key={`${g.key}-${gi}`}
+                  className={`overflow-hidden rounded-xl border-2 ${
+                    between
+                      ? "border-dashed border-[var(--line)]"
+                      : "border-[var(--ink-3)] bg-[var(--surface-raised)]"
+                  }`}
+                >
+                  <header
+                    className={`flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-3 ${
+                      between ? "" : "bg-[var(--foreground)] text-[var(--background)]"
+                    }`}
                   >
-                    <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                    <h3
+                      className={`display text-lg leading-tight font-semibold ${
+                        between ? "text-[var(--ink-2)]" : ""
+                      }`}
+                    >
                       {title}
                     </h3>
-                    <span className="tabular text-xs text-[var(--ink-3)]">
+                    <span
+                      className={`tabular text-xs ${between ? "text-[var(--ink-3)]" : "opacity-80"}`}
+                    >
                       {from} – {to} · {g.blocks.length} block
                     </span>
-                  </div>
-                  <div className="flex flex-col gap-2 border-l-4 pl-3" style={{ borderLeftColor: accent }}>
+                  </header>
+                  <div className="flex flex-col gap-2 p-3">
                     {g.blocks.map((b) => (
                       <BlockCard
                         key={b.id}
