@@ -10,8 +10,6 @@ import {
 } from "@/lib/auth-scope";
 import {
   SeasonTimeline,
-  AthleteSeasonBand,
-  SeasonBandAxis,
   type TimelineBlock,
   type TimelineCompetition,
 } from "@/components/SeasonTimeline";
@@ -807,8 +805,6 @@ async function ArsplanOverview({
   scoped: ScopedProfile;
   nyttBlockFranParam?: string;
 }) {
-  const today = toDateKey(new Date());
-  const currentYear = today.slice(0, 4);
   const athletes = viewableAthletes(scoped);
   const athleteIds = athletes.map((a) => a.id);
 
@@ -825,97 +821,23 @@ async function ArsplanOverview({
           .in("athlete_id", athleteIds)
       : { data: [] as { block_id: string; athlete_id: string }[] };
 
-  const blockIdsByAthlete = new Map<string, string[]>();
   const athleteIdsByBlockId = new Map<string, Set<string>>();
   for (const row of membershipRows ?? []) {
     const blockId = row.block_id as string;
     const athleteId = row.athlete_id as string;
-    blockIdsByAthlete.set(athleteId, [...(blockIdsByAthlete.get(athleteId) ?? []), blockId]);
     const set = athleteIdsByBlockId.get(blockId) ?? new Set<string>();
     set.add(athleteId);
     athleteIdsByBlockId.set(blockId, set);
   }
   const allBlockIds = [...athleteIdsByBlockId.keys()];
 
-  const [{ data: allBlocksRaw }, athleteExtras] = await Promise.all([
+  const { data: allBlocksRaw } =
     allBlockIds.length > 0
-      ? supabase.from("season_blocks").select("*").in("id", allBlockIds).order("start_date")
-      : Promise.resolve({ data: [] as never[] }),
-    Promise.all(
-      athletes.map(async (athlete) => {
-        const [{ data: nextA }, { data: yearCompetitionRows }] = await Promise.all([
-          supabase
-            .from("competitions")
-            .select("name, competition_date")
-            .eq("user_id", athlete.id)
-            .eq("priority", "A")
-            .gte("competition_date", today)
-            .order("competition_date")
-            .limit(1)
-            .maybeSingle(),
-          /* De närmaste tävlingarna löparen är taggad på — inte året, utan
-             framåt. Årsbegränsningen fanns för en tabell som är borttagen, och
-             den gömde allt som låg nästa säsong: kontrollerat mot datan har
-             Alice tolv lopp inlagda 2027 och ett kvar i år.
-             Tre stycken: fler blir en lista i ett kort som ska gå att läsa i
-             en blick, och vill man se hela finns fliken Tävling. */
-          supabase
-            .from("competitions")
-            .select("id, name, competition_date, priority")
-            .eq("user_id", athlete.id)
-            .gte("competition_date", today)
-            .order("competition_date")
-            .limit(3),
-        ]);
-        return {
-          athlete,
-          nextA,
-          upcomingRaces: (yearCompetitionRows ?? []) as TimelineCompetition[],
-        };
-      }),
-    ),
-  ]);
+      ? await supabase.from("season_blocks").select("*").in("id", allBlockIds).order("start_date")
+      : { data: [] as never[] };
 
   const allBlocks = (allBlocksRaw ?? []) as BlockCardBlock[];
-  const blockById = new Map(allBlocks.map((b) => [b.id, b]));
   const sortedAllBlocks = [...allBlocks].sort((a, b) => a.start_date.localeCompare(b.start_date));
-
-  const athleteSummaries = athleteExtras.map(({ athlete, nextA, upcomingRaces }) => {
-    const myBlocks = (blockIdsByAthlete.get(athlete.id) ?? [])
-      .map((id) => blockById.get(id))
-      .filter((b): b is BlockCardBlock => b != null);
-    const activeBlock = myBlocks.find((b) => b.start_date <= today && b.end_date >= today);
-    /* Nästa block som börjar, för glapp mellan två block. Utan det står
-     * "Inget aktivt block" på alla under en lugn period — kontrollerat mot
-     * datan: hela gruppen låg i ett sådant glapp när sidan byggdes. */
-    const nextBlock = myBlocks
-      .filter((b) => b.start_date > today)
-      .sort((a, b) => a.start_date.localeCompare(b.start_date))[0];
-    const yearBlocks = myBlocks.filter(
-      (b) => b.start_date.slice(0, 4) <= currentYear && b.end_date.slice(0, 4) >= currentYear,
-    );
-    return { athlete, activeBlock, nextBlock, myBlocks, nextA, yearBlocks, upcomingRaces };
-  });
-
-  /* Legenden ritas EN gång för hela listan, inte en gång per löparrad — fem
-   * identiska förklaringar under varandra vore brus. Faserna är unionen av
-   * alla löpares block, så förklaringen täcker varje färg som faktiskt syns
-   * i någon rad. */
-
-  /* Blocken gruppen faktiskt planerar i, framåt. Samma horisont som den
-   * enskilda löparens vy — historiken hör hemma i block-listan nedanför. */
-  const yearStart = `${currentYear}-01-01`;
-  const planBlocks = sortedAllBlocks.filter((b) => b.end_date >= yearStart);
-
-  /* Gemensam axel för löparremsorna. Utan ett fast spann auto-skalar varje
-   * remsa till SIN löpares block, och samma kalendermånad hamnar då på olika
-   * x för olika löpare — remsorna går inte att läsa mot varandra, vilket är
-   * hela poängen med att lägga dem under varandra. */
-  const rangeFrom = planBlocks.length > 0 ? planBlocks[0].start_date : yearStart;
-  const rangeTo =
-    planBlocks.length > 0
-      ? planBlocks.reduce((m, b) => (b.end_date > m ? b.end_date : m), planBlocks[0].end_date)
-      : `${currentYear}-12-31`;
 
   return (
     <div className="flex flex-col gap-8">
@@ -925,84 +847,9 @@ async function ArsplanOverview({
           adepterna delar ändå samma block, så den sa samma sak som banden
           nedanför fast utförligare. Den finns kvar i löparens egen vy. */}
 
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Löparna
-        </h2>
-        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-          Ett band per löpare på gemensam tidsaxel. Segmenten är säsongerna —
-          fyllda för tävlingssäsong, streckade för perioderna emellan. Klicka
-          för hennes block och veckor.
-        </p>
-
-        {/* Banden och månadsaxeln delar bredd och MÅSTE ligga i linje, så
-            de kan inte brytas ner var för sig på en smal skärm. Hela
-            widgeten rullar därför i sidled i stället — samma lösning som
-            SeasonTimeline och RaceTimeline redan använder. Utan den blev
-            axelraden (7 + 14 + 10 rem plus glapp = drygt 500 px) bredare än
-            en telefonskärm och drog HELA sidan i sidled. */}
-        <div className="overflow-x-auto">
-          <div className="min-w-[34rem]">
-          <div className="flex flex-col gap-2">
-            {athleteSummaries.map(({ athlete, activeBlock, nextBlock, myBlocks, upcomingRaces }) => {
-              const shown = activeBlock ?? nextBlock;
-              const strip = myBlocks.filter((b) => b.end_date >= yearStart);
-              return (
-                <Link
-                  key={athlete.id}
-                  href={`/sasongsoversikt?athlete=${athlete.id}`}
-                  className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)]"
-                >
-                  <span className="display w-28 shrink-0 text-sm font-semibold text-[var(--foreground)]">
-                    {athlete.fullName ?? "Namnlös"}
-                  </span>
-
-                  {/* Bandet visar SÄSONGERNA, inte blocken. Blocknamnen hör
-                      hemma i löparens egen vy; här är frågan vilken säsong hon
-                      är i och när nästa börjar. */}
-                  <span className="min-w-[14rem] flex-1">
-                    <AthleteSeasonBand blocks={strip} rangeStart={rangeFrom} rangeEnd={rangeTo} />
-                  </span>
-
-                  <span className="tabular w-40 shrink-0 text-xs text-[var(--ink-3)]">
-                    {strip.length} block
-                    {/* Avvikelsen är det intressanta: att en löpare har färre
-                        block än de andra är något tränaren vill se direkt. */}
-                    {strip.length !== planBlocks.length && (
-                      <span className="text-[var(--status-watch-ink)]">
-                        {" "}
-                        · {planBlocks.length - strip.length} saknas
-                      </span>
-                    )}
-                    <span className="block">
-                      {upcomingRaces.length > 0
-                        ? `Nästa: ${upcomingRaces[0].name.slice(0, 18)} ${upcomingRaces[0].competition_date.slice(5)}`
-                        : "Ingen tävling inlagd"}
-                    </span>
-                    {shown && (
-                      <span className="block truncate">
-                        {activeBlock ? "Nu: " : "Nästa block: "}
-                        {shown.name}
-                      </span>
-                    )}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Månadsaxeln en gång under alla band — de delar spann, så en axel
-              per rad hade varit fyra kopior av samma skala. */}
-          <div className="flex gap-x-4">
-            <span className="w-28 shrink-0" />
-            <span className="min-w-[14rem] flex-1">
-              <SeasonBandAxis rangeStart={rangeFrom} rangeEnd={rangeTo} />
-            </span>
-            <span className="w-40 shrink-0" />
-          </div>
-          </div>
-        </div>
-      </section>
+      {/* "Löparna" — ett säsongsband per löpare — är borttaget (2026-10-08,
+          begärt) för att förenkla vyn. Blocken nedan säger vilka som är
+          taggade på vad, och varje löpares egen vy har hennes tidslinje. */}
 
       {/* Tävlingstabellen är borta härifrån (2026-09-17). Tävlingarna har en
           egen flik sedan i går, med tidslinje, redigering och koppling av
@@ -1036,10 +883,17 @@ async function ArsplanOverview({
       {/* Blockskapande hör hemma på den aggregerade nivån (uttrycklig
        * begäran 2026-08-18) — löpar-kryssrutorna väljer vem/vilka blocket
        * gäller, utan att man först behöver stå på en enskild löpares sida. */}
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Lägg till block för hand
-        </h2>
+      {/* Infällt bakom en rad: formuläret är nästan lika långt som hela
+          blocklistan och används några gånger per säsong. Öppet direkt när
+          man kommer från "Skapa nästa block" på Form-sidan. */}
+      <details
+        open={nyttBlockFranParam != null}
+        className="group rounded-lg border border-[var(--line)] bg-[var(--surface)]"
+      >
+        <summary className="cursor-pointer list-none p-4 font-medium text-[var(--foreground)]">
+          + Nytt block
+        </summary>
+        <div className="flex flex-col gap-3 border-t border-[var(--line)] p-4">
         <form action={createBlock} className="flex flex-col gap-3 rounded-lg border border-[var(--line)] p-4">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Namn">
@@ -1105,7 +959,8 @@ async function ArsplanOverview({
             </div>
           ))}
         </dl>
-      </section>
+        </div>
+      </details>
     </div>
   );
 }
@@ -1157,8 +1012,7 @@ export default async function ArsplanPage({
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Säsongsöversikt</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Alla dina löpares säsonger sida vid sida. Klicka på ett kort för att redigera den
-            löparens block och veckomönster.
+            Gruppens block i tidsordning. Tryck på ett block för att ändra det.
           </p>
         </div>
         <ArsplanOverview supabase={supabase} scoped={scoped} nyttBlockFranParam={nyttBlockFranParam} />
