@@ -83,20 +83,51 @@ function targetsLabel(g: PassGroup): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-const OUTCOME_TONE: Record<string, string> = {
-  done: "var(--status-good)",
-  partial: "var(--status-watch)",
-  missed: "var(--status-concern)",
-};
+/* Hur ett pass gick för en löpare, som chip-stil. Nycklarna MÅSTE vara
+ * PlanOutcome-värdena ("genomfört" …) — fram till 2026-10-08 stod här
+ * done/partial/missed, som aldrig förekommer, så ingen markering ritades och
+ * man kunde inte se vem som gjort passet.
+ *
+ * Inget rött för ett pass som inte blev av: det är något en människa gjort
+ * eller inte gjort (CLAUDE.md, Ton mot adepterna). Missat är grått och
+ * nedtonat, genomfört grönt — skillnaden syns ändå direkt. */
+function outcomeChip(outcome: string | undefined, pastDay: boolean): { cls: string; mark: string; title: string } {
+  if (outcome === "genomfört") {
+    return {
+      cls: "border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-100",
+      mark: " ✓",
+      title: "genomfört",
+    };
+  }
+  if (outcome === "avvikande typ") {
+    return {
+      cls: "border-emerald-400 text-emerald-900 dark:text-emerald-100",
+      mark: " ≈",
+      title: "tränade, men ett annat pass än planerat",
+    };
+  }
+  if (outcome === "ej genomfört" && pastDay) {
+    return {
+      cls: "border-dashed border-[var(--line)] text-[var(--ink-3)] opacity-70",
+      mark: " –",
+      title: "inte genomfört",
+    };
+  }
+  return { cls: "border-[var(--line)] text-[var(--ink-2)]", mark: "", title: "planerat" };
+}
 
 function PassCard({
   group,
   namesById,
   href,
+  today,
 }: {
   group: PassGroup;
   namesById: Map<string, string>;
   href: string;
+  /** Dagens datum, svensk tid. Ett pass idag som inte syns än är inte
+   * missat — dagen är inte slut. */
+  today: string;
 }) {
   const label = WORKOUT_LABELS[group.workoutType as WorkoutType] ?? group.workoutType;
   const targets = targetsLabel(group);
@@ -144,21 +175,16 @@ function PassCard({
           oläsbar. */}
       <div className="flex flex-wrap gap-1">
         {group.athleteIds.map((id) => {
-          const outcome = group.outcomeByAthlete[id];
-          const tone = outcome ? OUTCOME_TONE[outcome] : undefined;
+          const name = namesById.get(id) ?? "Okänd";
+          const chip = outcomeChip(group.outcomeByAthlete[id], group.scheduledDate < today);
           return (
             <span
               key={id}
-              className="display inline-flex items-center gap-1 rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[11px] text-[var(--ink-2)]"
+              title={`${name} — ${chip.title}`}
+              className={`display inline-flex items-center rounded-full border px-1.5 py-0.5 text-[11px] ${chip.cls}`}
             >
-              {tone && (
-                <span
-                  aria-hidden
-                  className="inline-block h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: tone }}
-                />
-              )}
-              {namesById.get(id) ?? "Okänd"}
+              {name}
+              {chip.mark}
             </span>
           );
         })}
@@ -382,8 +408,8 @@ export default async function DetaljplanPage({
             Detaljplan
           </h1>
           <p className="mt-1 text-sm text-[var(--ink-2)]">
-            Vecka {planWeek.isoWeekNumber} · {weekStart} till {weekEnd}. Öppna ett pass för att
-            skriva till löparna.
+            Vecka {planWeek.isoWeekNumber} · {weekStart} till {weekEnd}. Tryck på en dag eller ett
+            pass för dagsvyn.
           </p>
         </div>
 
@@ -397,6 +423,11 @@ export default async function DetaljplanPage({
               <LinkPending />
             </Link>
           )}
+          {/* Dagsvyn för idag — hela gruppen, en löpare under den andra. */}
+          <Link href={`/blockplan/pass?date=${today}`} className={navClass}>
+            Idag
+            <LinkPending />
+          </Link>
           <Link href={nextHref} className={navClass} aria-label="Nästa vecka">
             →<LinkPending />
           </Link>
@@ -442,14 +473,21 @@ export default async function DetaljplanPage({
                     : "border-[var(--line)] bg-[var(--surface-raised)]/40"
                 }`}
               >
-                <div className="flex items-baseline justify-between gap-2 px-0.5">
-                  <span className="display text-sm font-semibold text-[var(--foreground)]">
+                {/* Dagrubriken leder till dagsvyn för hela gruppen. Tidigare
+                    gick den bara att nå genom att trycka på ett pass, och en
+                    dag utan pass gick inte att öppna alls. */}
+                <Link
+                  href={`/blockplan/pass?date=${day.date}`}
+                  className="group flex items-baseline justify-between gap-2 rounded px-0.5 hover:bg-[var(--surface)]"
+                >
+                  <span className="display text-sm font-semibold text-[var(--foreground)] group-hover:underline">
                     {WEEKDAY_LABELS[i]}
                   </span>
-                  <span className="tabular text-[11px] text-[var(--ink-3)]">
+                  <span className="tabular flex items-center gap-1 text-[11px] text-[var(--ink-3)]">
                     {day.date.slice(8)}/{day.date.slice(5, 7)}
+                    <span aria-hidden>›</span>
                   </span>
-                </div>
+                </Link>
 
                 {day.competitions.map((c) => {
                   const on = new Set(c.athleteIds);
@@ -505,6 +543,7 @@ export default async function DetaljplanPage({
                       key={g.key}
                       group={g}
                       namesById={namesById}
+                      today={today}
                       /* Dagsvyn för alla löpare samtidigt: där bor
                          passformuläret med Beskrivning, och där ser man hela
                          dagen i stället för bara rutan man klickade på. */

@@ -50,7 +50,7 @@ function AthleteColumn({
     /* min-w-0 på telefon: 26 rem är 416 px och därmed bredare än skärmen,
        vilket drog hela sidan i sidled. Från sm och uppåt står minimibredden
        kvar — där är den till för att två dagkort inte ska pressas ihop. */
-    <div className="flex min-w-0 flex-1 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 sm:min-w-[26rem]">
+    <div className="flex w-full min-w-0 flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 sm:w-auto sm:min-w-[26rem] sm:flex-1">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           {athlete.fullName ?? "Namnlös löpare"}
@@ -133,24 +133,45 @@ export default async function PassDayPage({
     .map((id) => athletesById.get(id))
     .filter((a): a is AthleteOption => a != null);
 
-  const backHref = `/blockplan${showAll ? "?athlete=alla" : focusId ? `?athlete=${focusId}` : ""}`;
+  /* Navigering: tillbaka till veckan dagen ligger i, och en dag i taget
+   * framåt och bakåt. Blocket följer inte med till grannarna — de kan ligga
+   * i ett annat block — utan sidan faller då tillbaka på samma löparurval. */
+  const athleteQuery = showAll ? "" : focusId ? `&athlete=${focusId}` : "";
+  const shiftDay = (days: number) => {
+    const d = new Date(`${dateKey}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  const monday = (() => {
+    const d = new Date(`${dateKey}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+    return d.toISOString().slice(0, 10);
+  })();
+  const weekHref = `/detaljplan?week=${monday}${athleteQuery}`;
+  const navClass =
+    "rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm text-[var(--ink-2)] hover:border-[var(--ink-3)]";
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       <div>
-        <Link
-          href={backHref}
-          className="text-sm text-[var(--ink-3)] underline underline-offset-2 hover:text-[var(--foreground)]"
-        >
-          ← Blockplan
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/blockplan/pass?date=${shiftDay(-1)}${athleteQuery}`} className={navClass} aria-label="Föregående dag">
+            ←
+          </Link>
+          <Link href={`/blockplan/pass?date=${shiftDay(1)}${athleteQuery}`} className={navClass} aria-label="Nästa dag">
+            →
+          </Link>
+          <Link href={weekHref} className={navClass}>
+            Veckan
+          </Link>
+        </div>
         <h1 className="display mt-2 text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
           {weekdayLabel(dateKey)} {dateKey}
         </h1>
         <p className="mt-1 text-sm text-[var(--ink-3)]">
           {columns.length === 1
             ? columns[0].fullName ?? "Namnlös löpare"
-            : `${columns.length} löpare sida vid sida`}
+            : `${columns.length} löpare`}
           {blockName ? ` · ${blockName}` : ""}
         </p>
       </div>
@@ -168,7 +189,10 @@ export default async function PassDayPage({
               }
             />
           )}
-          <div className="flex flex-wrap items-start gap-4">
+          {/* På mobil en löpare under den andra, full bredd var. Fram till
+              2026-10-08 låg de i rad även där, och fyra löpare fick ca 75 px
+              var — texten bröts efter vartannat ord. */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start">
           {columns.map((a) => (
             <AthleteColumn
               key={a.id}

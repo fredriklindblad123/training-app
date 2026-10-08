@@ -39,7 +39,11 @@ function statTile({
     label,
     valueText,
     targetText: `${targetLabel} ${target}`,
-    statusClass: RING_STATUS_TEXT[status],
+    /* Aldrig rött: talet är genomförda pass mot planen, alltså något en
+       människa gjort eller inte gjort (CLAUDE.md, Ton mot adepterna). Den
+       lägsta nivån visas neutralt i stället — "0 av 1" i rött stod tidigare
+       under varje adept som inte tränat ännu i dagsvyn. */
+    statusClass: RING_STATUS_TEXT[status === "concern" ? "neutral" : status],
   };
 }
 
