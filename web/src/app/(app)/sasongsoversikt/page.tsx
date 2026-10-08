@@ -862,7 +862,6 @@ async function ArsplanOverview({
        * enskilda löparens Block-sektion använder. Ett delat block (flera
        * löpare ikryssade) räknas bara en gång, inte en gång per löpare. */}
       <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Block</h2>
         {sortedAllBlocks.length === 0 ? (
           <p className="text-sm text-[var(--ink-3)]">Inga block skapade ännu.</p>
         ) : (
