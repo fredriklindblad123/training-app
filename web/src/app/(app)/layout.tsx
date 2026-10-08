@@ -15,7 +15,8 @@ import { TopBar } from "@/components/TopBar";
 import { ModeCircle } from "@/components/ModeCircle";
 import { circleButtonClass } from "@/components/ui/CircleButton";
 import { getViewMode } from "@/lib/view-mode";
-import { syncTargetsFromScope, triggerGarminSyncForAll } from "@/lib/garmin-sync";
+import { garminSyncState, syncTargetsFromScope, triggerGarminSyncForAll } from "@/lib/garmin-sync";
+import { GarminSyncWatcher } from "@/components/GarminSyncWatcher";
 
 /* Navigeringen bor sedan 2026-09-16 i components/BottomNav.tsx, längst ned
  * på sidan i stället för i sidhuvudet. Den äger grupperna (Logg och Plan,
@@ -92,8 +93,12 @@ export default async function AppLayout({
    * att det här går att göra per sidvisning över huvud taget.
    *
    * after() så att inget av det syns i svarstiden. */
+  const syncTargets = syncTargetsFromScope(scoped);
+  /* Är en synk på väg vid den här sidvisningen? Då lyssnar sidan efter den
+   * och uppdaterar sig när den är klar (GarminSyncWatcher). */
+  const syncState = await garminSyncState(supabase, syncTargets);
   {
-    const targets = syncTargetsFromScope(scoped);
+    const targets = syncTargets;
     after(async () => {
       try {
         await triggerGarminSyncForAll(targets);
@@ -106,6 +111,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex flex-1 flex-col">
+      {syncState.due && <GarminSyncWatcher since={syncState.latest} />}
       {/* Uppe: vem du tittar på och vem du är. Nere: vilken vy du är i.
           Uppdelningen är medveten — toppraden ändrar SAMMANHANG, bottenraden
           byter VY, och att blanda dem gjorde tidigare båda raderna till

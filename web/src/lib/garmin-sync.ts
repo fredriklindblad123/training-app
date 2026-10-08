@@ -16,7 +16,7 @@ function apiBase(): string {
  * automatiska synkar så att upprepade inloggningar inom kvarten inte drar
  * igång ett nytt Garmin-anrop per gång. Själva beslutet fattas i Python, som
  * äger last_synced_at — det här är bara vad vi ber om. */
-const AUTO_SYNC_MIN_INTERVAL_MINUTES = 15;
+export const AUTO_SYNC_MIN_INTERVAL_MINUTES = 15;
 
 /** Synkar en användares Garmin-data, samma anrop som "Synka nu" på
  * /settings. Utan `minIntervalMinutes` körs synken alltid — det är vad
@@ -110,4 +110,32 @@ export async function triggerGarminSyncForAll(userIds: string[]): Promise<void> 
   for (const id of due) lastAttempt.set(id, now);
 
   await Promise.allSettled(due.map((id) => triggerGarminSync(id, AUTO_SYNC_MIN_INTERVAL_MINUTES)));
+}
+
+/** Senaste synken bland `userIds`, och om en automatisk synk är på väg.
+ *
+ * `due` speglar strypningen i Python: någon ansluten användare som inte
+ * synkats de senaste AUTO_SYNC_MIN_INTERVAL_MINUTES får en synk vid den här
+ * sidvisningen. Bara då lönar det sig för sidan att lyssna efter resultatet
+ * (GarminSyncWatcher) — annars händer ingenting att vänta på. */
+export async function garminSyncState(
+  supabase: Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>,
+  userIds: string[],
+): Promise<{ latest: string | null; due: boolean }> {
+  if (userIds.length === 0) return { latest: null, due: false };
+  const { data } = await supabase
+    .from("garmin_connections")
+    .select("last_synced_at, status")
+    .in("user_id", userIds);
+  const rows = (data ?? []) as { last_synced_at: string | null; status: string }[];
+  const cutoff = Date.now() - AUTO_SYNC_MIN_INTERVAL_MINUTES * 60 * 1000;
+  const due = rows.some(
+    (r) => r.status === "connected" && (r.last_synced_at == null || Date.parse(r.last_synced_at) < cutoff),
+  );
+  const latest = rows
+    .map((r) => r.last_synced_at)
+    .filter((v): v is string => v != null)
+    .sort()
+    .at(-1) ?? null;
+  return { latest, due };
 }
