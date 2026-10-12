@@ -13,5 +13,12 @@
       "path": "/api/garmin/sync",
       "schedule": "0 5 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.py": {
+      "regions": [
+        "iad1"
+      ]
+    }
+  }
 }

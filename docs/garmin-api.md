@@ -75,6 +75,16 @@ igång fem Garmin-sessioner vid varje inloggning, vilket är precis det mönster
 som blockeras enligt risken nedan. Beslutet fattas i Python, som äger
 `last_synced_at`; Next skickar bara med önskat intervall.
 
+**Synken körs i `iad1`, resten av appen i `dub1` (2026-10-12).** Appen
+flyttades 2026-10-08 till Dublin för att ligga bredvid databasen (eu-west-1).
+Garmin-synken följde med, och nästa gång Garmins korttids-token behövde
+förnyas (9 okt 12:20) svarade Garmin med något som inte var JSON — varje
+synk för alla användare föll sedan med "Expecting value: line 1 column 1".
+Samma token förnyades utan problem lokalt, och från `iad1` hade det
+fungerat i veckor. `vercel.json` låser därför `api/index.py` till `iad1`
+via `functions`. Flytta den inte utan att verifiera token-förnyelsen från
+den nya regionen.
+
 **Känd risk, upptäckt vid research 2026-07-25:** `garth` (som både
 `python-garminconnect` och de flesta JS-motsvarigheter bygger på) blev
 formellt **övergivet av sin maintainer under 2026**, efter att Garmin ändrade
