@@ -14,6 +14,7 @@ import { LT2_SOURCE_LABELS } from "@/lib/threshold-test";
 import { GOAL_EVENTS } from "@/lib/race-pace";
 import { formatDateTime } from "@/lib/format";
 import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
+import { WatchTokenRow } from "@/components/WatchTokenRow";
 
 const ATHLETE_ADDED_LABEL: Record<string, string> = {
   linked: "Löparen kopplad — hittar redan ett konto på den e-posten.",
@@ -78,6 +79,33 @@ export default async function SettingsPage({
         .filter(Boolean)
         .join(" ")
     : null;
+
+  /* Klocknycklar för IFK-urtavlan: den inloggade själv, och för en tränare
+   * även adepterna — det är tränaren som bygger urtavlorna och kopierar
+   * över dem med USB. */
+  const watchPeople = scoped
+    ? [
+        { id: scoped.userId, name: "Du själv" },
+        ...(scoped.role === "coach"
+          ? scoped.linkedAthletes.map((a) => ({ id: a.id, name: a.fullName ?? "Namnlös löpare" }))
+          : []),
+      ]
+    : [];
+  const { data: watchRows } =
+    watchPeople.length > 0
+      ? await supabase
+          .from("watch_tokens")
+          .select("user_id, created_at, last_used_at")
+          .in(
+            "user_id",
+            watchPeople.map((w) => w.id),
+          )
+      : { data: [] };
+  const watchByUser = new Map(
+    ((watchRows ?? []) as { user_id: string; created_at: string; last_used_at: string | null }[]).map(
+      (r) => [r.user_id, r],
+    ),
+  );
 
   const goalSeconds = profile?.goal_seconds != null ? Number(profile.goal_seconds) : null;
   const goalTimeValue =
@@ -298,6 +326,30 @@ export default async function SettingsPage({
           </div>
         </form>
       </section>
+
+      {watchPeople.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+            Klocka
+          </h2>
+          <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+            IFK-urtavlan för Garmin visar emblemet, tiden och dagens pass. Varje klocka behöver en
+            egen nyckel, som byggs in i urtavlan innan den kopieras över med USB. En ny nyckel
+            ersätter den gamla.
+          </p>
+          <ul className="flex flex-col gap-2">
+            {watchPeople.map((w) => (
+              <WatchTokenRow
+                key={w.id}
+                userId={w.id}
+                name={w.name}
+                createdAt={watchByUser.get(w.id)?.created_at ?? null}
+                lastUsedAt={watchByUser.get(w.id)?.last_used_at ?? null}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
 
       {scoped?.role === "coach" && (signupRequests ?? []).length > 0 && (
         <section className="flex flex-col gap-3">

@@ -287,3 +287,44 @@ export async function handleSignupRequest(formData: FormData) {
 
   revalidatePath("/settings");
 }
+
+/* Klocknyckel för IFK-urtavlan (watchface/). Nyckeln är urtavlans enda
+ * behörighet, så bara en SHA-256-hash sparas och själva nyckeln returneras
+ * EN gång — till formuläret som skapade den. En ny nyckel ersätter den gamla:
+ * en urtavla byggd med den gamla slutar då hämta, vilket är rätt beteende om
+ * en klocka bytt ägare eller kommit bort. RLS (watch_tokens) avgör att bara
+ * löparen själv eller hennes tränare kan skapa och ta bort. */
+export type WatchTokenState = { userId: string; token: string } | { error: string } | null;
+
+export async function createWatchToken(
+  _prev: WatchTokenState,
+  formData: FormData,
+): Promise<WatchTokenState> {
+  const { randomBytes, createHash } = await import("node:crypto");
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const userId = formData.get("user_id") as string | null;
+  if (!user || !userId) return { error: "Inte inloggad." };
+
+  const token = randomBytes(24).toString("base64url");
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+
+  await supabase.from("watch_tokens").delete().eq("user_id", userId);
+  const { error } = await supabase
+    .from("watch_tokens")
+    .insert({ user_id: userId, token_hash: tokenHash, created_by: user.id });
+  if (error) return { error: "Nyckeln kunde inte skapas." };
+
+  revalidatePath("/settings");
+  return { userId, token };
+}
+
+export async function deleteWatchToken(formData: FormData) {
+  const supabase = await createClient();
+  const userId = formData.get("user_id") as string | null;
+  if (!userId) return;
+  await supabase.from("watch_tokens").delete().eq("user_id", userId);
+  revalidatePath("/settings");
+}

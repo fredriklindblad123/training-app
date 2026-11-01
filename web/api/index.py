@@ -754,6 +754,79 @@ def _sync_one_user(user_id: str, min_interval_minutes: Optional[int] = None) -> 
     }
 
 
+# --- IFK-urtavlan (watchface/) ---------------------------------------------
+# Klockan har ingen inloggning. Den skickar en personlig nyckel, och bara en
+# SHA-256-hash av nyckeln finns i watch_tokens. Svaret är medvetet litet —
+# urtavlans bakgrundsprocess har några kilobyte minne — och innehåller bara
+# dagens planerade pass för nyckelns användare.
+
+_WATCH_LABELS = {
+    "easy": "Distans",
+    "long_run": "Långpass",
+    "threshold": "Tröskel",
+    "interval": "Intervaller",
+    "race": "Tävling",
+    "strength": "Styrka",
+    "cross_training": "Alternativ träning",
+    "test": "Test",
+    "hurdles": "Häck",
+    "rest": "Vila",
+}
+_WATCH_TEXT_MAX = 48
+
+
+def _watch_text(rows: list[dict]) -> str:
+    """"Tröskel 6x3min + Styrka", eller "Vila"/"Inget planerat"."""
+    work = [r for r in rows if r.get("workout_type") != "rest"]
+    if not rows:
+        return "Inget planerat"
+    if not work:
+        return "Vila"
+    parts = []
+    for r in work:
+        label = _WATCH_LABELS.get(r.get("workout_type") or "", "Pass")
+        title = (r.get("title") or "").strip()
+        parts.append(title if title else label)
+    text = " + ".join(parts)
+    return text if len(text) <= _WATCH_TEXT_MAX else text[: _WATCH_TEXT_MAX - 3] + "..."
+
+
+@app.get("/api/watch/today")
+async def watch_today(request: Request):
+    import hashlib
+    from zoneinfo import ZoneInfo
+
+    token = request.query_params.get("token") or ""
+    if len(token) < 20:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    rows = _sb_select("watch_tokens", "id,user_id", {"token_hash": f"eq.{token_hash}"})
+    if not rows:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    user_id = rows[0]["user_id"]
+
+    today = datetime.now(ZoneInfo("Europe/Stockholm")).date().isoformat()
+    planned = _sb_select(
+        "planned_workouts",
+        "workout_type,title,slot",
+        {"user_id": f"eq.{user_id}", "scheduled_date": f"eq.{today}", "order": "slot.asc"},
+    )
+
+    # Senast använd: syns i appen, så man ser att klockan faktiskt hämtar.
+    requests.patch(
+        f"{SUPABASE_URL}/rest/v1/watch_tokens",
+        headers=_sb_headers(),
+        params={"id": f"eq.{rows[0]['id']}"},
+        json={"last_used_at": datetime.now(timezone.utc).isoformat()},
+        timeout=10,
+    )
+
+    return JSONResponse(
+        {"date": today, "text": _watch_text(planned)},
+        headers={"cache-control": "no-store"},
+    )
+
+
 @app.get("/api/garmin/health")
 def health():
     return {"ok": True}
