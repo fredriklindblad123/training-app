@@ -1,0 +1,5 @@
+project.manifest = manifest.xml
+
+# source-token/ skapas av build.sh med adeptens klocknyckel och checkas
+# aldrig in (.gitignore).
+base.sourcePath = source;source-token

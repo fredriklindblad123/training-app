@@ -1,0 +1,5 @@
+# Byggs per adept av build.sh — innehåller hennes klocknyckel.
+source-token/
+bin/
+# Garmins utvecklarnyckel, personlig för den som bygger.
+developer_key*

@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!-- IFK-urtavlan för Träningsnavet. Se README.md. -->
+<iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="3">
+    <iq:application id="3f1a72e6b0d44ce59f120d58e307ee09" type="watchface" name="@Strings.AppName" entry="TraningsnavetApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="3.0.0">
+        <iq:products>
+            <iq:product id="fenix5"/>
+            <iq:product id="fenix5s"/>
+            <iq:product id="fenix5x"/>
+            <iq:product id="fenix5plus"/>
+            <iq:product id="fenix5splus"/>
+            <iq:product id="fenix5xplus"/>
+            <iq:product id="fenix6"/>
+            <iq:product id="fenix6s"/>
+            <iq:product id="fenix6pro"/>
+            <iq:product id="fenix6spro"/>
+            <iq:product id="fenix6xpro"/>
+            <iq:product id="fr255"/>
+            <iq:product id="fr255m"/>
+            <iq:product id="fr255s"/>
+            <iq:product id="fr255sm"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="Background"/>
+            <iq:uses-permission id="Communications"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>swe</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>
