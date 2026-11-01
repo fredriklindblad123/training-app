@@ -211,12 +211,14 @@ export function TrainingGears({ data }: { data: TrainingGearsData }) {
             per pass, för distans- och långpass på minst 20 minuter.
           </li>
           <li>
-            <strong className="font-medium text-[var(--foreground)]">Tröskel:</strong> pulsen på
-            andra halvan av varje rep, när den hunnit ikapp. Rep på minst 400 m och en minut.
+            <strong className="font-medium text-[var(--foreground)]">Tröskel:</strong> pulsen vid
+            slutet av varje rep (sista 10 s). Rep på minst 400 m och en minut; första repet räknas
+            inte.
           </li>
           <li>
-            <strong className="font-medium text-[var(--foreground)]">Intervall:</strong> maxpulsen
-            på varje rep, oavsett längd.
+            <strong className="font-medium text-[var(--foreground)]">Intervall:</strong> pulsen vid
+            slutet av varje rep, oavsett längd; de två första repen räknas inte. På rep under 45 s
+            hinner pulsen inte upp — där säger den mer om vilan än om repet.
           </li>
           <li>Uppvärmning och nerjogg räknas bort.</li>
           <li>

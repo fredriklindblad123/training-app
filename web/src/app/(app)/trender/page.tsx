@@ -167,7 +167,7 @@ async function fetchAllSplits(
       const { data } = await supabase
         .from("activity_splits")
         .select(
-          "activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr, hr_second_half",
+          "activity_id, split_index, split_type, distance_meters, duration_seconds, avg_hr, max_hr, hr_second_half, hr_end",
         )
         .in("activity_id", chunk)
         .order("activity_id")
@@ -399,6 +399,7 @@ export default async function TrendsPage({
           avgHr: lap.avg_hr,
           maxHr: lap.max_hr,
           secondHalfHr: lap.hr_second_half ?? null,
+          endHr: lap.hr_end ?? null,
           sessionId: session.dominantActivity.id,
           date: session.date,
           sessionName: session.dominantActivity.name,
@@ -864,7 +865,8 @@ export default async function TrendsPage({
             Puls per tröskelpass
           </h3>
           <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-            Pulsen på repens andra halva, ett pass per prick. Tryck för att se passet.
+            Pulsen vid slutet av varje rep, ett pass per prick. Första repet räknas inte. Tryck för
+            att se passet.
           </p>
           <GearSessionChart
             peaks={thresholdPeaks}
@@ -914,16 +916,17 @@ export default async function TrendsPage({
       >
         <div className="flex flex-col gap-2">
           <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-            Maxpuls per intervallpass
+            Slutpuls per intervallpass
           </h3>
           <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-            Repens maxpuls, ett pass per prick. Tryck för att se passet.
+            Pulsen vid slutet av varje rep, ett pass per prick. De två första repen räknas inte —
+            där har pulsen inte hunnit upp. Tryck för att se passet.
           </p>
           <GearSessionChart
             peaks={intervalPeaks}
             markers={hrMarkers([[thresholdProfile.lt2Hr, "LT2"]])}
             periodMedian={intervalPeriodMedian}
-            label="Maxpuls per intervallpass"
+            label="Slutpuls per intervallpass"
             emptyLabel="Inga intervallpass i perioden."
             fromDate={startDate}
             toDate={activeBlock ? activeBlock.end_date : todayKey}

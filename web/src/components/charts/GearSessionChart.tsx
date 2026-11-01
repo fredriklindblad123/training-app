@@ -9,8 +9,8 @@ import type { GearSessionPeak } from "@/lib/training-gears";
  * Samma tal som växeln i växeldiagrammet, uppdelat per pass: varje prick är
  * medianen av passets repvärden, strecket går från passets lägsta till högsta
  * rep. Medianlinjen är växeldiagrammets värde för hela perioden, så att det
- * syns att de två hör ihop. Intervall mäts med repens maxpuls, tröskel med
- * snittet över repens andra halva — se repHr i lib/training-gears.ts.
+ * syns att de två hör ihop. Båda växlarna mäts med pulsen vid repets slut,
+ * utan inkörningsrepen — se repHr och settledReps i lib/training-gears.ts.
  *
  * viewBox är smal (360) i stället för formkurvans 800: grafen läses mest på
  * telefon, och med en smal viewBox blir texten i SVG:n läsbar i 390 px utan
@@ -243,7 +243,7 @@ export function GearSessionChart({
           ? ` — median av ${hoveredPeak.reps} rep, ${hoveredPeak.low}–${hoveredPeak.high}`
           : " — ett rep"}
         {hoveredPeak.fallbackReps > 0
-          ? ` (${hoveredPeak.fallbackReps === hoveredPeak.reps ? "alla" : hoveredPeak.fallbackReps} med varvets snittpuls)`
+          ? ` (${hoveredPeak.fallbackReps === hoveredPeak.reps ? "alla" : hoveredPeak.fallbackReps} utan pulskurva)`
           : ""}
       </p>
     </div>

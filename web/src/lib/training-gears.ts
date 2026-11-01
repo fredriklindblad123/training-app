@@ -87,8 +87,11 @@ export type GearRep = {
   avgHr: number;
   /** Varvets maxpuls. Intervallrepens mått, se repHr. */
   maxHr: number | null;
-  /** Snittpuls över varvets andra halva, ur pulskurvan. Tröskelrepens mått. */
+  /** Snittpuls över varvets andra halva, ur pulskurvan. Reserv för tröskel. */
   secondHalfHr: number | null;
+  /** Pulsen vid repets slut: snittet av de sista 10 sekunderna, ur
+   * pulskurvan (activity_splits.hr_end). Repens mått sedan 2026-10-09. */
+  endHr?: number | null;
   /** Passet repet hör till — grupperar repen per pass i intervallgrafen. */
   sessionId?: string;
   date?: string;
@@ -112,10 +115,40 @@ export type GearRep = {
  *
  * Saknas måttet (ingen pulskurva för tröskel, ingen maxpuls för intervall)
  * används varvets snittpuls, som tidigare. */
+/* Sedan 2026-10-09 mäts både tröskel- och intervallrep med pulsen vid
+ * repets SLUT (sista 10 s), på tränarens begäran — det är den puls han läser
+ * av på klockan efter ett rep. På rep ≥ 90 s ligger den inom 1–2,5 slag från
+ * andra halvan och max (uppmätt på Alices 1 466 rep). Saknas pulskurva faller
+ * måttet tillbaka på det som gällde tidigare. */
 export function repHr(r: GearRep): number {
-  if (r.category === "interval") return r.maxHr ?? r.avgHr;
-  if (r.category === "threshold") return r.secondHalfHr ?? r.avgHr;
+  if (r.category === "interval") return r.endHr ?? r.maxHr ?? r.avgHr;
+  if (r.category === "threshold") return r.endHr ?? r.secondHalfHr ?? r.avgHr;
   return r.avgHr;
+}
+
+/* Inkörningsrepen räknas inte (2026-10-09). Pulsen har inte hunnit upp på
+ * passets första rep — rep 1 står för nästan hela pulsdriften i ett pass
+ * (räknat från rep 2 är driften −2 till +1 slag). Intervall: de två första
+ * repen bort, tröskel: det första. Alltid minst två rep kvar. Repen måste
+ * ligga i tidsordning per pass, vilket de gör när de byggs ur varven. */
+export const SKIP_FIRST_REPS: Record<string, number> = { interval: 2, threshold: 1 };
+
+export function settledReps(reps: GearRep[]): GearRep[] {
+  const bySession = new Map<string, GearRep[]>();
+  const loose: GearRep[] = [];
+  for (const r of reps) {
+    if (!r.sessionId) {
+      loose.push(r);
+      continue;
+    }
+    bySession.set(r.sessionId, [...(bySession.get(r.sessionId) ?? []), r]);
+  }
+  const out: GearRep[] = [...loose];
+  for (const rs of bySession.values()) {
+    const skip = SKIP_FIRST_REPS[rs[0].category] ?? 0;
+    out.push(...(rs.length - skip >= 2 ? rs.slice(skip) : rs));
+  }
+  return out;
 }
 
 /* Distans mäts per *pass* (ett distanspass har en intensitet), tröskel och
@@ -231,15 +264,15 @@ export type GearSessionPeak = {
 /* Passgraferna ska visa samma värde som växeldiagrammet, bara uppdelat per
  * pass. Växeldiagrammet tar medianen av alla rep i växeln (repHr) under
  * perioden; här tas medianen av varje pass egna rep, ur samma urval
- * (isGearRep). Intervall: repens maxpuls. Tröskel: snittet över repens andra
- * halva. */
+ * (isGearRep), med inkörningsrepen bortstrukna (settledReps). Måttet är
+ * slutpulsen, se repHr. */
 export function gearSessionPeaks(
   reps: GearRep[],
   category: "interval" | "threshold",
 ): GearSessionPeak[] {
   const bySession = new Map<string, GearRep[]>();
-  for (const r of reps) {
-    if (!r.sessionId || !r.date || !isGearRep(r, category)) continue;
+  for (const r of settledReps(reps.filter((x) => isGearRep(x, category)))) {
+    if (!r.sessionId || !r.date) continue;
     bySession.set(r.sessionId, [...(bySession.get(r.sessionId) ?? []), r]);
   }
   return [...bySession.entries()]
@@ -254,9 +287,7 @@ export function gearSessionPeaks(
         // Andra halvans snitt har decimaler; grafen visar hela slag.
         low: Math.round(Math.min(...values)),
         high: Math.round(Math.max(...values)),
-        fallbackReps: rs.filter((r) =>
-          category === "interval" ? r.maxHr == null : r.secondHalfHr == null,
-        ).length,
+        fallbackReps: rs.filter((r) => r.endHr == null).length,
       };
     })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -376,6 +407,8 @@ export function computeTrainingGears(
   );
 
   const keepRep = isGearRep;
+  // Samma urval som passgraferna: inkörningsrepen räknas inte.
+  reps = settledReps(reps.filter((r) => isGearRep(r, r.category)));
 
   /* ---------------------------- pulsvyn ---------------------------------- */
   const hrValues: Record<GearKey, number[]> = {
@@ -503,11 +536,11 @@ export function gearVerdict(gear: Gear, lt1: number, lt2: number): string {
     case "troskel":
       return pct != null && pct >= 25
         ? `${pct} % av varven ligger över ${lt2}. Stämmer tröskeln liknar passen mer intervall än tröskel.`
-        : `Puls på repens andra halva, median ${a.median}, inom bandet ${lt1}–${lt2}.`;
+        : `Slutpuls per rep, median ${a.median}, inom bandet ${lt1}–${lt2}.`;
     case "intervall":
       return a.median >= lt2
-        ? `Maxpuls per rep, median ${a.median}, över anaerob tröskel ${lt2}.`
-        : `Maxpuls per rep, median ${a.median}, under ${lt2} — antingen går intervallerna inte hårt nog, eller så ligger tröskeln högre än angivet.`;
+        ? `Slutpuls per rep, median ${a.median}, över anaerob tröskel ${lt2}.`
+        : `Slutpuls per rep, median ${a.median}, under anaerob tröskel ${lt2}.`;
   }
 }
 

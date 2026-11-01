@@ -27,6 +27,8 @@ export type SignatureLap = {
   /** Snittpuls över varvets andra halva, ur pulskurvan (compute_split_hr).
    * Bara hämtad där växlarna behöver den — valfri här. */
   hr_second_half?: number | null;
+  /** Pulsen de sista 10 sekunderna av varvet (compute_split_hr). */
+  hr_end?: number | null;
 };
 
 /** En grupp likadana repetitioner i följd, t.ex. 4 × 600 m. */
