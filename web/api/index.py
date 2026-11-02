@@ -110,6 +110,13 @@ _ALLOWED_SUBSTRINGS = (
     "swim",
     "cross_country_skiing",
     "skate_skiing",
+  "cardio",
+"rowing",
+"hiit",
+"elliptical",
+"stair",
+"hiking",
+
 )
 
 
