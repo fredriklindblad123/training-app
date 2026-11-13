@@ -9,7 +9,9 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import type { PlannedWorkout } from "@/lib/plan-matching";
-import { computeRangeStats } from "@/lib/range-stats";
+import { computeRangeStats, passedCutoff, type RangeInterruption } from "@/lib/range-stats";
+import { STATUS_COLOR_VAR, STATUS_LABEL } from "@/lib/calendar-utils";
+import { WORKOUT_LABELS, type WorkoutType } from "@/lib/planning";
 import { CATEGORY_LABELS, categoryColorVar, type ActivityCategory } from "@/lib/categories";
 import {
   activeSeconds,
@@ -18,6 +20,7 @@ import {
   dailyValues,
   dayIndex,
   findComparisonBlock,
+  missedPasses,
   sessionKm,
   shiftKey,
   totalsUpToDay,
@@ -39,7 +42,8 @@ const TYPE_OPTIONS: ActivityCategory[] = [
   "cross_training",
   "strength",
 ];
-import { CumulativeLineChart, GroupedBarChart } from "@/components/charts/AnalysisCharts";
+import { CumulativeLineChart, GroupedBarChart, type DayMark } from "@/components/charts/AnalysisCharts";
+import { strengthDatesFromDiary, type DiaryLogRow } from "@/lib/diary-strength";
 
 /* /analys — ett block i siffror och grafer, mot motsvarande block förra året.
  * Beräkningarna och deras avgränsningar står i lib/block-analysis.ts. */
@@ -57,6 +61,9 @@ function signed(n: number, digits = 0): string {
   return `${r > 0 ? "+" : ""}${r.toLocaleString("sv-SE")}`;
 }
 
+/* I år och förra året lika tydligt, med en stapel var på samma skala så att
+ * skillnaden syns utan att läsa siffrorna. Neutrala toner, inget rött för ett
+ * lägre värde (CLAUDE.md, Ton mot adepterna). */
 function TotalTile({
   label,
   now,
@@ -70,19 +77,33 @@ function TotalTile({
   unit?: string;
   digits?: number;
 }) {
+  const max = Math.max(now, before ?? 0, 1);
+  const fmtN = (v: number) => Number(v.toFixed(digits)).toLocaleString("sv-SE");
+  const row = (name: string, v: number, color: string, strong: boolean) => (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs text-[var(--ink-3)]">{name}</span>
+        <span
+          className={`tabular ${strong ? "display text-xl font-semibold text-[var(--foreground)]" : "text-base text-[var(--ink-2)]"}`}
+        >
+          {fmtN(v)}
+          {unit && <span className="ml-1 text-xs font-normal text-[var(--ink-3)]">{unit}</span>}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full bg-[var(--line)]">
+        <div className="h-1.5 rounded-full" style={{ width: `${(v / max) * 100}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  );
   return (
-    <div className="flex flex-col gap-0.5 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+    <div className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
       <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
         {label}
       </span>
-      <span className="display tabular text-2xl font-semibold text-[var(--foreground)]">
-        {Number(now.toFixed(digits)).toLocaleString("sv-SE")}
-        {unit && <span className="ml-1 text-sm font-normal text-[var(--ink-3)]">{unit}</span>}
-      </span>
+      {row("I år", now, THIS_YEAR, true)}
+      {before != null && row("Förra året", before, LAST_YEAR, false)}
       {before != null && (
-        <span className="tabular text-xs text-[var(--ink-2)]">
-          förra året {Number(before.toFixed(digits)).toLocaleString("sv-SE")} ({signed(now - before, digits)})
-        </span>
+        <span className="tabular text-xs text-[var(--ink-2)]">{signed(now - before, digits)} mot förra året</span>
       )}
     </div>
   );
@@ -160,7 +181,7 @@ export default async function AnalysPage({
   const daysSoFar = ongoing ? dayIndex(today, block.start_date) + 1 : length;
 
   const from = comparison && comparison.start_date < block.start_date ? comparison.start_date : block.start_date;
-  const [{ data: activityRows }, { data: plannedRows }] = await Promise.all([
+  const [{ data: activityRows }, { data: plannedRows }, { data: diaryRows }] = await Promise.all([
     supabase
       .from("activities")
       // Tid i rörelse ur raw_data, utan att hämta hela raw_data.
@@ -175,7 +196,41 @@ export default async function AnalysPage({
       .eq("user_id", userId)
       .gte("scheduled_date", block.start_date)
       .lte("scheduled_date", block.end_date),
+    // Passloggen (styrkepass loggas där snarare än med klockan) och
+    // dagtypen (sjuk/skadad).
+    supabase
+      .from("diary_entries")
+      .select("entry_date, session_log, day_type")
+      .eq("user_id", userId)
+      .gte("entry_date", from)
+      .lte("entry_date", block.end_date),
   ]);
+  const diary = (diaryRows ?? []) as (DiaryLogRow & { day_type: string | null })[];
+  const diaryStrength = strengthDatesFromDiary(diary);
+  const interruptions: RangeInterruption[] = diary
+    .filter((e) => e.day_type === "sick" || e.day_type === "injured")
+    .map((e) => ({ date: e.entry_date, dayType: e.day_type as "sick" | "injured" }));
+  const interruptionOn = new Map(interruptions.map((i) => [i.date, i.dayType]));
+  const interruptedDays = (b: { start_date: string }, days: number) => {
+    const n = { sick: 0, injured: 0 };
+    for (const i of interruptions) {
+      const d = dayIndex(i.date, b.start_date);
+      if (d >= 0 && d < days) n[i.dayType]++;
+    }
+    return n;
+  };
+  const sickNow = interruptedDays(block, daysSoFar);
+  const sickBefore = comparison ? interruptedDays(comparison, daysSoFar) : null;
+  // En post per dag i årets block, för remsan under graferna.
+  const dayMarks: (DayMark | null)[] = Array.from({ length }, (_, i) => {
+    const t = interruptionOn.get(shiftKey(block.start_date, i));
+    return t ? { label: STATUS_LABEL[t], color: STATUS_COLOR_VAR[t] } : null;
+  });
+  const dayLabels = Array.from({ length }, (_, i) => {
+    const key = shiftKey(block.start_date, i);
+    const t = interruptionOn.get(key);
+    return `Dag ${i + 1} · ${short(key)}${t ? ` · ${STATUS_LABEL[t]}` : ""}`;
+  });
   const rows = (activityRows ?? []) as unknown as (SessionActivity & { moving: string | null })[];
   const moving: MovingById = new Map(
     rows.filter((r) => r.moving != null).map((r) => [r.id, Number(r.moving)]),
@@ -191,8 +246,10 @@ export default async function AnalysPage({
     ? totalsUpToDay(chosen, comparison, daysSoFar, moving)
     : null;
   // Kvalitets- och styrkepass räknas alltid, oavsett valda typer.
-  const nowAll = totalsUpToDay(sessions, block, daysSoFar, moving);
-  const beforeAll = comparison ? totalsUpToDay(sessions, comparison, daysSoFar, moving) : null;
+  const nowAll = totalsUpToDay(sessions, block, daysSoFar, moving, diaryStrength);
+  const beforeAll = comparison
+    ? totalsUpToDay(sessions, comparison, daysSoFar, moving, diaryStrength)
+    : null;
 
   // --- Aktiva minuter ------------------------------------------------------
   const minutesOf = (s: TrainingSession) => activeSeconds(s, moving) / 60;
@@ -225,6 +282,8 @@ export default async function AnalysPage({
       sessions,
       competitionDates: [],
       today,
+      diaryStrengthDates: diaryStrength,
+      interruptions,
     });
     return {
       due: s.qualityDue + s.distanceDue + s.strengthDue,
@@ -237,14 +296,35 @@ export default async function AnalysPage({
     sessions,
     competitionDates: [],
     today,
+    diaryStrengthDates: diaryStrength,
+    interruptions,
   });
   const hasPlan = planned.some((p) => p.workout_type !== "rest");
 
   const weekLabel = (w: number) => {
     const s = shiftKey(block.start_date, w * 7);
     const e = shiftKey(block.start_date, Math.min(w * 7 + 6, length - 1));
-    return `v${w + 1} · ${short(s)}–${short(e)}`;
+    const n = { sick: 0, injured: 0 };
+    for (const [d, t] of interruptionOn) if (d >= s && d <= e) n[t]++;
+    const notes = [
+      n.sick > 0 ? `${n.sick} d sjuk` : null,
+      n.injured > 0 ? `${n.injured} d skadad` : null,
+    ].filter(Boolean);
+    return `v${w + 1} · ${short(s)}–${short(e)}${notes.length ? ` · ${notes.join(", ")}` : ""}`;
   };
+
+  // --- Missade pass mot planen ---------------------------------------------
+  const trainedToday =
+    sessions.some((x) => x.date === today) || diaryStrength.includes(today);
+  const cutoffRaw = ongoing ? passedCutoff(today, trainedToday) : block.end_date;
+  const cutoff = cutoffRaw > block.end_date ? block.end_date : cutoffRaw;
+  const missed = missedPasses(planned, sessions, diaryStrength, block.start_date, cutoff);
+  const dayHref = (key: string) => {
+    const [y, m, d] = key.split("-").map(Number);
+    return `/calendar/${y}/${m}/${d}${athleteQuery ? `?athlete=${userId}` : ""}`;
+  };
+  const weekday = (key: string) =>
+    new Date(`${key}T12:00:00Z`).toLocaleDateString("sv-SE", { weekday: "short", timeZone: "UTC" });
   const pct = (done: number, due: number) => (due > 0 ? ` · ${Math.round((done / due) * 100)} %` : "");
 
   return (
@@ -301,13 +381,32 @@ export default async function AnalysPage({
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           {ongoing ? "Hittills i blocket" : "Hela blocket"}
         </h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <TotalTile label="Aktiva minuter" now={now.minutes} before={before?.minutes ?? null} />
           <TotalTile label="Distans" now={now.km} before={before?.km ?? null} unit="km" />
           <TotalTile label="Träningsdagar" now={now.trainingDays} before={before?.trainingDays ?? null} />
           <TotalTile label="Kvalitetspass" now={nowAll.qualitySessions} before={beforeAll?.qualitySessions ?? null} />
           <TotalTile label="Styrkepass" now={nowAll.strengthSessions} before={beforeAll?.strengthSessions ?? null} />
+          <TotalTile
+            label="Sjuk/skadad, dagar"
+            now={sickNow.sick + sickNow.injured}
+            before={sickBefore ? sickBefore.sick + sickBefore.injured : null}
+          />
         </div>
+        <p className="text-xs text-[var(--ink-3)]">
+          Styrkepass räknas också ur dagbokens passlogg, där de oftast skrivs in: gym, cirkel,
+          medicinboll och liknande egna pass. Det underlaget är självskattat. Styrka som tillägg
+          efter ett löppass räknas inte. Sjuk- och skaddagar är markerade i dagboken
+          {sickNow.sick + sickNow.injured > 0
+            ? ` — i år ${[
+                sickNow.sick > 0 ? `${sickNow.sick} sjuk` : null,
+                sickNow.injured > 0 ? `${sickNow.injured} skadad` : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}`
+            : ""}
+          . De syns som en färgad remsa under graferna.
+        </p>
       </section>
 
       <section className="flex flex-col gap-3">
@@ -325,7 +424,8 @@ export default async function AnalysPage({
           unit="min"
           ariaLabel={`Aktiva minuter ackumulerat i ${block.name}${comparison ? ` och ${comparison.name}` : ""}`}
           defaultIndex={daysSoFar - 1}
-          dayLabels={Array.from({ length }, (_, i) => `Dag ${i + 1} · ${short(shiftKey(block.start_date, i))}`)}
+          dayLabels={dayLabels}
+          dayMarks={dayMarks}
           series={[
             ...(dailyBefore
               ? [{ label: "Förra året", values: cumulative(dailyBefore), color: LAST_YEAR, dashed: true }]
@@ -348,6 +448,7 @@ export default async function AnalysPage({
           groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
           groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
           defaultIndex={Math.floor((daysSoFar - 1) / 7)}
+          dayMarks={dayMarks}
           unit="min"
           ariaLabel="Aktiva minuter per blockvecka"
           series={[
@@ -378,7 +479,8 @@ export default async function AnalysPage({
           unit="km"
           ariaLabel={`Distans ackumulerat i ${block.name}${comparison ? ` och ${comparison.name}` : ""}`}
           defaultIndex={daysSoFar - 1}
-          dayLabels={Array.from({ length }, (_, i) => `Dag ${i + 1} · ${short(shiftKey(block.start_date, i))}`)}
+          dayLabels={dayLabels}
+          dayMarks={dayMarks}
           series={[
             ...(kmBefore
               ? [{ label: "Förra året", values: cumulative(kmBefore), color: LAST_YEAR, dashed: true }]
@@ -396,6 +498,7 @@ export default async function AnalysPage({
           groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
           groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
           defaultIndex={Math.floor((daysSoFar - 1) / 7)}
+          dayMarks={dayMarks}
           unit="km"
           ariaLabel="Distans per blockvecka"
           series={[
@@ -419,7 +522,9 @@ export default async function AnalysPage({
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Antal pass per vecka: kvalitet, distans och styrka. Gjorda pass räknas inom veckan, inte
-            dag för dag. Bara dagar som passerat räknas.
+            dag för dag. Bara dagar som passerat räknas. Ett planerat pass på en sjuk- eller skaddag
+            som inte blev av räknas inte
+            {blockStats.excusedCount > 0 ? ` (${blockStats.excusedCount} i blocket)` : ""}.
           </p>
         </div>
         {hasPlan ? (
@@ -427,7 +532,8 @@ export default async function AnalysPage({
             <GroupedBarChart
               groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
               groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
-          defaultIndex={Math.floor((daysSoFar - 1) / 7)}
+              defaultIndex={Math.floor((daysSoFar - 1) / 7)}
+              dayMarks={dayMarks}
               unit="pass"
               ariaLabel="Planerade och gjorda pass per blockvecka"
               series={[
@@ -464,6 +570,65 @@ export default async function AnalysPage({
           <p className="text-sm text-[var(--ink-3)]">Inget planerat i blocket — bara utfall att visa.</p>
         )}
       </section>
+
+      {hasPlan && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+              Planerat som inte blev av
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
+              Planerade pass utan ett pass av samma slag samma dag. Ett pass som flyttats till en annan
+              dag står också här. Tryck för att öppna dagen.
+            </p>
+          </div>
+          {missed.length === 0 ? (
+            <p className="text-sm text-[var(--ink-3)]">Alla planerade pass hittills blev av.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-[var(--line)] rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+              {missed.map(({ planned: p, doneThatDay }) => {
+                const t = interruptionOn.get(p.scheduled_date);
+                return (
+                  <li key={p.id}>
+                    <Link
+                      href={dayHref(p.scheduled_date)}
+                      className="flex items-start gap-3 px-3 py-2.5 hover:bg-[var(--surface-raised)]"
+                    >
+                      <span className="tabular w-14 shrink-0 text-sm text-[var(--ink-2)]">
+                        <span className="block text-xs text-[var(--ink-3)]">{weekday(p.scheduled_date)}</span>
+                        {short(p.scheduled_date)}
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="flex items-center gap-1.5 text-sm text-[var(--foreground)]">
+                          <span
+                            aria-hidden
+                            className="inline-block h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: categoryColorVar(p.workout_type as ActivityCategory) ?? "var(--ink-3)" }}
+                          />
+                          <span className="truncate">
+                            {p.title || WORKOUT_LABELS[p.workout_type as WorkoutType] || p.workout_type}
+                          </span>
+                        </span>
+                        <span className="text-xs text-[var(--ink-3)]">
+                          {doneThatDay.length > 0
+                            ? `Gjort den dagen: ${doneThatDay.map((x) => CATEGORY_LABELS[x.category as ActivityCategory] ?? x.category).join(", ")}`
+                            : "Inget pass den dagen"}
+                        </span>
+                      </span>
+                      {t && (
+                        <span className="flex shrink-0 items-center gap-1 text-xs text-[var(--ink-2)]">
+                          <span aria-hidden className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: STATUS_COLOR_VAR[t] }} />
+                          {STATUS_LABEL[t]}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }

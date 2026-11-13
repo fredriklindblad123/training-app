@@ -24,6 +24,8 @@
 
 import type { TrainingSession } from "@/lib/sessions";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
+import type { PlannedWorkout } from "@/lib/plan-matching";
+import { planKind } from "@/lib/range-stats";
 
 export type AnalysisBlock = {
   id: string;
@@ -129,6 +131,8 @@ export function totalsUpToDay(
   block: AnalysisBlock,
   days: number,
   moving: MovingById,
+  /** Dagar med eget styrkepass enligt dagboken (lib/diary-strength.ts). */
+  diaryStrengthDates: string[] = [],
 ): BlockTotals {
   const inside = sessions.filter((s) => {
     const i = dayIndex(s.date, block.start_date);
@@ -141,6 +145,62 @@ export function totalsUpToDay(
     qualitySessions: inside.filter((s) =>
       (QUALITY_WORKOUT_TYPES as readonly string[]).includes(s.category),
     ).length,
-    strengthSessions: inside.filter((s) => s.category === "strength").length,
+    // Per dag: Garmin-styrka eller ett eget styrkepass i dagboken.
+    strengthSessions: new Set([
+      ...inside.filter((s) => s.category === "strength").map((s) => s.date),
+      ...diaryStrengthDates.filter((d) => {
+        const i = dayIndex(d, block.start_date);
+        return i >= 0 && i < days;
+      }),
+    ]).size,
   };
+}
+
+/** Ett planerat pass som inte blev av, och det som gjordes den dagen. */
+export type MissedPass = {
+  planned: PlannedWorkout;
+  doneThatDay: TrainingSession[];
+};
+
+/** Planerade pass som saknar ett gjort pass av samma slag SAMMA DAG, fram
+ * till och med `cutoff`. Slag som i Uppföljning (planKind): ett planerat
+ * intervallpass som blev ett tröskelpass är inte missat. Styrka i dagboken
+ * räknas som gjord styrka.
+ *
+ * Listan är per dag, medan Planerat och gjort räknar inom veckan — ett pass
+ * som flyttats till en annan dag samma vecka står alltså här men räknas som
+ * gjort i veckans stapel. Det är meningen: listan visar var planen och
+ * utfallet skiljde sig, och länkar till dagen så man kan se varför. */
+export function missedPasses(
+  planned: PlannedWorkout[],
+  sessions: TrainingSession[],
+  diaryStrengthDates: string[],
+  startKey: string,
+  cutoff: string,
+): MissedPass[] {
+  const doneByDayKind = new Map<string, number>();
+  const bump = (key: string) => doneByDayKind.set(key, (doneByDayKind.get(key) ?? 0) + 1);
+  for (const s of sessions) {
+    const k = planKind(s.category);
+    if (k) bump(`${s.date}|${k}`);
+  }
+  for (const d of new Set(diaryStrengthDates)) {
+    if (!doneByDayKind.has(`${d}|strength`)) bump(`${d}|strength`);
+  }
+  const out: MissedPass[] = [];
+  const sorted = planned
+    .filter((p) => p.scheduled_date >= startKey && p.scheduled_date <= cutoff)
+    .sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || (a.slot ?? 1) - (b.slot ?? 1));
+  for (const p of sorted) {
+    const k = planKind(p.workout_type);
+    if (!k) continue;
+    const key = `${p.scheduled_date}|${k}`;
+    const left = doneByDayKind.get(key) ?? 0;
+    if (left > 0) {
+      doneByDayKind.set(key, left - 1);
+      continue;
+    }
+    out.push({ planned: p, doneThatDay: sessions.filter((s) => s.date === p.scheduled_date) });
+  }
+  return out;
 }

@@ -40,6 +40,7 @@ import {
 } from "@/lib/planning";
 import { buttonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
+import { strengthDatesFromDiary } from "@/lib/diary-strength";
 
 /* Uppföljning (uttrycklig begäran 2026-08-27): tränarens statistiksida —
  * antal pass, typ av pass och planerat mot genomfört, för alla löpare
@@ -229,9 +230,10 @@ export default async function UppfoljningPage({
              så en vecka som bryter sviten där också räknas som sjuk här. */
           supabase
             .from("diary_entries")
-            .select("user_id, entry_date, day_type")
+            // Alla dagboksdagar, inte bara sjuk/skadad: passloggen bär också
+            // styrkepassen (lib/diary-strength.ts).
+            .select("user_id, entry_date, day_type, session_log")
             .in("user_id", athleteIds)
-            .in("day_type", ["sick", "injured"])
             .gte("entry_date", period.startDate)
             .lte("entry_date", period.endDate),
         ]);
@@ -262,14 +264,16 @@ export default async function UppfoljningPage({
             .filter((c) => c.user_id === athlete.id)
             .map((c) => c.competition_date);
 
-          const interruptions: RangeInterruption[] = (
+          const diaryRows = (
             (interruptionRows ?? []) as {
               user_id: string;
               entry_date: string;
-              day_type: string;
+              day_type: string | null;
+              session_log: string | null;
             }[]
-          )
-            .filter((e) => e.user_id === athlete.id)
+          ).filter((e) => e.user_id === athlete.id);
+          const interruptions: RangeInterruption[] = diaryRows
+            .filter((e) => e.day_type === "sick" || e.day_type === "injured")
             .map((e) => ({ date: e.entry_date, dayType: e.day_type as "sick" | "injured" }));
 
           return {
@@ -281,6 +285,7 @@ export default async function UppfoljningPage({
               competitionDates,
               interruptions,
               today: new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" }),
+              diaryStrengthDates: strengthDatesFromDiary(diaryRows),
             }),
           };
         });
@@ -444,6 +449,7 @@ export default async function UppfoljningPage({
                   <th scope="col" className="px-3 py-2.5 font-semibold">Distans</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Tid</th>
                   <th scope="col" className="px-3 py-2.5 font-semibold">Tävlingar</th>
+                  <th scope="col" className="px-3 py-2.5 font-semibold">Sjuk/skadad</th>
                 </tr>
               </thead>
               <tbody className="block sm:table-row-group">
@@ -504,6 +510,28 @@ export default async function UppfoljningPage({
                           <span className="text-[var(--ink-3)]">—</span>
                         ) : (
                           `${stats.competitionsDone}/${stats.competitionCount}`
+                        )}
+                      </td>
+                      {/* Dagar markerade sjuk/skadad i dagboken. Planerade pass
+                          de dagarna som inte blev av ingår inte i efterlevnaden
+                          (lib/range-stats.ts) — antalet står här så att det syns. */}
+                      <td data-label="Sjuk/skadad" className={FOLLOW_UP_CELL}>
+                        {stats.sickDays + stats.injuredDays === 0 ? (
+                          <span className="text-[var(--ink-3)]">—</span>
+                        ) : (
+                          <>
+                            {[
+                              stats.sickDays > 0 ? `${stats.sickDays} d sjuk` : null,
+                              stats.injuredDays > 0 ? `${stats.injuredDays} d skadad` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                            {stats.excusedCount > 0 && (
+                              <span className="block text-xs text-[var(--ink-3)]">
+                                {stats.excusedCount} planerade pass ej räknade
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
                     </tr>

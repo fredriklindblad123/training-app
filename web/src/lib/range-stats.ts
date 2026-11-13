@@ -92,6 +92,9 @@ export type RangeStats = {
   distanceDone: number;
   strengthDue: number;
   strengthDone: number;
+  /** Planerade pass på sjuk- eller skaddagar som inte blev av. De ingår inte
+   * i *Due ovan. */
+  excusedCount: number;
   /** Tävlingar i perioden där löparen har ett pass registrerat den dagen. */
   competitionsDone: number;
 };
@@ -116,6 +119,25 @@ function weeksBetweenDates(start: string, end: string): number {
   return Math.max(1, Math.round(ms / (7 * 86_400_000)) || 1);
 }
 
+/** Slaget ett pass räknas i: kvalitet, distans eller styrka. Gäller både en
+ * plans workout_type och ett pass category. null = räknas inte (vila, häck,
+ * alternativ träning). */
+export function planKind(t: string): "quality" | "distance" | "strength" | null {
+  return (QUALITY_WORKOUT_TYPES as readonly string[]).includes(t)
+    ? "quality"
+    : t === "easy" || t === "long_run"
+      ? "distance"
+      : t === "strength"
+        ? "strength"
+        : null;
+}
+
+/** Sista dagen som räknas som passerad: idag om löparen tränat idag, annars
+ * igår. */
+export function passedCutoff(today: string, trainedToday: boolean): string {
+  return trainedToday ? today : shiftDayKey(today, -1);
+}
+
 export function computeRangeStats({
   range,
   planned,
@@ -123,6 +145,7 @@ export function computeRangeStats({
   competitionDates,
   interruptions = [],
   today,
+  diaryStrengthDates = [],
 }: {
   range: RangeStatsInput;
   planned: (PlannedWorkout & { training_factor?: string | null })[];
@@ -135,6 +158,10 @@ export function computeRangeStats({
   /** Dagens datum (YYYY-MM-DD) för vad som "har passerat". Utelämnat räknas
    * allt i spannet som passerat. */
   today?: string;
+  /** Dagar med ett eget styrkepass enligt dagboken (lib/diary-strength.ts).
+   * Ett gjort styrkepass räknas per DAG: Garmin-styrka eller dagbok, aldrig
+   * två samma dag. */
+  diaryStrengthDates?: string[];
 }): RangeStats {
   const rangePlanned = planned.filter((p) =>
     withinRange(p.scheduled_date, range.startDate, range.endDate),
@@ -169,26 +196,48 @@ export function computeRangeStats({
   const compliance = summarizeCompliance(matches);
   const weeks = weeksBetweenDates(range.startDate, range.endDate);
 
-  const kindOf = (t: string): "quality" | "distance" | "strength" | null =>
-    (QUALITY_WORKOUT_TYPES as readonly string[]).includes(t)
-      ? "quality"
-      : t === "easy" || t === "long_run"
-        ? "distance"
-        : t === "strength"
-          ? "strength"
-          : null;
-  const trainedToday = today != null && rangeSessions.some((s) => s.date === today);
+  const kindOf = planKind;
+  // Tränat idag = ett pass från klockan ELLER ett styrkepass i dagboken idag.
+  const trainedToday =
+    today != null &&
+    (rangeSessions.some((s) => s.date === today) || diaryStrengthDates.includes(today));
   const cutoff =
     today == null ? range.endDate : trainedToday ? today : shiftDayKey(today, -1);
+  type Kind = "quality" | "distance" | "strength";
   const due = { quality: 0, distance: 0, strength: 0 };
   const done = { quality: 0, distance: 0, strength: 0 };
-  for (const p of rangePlanned) {
-    const k = kindOf(p.workout_type);
-    if (k && p.scheduled_date <= cutoff) due[k]++;
-  }
+  const strengthDays = new Set<string>(
+    diaryStrengthDates.filter((d) => withinRange(d, range.startDate, cutoff)),
+  );
+  const doneOnDay = new Map<string, number>();
+  const bump = (m: Map<string, number>, key: string) => m.set(key, (m.get(key) ?? 0) + 1);
   for (const s of rangeSessions) {
     const k = kindOf(s.category);
-    if (k && s.date <= cutoff) done[k]++;
+    if (!k || s.date > cutoff) continue;
+    if (k === "strength") strengthDays.add(s.date);
+    else {
+      done[k]++;
+      bump(doneOnDay, `${s.date}|${k}`);
+    }
+  }
+  for (const d of strengthDays) doneOnDay.set(`${d}|strength`, 1);
+  done.strength = strengthDays.size;
+  // Sjuk- och skaddagar (2026-11-13): ett planerat pass som inte blev av den
+  // dagen räknas inte som missat — det är inget att följa upp som efterlevnad.
+  // Gjorde löparen ändå passet räknas det som vanligt. Per dag och slag:
+  // planerat = min(planerat, gjort).
+  const interruptedDays = new Set(rangeInterruptions.map((i) => i.date));
+  const plannedOnDay = new Map<string, number>();
+  for (const p of rangePlanned) {
+    const k = kindOf(p.workout_type);
+    if (k && p.scheduled_date <= cutoff) bump(plannedOnDay, `${p.scheduled_date}|${k}`);
+  }
+  let excusedCount = 0;
+  for (const [key, n] of plannedOnDay) {
+    const [date, k] = key.split("|") as [string, Kind];
+    const counted = interruptedDays.has(date) ? Math.min(n, doneOnDay.get(key) ?? 0) : n;
+    due[k] += counted;
+    excusedCount += n - counted;
   }
   const sessionDates = new Set(rangeSessions.map((s) => s.date));
   const rangeCompetitions = competitionDates.filter((d) =>
@@ -231,6 +280,7 @@ export function computeRangeStats({
     distanceDone: done.distance,
     strengthDue: due.strength,
     strengthDone: done.strength,
+    excusedCount,
     competitionsDone: rangeCompetitions.filter(
       (d) => (today == null || d <= today) && sessionDates.has(d),
     ).length,
