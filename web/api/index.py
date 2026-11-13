@@ -97,6 +97,21 @@ NEIGHBOUR_MIN_SECONDS = 10
 # Kortare varv än så är nästan alltid en felryckning på klockan.
 MIN_LAP_SECONDS = 5
 
+# Varvstruktur som belägg för tröskel (2026-11-13). Appen (lib/sessions.ts)
+# gör om Garmins tröskel till distans när inget styrker den — Alices lugna
+# distanspass får ofta TEMPO. Ett autonamnat pass i ett enda stycke med vila
+# mellan repen (Alice 2026-11-12: 2000/1500/1000/500 m med 90 s vila) blev
+# därför distans. Regeln, uppmätt mot all löpdata: minst 2 INRE vilovarv
+# (aktivt varv på båda sidor, 20–300 s) och rep på minst 60 s i median. Utan
+# 60 s-villkoret träffas stegringar efter distans (median 18–47 s); med det
+# 0 av 31 pass Alice själv kallat distans. Varven skiljer inte tröskel från
+# intervall, så regeln låser bara en tröskel Garmin redan satt — den
+# uppgraderar aldrig ett pass Garmin kallat lugnt.
+REP_REST_MIN_SECONDS = 20
+REP_REST_MAX_SECONDS = 300
+REP_MIN_INNER_RESTS = 2
+REP_MIN_MEDIAN_SECONDS = 60
+
 # Bara dessa sporter ska sparas — allt annat (båt, golf, promenad, ...) som
 # Garmin råkar synka ska ignoreras helt, aldrig nå activities-tabellen.
 # Utförskidåkning är medvetet uteslutet — bara längdskidåkning räknas.
@@ -399,6 +414,22 @@ def _garmin_lap_kinds(typed: dict, laps: list[dict]) -> Optional[list[str]]:
     return ["active" if type_by_lap[lap["lapIndex"]] in GARMIN_ACTIVE_TYPES else "rest" for lap in laps]
 
 
+def _has_rep_structure(laps: list[dict], kinds: list[str]) -> bool:
+    """Arbete med vila enligt regeln vid REP_MIN_INNER_RESTS."""
+    rests = [
+        i for i in range(1, len(laps) - 1)
+        if kinds[i] == "rest" and kinds[i - 1] == "active" and kinds[i + 1] == "active"
+        and REP_REST_MIN_SECONDS <= (laps[i].get("duration") or 0) <= REP_REST_MAX_SECONDS
+    ]
+    if len(rests) < REP_MIN_INNER_RESTS:
+        return False
+    reps = sorted({j for i in rests for j in (i - 1, i + 1)})
+    durations = sorted(laps[j].get("duration") or 0 for j in reps)
+    n = len(durations)
+    median = durations[n // 2] if n % 2 else (durations[n // 2 - 1] + durations[n // 2]) / 2
+    return median >= REP_MIN_MEDIAN_SECONDS
+
+
 def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
     """Hämta varvdata för nya pass med fler än ett varv.
 
@@ -430,10 +461,11 @@ def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
     external_ids = [str(a["activityId"]) for a in candidates]
     rows = _sb_select(
         "activities",
-        "id,external_id",
+        "id,external_id,category,category_source",
         {"user_id": f"eq.{user_id}", "external_id": f"in.({','.join(external_ids)})"},
     )
     id_by_external = {r["external_id"]: r["id"] for r in rows}
+    row_by_id = {r["id"]: r for r in rows}
     if not id_by_external:
         return 0
 
@@ -493,6 +525,20 @@ def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
             "activity_id,split_index",
         )
         written += 1
+
+        # Garmins tröskel med tydliga rep och vila låses, så att appen inte
+        # gör om passet till distans (se REP_MIN_INNER_RESTS). Samma lås som
+        # när någon väljer kategori på passet; "återställ till auto" finns kvar.
+        row = row_by_id.get(activity_id) or {}
+        if (
+            row.get("category") == "threshold"
+            and row.get("category_source") == "auto"
+            and _has_rep_structure(laps, kinds)
+        ):
+            try:
+                _sb_patch("activities", activity_id, {"category_source": "manual"})
+            except Exception:
+                pass
 
     return written
 
