@@ -8,3 +8,6 @@ node_modules/
 .env.local
 .vercel
 .env*
+
+# Office-låsfiler (skapas när ett dokument är öppet i Excel/Word)
+~$*
