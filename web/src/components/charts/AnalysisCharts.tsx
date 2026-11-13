@@ -16,33 +16,67 @@ import { useRef, useState } from "react";
  * ------------------------------------------------------------------------ */
 
 const W = 360;
-const H = 190;
-const PAD = { top: 10, right: 8, bottom: 20, left: 38 };
+const H = 210;
+// Nederkant: två rader med dagmarkeringar (i år, förra året) och veckoetiketten.
+const PAD = { top: 10, right: 8, bottom: 38, left: 38 };
 const PW = W - PAD.left - PAD.right;
 const PH = H - PAD.top - PAD.bottom;
 
 /** En markerad dag i blocket, t.ex. sjuk eller skadad enligt dagboken. */
 export type DayMark = { label: string; color: string };
 
-/** Smal remsa under x-axeln, en ruta per markerad dag. Remsan ligger under
- * baslinjen och rör aldrig själva serierna. */
-function DayStrip({ marks, xOf, width }: { marks: (DayMark | null)[]; xOf: (i: number) => number; width: number }) {
+/** En rad markeringar, t.ex. årets sjuk- och skaddagar. `label` står till
+ * vänster om raden ("i år", "förra året") så att det aldrig hänger på färg
+ * vilket år en markering gäller. */
+export type MarkRow = {
+  label: string;
+  marks: (DayMark | null)[];
+  /** Konturerad i stället för fylld — samma formspråk som förra årets
+   * staplar, så att året syns även utan att läsa etiketten. */
+  outline?: boolean;
+};
+
+/** Smala remsor under x-axeln, en ruta per markerad dag och en rad per år.
+ * Remsorna ligger under baslinjen och rör aldrig själva serierna. Rader utan
+ * en enda markering ritas inte. */
+function DayStrips({ rows, xOf, width }: { rows: MarkRow[]; xOf: (i: number) => number; width: number }) {
+  const shown = rows.filter((r) => r.marks.some(Boolean));
   return (
     <g aria-hidden>
-      {marks.map((m, i) =>
-        m ? (
-          <rect key={i} x={xOf(i) - width / 2} y={PAD.top + PH + 2} width={Math.max(1.5, width)} height={3} rx={0.75} fill={m.color}>
-            <title>{m.label}</title>
-          </rect>
-        ) : null,
-      )}
+      {shown.map((r, ri) => {
+        const y = PAD.top + PH + 7 + ri * 7;
+        return (
+          <g key={r.label}>
+            <text x={PAD.left - 4} y={y + 4.5} textAnchor="end" className="tabular fill-[var(--ink-3)]" style={{ fontSize: 8 }}>
+              {r.label}
+            </text>
+            {r.marks.map((m, i) =>
+              m ? (
+                <rect
+                  key={i}
+                  x={xOf(i) - width / 2 + (r.outline ? 0.5 : 0)}
+                  y={y + (r.outline ? 0.5 : 0)}
+                  width={Math.max(1.5, width - (r.outline ? 1 : 0))}
+                  height={r.outline ? 4 : 5}
+                  rx={0.75}
+                  fill={r.outline ? "none" : m.color}
+                  stroke={r.outline ? m.color : undefined}
+                  strokeWidth={r.outline ? 1 : undefined}
+                >
+                  <title>{`${m.label}, ${r.label}`}</title>
+                </rect>
+              ) : null,
+            )}
+          </g>
+        );
+      })}
     </g>
   );
 }
 
-function markLegend(marks: (DayMark | null)[] | undefined) {
+function markLegend(rows: MarkRow[] | undefined) {
   const seen = new Map<string, string>();
-  for (const m of marks ?? []) if (m && !seen.has(m.label)) seen.set(m.label, m.color);
+  for (const r of rows ?? []) for (const m of r.marks) if (m && !seen.has(m.label)) seen.set(m.label, m.color);
   return [...seen].map(([label, color]) => ({ label, color, kind: "fill" as const }));
 }
 
@@ -107,11 +141,11 @@ export function CumulativeLineChart({
   unit,
   ariaLabel,
   defaultIndex,
-  dayMarks,
+  markRows,
 }: {
   series: LineSeries[];
-  /** En post per dag i blocket; null = ingen markering. */
-  dayMarks?: (DayMark | null)[];
+  /** Markeringsrader, en post per dag i blocket; null = ingen markering. */
+  markRows?: MarkRow[];
   /** Dagen som visas innan man pekat, t.ex. idag. */
   defaultIndex?: number;
   days: number;
@@ -142,7 +176,7 @@ export function CumulativeLineChart({
       <Legend
         items={[
           ...series.map((s) => ({ label: s.label, color: s.color, kind: s.dashed ? ("dash" as const) : ("line" as const) })),
-          ...markLegend(dayMarks),
+          ...markLegend(markRows),
         ]}
       />
       <svg
@@ -164,11 +198,11 @@ export function CumulativeLineChart({
           </g>
         ))}
         {weekTicks.map((d, w) => (
-          <text key={d} x={x(d)} y={H - 6} textAnchor="middle" className="fill-[var(--ink-3)]" style={{ fontSize: 9 }}>
+          <text key={d} x={x(d)} y={H - 4} textAnchor="middle" className="fill-[var(--ink-3)]" style={{ fontSize: 9 }}>
             v{w + 1}
           </text>
         ))}
-        {dayMarks && <DayStrip marks={dayMarks} xOf={x} width={days <= 1 ? 3 : PW / (days - 1)} />}
+        {markRows && <DayStrips rows={markRows} xOf={x} width={days <= 1 ? 3 : PW / (days - 1)} />}
         {series.map((s) =>
           s.values.length > 1 ? (
             <path
@@ -232,10 +266,11 @@ export function GroupedBarChart({
   ariaLabel,
   groupLabels,
   defaultIndex,
-  dayMarks,
+  markRows,
 }: {
-  /** En post per DAG (7 per grupp), ritas som en remsa under veckans staplar. */
-  dayMarks?: (DayMark | null)[];
+  /** Markeringsrader med en post per DAG (7 per grupp), ritas som remsor
+   * under veckans staplar. */
+  markRows?: MarkRow[];
   /** Gruppen som visas innan man pekat, t.ex. innevarande vecka. */
   defaultIndex?: number;
   groups: string[];
@@ -265,7 +300,7 @@ export function GroupedBarChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <Legend items={[...series.map((s) => ({ label: s.label, color: s.color, kind: s.style })), ...markLegend(dayMarks)]} />
+      <Legend items={[...series.map((s) => ({ label: s.label, color: s.color, kind: s.style })), ...markLegend(markRows)]} />
       <svg
         ref={ref}
         viewBox={`0 0 ${W} ${H}`}
@@ -284,8 +319,8 @@ export function GroupedBarChart({
             </text>
           </g>
         ))}
-        {dayMarks && (
-          <DayStrip marks={dayMarks} xOf={(d) => PAD.left + (d + 0.5) * (gw / 7)} width={gw / 7 - 1} />
+        {markRows && (
+          <DayStrips rows={markRows} xOf={(d) => PAD.left + (d + 0.5) * (gw / 7)} width={gw / 7 - 1} />
         )}
         {groups.map((g, i) => {
           const gx = PAD.left + i * gw + (gw - inner) / 2;
@@ -314,7 +349,7 @@ export function GroupedBarChart({
               })}
               <text
                 x={PAD.left + i * gw + gw / 2}
-                y={H - 6}
+                y={H - 4}
                 textAnchor="middle"
                 className="fill-[var(--ink-3)]"
                 style={{ fontSize: 9 }}

@@ -42,7 +42,7 @@ const TYPE_OPTIONS: ActivityCategory[] = [
   "cross_training",
   "strength",
 ];
-import { CumulativeLineChart, GroupedBarChart, type DayMark } from "@/components/charts/AnalysisCharts";
+import { CumulativeLineChart, GroupedBarChart, type DayMark, type MarkRow } from "@/components/charts/AnalysisCharts";
 import { strengthDatesFromDiary, type DiaryLogRow } from "@/lib/diary-strength";
 
 /* /analys — ett block i siffror och grafer, mot motsvarande block förra året.
@@ -70,12 +70,15 @@ function TotalTile({
   before,
   unit = "",
   digits = 0,
+  note,
 }: {
   label: string;
   now: number;
   before: number | null;
   unit?: string;
   digits?: number;
+  /** Rad under jämförelsen, t.ex. minuter för en ruta som visar km. */
+  note?: string;
 }) {
   const max = Math.max(now, before ?? 0, 1);
   const fmtN = (v: number) => Number(v.toFixed(digits)).toLocaleString("sv-SE");
@@ -105,6 +108,7 @@ function TotalTile({
       {before != null && (
         <span className="tabular text-xs text-[var(--ink-2)]">{signed(now - before, digits)} mot förra året</span>
       )}
+      {note && <span className="tabular text-xs text-[var(--ink-3)]">{note}</span>}
     </div>
   );
 }
@@ -112,9 +116,11 @@ function TotalTile({
 export default async function AnalysPage({
   searchParams,
 }: {
-  searchParams: Promise<{ block?: string; athlete?: string; typer?: string }>;
+  searchParams: Promise<{ block?: string; athlete?: string; typer?: string; visa?: string }>;
 }) {
-  const { block: blockParam, athlete: athleteParam, typer } = await searchParams;
+  const { block: blockParam, athlete: athleteParam, typer, visa } = await searchParams;
+  // Hittills-rutorna: summa för blocket eller snitt per vecka.
+  const perWeek = visa === "vecka";
   const include = new Set<string>(
     typer != null
       ? typer.split(",").filter((t) => (TYPE_OPTIONS as string[]).includes(t))
@@ -221,15 +227,29 @@ export default async function AnalysPage({
   };
   const sickNow = interruptedDays(block, daysSoFar);
   const sickBefore = comparison ? interruptedDays(comparison, daysSoFar) : null;
-  // En post per dag i årets block, för remsan under graferna.
-  const dayMarks: (DayMark | null)[] = Array.from({ length }, (_, i) => {
-    const t = interruptionOn.get(shiftKey(block.start_date, i));
-    return t ? { label: STATUS_LABEL[t], color: STATUS_COLOR_VAR[t] } : null;
-  });
+  // Sjuk/skadad per dag i blocket, för remsorna under graferna. Förra årets
+  // rad gäller hela det blocket, årets bara dagarna som passerat.
+  const marksFor = (b: { start_date: string }, days: number): (DayMark | null)[] =>
+    Array.from({ length }, (_, i) => {
+      const t = i < days ? interruptionOn.get(shiftKey(b.start_date, i)) : undefined;
+      return t ? { label: STATUS_LABEL[t], color: STATUS_COLOR_VAR[t] } : null;
+    });
+  const marksNow = marksFor(block, daysSoFar);
+  const marksBefore = comparison ? marksFor(comparison, blockLength(comparison)) : null;
+  const markRows: MarkRow[] = [
+    // Årtalet som etikett: kort nog att läsas i 390 px och säger exakt vilket år.
+    { label: block.start_date.slice(0, 4), marks: marksNow },
+    ...(marksBefore && comparison
+      ? [{ label: comparison.start_date.slice(0, 4), marks: marksBefore, outline: true }]
+      : []),
+  ];
   const dayLabels = Array.from({ length }, (_, i) => {
     const key = shiftKey(block.start_date, i);
-    const t = interruptionOn.get(key);
-    return `Dag ${i + 1} · ${short(key)}${t ? ` · ${STATUS_LABEL[t]}` : ""}`;
+    const notes = [
+      marksNow[i] ? `${marksNow[i]!.label} i år` : null,
+      marksBefore?.[i] ? `${marksBefore[i]!.label} förra året` : null,
+    ].filter(Boolean);
+    return `Dag ${i + 1} · ${short(key)}${notes.length ? ` · ${notes.join(", ")}` : ""}`;
   });
   const rows = (activityRows ?? []) as unknown as (SessionActivity & { moving: string | null })[];
   const moving: MovingById = new Map(
@@ -245,6 +265,19 @@ export default async function AnalysPage({
   const before: BlockTotals | null = comparison
     ? totalsUpToDay(chosen, comparison, daysSoFar, moving)
     : null;
+  // Distansen hålls isär: en km på cykel är inte en km löpning, så
+  // alternativ träning får en egen ruta och ingår inte i Distans.
+  const chosenNoCross = chosen.filter((s) => s.category !== "cross_training");
+  const kmMain = totalsUpToDay(chosenNoCross, block, daysSoFar, moving).km;
+  const kmMainBefore = comparison ? totalsUpToDay(chosenNoCross, comparison, daysSoFar, moving).km : null;
+  const crossOnly = sessions.filter((s) => s.category === "cross_training");
+  const showCross = include.has("cross_training");
+  const cross = totalsUpToDay(crossOnly, block, daysSoFar, moving);
+  const crossBefore = comparison ? totalsUpToDay(crossOnly, comparison, daysSoFar, moving) : null;
+  // Snitt per vecka: delat med antalet veckor som passerat (dagar / 7).
+  const per = perWeek ? 7 / daysSoFar : 1;
+  const scaled = (v: number) => v * per;
+  const scaledOrNull = (v: number | null | undefined) => (v == null ? null : v * per);
   // Kvalitets- och styrkepass räknas alltid, oavsett valda typer.
   const nowAll = totalsUpToDay(sessions, block, daysSoFar, moving, diaryStrength);
   const beforeAll = comparison
@@ -263,13 +296,16 @@ export default async function AnalysPage({
   const weeklyKmNow = weeklySums(kmNow);
   const weeklyKmBefore = kmBefore ? weeklySums(kmBefore) : null;
 
+  const typerQuery = typer != null ? `&typer=${typer}` : "";
   const typeHref = (t: string) => {
     const next = new Set(include);
     if (next.has(t)) next.delete(t);
     else next.add(t);
     const list = TYPE_OPTIONS.filter((x) => next.has(x)).join(",");
-    return `/analys?block=${block.id}${athleteQuery}&typer=${list}`;
+    return `/analys?block=${block.id}${athleteQuery}&typer=${list}${perWeek ? "&visa=vecka" : ""}`;
   };
+  const visaHref = (vecka: boolean) =>
+    `/analys?block=${block.id}${athleteQuery}${typerQuery}${vecka ? "&visa=vecka" : ""}`;
 
   // --- Planerat mot gjort per vecka (samma regel som Uppföljning) ---------
   const weekStats = Array.from({ length: weeks }, (_, w) => {
@@ -304,13 +340,21 @@ export default async function AnalysPage({
   const weekLabel = (w: number) => {
     const s = shiftKey(block.start_date, w * 7);
     const e = shiftKey(block.start_date, Math.min(w * 7 + 6, length - 1));
-    const n = { sick: 0, injured: 0 };
-    for (const [d, t] of interruptionOn) if (d >= s && d <= e) n[t]++;
-    const notes = [
-      n.sick > 0 ? `${n.sick} d sjuk` : null,
-      n.injured > 0 ? `${n.injured} d skadad` : null,
-    ].filter(Boolean);
-    return `v${w + 1} · ${short(s)}–${short(e)}${notes.length ? ` · ${notes.join(", ")}` : ""}`;
+    const count = (marks: (DayMark | null)[] | null, year: string) => {
+      if (!marks) return null;
+      const n = { sick: 0, injured: 0 };
+      for (let i = w * 7; i < Math.min(w * 7 + 7, length); i++) {
+        const m = marks[i];
+        if (m) n[m.label === STATUS_LABEL.sick ? "sick" : "injured"]++;
+      }
+      const parts = [
+        n.sick > 0 ? `${n.sick} d sjuk` : null,
+        n.injured > 0 ? `${n.injured} d skadad` : null,
+      ].filter(Boolean);
+      return parts.length ? `${year} ${parts.join(", ")}` : null;
+    };
+    const notes = [count(marksNow, "i år"), count(marksBefore, "förra året")].filter(Boolean);
+    return `v${w + 1} · ${short(s)}–${short(e)}${notes.length ? ` · ${notes.join(" · ")}` : ""}`;
   };
 
   // --- Missade pass mot planen ---------------------------------------------
@@ -378,21 +422,70 @@ export default async function AnalysPage({
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          {ongoing ? "Hittills i blocket" : "Hela blocket"}
-        </h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          <TotalTile label="Aktiva minuter" now={now.minutes} before={before?.minutes ?? null} />
-          <TotalTile label="Distans" now={now.km} before={before?.km ?? null} unit="km" />
-          <TotalTile label="Träningsdagar" now={now.trainingDays} before={before?.trainingDays ?? null} />
-          <TotalTile label="Kvalitetspass" now={nowAll.qualitySessions} before={beforeAll?.qualitySessions ?? null} />
-          <TotalTile label="Styrkepass" now={nowAll.strengthSessions} before={beforeAll?.strengthSessions ?? null} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+            {ongoing ? "Hittills i blocket" : "Hela blocket"}
+          </h2>
+          <div className="flex gap-1 text-sm" role="group" aria-label="Visa">
+            {[
+              { vecka: false, label: "Totalt" },
+              { vecka: true, label: "Snitt per vecka" },
+            ].map((o) => (
+              <Link
+                key={o.label}
+                href={visaHref(o.vecka)}
+                aria-current={perWeek === o.vecka ? "true" : undefined}
+                className={`rounded px-3 py-1 ${
+                  perWeek === o.vecka
+                    ? "bg-[var(--foreground)] text-[var(--background)]"
+                    : "border border-[var(--line)]"
+                }`}
+              >
+                {o.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          <TotalTile label="Aktiva minuter" now={scaled(now.minutes)} before={scaledOrNull(before?.minutes)} />
+          <TotalTile
+            label={showCross ? "Distans utom alt. träning" : "Distans"}
+            now={scaled(kmMain)}
+            before={scaledOrNull(kmMainBefore)}
+            unit="km"
+            digits={perWeek ? 1 : 0}
+          />
+          {showCross && (
+            <TotalTile
+              label="Alternativ träning"
+              now={scaled(cross.km)}
+              before={scaledOrNull(crossBefore?.km)}
+              unit="km"
+              digits={perWeek ? 1 : 0}
+              note={`${Math.round(scaled(cross.minutes))} min i år${
+                crossBefore ? `, ${Math.round(scaled(crossBefore.minutes))} min förra året` : ""
+              }`}
+            />
+          )}
+          <TotalTile label="Träningsdagar" now={scaled(now.trainingDays)} before={scaledOrNull(before?.trainingDays)} digits={perWeek ? 1 : 0} />
+          <TotalTile label="Kvalitetspass" now={scaled(nowAll.qualitySessions)} before={scaledOrNull(beforeAll?.qualitySessions)} digits={perWeek ? 1 : 0} />
+          <TotalTile label="Styrkepass" now={scaled(nowAll.strengthSessions)} before={scaledOrNull(beforeAll?.strengthSessions)} digits={perWeek ? 1 : 0} />
           <TotalTile
             label="Sjuk/skadad, dagar"
-            now={sickNow.sick + sickNow.injured}
-            before={sickBefore ? sickBefore.sick + sickBefore.injured : null}
+            now={scaled(sickNow.sick + sickNow.injured)}
+            before={sickBefore ? scaled(sickBefore.sick + sickBefore.injured) : null}
+            digits={perWeek ? 1 : 0}
           />
         </div>
+        <p className="text-xs text-[var(--ink-3)]">
+          {perWeek
+            ? `Snitt per vecka över ${(daysSoFar / 7).toLocaleString("sv-SE", { maximumFractionDigits: 1 })} veckor${
+                comparison ? ", samma antal dagar förra året" : ""
+              }. `
+            : ""}
+          Alternativ träning (cykel, crosstrainer, vattenlöpning) räknas för sig, eftersom en km på
+          cykel inte är en km löpning. Den ingår i aktiva minuter och träningsdagar.
+        </p>
         <p className="text-xs text-[var(--ink-3)]">
           Styrkepass räknas också ur dagbokens passlogg, där de oftast skrivs in: gym, cirkel,
           medicinboll och liknande egna pass. Det underlaget är självskattat. Styrka som tillägg
@@ -405,7 +498,15 @@ export default async function AnalysPage({
                 .filter(Boolean)
                 .join(", ")}`
             : ""}
-          . De syns som en färgad remsa under graferna.
+          {sickBefore && sickBefore.sick + sickBefore.injured > 0
+            ? `, förra året ${[
+                sickBefore.sick > 0 ? `${sickBefore.sick} sjuk` : null,
+                sickBefore.injured > 0 ? `${sickBefore.injured} skadad` : null,
+              ]
+                .filter(Boolean)
+                .join(", ")}`
+            : ""}
+          . De syns som remsor under graferna: fyllda för i år, konturerade för förra året.
         </p>
       </section>
 
@@ -425,7 +526,7 @@ export default async function AnalysPage({
           ariaLabel={`Aktiva minuter ackumulerat i ${block.name}${comparison ? ` och ${comparison.name}` : ""}`}
           defaultIndex={daysSoFar - 1}
           dayLabels={dayLabels}
-          dayMarks={dayMarks}
+          markRows={markRows}
           series={[
             ...(dailyBefore
               ? [{ label: "Förra året", values: cumulative(dailyBefore), color: LAST_YEAR, dashed: true }]
@@ -448,7 +549,7 @@ export default async function AnalysPage({
           groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
           groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
           defaultIndex={Math.floor((daysSoFar - 1) / 7)}
-          dayMarks={dayMarks}
+          markRows={markRows}
           unit="min"
           ariaLabel="Aktiva minuter per blockvecka"
           series={[
@@ -480,7 +581,7 @@ export default async function AnalysPage({
           ariaLabel={`Distans ackumulerat i ${block.name}${comparison ? ` och ${comparison.name}` : ""}`}
           defaultIndex={daysSoFar - 1}
           dayLabels={dayLabels}
-          dayMarks={dayMarks}
+          markRows={markRows}
           series={[
             ...(kmBefore
               ? [{ label: "Förra året", values: cumulative(kmBefore), color: LAST_YEAR, dashed: true }]
@@ -498,7 +599,7 @@ export default async function AnalysPage({
           groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
           groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
           defaultIndex={Math.floor((daysSoFar - 1) / 7)}
-          dayMarks={dayMarks}
+          markRows={markRows}
           unit="km"
           ariaLabel="Distans per blockvecka"
           series={[
@@ -533,7 +634,7 @@ export default async function AnalysPage({
               groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
               groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
               defaultIndex={Math.floor((daysSoFar - 1) / 7)}
-              dayMarks={dayMarks}
+              markRows={markRows}
               unit="pass"
               ariaLabel="Planerade och gjorda pass per blockvecka"
               series={[
