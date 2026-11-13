@@ -43,6 +43,9 @@ const LOGG: Tab[] = [
   /* "Resultat", inte "Lopp" (2026-09-17). Vyn är dit man går för att fylla i
    * vad det BLEV — själva loppen läggs upp av tränaren under Tävling. */
   { href: "/tavlingsresultat", label: "Resultat", icon: "M7 4v16M7 4h10l-2.5 3.5L17 11H7" },
+  /* Blocket i siffror och grafer, mot motsvarande block förra året
+   * (2026-11-13). */
+  { href: "/analys", label: "Analys", icon: "M4 20h16M7 16v-5M12 16V7M17 16v-8" },
 ];
 
 /* Kortast horisont först, samma ordning som menyn hade: veckan man är i
