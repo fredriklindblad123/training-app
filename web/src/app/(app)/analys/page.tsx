@@ -113,12 +113,60 @@ function TotalTile({
   );
 }
 
+const GRAF_LABELS = { minuter: "Aktiva minuter", distans: "Distans", pass: "Pass" } as const;
+
+/** En rad val där ett är aktivt, som länkar. scroll={false} så att sidan
+ * står kvar vid grafen när man byter. */
+function Segment({
+  label,
+  options,
+}: {
+  label: string;
+  options: { key: string; label: string; href: string; active: boolean; disabled?: boolean }[];
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="w-20 shrink-0 text-xs text-[var(--ink-3)]">{label}</span>
+      <div className="flex flex-wrap gap-1 text-sm" role="group" aria-label={label}>
+        {options.map((o) =>
+          o.disabled ? (
+            <span key={o.key} aria-disabled className="rounded border border-dashed border-[var(--line)] px-3 py-1 text-[var(--ink-3)]">
+              {o.label}
+            </span>
+          ) : (
+            <Link
+              key={o.key}
+              href={o.href}
+              scroll={false}
+              aria-current={o.active ? "true" : undefined}
+              className={`rounded px-3 py-1 ${
+                o.active ? "bg-[var(--foreground)] text-[var(--background)]" : "border border-[var(--line)]"
+              }`}
+            >
+              {o.label}
+            </Link>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default async function AnalysPage({
   searchParams,
 }: {
-  searchParams: Promise<{ block?: string; athlete?: string; typer?: string; visa?: string }>;
+  searchParams: Promise<{
+    block?: string;
+    athlete?: string;
+    typer?: string;
+    visa?: string;
+    graf?: string;
+    mot?: string;
+    vy?: string;
+  }>;
 }) {
-  const { block: blockParam, athlete: athleteParam, typer, visa } = await searchParams;
+  const { block: blockParam, athlete: athleteParam, typer, visa, graf: grafParam, mot: motParam, vy: vyParam } =
+    await searchParams;
   // Hittills-rutorna: summa för blocket eller snitt per vecka.
   const perWeek = visa === "vecka";
   const include = new Set<string>(
@@ -287,28 +335,60 @@ export default async function AnalysPage({
     ? totalsUpToDay(sessions, comparison, daysSoFar, moving, diaryStrength)
     : null;
 
-  // --- Aktiva minuter ------------------------------------------------------
-  const minutesOf = (s: TrainingSession) => activeSeconds(s, moving) / 60;
-  const dailyNow = dailyValues(chosen, block, minutesOf).slice(0, daysSoFar);
-  const dailyBefore = comparison ? dailyValues(chosen, comparison, minutesOf).slice(0, length) : null;
-  const weeks = Math.ceil(length / 7);
-  const weeklyNow = weeklySums(dailyNow);
-  const weeklyBefore = dailyBefore ? weeklySums(dailyBefore) : null;
-  const kmNow = dailyValues(chosen, block, sessionKm).slice(0, daysSoFar);
-  const kmBefore = comparison ? dailyValues(chosen, comparison, sessionKm).slice(0, length) : null;
-  const weeklyKmNow = weeklySums(kmNow);
-  const weeklyKmBefore = kmBefore ? weeklySums(kmBefore) : null;
+  // --- Grafen: ett mått, en jämförelse, en vy -----------------------------
+  // Planen har ingen tid eller distans (målminuter finns på 8 av ~650 pass),
+  // så mot planen jämförs alltid antal pass.
+  const hasPlan = planned.some((p) => p.workout_type !== "rest");
+  const mot: "fjol" | "plan" =
+    (motParam === "plan" && hasPlan) || (!comparison && hasPlan) ? "plan" : "fjol";
+  const graf: "minuter" | "distans" | "pass" =
+    mot === "plan" ? "pass" : grafParam === "distans" || grafParam === "pass" ? grafParam : "minuter";
+  const vy: "vecka" | "ack" = vyParam === "ack" ? "ack" : "vecka";
+  const unit = graf === "minuter" ? "min" : graf === "distans" ? "km" : "pass";
 
-  const typerQuery = typer != null ? `&typer=${typer}` : "";
+  const minutesOf = (s: TrainingSession) => activeSeconds(s, moving) / 60;
+  // Antal pass av de valda typerna. Med styrka vald räknas ett styrkepass i
+  // dagboken som ett pass, om klockan inte redan har ett styrkepass den dagen.
+  const passDaily = (b: AnalysisBlock) => {
+    const out = dailyValues(chosen, b, () => 1);
+    if (include.has("strength")) {
+      for (const d of diaryStrength) {
+        const i = dayIndex(d, b.start_date);
+        if (i < 0 || i >= out.length) continue;
+        if (!sessions.some((x) => x.date === d && x.category === "strength")) out[i]++;
+      }
+    }
+    return out;
+  };
+  const dailyOf = (b: AnalysisBlock) =>
+    graf === "pass" ? passDaily(b) : dailyValues(chosen, b, graf === "minuter" ? minutesOf : sessionKm);
+  const weeks = Math.ceil(length / 7);
+  const dailyNow = dailyOf(block).slice(0, daysSoFar);
+  const dailyBefore = comparison ? dailyOf(comparison).slice(0, length) : null;
+
+  // Alla länkar på sidan behåller övriga val.
+  const href = (o: { typer?: string | null; visa?: boolean; graf?: string; mot?: string; vy?: string }) => {
+    const t = o.typer !== undefined ? o.typer : typer ?? null;
+    const v = o.visa ?? perWeek;
+    const g = o.graf ?? graf;
+    const m = o.mot ?? mot;
+    const y = o.vy ?? vy;
+    return (
+      `/analys?block=${block.id}${athleteQuery}` +
+      (t != null ? `&typer=${t}` : "") +
+      (v ? "&visa=vecka" : "") +
+      (g !== "minuter" ? `&graf=${g}` : "") +
+      (m === "plan" ? "&mot=plan" : "") +
+      (y === "ack" ? "&vy=ack" : "")
+    );
+  };
   const typeHref = (t: string) => {
     const next = new Set(include);
     if (next.has(t)) next.delete(t);
     else next.add(t);
-    const list = TYPE_OPTIONS.filter((x) => next.has(x)).join(",");
-    return `/analys?block=${block.id}${athleteQuery}&typer=${list}${perWeek ? "&visa=vecka" : ""}`;
+    return href({ typer: TYPE_OPTIONS.filter((x) => next.has(x)).join(",") });
   };
-  const visaHref = (vecka: boolean) =>
-    `/analys?block=${block.id}${athleteQuery}${typerQuery}${vecka ? "&visa=vecka" : ""}`;
+  const visaHref = (vecka: boolean) => href({ visa: vecka });
 
   // --- Planerat mot gjort per vecka (samma regel som Uppföljning) ---------
   const weekStats = Array.from({ length: weeks }, (_, w) => {
@@ -338,7 +418,26 @@ export default async function AnalysPage({
     diaryStrengthDates: diaryStrength,
     interruptions,
   });
-  const hasPlan = planned.some((p) => p.workout_type !== "rest");
+  // Planerat och gjort ackumulerat: samma räkning som veckorna, från
+  // blockets start till och med varje dag.
+  const planCumulative =
+    mot === "plan" && vy === "ack"
+      ? Array.from({ length: daysSoFar }, (_, i) => {
+          const st = computeRangeStats({
+            range: { startDate: block.start_date, endDate: shiftKey(block.start_date, i) },
+            planned,
+            sessions,
+            competitionDates: [],
+            today,
+            diaryStrengthDates: diaryStrength,
+            interruptions,
+          });
+          return {
+            due: st.qualityDue + st.distanceDue + st.strengthDue,
+            done: st.qualityDone + st.distanceDone + st.strengthDone,
+          };
+        })
+      : null;
 
   const weekLabel = (w: number) => {
     const s = shiftKey(block.start_date, w * 7);
@@ -356,7 +455,7 @@ export default async function AnalysPage({
       ].filter(Boolean);
       return parts.length ? `${year} ${parts.join(", ")}` : null;
     };
-    const notes = [count(marksNow, "i år"), count(marksBefore, "förra året")].filter(Boolean);
+    const notes = [count(marksNow, "i år"), mot === "plan" ? null : count(marksBefore, "förra året")].filter(Boolean);
     return `v${w + 1} · ${short(s)}–${short(e)}${notes.length ? ` · ${notes.join(" · ")}` : ""}`;
   };
 
@@ -398,6 +497,7 @@ export default async function AnalysPage({
               <Link
                 key={t}
                 href={typeHref(t)}
+                scroll={false}
                 aria-pressed={on}
                 className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
                   on
@@ -429,7 +529,7 @@ export default async function AnalysPage({
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             {ongoing ? "Hittills i blocket" : "Hela blocket"}
           </h2>
-          <div className="flex gap-1 text-sm" role="group" aria-label="Visa">
+          <div className="flex gap-1 text-sm" role="group" aria-label="Summering">
             {[
               { vecka: false, label: "Totalt" },
               { vecka: true, label: "Snitt per vecka" },
@@ -437,6 +537,7 @@ export default async function AnalysPage({
               <Link
                 key={o.label}
                 href={visaHref(o.vecka)}
+                scroll={false}
                 aria-current={perWeek === o.vecka ? "true" : undefined}
                 className={`rounded px-3 py-1 ${
                   perWeek === o.vecka
@@ -518,162 +619,124 @@ export default async function AnalysPage({
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Aktiva minuter, ackumulerat
+            {GRAF_LABELS[graf]} {vy === "vecka" ? "per vecka" : "ackumulerat"}
+            {mot === "plan" ? " mot planen" : comparison ? " mot förra året" : ""}
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Aktiv tid för de valda passtyperna, dag för dag i blocket. Tryck i grafen för att se en
-            dag.
+            {mot === "plan"
+              ? "Kvalitet, distans och styrka räknas inom veckan, inte dag för dag. Bara dagar som passerat räknas. Ett planerat pass på en sjuk- eller skaddag som inte blev av räknas inte" +
+                (blockStats.excusedCount > 0 ? ` (${blockStats.excusedCount} i blocket).` : ".")
+              : `${graf === "minuter" ? "Aktiv tid" : graf === "distans" ? "Sträckan" : "Antal pass"} för de valda passtyperna${
+                  vy === "vecka" ? ", per blockvecka" : ", dag för dag i blocket"
+                }. Tryck i grafen för att se en ${vy === "vecka" ? "vecka" : "dag"}.`}
           </p>
         </div>
-        <CumulativeLineChart
-          days={length}
-          unit="min"
-          ariaLabel={`Aktiva minuter ackumulerat i ${block.name}${comparison ? ` och ${comparison.name}` : ""}`}
-          defaultIndex={daysSoFar - 1}
-          dayLabels={dayLabels}
-          markRows={markRows}
-          series={[
-            ...(dailyBefore
-              ? [{ label: "Förra året", values: cumulative(dailyBefore), color: LAST_YEAR, dashed: true }]
-              : []),
-            { label: "I år", values: cumulative(dailyNow), color: THIS_YEAR },
-          ]}
-        />
-      </section>
 
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Aktiva minuter per vecka
-          </h2>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Blockveckor, räknade från blockets första dag.
-          </p>
-        </div>
-        <GroupedBarChart
-          groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
-          groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
-          defaultIndex={Math.floor((daysSoFar - 1) / 7)}
-          markRows={markRows}
-          unit="min"
-          ariaLabel="Aktiva minuter per blockvecka"
-          series={[
-            ...(weeklyBefore
-              ? [{ label: "Förra året", values: weeklyBefore, color: LAST_YEAR, style: "outline" as const }]
-              : []),
-            {
-              label: "I år",
-              values: Array.from({ length: weeks }, (_, w) => (w < weeklyNow.length ? weeklyNow[w] : null)),
-              color: THIS_YEAR,
-              style: "fill" as const,
-            },
-          ]}
-        />
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Distans, ackumulerat
-          </h2>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Sträckan för de valda passtyperna, dag för dag i blocket.
-          </p>
-        </div>
-        <CumulativeLineChart
-          days={length}
-          unit="km"
-          ariaLabel={`Distans ackumulerat i ${block.name}${comparison ? ` och ${comparison.name}` : ""}`}
-          defaultIndex={daysSoFar - 1}
-          dayLabels={dayLabels}
-          markRows={markRows}
-          series={[
-            ...(kmBefore
-              ? [{ label: "Förra året", values: cumulative(kmBefore), color: LAST_YEAR, dashed: true }]
-              : []),
-            { label: "I år", values: cumulative(kmNow), color: THIS_YEAR },
-          ]}
-        />
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-          Distans per vecka
-        </h2>
-        <GroupedBarChart
-          groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
-          groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
-          defaultIndex={Math.floor((daysSoFar - 1) / 7)}
-          markRows={markRows}
-          unit="km"
-          ariaLabel="Distans per blockvecka"
-          series={[
-            ...(weeklyKmBefore
-              ? [{ label: "Förra året", values: weeklyKmBefore, color: LAST_YEAR, style: "outline" as const }]
-              : []),
-            {
-              label: "I år",
-              values: Array.from({ length: weeks }, (_, w) => (w < weeklyKmNow.length ? weeklyKmNow[w] : null)),
-              color: THIS_YEAR,
-              style: "fill" as const,
-            },
-          ]}
-        />
-      </section>
-
-      <section className="flex flex-col gap-3">
-        <div>
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Planerat och gjort
-          </h2>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Antal pass per vecka: kvalitet, distans och styrka. Gjorda pass räknas inom veckan, inte
-            dag för dag. Bara dagar som passerat räknas. Ett planerat pass på en sjuk- eller skaddag
-            som inte blev av räknas inte
-            {blockStats.excusedCount > 0 ? ` (${blockStats.excusedCount} i blocket)` : ""}.
-          </p>
-        </div>
-        {hasPlan ? (
-          <>
-            <GroupedBarChart
-              groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
-              groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
-              defaultIndex={Math.floor((daysSoFar - 1) / 7)}
-              markRows={markRows}
-              unit="pass"
-              ariaLabel="Planerade och gjorda pass per blockvecka"
-              series={[
-                {
-                  label: "Planerat",
-                  values: weekStats.map((s) => (s ? s.due : null)),
-                  color: "var(--ink-2)",
-                  style: "outline",
-                },
-                {
-                  label: "Gjort",
-                  values: weekStats.map((s) => (s ? s.done : null)),
-                  color: THIS_YEAR,
-                  style: "fill",
-                },
+        <div className="flex flex-col gap-2">
+          <Segment
+            label="Mått"
+            options={(["minuter", "distans", "pass"] as const).map((g) => ({
+              key: g,
+              label: GRAF_LABELS[g],
+              href: href({ graf: g }),
+              active: graf === g,
+              disabled: mot === "plan" && g !== "pass",
+            }))}
+          />
+          {(comparison || hasPlan) && (
+            <Segment
+              label="Jämför med"
+              options={[
+                ...(comparison
+                  ? [{ key: "fjol", label: "Förra året", href: href({ mot: "fjol" }), active: mot === "fjol" }]
+                  : []),
+                ...(hasPlan
+                  ? [{ key: "plan", label: "Planerat", href: href({ mot: "plan" }), active: mot === "plan" }]
+                  : []),
               ]}
             />
-            <dl className="grid grid-cols-3 gap-2 text-center">
-              {[
-                { label: "Kvalitet", done: blockStats.qualityDone, due: blockStats.qualityDue },
-                { label: "Distans", done: blockStats.distanceDone, due: blockStats.distanceDue },
-                { label: "Styrka", done: blockStats.strengthDone, due: blockStats.strengthDue },
-              ].map((k) => (
-                <div key={k.label} className="rounded-md bg-[var(--surface-raised)] px-2 py-2">
-                  <dt className="text-[0.65rem] tracking-wider text-[var(--ink-3)] uppercase">{k.label}</dt>
-                  <dd className="tabular text-sm font-medium text-[var(--foreground)]">
-                    {k.due > 0 ? `${k.done}/${k.due}${pct(k.done, k.due)}` : "—"}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </>
+          )}
+          <Segment
+            label="Visa"
+            options={[
+              { key: "vecka", label: "Per vecka", href: href({ vy: "vecka" }), active: vy === "vecka" },
+              { key: "ack", label: "Ackumulerat", href: href({ vy: "ack" }), active: vy === "ack" },
+            ]}
+          />
+          {mot === "plan" && (
+            <p className="text-xs text-[var(--ink-3)]">Planen har ingen tid eller distans, så den jämförs i antal pass.</p>
+          )}
+        </div>
+
+        {vy === "vecka" ? (
+          <GroupedBarChart
+            groups={Array.from({ length: weeks }, (_, w) => `v${w + 1}`)}
+            groupLabels={Array.from({ length: weeks }, (_, w) => weekLabel(w))}
+            defaultIndex={Math.floor((daysSoFar - 1) / 7)}
+            markRows={mot === "plan" ? markRows.slice(0, 1) : markRows}
+            unit={unit}
+            ariaLabel={`${GRAF_LABELS[graf]} per blockvecka`}
+            series={
+              mot === "plan"
+                ? [
+                    { label: "Planerat", values: weekStats.map((x) => (x ? x.due : null)), color: "var(--ink-2)", style: "outline" as const },
+                    { label: "Gjort", values: weekStats.map((x) => (x ? x.done : null)), color: THIS_YEAR, style: "fill" as const },
+                  ]
+                : [
+                    ...(dailyBefore
+                      ? [{ label: "Förra året", values: weeklySums(dailyBefore), color: LAST_YEAR, style: "outline" as const }]
+                      : []),
+                    {
+                      label: "I år",
+                      values: Array.from({ length: weeks }, (_, w) => {
+                        const ws = weeklySums(dailyNow);
+                        return w < ws.length ? ws[w] : null;
+                      }),
+                      color: THIS_YEAR,
+                      style: "fill" as const,
+                    },
+                  ]
+            }
+          />
         ) : (
-          <p className="text-sm text-[var(--ink-3)]">Inget planerat i blocket — bara utfall att visa.</p>
+          <CumulativeLineChart
+            days={length}
+            unit={unit}
+            ariaLabel={`${GRAF_LABELS[graf]} ackumulerat i ${block.name}`}
+            defaultIndex={daysSoFar - 1}
+            dayLabels={dayLabels}
+            markRows={mot === "plan" ? markRows.slice(0, 1) : markRows}
+            series={
+              mot === "plan" && planCumulative
+                ? [
+                    { label: "Planerat", values: planCumulative.map((x) => x.due), color: "var(--ink-2)", dashed: true },
+                    { label: "Gjort", values: planCumulative.map((x) => x.done), color: THIS_YEAR },
+                  ]
+                : [
+                    ...(dailyBefore
+                      ? [{ label: "Förra året", values: cumulative(dailyBefore), color: LAST_YEAR, dashed: true }]
+                      : []),
+                    { label: "I år", values: cumulative(dailyNow), color: THIS_YEAR },
+                  ]
+            }
+          />
+        )}
+
+        {mot === "plan" && (
+          <dl className="grid grid-cols-3 gap-2 text-center">
+            {[
+              { label: "Kvalitet", done: blockStats.qualityDone, due: blockStats.qualityDue },
+              { label: "Distans", done: blockStats.distanceDone, due: blockStats.distanceDue },
+              { label: "Styrka", done: blockStats.strengthDone, due: blockStats.strengthDue },
+            ].map((k) => (
+              <div key={k.label} className="rounded-md bg-[var(--surface-raised)] px-2 py-2">
+                <dt className="text-[0.65rem] tracking-wider text-[var(--ink-3)] uppercase">{k.label}</dt>
+                <dd className="tabular text-sm font-medium text-[var(--foreground)]">
+                  {k.due > 0 ? `${k.done}/${k.due}${pct(k.done, k.due)}` : "—"}
+                </dd>
+              </div>
+            ))}
+          </dl>
         )}
       </section>
 

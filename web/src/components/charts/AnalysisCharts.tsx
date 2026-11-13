@@ -237,7 +237,7 @@ export function CumulativeLineChart({
         <span className="tabular">{dayLabels[hi]}</span>
         {series.map((s) =>
           hi < s.values.length ? (
-            <span key={s.label}>
+            <span key={s.label} className="whitespace-nowrap">
               {" · "}
               {s.label}{" "}
               <span className="tabular font-medium text-[var(--foreground)]">
@@ -363,7 +363,7 @@ export function GroupedBarChart({
       <p className="text-sm text-[var(--ink-2)]">
         <span className="tabular">{groupLabels[hi]}</span>
         {series.map((s) => (
-          <span key={s.label}>
+          <span key={s.label} className="whitespace-nowrap">
             {" · "}
             {s.label}{" "}
             <span className="tabular font-medium text-[var(--foreground)]">

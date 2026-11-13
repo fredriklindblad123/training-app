@@ -206,8 +206,11 @@ export function computeRangeStats({
   type Kind = "quality" | "distance" | "strength";
   const due = { quality: 0, distance: 0, strength: 0 };
   const done = { quality: 0, distance: 0, strength: 0 };
+  // Till och med cutoff, men aldrig förbi spannets slut: annars räknade
+  // varje vecka in alla dagbokens styrkepass efter veckans start.
+  const doneEnd = cutoff < range.endDate ? cutoff : range.endDate;
   const strengthDays = new Set<string>(
-    diaryStrengthDates.filter((d) => withinRange(d, range.startDate, cutoff)),
+    diaryStrengthDates.filter((d) => withinRange(d, range.startDate, doneEnd)),
   );
   const doneOnDay = new Map<string, number>();
   const bump = (m: Map<string, number>, key: string) => m.set(key, (m.get(key) ?? 0) + 1);
