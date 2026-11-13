@@ -1,32 +1,24 @@
 # IFK-urtavlan
 
-Garmin-urtavla för Träningsnavets adepter: IFK:s emblem, tiden, datum och
-**dagens pass** från appen. Byggd med Connect IQ (Monkey C) för fenix 5,
-fenix 6 och Forerunner 255 med varianter (se `manifest.xml`).
+Garmin-urtavla med IFK:s emblem stort i mitten, tiden ovanför och datumet
+under. Byggd med Connect IQ (Monkey C) för fenix 5, fenix 6 och Forerunner
+255 med varianter (se `manifest.xml`).
 
 ```
 ┌─────────────────┐
-│      [IFK]      │   emblemet
 │      14:32      │   tiden
+│      [IFK]      │   emblemet, halva skärmhöjden
+│      [IFK]      │
 │    lör 1/11     │   datum
-│      IDAG       │
-│ Tröskel 6x3min  │   dagens pass, hämtas var 15:e min
 └─────────────────┘
 ```
 
-## Hur det hänger ihop
+Urtavlan hämtar ingenting: ingen nätverkstrafik och ingen nyckel. Samma fil
+fungerar därför för alla med samma klockmodell. (2026-11-01 visade den även
+dagens pass från Träningsnavet; borttaget 2026-11-02 på begäran.)
 
-- Varje adept har en **klocknyckel**, som skapas i appen under
-  *Inställningar → Klocka*. Nyckeln visas bara när den skapas.
-- `build.sh` bygger in nyckeln i urtavlan. Det behövs eftersom urtavlor som
-  kopieras över med USB inte kan få inställningar från telefonen. **Varje adept
-  får alltså en egen fil.**
-- Urtavlan hämtar `GET /api/watch/today?token=…` (Python-API:t,
-  `web/api/index.py`) ungefär var 15:e minut, via Garmin Connect-appen i
-  telefonen. Svaret är dagens planerade pass, till exempel
-  `{"date": "2026-11-01", "text": "Tröskel 6x3min"}`.
-- En ny nyckel i appen ersätter den gamla. En urtavla byggd med den gamla
-  slutar då hämta, vilket är rätt om en klocka bytt ägare eller kommit bort.
+Emblemet finns i en storlek per skärm (`resources-round-218x218` …
+`280x280`), skalat ur `web/public/ifk-logga.png`.
 
 ## Engångsinstallation (på datorn som bygger)
 
@@ -55,18 +47,15 @@ efter inloggning.
 3. Klart. Filerna hamnar i `~/Library/Application Support/Garmin/ConnectIQ/Devices`,
    där `build.sh` hittar dem.
 
-## Bygga för en adept
+## Bygga
 
-1. Skapa adeptens nyckel i appen: *Inställningar → Klocka → Skapa nyckel*.
-   Kopiera den.
-2. Bygg, för hennes klockmodell eller alla:
-   ```
-   ./build.sh nike <nyckel> fenix6
-   ./build.sh alice <nyckel>            # alla modeller
-   ```
-   Filerna hamnar i `bin/<namn>-<modell>.prg`.
-3. Valfritt: prova i simulatorn först med `connectiq` och sedan
-   `monkeydo bin/nike-fenix6.prg fenix6`.
+```
+./build.sh                  # alla modeller
+./build.sh fenix6pro        # bara en
+```
+
+Filerna hamnar i `bin/ifk-<modell>.prg`. Modeller som inte är nedladdade i
+SdkManager hoppas över.
 
 ## Kopiera över till klockan
 
@@ -77,23 +66,18 @@ efter inloggning.
      Mac — använd det kostnadsfria programmet *OpenMTP*.
 3. Koppla ur. På klockan: håll in *Upp*/*Light* → *Urtavla* → välj
    *IFK Träningsnavet*.
-4. Klockan måste vara parkopplad med Garmin Connect-appen i telefonen för att
-   hämta dagens pass. Första hämtningen kan dröja upp till 15 minuter; fram
-   till dess står det "Hämtar...".
-
-Att det fungerar syns i appen: under *Inställningar → Klocka* står
-"klockan hämtade senast …".
+4. Syns inte klockan i OpenMTP: på klockan, håll in *Up/Menu* →
+   *Inställningar* → *System* → *USB-läge* → **MTP**.
+5. Byt ut en äldre version: ta bort den gamla `.prg`-filen i GARMIN/APPS
+   först, rör inget annat där.
 
 ## Fallgropar
 
-- **Byggd och provad i simulatorn** för alla elva fenix 5/6-modeller
-  (2026-11-01). Forerunner 255-modellerna var inte nedladdade då — bygg dem
-  när de finns i SDK Manager. Ännu inte provad på en riktig klocka.
+- **Provad på riktig klocka**: fēnix 6 Pro (2026-11-02). Alla 15 modeller
+  bygger utan fel.
 - **Garmin-identiteter för modeller** i `manifest.xml` måste matcha de
   enheter som är nedladdade i SDK Manager. Saknas en modell där, ta bort den
   ur manifestet eller ladda ner den.
 - **fenix 5 (utan Plus)** har äldst mjukvara. Kräver Connect IQ 3.0, vilket
   klockan har med senaste uppdateringen. Uppdatera klockan via Garmin Express
   om bygget vägrar.
-- **Text som inte får plats** kortas med "..." i API:t (max 48 tecken) och
-  radbryts på klockan.
