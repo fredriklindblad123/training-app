@@ -138,8 +138,13 @@ export function totalsUpToDay(
     const i = dayIndex(s.date, block.start_date);
     return i >= 0 && i < days;
   });
+  const diaryInside = diaryStrengthDates.filter((d) => {
+    const i = dayIndex(d, block.start_date);
+    return i >= 0 && i < days;
+  });
   return {
-    trainingDays: new Set(inside.map((s) => s.date)).size,
+    // En dag med bara ett styrkepass i dagboken är också en träningsdag.
+    trainingDays: new Set([...inside.map((s) => s.date), ...diaryInside]).size,
     minutes: inside.reduce((a, s) => a + activeSeconds(s, moving) / 60, 0),
     km: inside.reduce((a, s) => a + sessionKm(s), 0),
     qualitySessions: inside.filter((s) =>
@@ -148,10 +153,7 @@ export function totalsUpToDay(
     // Per dag: Garmin-styrka eller ett eget styrkepass i dagboken.
     strengthSessions: new Set([
       ...inside.filter((s) => s.category === "strength").map((s) => s.date),
-      ...diaryStrengthDates.filter((d) => {
-        const i = dayIndex(d, block.start_date);
-        return i >= 0 && i < days;
-      }),
+      ...diaryInside,
     ]).size,
   };
 }

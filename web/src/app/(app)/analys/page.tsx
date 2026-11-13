@@ -261,9 +261,12 @@ export default async function AnalysPage({
   const planned = (plannedRows ?? []) as PlannedWorkout[];
 
   // --- Hittills i år mot samma antal dagar förra året -----------------------
-  const now: BlockTotals = totalsUpToDay(chosen, block, daysSoFar, moving);
+  // Styrka loggas oftast bara i dagboken. Är styrka vald räknas en dag med
+  // ett eget styrkepass där som träningsdag; minuter finns inte i dagboken.
+  const chosenDiaryStrength = include.has("strength") ? diaryStrength : [];
+  const now: BlockTotals = totalsUpToDay(chosen, block, daysSoFar, moving, chosenDiaryStrength);
   const before: BlockTotals | null = comparison
-    ? totalsUpToDay(chosen, comparison, daysSoFar, moving)
+    ? totalsUpToDay(chosen, comparison, daysSoFar, moving, chosenDiaryStrength)
     : null;
   // Distansen hålls isär: en km på cykel är inte en km löpning, så
   // alternativ träning får en egen ruta och ingår inte i Distans.
@@ -489,7 +492,9 @@ export default async function AnalysPage({
         <p className="text-xs text-[var(--ink-3)]">
           Styrkepass räknas också ur dagbokens passlogg, där de oftast skrivs in: gym, cirkel,
           medicinboll och liknande egna pass. Det underlaget är självskattat. Styrka som tillägg
-          efter ett löppass räknas inte. Sjuk- och skaddagar är markerade i dagboken
+          efter ett löppass räknas inte. Med styrka vald räknas en dag med ett styrkepass i
+          dagboken som träningsdag; dagboken anger ingen tid, så aktiva minuter tar bara med
+          styrkepass som loggats med klockan. Sjuk- och skaddagar är markerade i dagboken
           {sickNow.sick + sickNow.injured > 0
             ? ` — i år ${[
                 sickNow.sick > 0 ? `${sickNow.sick} sjuk` : null,
