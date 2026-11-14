@@ -51,6 +51,7 @@ import {
   gearSessionPeaks,
   INTERVAL_MIN_REP_SECONDS,
   trimWarmupCooldown,
+  warmupCooldownLapIndexes,
   type Gear,
   type GearKey,
   type GearRep,
@@ -384,9 +385,13 @@ export default async function TrendsPage({
       const laps = [...(lapsByActivity.get(session.dominantActivity.id) ?? [])].sort(
         (a, b) => a.split_index - b.split_index,
       );
+      // Uppvärmning och nerjogg avgränsade av vilovarven, samma regel som
+      // dagvyn (merged_splits).
+      const edges = warmupCooldownLapIndexes(laps);
       for (const lap of laps) {
         if (lap.split_type !== "active") continue;
         activitiesWithActiveLaps.add(session.dominantActivity.id);
+        if (edges.has(lap.split_index)) continue;
         if (lap.distance_meters == null || lap.avg_hr == null) continue;
         if (lap.duration_seconds == null) continue;
         // Oavsiktliga varvtryck bort före kanttrimningen — ett 7-sekundersvarv

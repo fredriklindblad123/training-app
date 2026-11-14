@@ -239,6 +239,70 @@ export function trimWarmupCooldown<T extends LapLike>(laps: T[]): T[] {
   return laps.slice(from, to);
 }
 
+/* ------------- uppvärmning och nerjogg ur vilovarven (2026-11-14) ----------- *
+ * Samma regel som databasfunktionen merged_splits, så att dagvyn och
+ * växlarna avgränsar uppvärmning och nerjogg likadant. Kanttrimningen ovan
+ * missade Alice 2026-11-12: tre kilometervarv uppvärmning i 4:55 var bara
+ * 1,10 gånger långsammare än medianen, eftersom uppvärmningen och nerjoggen
+ * själva drog upp medianen — alla räknades som tröskelrep.
+ *
+ * Bara pass med minst två vilovarv. Före första vilan: allt före det sista
+ * varv som är minst 1,15 gånger snabbare än varvet före är uppvärmning. Efter
+ * sista vilan: från första varv som är minst 1,15 gånger långsammare är det
+ * nerjogg. Varv under 100 m bryter aldrig. Uppmätt mot 316 kvalitetspass
+ * (supabase/migrations/20261114120000_merged_splits_warmup.sql). */
+const EDGE_PACE_RATIO = 1.15;
+const EDGE_MIN_METERS = 100;
+
+export type RawLap = {
+  split_index: number;
+  split_type: string | null;
+  distance_meters: number | null;
+  duration_seconds: number | null;
+};
+
+/** split_index för varven som är uppvärmning eller nerjogg enligt regeln. */
+export function warmupCooldownLapIndexes(laps: RawLap[]): Set<number> {
+  const out = new Set<number>();
+  const sorted = [...laps].sort((a, b) => a.split_index - b.split_index);
+  const isRest = (l: RawLap) => l.split_type === "rest";
+  if (sorted.filter(isRest).length < 2) return out;
+  const pace = (l: RawLap) =>
+    (l.distance_meters ?? 0) > 0 && (l.duration_seconds ?? 0) > 0
+      ? (l.duration_seconds as number) / (l.distance_meters as number)
+      : null;
+  const pair = (i: number) => {
+    const a = sorted[i - 1];
+    const b = sorted[i];
+    if (a.split_type !== "active" || b.split_type !== "active") return null;
+    if ((b.distance_meters ?? 0) < EDGE_MIN_METERS) return null;
+    const pa = pace(a);
+    const pb = pace(b);
+    return pa != null && pb != null ? { pa, pb } : null;
+  };
+
+  const firstRest = sorted.findIndex(isRest);
+  let lastBreak = -1;
+  for (let i = 1; i < firstRest; i++) {
+    const p = pair(i);
+    if (p && p.pa / p.pb >= EDGE_PACE_RATIO) lastBreak = i;
+  }
+  for (let i = 0; i < lastBreak; i++) out.add(sorted[i].split_index);
+
+  let lastRest = -1;
+  sorted.forEach((l, i) => {
+    if (isRest(l)) lastRest = i;
+  });
+  for (let i = lastRest + 2; i < sorted.length; i++) {
+    const p = pair(i);
+    if (p && p.pb / p.pa >= EDGE_PACE_RATIO) {
+      for (let j = i; j < sorted.length; j++) out.add(sorted[j].split_index);
+      break;
+    }
+  }
+  return out;
+}
+
 /** Repen som räknas i en växel. Delad mellan växeldiagrammet och
  * intervallgrafen, så att de aldrig kan börja välja olika rep. */
 export function isGearRep(r: GearRep, category: string): boolean {
