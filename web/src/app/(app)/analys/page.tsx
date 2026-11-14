@@ -55,6 +55,7 @@ import {
   TONE_LABELS,
   toneCounts,
   toneOf,
+  topWords,
   type ThemeNote,
   type Tone,
 } from "@/lib/diary-themes";
@@ -186,9 +187,14 @@ export default async function AnalysPage({
     jmf?: string;
     tema?: string;
     tematyp?: string;
+    /** Urval i känslostaplarna: passtyp (eller "alla"), block ("nu"/"jmf")
+     * och känsla (bra/blandat/mindre_bra, utelämnad = alla). */
+    kc?: string;
+    kb?: string;
+    kt?: string;
   }>;
 }) {
-  const { block: blockParam, athlete: athleteParam, typer, visa, graf: grafParam, mot: motParam, vy: vyParam, jmf, tema, tematyp } =
+  const { block: blockParam, athlete: athleteParam, typer, visa, graf: grafParam, mot: motParam, vy: vyParam, jmf, tema, tematyp, kc, kb, kt } =
     await searchParams;
   // Hittills-rutorna: summa för blocket eller snitt per vecka.
   const perWeek = visa === "vecka";
@@ -629,6 +635,23 @@ export default async function AnalysPage({
   const hasTone = notesNow.some((n) => n.tone) || notesBefore.some((n) => n.tone);
   // Teman ur texten från första dagboksdatum på rätt dag (THEMES_FROM).
   const themeNotes = notesNow.filter((n) => n.date >= THEMES_FROM && n.text.length >= 10);
+  // Urval från en klickad känslostapel. Då gäller tabellen, orden och
+  // anteckningslistan bara urvalet.
+  const selBlock: "nu" | "jmf" = kb === "jmf" && comparison ? "jmf" : "nu";
+  const selTone = (["bra", "blandat", "mindre_bra"] as const).find((t) => t === kt) ?? null;
+  const selCat = kc ?? null;
+  const selPool = selCat
+    ? (selBlock === "jmf" ? notesBefore : notesNow).filter(
+        (n) => n.text.length >= 10 && (selCat === "alla" || n.category === selCat),
+      )
+    : [];
+  const selNotes = selPool.filter((n) => !selTone || n.tone === selTone);
+  const selLabel = selCat
+    ? `${selCat === "alla" ? "Alla pass" : (CATEGORY_LABELS[selCat as ActivityCategory] ?? selCat)} · ${
+        selBlock === "jmf" ? cmpName : nowName
+      }${selTone ? ` · ${TONE_LABELS[selTone]}` : ""}`
+    : null;
+  const selWords = selCat ? topWords(selNotes) : [];
   const themes = themeTable(themeNotes, 3);
   const activeTheme = THEMES.find((t) => t.key === tema) ?? null;
   const activeType = themes.categories.find((c) => c.category === tematyp)?.category ?? null;
@@ -640,6 +663,10 @@ export default async function AnalysPage({
       : [];
   const themeHref = (t: string | null, c: string | null) =>
     `${href({})}${t && c ? `&tema=${t}&tematyp=${c}` : ""}#teman`;
+  const selThemeHref = (t: string | null) =>
+    `${href({})}&kc=${selCat}&kb=${selBlock}${selTone ? `&kt=${selTone}` : ""}${t ? `&tema=${t}` : ""}#teman`;
+  const toneHref = (cat: string | null, blk: "nu" | "jmf", tone: string | null) =>
+    `${href({})}${cat ? `&kc=${cat}&kb=${blk}${tone ? `&kt=${tone}` : ""}` : ""}#teman`;
   const dayHref = (key: string) => {
     const [y, m, d] = key.split("-").map(Number);
     return `/calendar/${y}/${m}/${d}${athleteQuery ? `?athlete=${userId}` : ""}`;
@@ -1024,18 +1051,36 @@ export default async function AnalysPage({
             {[null, ...toneCats].map((cat) => {
               const pick = (ns: ThemeNote[]) => toneCounts(cat ? ns.filter((n) => n.category === cat) : ns);
               const rows = [
-                { name: nowName, c: pick(notesNow) },
-                ...(comparison ? [{ name: cmpName, c: pick(notesBefore) }] : []),
+                { name: nowName, blk: "nu" as const, c: pick(notesNow) },
+                ...(comparison ? [{ name: cmpName, blk: "jmf" as const, c: pick(notesBefore) }] : []),
               ];
+              const catKey = cat ?? "alla";
               return (
                 <div key={cat ?? "alla"} className="flex flex-col gap-1">
                   <span className="text-sm font-medium text-[var(--foreground)]">
                     {cat ? (CATEGORY_LABELS[cat as ActivityCategory] ?? cat) : "Alla pass"}
                   </span>
-                  {rows.map(({ name, c }) => {
+                  {rows.map(({ name, blk, c }) => {
                     const total = c.bra + c.blandat + c.mindre_bra;
+                    const selected = selCat === catKey && selBlock === blk;
+                    if (total === 0) {
+                      return (
+                        <div key={name} className="flex items-center gap-2 px-1 py-1 text-xs">
+                          <span className="w-16 shrink-0 truncate text-[var(--ink-3)]">{name}</span>
+                          <span className="text-[var(--ink-3)]">inga markerade anteckningar</span>
+                        </div>
+                      );
+                    }
                     return (
-                      <div key={name} className="flex items-center gap-2 text-xs">
+                      <Link
+                        key={name}
+                        href={selected ? toneHref(null, "nu", null) : toneHref(catKey, blk, null)}
+                        scroll={false}
+                        aria-current={selected ? "true" : undefined}
+                        className={`flex items-center gap-2 rounded px-1 py-1 text-xs ${
+                          selected ? "bg-[var(--surface-raised)] ring-1 ring-[var(--foreground)]" : "hover:bg-[var(--surface-raised)]"
+                        }`}
+                      >
                         <span className="w-16 shrink-0 truncate text-[var(--ink-3)]">{name}</span>
                         {total === 0 ? (
                           <span className="text-[var(--ink-3)]">inga markerade anteckningar</span>
@@ -1057,12 +1102,86 @@ export default async function AnalysPage({
                             </span>
                           </>
                         )}
-                      </div>
+                      </Link>
                     );
                   })}
                 </div>
               );
             })}
+            {selLabel && (
+              <div className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">
+                    {selLabel} · {selNotes.length} anteckningar
+                  </h3>
+                  <Link href={toneHref(null, "nu", null)} scroll={false} className="text-xs text-[var(--ink-3)] underline">
+                    stäng
+                  </Link>
+                </div>
+                <div className="flex flex-wrap gap-1 text-xs" role="group" aria-label="Känsla i urvalet">
+                  {([null, "bra", "blandat", "mindre_bra"] as (Tone | null)[]).map((t) => {
+                    const n = t ? selPool.filter((x) => x.tone === t).length : selPool.length;
+                    const on = selTone === t;
+                    return (
+                      <Link
+                        key={t ?? "alla"}
+                        href={toneHref(selCat, selBlock, t)}
+                        scroll={false}
+                        aria-current={on ? "true" : undefined}
+                        className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 ${
+                          on ? "border-[var(--foreground)] text-[var(--foreground)]" : "border-[var(--line)] text-[var(--ink-2)]"
+                        }`}
+                      >
+                        {t && <span aria-hidden className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: TONE_COLORS[t] }} />}
+                        {t ? TONE_LABELS[t] : "Alla"} <span className="tabular text-[var(--ink-3)]">{n}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+                {selWords.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-[var(--ink-3)]">Vanligaste orden — i hur många av anteckningarna de står</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {selWords.map((w) => (
+                        <span key={w.word} className="rounded bg-[var(--surface-raised)] px-2 py-0.5 text-xs text-[var(--ink-2)]">
+                          {w.word} <span className="tabular text-[var(--ink-3)]">{w.notes}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {activeTheme && (
+                  <p className="text-xs text-[var(--ink-2)]">
+                    Visar anteckningar som tar upp {activeTheme.label.toLowerCase()} ·{" "}
+                    <Link href={selThemeHref(null)} scroll={false} className="underline">
+                      visa alla
+                    </Link>
+                  </p>
+                )}
+                {selNotes.length > 0 && (
+                  <ul className="flex flex-col divide-y divide-[var(--line)]">
+                    {[...selNotes].filter((q) => !activeTheme || activeTheme.re.test(q.text)).reverse().map((q) => (
+                      <li key={q.date}>
+                        <Link href={dayHref(q.date)} className="flex items-start gap-3 py-2 hover:bg-[var(--surface-raised)]">
+                          <span className="tabular w-12 shrink-0 text-xs text-[var(--ink-3)]">{short(q.date)}</span>
+                          {q.tone && (
+                            <span
+                              aria-label={TONE_LABELS[q.tone]}
+                              title={TONE_LABELS[q.tone]}
+                              className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: TONE_COLORS[q.tone] }}
+                            />
+                          )}
+                          <span className="text-sm text-[var(--ink-2)]">
+                            {q.text.length > 240 ? `${q.text.slice(0, 240).trim()}…` : q.text}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <p className="text-xs text-[var(--ink-3)]">
               Siffrorna är bra/blandat/mindre bra av antalet markerade anteckningar. En anteckning räknas som bra när minst två
               tredjedelar av den färgade texten är grön, mindre bra när minst två tredjedelar är
@@ -1073,8 +1192,58 @@ export default async function AnalysPage({
         )}
 
         <div className="flex flex-col gap-2">
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">Vad anteckningarna tar upp</h3>
-          {block.end_date < THEMES_FROM ? (
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">
+            Vad anteckningarna tar upp{selLabel ? ` · ${selLabel}` : ""}
+          </h3>
+          {selLabel ? (
+            <table className="w-full table-fixed text-sm">
+              <thead>
+                <tr className="text-left text-xs text-[var(--ink-3)]">
+                  <th className="w-[40%] pb-1 font-normal">Tema</th>
+                  <th className="pb-1 font-normal">
+                    Urvalet <span className="tabular">{selNotes.length} st</span>
+                  </th>
+                  {selTone && (
+                    <th className="pb-1 font-normal">
+                      Alla i passtypen <span className="tabular">{selPool.length} st</span>
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {THEMES.map((t) => {
+                  const n = selNotes.filter((x) => t.re.test(x.text)).length;
+                  const all = selPool.filter((x) => t.re.test(x.text)).length;
+                  const active = activeTheme?.key === t.key;
+                  return (
+                    <tr key={t.key} className="border-t border-[var(--line)]">
+                      <td className="py-1.5 pr-2 text-[var(--ink-2)]">{t.label}</td>
+                      <td className="py-1.5">
+                        {n === 0 ? (
+                          <span className="text-[var(--ink-3)]">–</span>
+                        ) : (
+                          <Link
+                            href={selThemeHref(active ? null : t.key)}
+                            scroll={false}
+                            className={`tabular rounded px-1.5 py-0.5 ${
+                              active
+                                ? "bg-[var(--foreground)] text-[var(--background)]"
+                                : "underline decoration-[var(--line)] underline-offset-2"
+                            }`}
+                          >
+                            {n}/{selNotes.length}
+                          </Link>
+                        )}
+                      </td>
+                      {selTone && (
+                        <td className="tabular py-1.5 text-[var(--ink-3)]">{all === 0 ? "–" : `${all}/${selPool.length}`}</td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : block.end_date < THEMES_FROM ? (
             <p className="text-sm text-[var(--ink-3)]">
               Det finns ingen dagbok från den här perioden.
             </p>

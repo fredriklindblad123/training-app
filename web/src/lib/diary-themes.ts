@@ -129,3 +129,54 @@ export function mainCategory(categories: string[]): string | null {
   for (const c of PRIORITY) if (categories.includes(c)) return c;
   return categories[0] ?? null;
 }
+
+/* ------------------------- vanligaste orden ------------------------------ *
+ * Ord i ett urval anteckningar, räknade som i hur många anteckningar de
+ * förekommer (inte hur många gånger) — ett långt referat ska inte väga mer än
+ * en kort rad. Böjningsformer slås ihop grovt genom att vanliga svenska
+ * ändelser kapas ("intervallerna", "intervaller" -> "intervall"); ordet visas
+ * i den form som var vanligast. Småord och siffror räknas inte. */
+const STOPWORDS = new Set(
+  (
+    "och att det som en ett är var de den på i för med men inte så jag har hade av till om sen sedan " +
+    "då när vi man mig min mitt mina kan kunde ska skulle blev bli blir få fick gick går " +
+    "lite mycket väldigt ganska typ ju väl nog bara också ändå även efter innan igen idag igår imorgon " +
+    "här där hur vad vilket vilken eller utan under över från upp ner ut in alla allt något några " +
+    "kändes känns kände känna kännas känsla känslan var hela helt kanske liksom sista första andra tredje " +
+    "dem dom deras sig sin sitt sina hon han hennes detta dessa denna mer mest än som eftersom tills " +
+    "jätte rätt fast ingen inget inga både heller kör körde köra varit vara är " +
+    "tog ta tar annars istället tror trodde alls trots lika samma riktigt verkligen faktiskt nästan " +
+    "kom kommer gjorde göra gör fått haft har hela sig dag dagen gång gången"
+  ).split(/\s+/),
+);
+const SUFFIXES = ["arna", "erna", "orna", "ande", "ende", "ade", "are", "ast", "na", "en", "et", "ar", "er", "or", "a", "e", "t"];
+
+function stem(w: string): string {
+  for (const s of SUFFIXES) if (w.length - s.length >= 4 && w.endsWith(s)) return w.slice(0, -s.length);
+  return w;
+}
+
+export type WordCount = { word: string; notes: number };
+
+export function topWords(notes: ThemeNote[], limit = 14): WordCount[] {
+  const byStem = new Map<string, { notes: number; forms: Map<string, number> }>();
+  for (const n of notes) {
+    const seen = new Set<string>();
+    for (const raw of n.text.toLowerCase().match(/[a-zåäöé]+/g) ?? []) {
+      if (raw.length < 3 || STOPWORDS.has(raw)) continue;
+      const st = stem(raw);
+      const e = byStem.get(st) ?? { notes: 0, forms: new Map() };
+      e.forms.set(raw, (e.forms.get(raw) ?? 0) + 1);
+      if (!seen.has(st)) {
+        e.notes++;
+        seen.add(st);
+      }
+      byStem.set(st, e);
+    }
+  }
+  return [...byStem.values()]
+    .filter((e) => e.notes >= 2)
+    .map((e) => ({ word: [...e.forms.entries()].sort((a, b) => b[1] - a[1])[0][0], notes: e.notes }))
+    .sort((a, b) => b.notes - a.notes || a.word.localeCompare(b.word, "sv"))
+    .slice(0, limit);
+}
