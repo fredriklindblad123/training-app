@@ -370,11 +370,10 @@ export default async function AnalysPage({
   const before: BlockTotals | null = comparison
     ? totalsUpToDay(chosenVolume, comparison, daysSoFar, moving, chosenDiaryStrength)
     : null;
-  // Distansen hålls isär: en km på cykel är inte en km löpning, så
-  // alternativ träning får en egen ruta och ingår inte i Distans.
-  const chosenNoCross = chosenVolume.filter((s) => s.category !== "cross_training");
-  const kmMain = totalsUpToDay(chosenNoCross, block, daysSoFar, moving).km;
-  const kmMainBefore = comparison ? totalsUpToDay(chosenNoCross, comparison, daysSoFar, moving).km : null;
+  // Alternativ träning räknas aldrig i distans, bara i tid (sessionKm), så
+  // Distans är löpdistansen och alternativ träning visas i minuter.
+  const kmMain = now.km;
+  const kmMainBefore = before?.km ?? null;
   const crossOnly = sessions.filter((s) => s.category === "cross_training");
   const showCross = include.has("cross_training");
   const cross = totalsUpToDay(crossOnly, block, daysSoFar, moving);
@@ -633,7 +632,7 @@ export default async function AnalysPage({
           <TotalTile
             nowLabel={nowName}
             beforeLabel={cmpName}
-            label={showCross ? "Distans utom alt. träning" : "Distans"}
+            label="Distans"
             now={scaled(kmMain)}
             before={scaledOrNull(kmMainBefore)}
             unit="km"
@@ -644,13 +643,9 @@ export default async function AnalysPage({
             nowLabel={nowName}
             beforeLabel={cmpName}
               label="Alternativ träning"
-              now={scaled(cross.km)}
-              before={scaledOrNull(crossBefore?.km)}
-              unit="km"
-              digits={perWeek ? 1 : 0}
-              note={`${Math.round(scaled(cross.minutes))} min ${nowLower}${
-                crossBefore ? `, ${Math.round((crossBefore.minutes * perBefore))} min ${cmpLower}` : ""
-              }`}
+              now={scaled(cross.minutes)}
+              before={scaledOrNull(crossBefore?.minutes)}
+              unit="min"
             />
           )}
           <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Träningsdagar" now={scaled(now.trainingDays)} before={scaledOrNull(before?.trainingDays)} digits={perWeek ? 1 : 0} />
@@ -671,8 +666,9 @@ export default async function AnalysPage({
                 comparison ? `, samma antal dagar ${cmpLower}` : ""
               }. `
             : ""}
-          Alternativ träning (cykel, crosstrainer, vattenlöpning) räknas för sig, eftersom en km på
-          cykel inte är en km löpning. Den ingår i aktiva minuter och träningsdagar.
+          Alternativ träning (cykel, crosstrainer, vattenlöpning) räknas i tid men aldrig i
+          distans, eftersom en km på cykel inte är en km löpning. Den ingår i aktiva minuter och
+          träningsdagar.
         </p>
         <p className="text-xs text-[var(--ink-3)]">
           Styrkepass räknas också ur dagbokens passlogg, där de oftast skrivs in: gym, cirkel,

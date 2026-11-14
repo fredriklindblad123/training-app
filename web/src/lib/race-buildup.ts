@@ -42,7 +42,8 @@ export type RaceBuildup = {
   /** Distans i alternativ träning (cykel m.m.). Hålls isär i stället för att
    * döljas — en upptrappning med tung cykelvolym är inte samma sak som en
    * med vila, och skillnaden är själva poängen. */
-  crossTrainingKm: number;
+  /** Alternativ träning i minuter — den räknas i tid, aldrig i distans. */
+  crossTrainingMinutes: number;
   qualitySessions: number;
   restDays: number;
   avgSleepHours: number | null;
@@ -118,9 +119,9 @@ export function computeRaceBuildup(
   const totalKm =
     sessions.filter((s) => !isCrossTraining(s.category)).reduce((sum, s) => sum + s.distanceMeters, 0) /
     1000;
-  const crossTrainingKm =
-    sessions.filter((s) => isCrossTraining(s.category)).reduce((sum, s) => sum + s.distanceMeters, 0) /
-    1000;
+  const crossTrainingMinutes =
+    sessions.filter((s) => s.category === "cross_training").reduce((sum, s) => sum + s.durationSeconds, 0) /
+    60;
 
   const qualityDates = sessions
     .filter((s) => QUALITY_SESSION_CATEGORIES.has(s.category))
@@ -167,7 +168,7 @@ export function computeRaceBuildup(
   return {
     weeklyLoad,
     totalKm,
-    crossTrainingKm,
+    crossTrainingMinutes,
     qualitySessions: qualityDates.length,
     restDays,
     avgSleepHours: mean(sleepHours),

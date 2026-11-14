@@ -254,7 +254,11 @@ function buildSession(fragments: SessionActivity[]): TrainingSession {
   const first = fragments[0];
 
   const durationSeconds = fragments.reduce((sum, f) => sum + num(f.duration_seconds), 0);
-  const distanceMeters = fragments.reduce((sum, f) => sum + num(f.distance_meters), 0);
+  // Alternativ träning (cykel, crosstrainer) räknas i tid men aldrig i
+  // distans: en km på cykel är inte en km löpning (Fredriks val 2026-11-14).
+  const distanceMeters = fragments
+    .filter((f) => f.category !== "cross_training")
+    .reduce((sum, f) => sum + num(f.distance_meters), 0);
   const trainingLoad = fragments.reduce((sum, f) => sum + num(f.training_load), 0);
 
   const zone = (key: keyof SessionActivity) =>

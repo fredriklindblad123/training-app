@@ -83,10 +83,14 @@ export function activeSeconds(s: TrainingSession, moving: MovingById): number {
   }, 0);
 }
 
-/** Passets distans i km, alla fragment. Vilka pass som räknas väljer
- * användaren med passtyperna — väljs alternativ träning räknas den sträckan. */
+/** Passets distans i km. Alternativ träning räknas aldrig i distans, bara i
+ * tid — samma regel som TrainingSession.distanceMeters (lib/sessions.ts). */
 export function sessionKm(s: TrainingSession): number {
-  return s.activities.reduce((b, f) => b + (f.distance_meters ?? 0), 0) / 1000;
+  return (
+    s.activities
+      .filter((f) => f.category !== "cross_training")
+      .reduce((b, f) => b + (f.distance_meters ?? 0), 0) / 1000
+  );
 }
 
 /** Ett värde per dag i blocket (index 0 = första dagen). */

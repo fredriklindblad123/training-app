@@ -301,7 +301,7 @@ export async function DayContent({
   const doneSummary =
     daySessions.length === 0
       ? "Inget pass"
-      : `${daySessions.length} ${daySessions.length === 1 ? "pass" : "pass"} · ${formatKm(dayKm * 1000)} · ${formatDuration(daySeconds)}`;
+      : `${daySessions.length} ${daySessions.length === 1 ? "pass" : "pass"} · ${dayKm > 0 ? `${formatKm(dayKm * 1000)} · ` : ""}${formatDuration(daySeconds)}`;
 
   const diarySummary = diaryEntry?.notes
     ? diaryEntry.notes.replace(/\s+/g, " ").slice(0, 70) +
@@ -451,7 +451,9 @@ export async function DayContent({
                 </span>
               ))}
               <span className="text-[var(--ink-3)]">
-                · {formatKm(dayKm * 1000)} · {formatDuration(daySeconds)}
+                {/* Bara alternativ träning ger ingen distans — då bara tiden. */}
+                · {dayKm > 0 ? `${formatKm(dayKm * 1000)} · ` : ""}
+                {formatDuration(daySeconds)}
               </span>
             </span>
           )

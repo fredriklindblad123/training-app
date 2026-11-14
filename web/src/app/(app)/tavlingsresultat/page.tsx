@@ -219,8 +219,8 @@ function raceComparisonRows(
     // skillnaden man vill se när två lopp ställs mot varandra.
     {
       label: "Alternativ träning",
-      a: a.buildup.crossTrainingKm > 0 ? `${a.buildup.crossTrainingKm.toFixed(0)} km` : "—",
-      b: b.buildup.crossTrainingKm > 0 ? `${b.buildup.crossTrainingKm.toFixed(0)} km` : "—",
+      a: a.buildup.crossTrainingMinutes > 0 ? `${a.buildup.crossTrainingMinutes.toFixed(0)} min` : "—",
+      b: b.buildup.crossTrainingMinutes > 0 ? `${b.buildup.crossTrainingMinutes.toFixed(0)} min` : "—",
     },
     {
       label: "Kvalitetspass",
