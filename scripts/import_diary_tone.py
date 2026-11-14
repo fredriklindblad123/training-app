@@ -50,7 +50,9 @@ def grid_at(segs, y):
 
 def extract(fname):
     d = fitz.open(fname)
-    out = collections.defaultdict(lambda: {'green': '', 'pink': '', 'black': ''})
+    # 'note' = grön och rosa text i läsordning: anteckningen som den står i
+    # dokumentet, för import av själva texten.
+    out = collections.defaultdict(lambda: {'green': '', 'pink': '', 'black': '', 'note': ''})
     week = None
     grid = None
     for p in d:
@@ -63,14 +65,18 @@ def extract(fname):
         if grid is None: continue
         # grid[0] vänsterkant, grid[1] slut på V.-kolumnen, grid[1+i]..grid[2+i] = dag i
         spans = []
+        line_no = 0
         for b in p.get_text('dict')['blocks']:
             for l in b.get('lines', []):
+                line_no += 1
                 for s in l['spans']:
-                    if s['text'].strip(): spans.append((s['bbox'][0], s['bbox'][1], s['text'], s['color']))
-        hdr_y = max([y for x, y, t, c in spans if t.strip().lower().rstrip('.') in ('måndag', 'v')] or [-1])
-        wk = sorted((y, int(t.strip())) for x, y, t, c in spans
+                    if s['text'].strip():
+                        spans.append((s['bbox'][0], s['bbox'][1], s['text'], s['color'], line_no))
+        hdr_y = max([y for x, y, t, c, ln in spans if t.strip().lower().rstrip('.') in ('måndag', 'v')] or [-1])
+        wk = sorted((y, int(t.strip())) for x, y, t, c, ln in spans
                     if grid[0] - 2 <= x < grid[1] and re.fullmatch(r'\d{1,2}', t.strip()) and y > hdr_y)
-        for x, y, t, c in spans:
+        last_line = {}
+        for x, y, t, c, ln in spans:
             g = grid_at(segs, y + 4) or grid
             if y <= hdr_y + 2 or x < g[1] - 1: continue
             col = None
@@ -83,7 +89,13 @@ def extract(fname):
             if cur is None: continue
             date = datetime.date.fromisocalendar(year_for(fname, cur), cur, col + 1)
             kind = 'green' if c == GREEN else 'pink' if c == PINK else 'black' if c == BLACK else None
-            if kind: out[date.isoformat()][kind] += t
+            key = date.isoformat()
+            # Nytt radbyte = mellanslag; delar av samma rad (färgbyte mitt i
+            # ett ord) sätts ihop utan.
+            for field in ([kind] if kind else []) + (['note'] if kind in ('green', 'pink') else []):
+                sep = ' ' if out[key][field] and last_line.get((key, field)) != ln else ''
+                out[key][field] += sep + t
+                last_line[(key, field)] = ln
         if wk: week = wk[-1][1]
     return out
 
@@ -94,6 +106,7 @@ for f in sys.argv[1:]:
     for k, v in got.items():
         if k in res: continue  # en källa per datum (sommarfilerna överlappar)
         res[k] = {**v, 'src': f}
-json.dump(res, open(sys.argv[0].replace('colors.py', 'colors.json'), 'w'), ensure_ascii=False, indent=0)
+import os
+json.dump(res, open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'colors.json'), 'w'), ensure_ascii=False, indent=0)
 for k in ['2025-11-13', '2025-11-14', '2025-11-15', '2026-06-02', '2026-06-05', '2026-09-17']:
     if k in res: print(k, 'G', len(res[k]['green']), 'P', len(res[k]['pink']), '|', res[k]['black'][:55])

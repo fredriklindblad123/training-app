@@ -627,7 +627,7 @@ export default async function AnalysPage({
       toned.filter((n) => n.category === b2).length - toned.filter((n) => n.category === a).length,
   );
   const hasTone = notesNow.some((n) => n.tone) || notesBefore.some((n) => n.tone);
-  // Teman ur texten bara från 2026: anteckningstexten 2025 ligger förskjuten.
+  // Teman ur texten från första dagboksdatum på rätt dag (THEMES_FROM).
   const themeNotes = notesNow.filter((n) => n.date >= THEMES_FROM && n.text.length >= 10);
   const themes = themeTable(themeNotes, 3);
   const activeTheme = THEMES.find((t) => t.key === tema) ?? null;
@@ -1076,7 +1076,7 @@ export default async function AnalysPage({
           <h3 className="text-sm font-semibold text-[var(--foreground)]">Vad anteckningarna tar upp</h3>
           {block.end_date < THEMES_FROM ? (
             <p className="text-sm text-[var(--ink-3)]">
-              Anteckningstexten före 2026 blev förskjuten en dag vid importen och visas inte här.
+              Det finns ingen dagbok från den här perioden.
             </p>
           ) : themes.categories.length === 0 ? (
             <p className="text-sm text-[var(--ink-3)]">För få anteckningar i blocket ännu.</p>

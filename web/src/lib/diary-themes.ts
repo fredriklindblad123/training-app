@@ -17,17 +17,20 @@
  * tränaren läser.
  *
  * Avgränsningar, alla från mätningen:
- *   - Bara 2026 och framåt. Anteckningarna (notes) 2025 är förskjutna en
- *     dag vid importen och delvis ihopklistrade — eftermiddagspassets känsla
- *     ligger på dagen före, utan markör att dela på. Passloggen
- *     (session_log) rättades 2026-11-14, anteckningarna inte.
+ *   - Anteckningarna 2025 var förskjutna en dag vid den första importen
+ *     (rubrikerna i PDF:en är centrerade, så text i kolumnens början lästes
+ *     till dagen före). De är omimporterade ur PDF:en med kolumnerna från
+ *     tabellens linjer, se THEMES_FROM.
  *   - Rader utan day_type (importskräp) och dagar utan pass räknas inte.
  *     Skaddagar då hon tränade räknas: höften 20/10–12/11 skulle annars
  *     försvinna ur just de anteckningar som handlar om den.
  *   - En passtyp visas bara med minst MIN_NOTES anteckningar.
  * ------------------------------------------------------------------------ */
 
-export const THEMES_FROM = "2026-01-01";
+/** Första datum med anteckningstext på rätt dag. Texten 2025 importerades om
+ * ur PDF:en 2026-11-15 (scripts/import_diary_tone.py) sedan den visat sig vara
+ * förskjuten en dag; före augusti 2025 finns ingen dagbok. */
+export const THEMES_FROM = "2025-08-18";
 export const MIN_NOTES = 20;
 
 export type Theme = { key: string; label: string; re: RegExp };
