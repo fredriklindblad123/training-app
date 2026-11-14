@@ -1,3 +1,4 @@
+import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
 import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
@@ -491,6 +492,8 @@ export default async function DashboardPage({
    * för passets dominerande aktivitet, trösklar och mål ur profilen, och
    * fasen för blocket dagen ligger i. Två extra frågor, och bara när det finns
    * ett genomfört pass idag. */
+  // Uppvärmning och nerjogg i ett tröskelpass räknas som distans.
+  const todayEasyParts = await fetchEasyParts(supabase, scopedUserId, sessions);
   const reviewBySession = new Map<string, SessionReview>();
   if (sessions.length > 0) {
     const dominantIds = sessions.map((s) => s.dominantActivity.id);
@@ -820,6 +823,7 @@ export default async function DashboardPage({
           ] as [number, number, number, number, number],
           labZoneSeconds: s.labZoneSeconds,
           review: reviewBySession.get(s.id) ?? null,
+          easy: todayEasyParts.get(s.dominantActivity.id) ?? null,
           splits:
             latestSession?.id === s.id
               ? latestSplits.map((r) => ({

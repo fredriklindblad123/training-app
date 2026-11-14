@@ -1,3 +1,4 @@
+import { sessionParts, type EasyPart } from "@/lib/quality-split";
 import { CATEGORY_LABELS } from "@/lib/categories";
 import { SV_WEEKDAYS_SHORT } from "@/lib/calendar-utils";
 import { WORKOUT_LABELS, type WorkoutType } from "@/lib/planning";
@@ -29,10 +30,15 @@ function plannedLabel(p: PlannedWorkout): string {
 
 /** "6 km · Tröskel" för en genomförd session — samma "distans · kategori"-form
  * som resten av kalendern använder. */
-function sessionLabel(session: PlanMatch["session"]): string {
+function sessionLabel(session: PlanMatch["session"], easy?: EasyPart): string {
   if (!session) return "";
-  const km = session.distanceMeters > 0 ? `${(session.distanceMeters / 1000).toFixed(1)} km · ` : "";
-  return `${km}${CATEGORY_LABELS[session.category]}`;
+  // Uppvärmning och nerjogg i ett tröskelpass står som distans.
+  return sessionParts(session.category, session.distanceMeters, session.durationSeconds, easy)
+    .map((part) => {
+      const km = part.meters > 0 ? `${(part.meters / 1000).toFixed(1)} km · ` : "";
+      return `${km}${CATEGORY_LABELS[part.category as keyof typeof CATEGORY_LABELS]}`;
+    })
+    .join(" + ");
 }
 
 /** Ej genomfört-raden: sjukdom och skada är inte samma sak som skippat
@@ -66,13 +72,13 @@ function NotCompletedItem({
   );
 }
 
-function UnplannedItem({ match }: { match: PlanMatch }) {
+function UnplannedItem({ match, easyParts }: { match: PlanMatch; easyParts: Map<string, EasyPart> }) {
   const session = match.session;
   if (!session) return null;
   return (
     <li className="text-[var(--ink-2)]">
       <span className="text-[var(--ink-3)]">{weekdayShort(session.date)}: </span>
-      {sessionLabel(session)}
+      {sessionLabel(session, easyParts.get(session.dominantActivity.id))}
     </li>
   );
 }
@@ -81,7 +87,11 @@ export function ComplianceCard({
   title,
   compliance,
   dayTypeByDate = new Map(),
+  easyParts = new Map(),
 }: {
+  /** Distansdelen av tröskelpass (lib/quality-split.ts), per dominerande
+   * aktivitet. */
+  easyParts?: Map<string, EasyPart>;
   /** "Vecka 31" eller blockets namn — kortet återanvänds i både veckovyn och
    * blockvyn på /trends. */
   title: string;
@@ -163,7 +173,7 @@ export function ComplianceCard({
           <span className="text-[var(--ink-3)]">Oplanerat</span>
           <ul className="mt-1 flex flex-col gap-0.5">
             {unplanned.map((m) => (
-              <UnplannedItem key={m.session!.id} match={m} />
+              <UnplannedItem key={m.session!.id} match={m} easyParts={easyParts} />
             ))}
           </ul>
         </div>

@@ -1,3 +1,4 @@
+import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
@@ -519,6 +520,11 @@ export default async function TrendsPage({
       ? coefficientOfVariation(weeklyLoadTotals)
       : null;
 
+  // Uppvärmning och nerjogg i tröskelpass står som distans i kortets lista.
+  const blockEasyParts = activeBlock
+    ? await fetchEasyParts(supabase, scopedUserId, sessions)
+    : new Map();
+
   // --- K2: efterlevnad inom blocket --------------------------------------
   // Samma fråga som CV ovan svarar på indirekt ("var träningen jämn"), fast
   // rakt på sak: "blev det gjort". Bara i blockvy, se kommentaren vid
@@ -1013,6 +1019,7 @@ export default async function TrendsPage({
             title={activeBlock.name}
             compliance={blockCompliance}
             dayTypeByDate={blockDayTypeByDate}
+            easyParts={blockEasyParts}
           />
         )}
       </LoadStrip>

@@ -1,3 +1,4 @@
+import { formatKm } from "@/lib/format";
 import Link from "next/link";
 import type { LabZoneSet } from "@/lib/zone-sources";
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
@@ -57,6 +58,9 @@ export type TodayDone = {
   /** "Så gick passet" — samma läsning som dagvyn. null när underlaget inte
    * räcker; då visas ingenting hellre än en gissning. */
   review?: SessionReview | null;
+  /** Uppvärmning och nerjogg i ett tröskelpass, räknade som distans
+   * (lib/quality-split.ts). Saknas för andra pass. */
+  easy?: { meters: number; seconds: number } | null;
 };
 
 /** Färgstapeln som bär passets typ, i full radhöjd. Vila, test och häck har
@@ -207,6 +211,12 @@ export function TodaySession({
                     Genomfört
                   </span>
                 </div>
+                {d.easy && d.easy.meters > 0 && (
+                  <p className="text-xs text-[var(--ink-2)]">
+                    {label} {formatKm(Math.max(0, d.distanceMeters - d.easy.meters))} · distans
+                    (uppvärmning och nerjogg) {formatKm(d.easy.meters)}
+                  </p>
+                )}
                 <SessionDetail
                   splits={d.splits}
                   category={d.category}

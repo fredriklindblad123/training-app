@@ -1,3 +1,4 @@
+import { fetchEasyParts, sessionParts } from "@/lib/quality-split";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -155,6 +156,7 @@ export default async function WeekPage({
   const sessions = groupActivitiesIntoSessions(
     (activityRows ?? []) as unknown as SessionActivity[],
   );
+  const easyParts = await fetchEasyParts(supabase, scopedUserId, sessions);
 
   const sessionsByDay = new Map<string, TrainingSession[]>();
   for (const s of sessions) {
@@ -381,11 +383,23 @@ export default async function WeekPage({
                 >
                   <PassMarker type={sess.category} planned={false} />
                   <span>
-                    <span className="font-medium">
-                      {sess.category ? typeLabel(sess.category) : "Pass"}
-                    </span>
-                    {sess.distanceMeters ? ` · ${formatKm(sess.distanceMeters)}` : ""}
-                    {sess.durationSeconds ? ` · ${Math.round(sess.durationSeconds / 60)}′` : ""}
+                    {/* Uppvärmning och nerjogg i ett tröskelpass står som
+                        distans (lib/quality-split.ts). */}
+                    {sessionParts(
+                      sess.category ?? "",
+                      sess.distanceMeters,
+                      sess.durationSeconds,
+                      easyParts.get(sess.dominantActivity.id),
+                    ).map((part, i) => (
+                      <span key={part.category}>
+                        {i > 0 ? " + " : ""}
+                        <span className="font-medium">
+                          {part.category ? typeLabel(part.category) : "Pass"}
+                        </span>
+                        {part.meters ? ` · ${formatKm(part.meters)}` : ""}
+                        {part.seconds ? ` · ${Math.round(part.seconds / 60)}′` : ""}
+                      </span>
+                    ))}
                   </span>
                 </div>
               ))}

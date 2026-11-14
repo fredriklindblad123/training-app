@@ -148,3 +148,38 @@ export async function fetchEasyParts(
   }
   return out;
 }
+
+/** Ett pass delat för visning: kvalitetsdelen under passets kategori och
+ * uppvärmning/nerjogg under distans. Utan distansdel ett enda element, så
+ * att andra pass visas som förut. */
+export type SessionPart = { category: string; meters: number; seconds: number };
+
+export function sessionParts(
+  category: string,
+  meters: number,
+  seconds: number,
+  easy: EasyPart | null | undefined,
+): SessionPart[] {
+  if (!easy || (easy.meters <= 0 && easy.seconds <= 0)) return [{ category, meters, seconds }];
+  return [
+    { category, meters: Math.max(0, meters - easy.meters), seconds: Math.max(0, seconds - easy.seconds) },
+    { category: "easy", meters: easy.meters, seconds: easy.seconds },
+  ];
+}
+
+/** Distansdelen per pass för en dags aktiviteter med varv redan hämtade
+ * (dagvyn) — samma regel som fetchEasyParts, utan extra fråga. */
+export function easyPartsFromLaps(
+  userId: string,
+  sessions: TrainingSession[],
+  lapsByActivity: Map<string, SplitLap[]>,
+): Map<string, EasyPart> {
+  const out = new Map<string, EasyPart>();
+  const floor = THRESHOLD_FLOOR_PACE[userId];
+  if (floor == null) return out;
+  for (const s of sessions) {
+    const e = easyPartOfSession(s, lapsByActivity, floor);
+    if (e.meters > 0 || e.seconds > 0) out.set(s.dominantActivity.id, e);
+  }
+  return out;
+}

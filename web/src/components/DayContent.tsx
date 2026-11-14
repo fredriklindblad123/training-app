@@ -44,8 +44,10 @@ import { analyzeDiaryNote } from "@/lib/diary-text";
 import { SessionReviewCard } from "@/components/SessionReview";
 import { reviewSession, type ReviewRep } from "@/lib/session-review";
 import {
+  easyPartsFromLaps,
   edgeLaps,
   qualityRange,
+  sessionParts,
   SPLIT_CATEGORIES,
   THRESHOLD_FLOOR_PACE,
   type SplitLap,
@@ -295,6 +297,15 @@ export async function DayContent({
     sessionCategoryByActivity.set(session.dominantActivity.id, session.category);
   }
 
+  // Uppvärmning och nerjogg i ett tröskelpass räknas som distans
+  // (lib/quality-split.ts). Varven finns redan hämtade på aktiviteterna.
+  const lapsByActivity = new Map<string, SplitLap[]>(
+    (activities ?? []).map((a) => [
+      (a as { id: string }).id,
+      ((a as { activity_splits?: SplitLap[] }).activity_splits ?? []) as SplitLap[],
+    ]),
+  );
+  const dayEasyParts = easyPartsFromLaps(scopedUserId, daySessions, lapsByActivity);
   const dayKm = daySessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
   const daySeconds = daySessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
 
@@ -451,12 +462,26 @@ export async function DayContent({
             doneSummary
           ) : (
             <span className="flex flex-wrap items-center gap-2">
-              {daySessions.map((s) => (
-                <span key={s.id} className="inline-flex items-center gap-1.5">
-                  <TypeDot type={s.category} />
-                  {s.category ? CATEGORY_LABELS[s.category] : "Pass"}
-                </span>
-              ))}
+              {daySessions.map((s) => {
+                const e = dayEasyParts.get(s.dominantActivity.id);
+                return (
+                  <span key={s.id} className="inline-flex items-center gap-1.5">
+                    <TypeDot type={s.category} />
+                    {s.category ? CATEGORY_LABELS[s.category] : "Pass"}
+                    {e && (
+                      <span className="text-[var(--ink-3)]">
+                        {/* Delat: kvalitetsdelen och uppvärmning/nerjogg som distans. */}
+                        {sessionParts(s.category, s.distanceMeters, s.durationSeconds, e)
+                          .map(
+                            (part) =>
+                              `${part.category === "easy" ? "distans " : ""}${formatKm(part.meters)}`,
+                          )
+                          .join(" + ")}
+                      </span>
+                    )}
+                  </span>
+                );
+              })}
               <span className="text-[var(--ink-3)]">
                 {/* Bara alternativ träning ger ingen distans — då bara tiden. */}
                 · {dayKm > 0 ? `${formatKm(dayKm * 1000)} · ` : ""}
