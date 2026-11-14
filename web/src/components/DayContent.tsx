@@ -44,6 +44,13 @@ import { analyzeDiaryNote } from "@/lib/diary-text";
 import { SessionReviewCard } from "@/components/SessionReview";
 import { reviewSession, type ReviewRep } from "@/lib/session-review";
 import {
+  edgeLaps,
+  qualityRange,
+  SPLIT_CATEGORIES,
+  THRESHOLD_FLOOR_PACE,
+  type SplitLap,
+} from "@/lib/quality-split";
+import {
   WORKOUT_LABELS,
   workoutTypeColorVar,
   type PhaseType,
@@ -561,6 +568,22 @@ export async function DayContent({
             />
             <Stat label="Kalorier" value={a.calories ? `${Math.round(a.calories)}` : "–"} />
 
+            {(() => {
+              // Tröskeldel och distansdel, samma delning som Analys räknar på.
+              const floor = THRESHOLD_FLOOR_PACE[scopedUserId];
+              if (floor == null || !SPLIT_CATEGORIES.has(a.category ?? "")) return null;
+              const e = edgeLaps((a.activity_splits ?? []) as SplitLap[], floor);
+              if (e.meters <= 0 || !(a.distance_meters > 0)) return null;
+              const qualityM = Math.max(0, a.distance_meters - e.meters);
+              return (
+                <p className="col-span-2 text-xs text-[var(--ink-2)] sm:col-span-4">
+                  {CATEGORY_LABELS[a.category as ActivityCategory] ?? "Kvalitet"}{" "}
+                  {formatKm(qualityM)} · distans (uppvärmning och nerjogg) {formatKm(e.meters)},{" "}
+                  {formatDuration(e.seconds)}. Varv långsammare än{" "}
+                  {formatPace(THRESHOLD_FLOOR_PACE[scopedUserId] ?? null)} räknas som distans.
+                </p>
+              );
+            })()}
             {a.activity_splits?.length > 0 && (
               <div className="col-span-2 mt-2 sm:col-span-4">
                 <table className="w-full text-xs">
@@ -582,8 +605,32 @@ export async function DayContent({
                         migrationen merged_splits_single_source. */}
                     {(() => {
                       let repNr = 0;
-                      return (splitsByActivity.get(a.id) ?? []).map((s) => {
-                        if (!s.is_rest) repNr += 1;
+                      const rows = splitsByActivity.get(a.id) ?? [];
+                      // Uppvärmning och nerjogg i ett kvalitetspass: varven
+                      // före första och efter sista varvet i tröskelfart
+                      // (lib/quality-split.ts). De är distans, inte rep.
+                      const floor = THRESHOLD_FLOOR_PACE[scopedUserId];
+                      const range =
+                        floor != null && SPLIT_CATEGORIES.has(a.category ?? "")
+                          ? qualityRange(
+                              rows.map((r) => ({
+                                isRest: r.is_rest,
+                                meters: r.distance_meters,
+                                seconds: r.duration_seconds,
+                              })),
+                              floor,
+                            )
+                          : null;
+                      return rows.map((s, i) => {
+                        const edge =
+                          range == null
+                            ? null
+                            : i < range.first
+                              ? "uppvärmning"
+                              : i > range.last && !s.is_rest
+                                ? "nerjogg"
+                                : null;
+                        if (!s.is_rest && !edge) repNr += 1;
                         const dist = s.distance_meters ?? 0;
                         const dur = s.duration_seconds ?? 0;
                         const pace = dist > 0 ? dur / (dist / 1000) : null;
@@ -591,10 +638,10 @@ export async function DayContent({
                           <tr
                             key={s.split_index}
                             className={`border-t border-[var(--line)] ${
-                              s.is_rest ? "text-[var(--ink-3)]" : ""
+                              s.is_rest || edge ? "text-[var(--ink-3)]" : ""
                             }`}
                           >
-                            <td className="py-1 pr-3">{s.is_rest ? "vila" : repNr}</td>
+                            <td className="py-1 pr-3">{edge ?? (s.is_rest ? "vila" : repNr)}</td>
                             <td className="pr-3">{formatKm(dist)}</td>
                             <td className="pr-3">{formatDuration(dur)}</td>
                             <td className="pr-3">{formatPace(pace)}</td>

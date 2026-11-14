@@ -32,7 +32,7 @@ export const THRESHOLD_FLOOR_PACE: Record<string, number> = {
   "7db90b90-adc9-45c6-bc33-6f28b4939c2a": 265,
 };
 
-const SPLIT_CATEGORIES = new Set(["threshold", "interval"]);
+export const SPLIT_CATEGORIES = new Set(["threshold", "interval"]);
 
 export type SplitLap = {
   activity_id: string;
@@ -48,19 +48,40 @@ export type EasyPart = { meters: number; seconds: number };
 const pace = (m: number | null, s: number | null) =>
   m != null && s != null && m > 0 && s > 0 ? s / (m / 1000) : null;
 
-/** Kanterna av en aktivitets varv som är långsammare än gränsen. */
-function edgeLaps(laps: SplitLap[], floor: number): EasyPart {
-  const sorted = [...laps].sort((a, b) => a.split_index - b.split_index);
-  const fast = (l: SplitLap) => {
-    const p = pace(l.distance_meters, l.duration_seconds);
-    return l.split_type === "active" && p != null && p <= floor;
+/** Index för passets första och sista varv i tröskelfart, eller null när
+ * inget varv går under gränsen (då delas passet inte). Varven ska ligga i
+ * tidsordning. Delad med dagvyns varvtabell, så att den och summeringarna
+ * delar passet på samma ställe. */
+export function qualityRange(
+  rows: { isRest: boolean; meters: number | null; seconds: number | null }[],
+  floor: number,
+): { first: number; last: number } | null {
+  const fast = (r: (typeof rows)[number]) => {
+    const p = pace(r.meters, r.seconds);
+    return !r.isRest && p != null && p <= floor;
   };
-  const first = sorted.findIndex(fast);
-  if (first === -1) return { meters: 0, seconds: 0 };
+  const first = rows.findIndex(fast);
+  if (first === -1) return null;
   let last = first;
-  sorted.forEach((l, i) => {
-    if (fast(l)) last = i;
+  rows.forEach((r, i) => {
+    if (fast(r)) last = i;
   });
+  return { first, last };
+}
+
+/** Kanterna av en aktivitets varv som är långsammare än gränsen. */
+export function edgeLaps(laps: SplitLap[], floor: number): EasyPart {
+  const sorted = [...laps].sort((a, b) => a.split_index - b.split_index);
+  const range = qualityRange(
+    sorted.map((l) => ({
+      isRest: l.split_type !== "active",
+      meters: l.distance_meters,
+      seconds: l.duration_seconds,
+    })),
+    floor,
+  );
+  if (!range) return { meters: 0, seconds: 0 };
+  const { first, last } = range;
   const out = { meters: 0, seconds: 0 };
   sorted.forEach((l, i) => {
     if (i >= first && i <= last) return;

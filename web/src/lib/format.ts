@@ -26,8 +26,10 @@ export function formatDuration(seconds: number | null | undefined): string {
 
 export function formatPace(secondsPerKm: number | null | undefined): string {
   if (secondsPerKm == null) return "–";
-  const m = Math.floor(secondsPerKm / 60);
-  const s = Math.round(secondsPerKm % 60);
+  // Avrunda till hela sekunder först: 239,7 s gav annars "3:60".
+  const total = Math.round(secondsPerKm);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}:${String(s).padStart(2, "0")} /km`;
 }
 
