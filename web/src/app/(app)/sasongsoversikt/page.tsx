@@ -1,3 +1,4 @@
+import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -628,10 +629,18 @@ async function loadBlockAggregate(
   const loadByWeek = new Map<string, number>();
   const loadByCategory = new Map<string, number>();
   const zones = emptyZoneSeconds();
+  // Ett tröskelpass uppvärmning och nerjogg räknas som distans, i
+  // proportion till tiden (lib/quality-split.ts).
+  const easyParts = await fetchEasyParts(supabase, userId, sessions);
   for (const s of sessions) {
     const wk = isoWeekStart(s.date);
     loadByWeek.set(wk, (loadByWeek.get(wk) ?? 0) + s.trainingLoad);
-    loadByCategory.set(s.category, (loadByCategory.get(s.category) ?? 0) + s.trainingLoad);
+    const e = easyParts.get(s.dominantActivity.id);
+    const easyShare = e && s.durationSeconds > 0 ? Math.min(1, e.seconds / s.durationSeconds) : 0;
+    loadByCategory.set(s.category, (loadByCategory.get(s.category) ?? 0) + s.trainingLoad * (1 - easyShare));
+    if (easyShare > 0) {
+      loadByCategory.set("easy", (loadByCategory.get("easy") ?? 0) + s.trainingLoad * easyShare);
+    }
     addZoneSeconds(zones, [
       s.hrZone1Seconds,
       s.hrZone2Seconds,

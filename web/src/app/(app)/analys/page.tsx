@@ -44,6 +44,7 @@ const TYPE_OPTIONS: ActivityCategory[] = [
 ];
 import { CumulativeLineChart, GroupedBarChart, type DayMark, type MarkRow } from "@/components/charts/AnalysisCharts";
 import { strengthDatesFromDiary, type DiaryLogRow } from "@/lib/diary-strength";
+import { fetchEasyParts } from "@/lib/quality-split";
 
 /* /analys — ett block i siffror och grafer, mot motsvarande block förra året.
  * Beräkningarna och deras avgränsningar står i lib/block-analysis.ts. */
@@ -338,19 +339,40 @@ export default async function AnalysPage({
   const sessions: TrainingSession[] = groupActivitiesIntoSessions(rows);
   // Minuter, distans och träningsdagar räknas på de valda passtyperna.
   const chosen = sessions.filter((s) => include.has(s.category));
+  // Tid och distans per passtyp: ett tröskelpass delas i tröskeldel och
+  // distansdel (uppvärmning, nerjogg), se lib/quality-split.ts. Antalet pass
+  // räknas fortfarande på hela pass (chosen).
+  const easyParts = await fetchEasyParts(supabase, userId, sessions);
+  const volumeSessions: TrainingSession[] = sessions.flatMap((s) => {
+    const e = easyParts.get(s.dominantActivity.id);
+    if (!e) return [s];
+    const qualitySeconds = Math.max(0, activeSeconds(s, moving) - e.seconds);
+    const qualityMeters = Math.max(0, sessionKm(s) * 1000 - e.meters);
+    const part = (suffix: string, meters: number, seconds: number) => ({
+      ...s.dominantActivity,
+      id: `${s.dominantActivity.id}:${suffix}`,
+      distance_meters: meters,
+      duration_seconds: seconds,
+    });
+    return [
+      { ...s, activities: [part("kvalitet", qualityMeters, qualitySeconds)] },
+      { ...s, category: "easy" as const, activities: [part("distans", e.meters, e.seconds)] },
+    ];
+  });
+  const chosenVolume = volumeSessions.filter((s) => include.has(s.category));
   const planned = (plannedRows ?? []) as PlannedWorkout[];
 
   // --- Hittills i år mot samma antal dagar förra året -----------------------
   // Styrka loggas oftast bara i dagboken. Är styrka vald räknas en dag med
   // ett eget styrkepass där som träningsdag; minuter finns inte i dagboken.
   const chosenDiaryStrength = include.has("strength") ? diaryStrength : [];
-  const now: BlockTotals = totalsUpToDay(chosen, block, daysSoFar, moving, chosenDiaryStrength);
+  const now: BlockTotals = totalsUpToDay(chosenVolume, block, daysSoFar, moving, chosenDiaryStrength);
   const before: BlockTotals | null = comparison
-    ? totalsUpToDay(chosen, comparison, daysSoFar, moving, chosenDiaryStrength)
+    ? totalsUpToDay(chosenVolume, comparison, daysSoFar, moving, chosenDiaryStrength)
     : null;
   // Distansen hålls isär: en km på cykel är inte en km löpning, så
   // alternativ träning får en egen ruta och ingår inte i Distans.
-  const chosenNoCross = chosen.filter((s) => s.category !== "cross_training");
+  const chosenNoCross = chosenVolume.filter((s) => s.category !== "cross_training");
   const kmMain = totalsUpToDay(chosenNoCross, block, daysSoFar, moving).km;
   const kmMainBefore = comparison ? totalsUpToDay(chosenNoCross, comparison, daysSoFar, moving).km : null;
   const crossOnly = sessions.filter((s) => s.category === "cross_training");
@@ -395,7 +417,7 @@ export default async function AnalysPage({
     return out;
   };
   const dailyOf = (b: AnalysisBlock) =>
-    graf === "pass" ? passDaily(b) : dailyValues(chosen, b, graf === "minuter" ? minutesOf : sessionKm);
+    graf === "pass" ? passDaily(b) : dailyValues(chosenVolume, b, graf === "minuter" ? minutesOf : sessionKm);
   const weeks = Math.ceil(length / 7);
   const dailyNow = dailyOf(block).slice(0, daysSoFar);
   const dailyBefore = comparison ? dailyOf(comparison).slice(0, length) : null;
