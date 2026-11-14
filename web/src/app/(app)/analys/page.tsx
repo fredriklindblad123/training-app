@@ -71,10 +71,14 @@ function TotalTile({
   unit = "",
   digits = 0,
   note,
+  nowLabel = "I år",
+  beforeLabel = "Förra året",
 }: {
   label: string;
   now: number;
   before: number | null;
+  nowLabel?: string;
+  beforeLabel?: string;
   unit?: string;
   digits?: number;
   /** Rad under jämförelsen, t.ex. minuter för en ruta som visar km. */
@@ -103,10 +107,12 @@ function TotalTile({
       <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
         {label}
       </span>
-      {row("I år", now, THIS_YEAR, true)}
-      {before != null && row("Förra året", before, LAST_YEAR, false)}
+      {row(nowLabel, now, THIS_YEAR, true)}
+      {before != null && row(beforeLabel, before, LAST_YEAR, false)}
       {before != null && (
-        <span className="tabular text-xs text-[var(--ink-2)]">{signed(now - before, digits)} mot förra året</span>
+        <span className="tabular text-xs text-[var(--ink-2)]">
+          {signed(now - before, digits)} mot {beforeLabel.toLowerCase()}
+        </span>
       )}
       {note && <span className="tabular text-xs text-[var(--ink-3)]">{note}</span>}
     </div>
@@ -163,9 +169,10 @@ export default async function AnalysPage({
     graf?: string;
     mot?: string;
     vy?: string;
+    jmf?: string;
   }>;
 }) {
-  const { block: blockParam, athlete: athleteParam, typer, visa, graf: grafParam, mot: motParam, vy: vyParam } =
+  const { block: blockParam, athlete: athleteParam, typer, visa, graf: grafParam, mot: motParam, vy: vyParam, jmf } =
     await searchParams;
   // Hittills-rutorna: summa för blocket eller snitt per vecka.
   const perWeek = visa === "vecka";
@@ -229,7 +236,25 @@ export default async function AnalysPage({
     );
   }
 
-  const comparison = findComparisonBlock(blocks, block);
+  // Jämförelseblocket: förra årets motsvarighet om inget annat valts, annars
+  // vilket annat påbörjat block som helst (t.ex. vårens uppbyggnad).
+  const defaultComparison = findComparisonBlock(blocks, block);
+  const comparisonOptions = started.filter((b) => b.id !== block.id);
+  const comparison = comparisonOptions.find((b) => b.id === jmf) ?? defaultComparison;
+  const isLastYear = comparison != null && comparison.id === defaultComparison?.id;
+  // "ht 2026", "vår 2026" — kort nog för etiketter i 390 px.
+  const shortName = (b: AnalysisBlock) =>
+    `${Number(b.start_date.slice(5, 7)) >= 7 ? "ht" : "vår"} ${b.start_date.slice(0, 4)}`;
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  // Samma halvår (t.ex. ht 2026 mot Tävlingsperiod 2026 Aug) ger samma korta
+  // namn — då "Detta block" mot "Jämförelse", så att de aldrig heter lika.
+  const sameShort = comparison != null && shortName(comparison) === shortName(block);
+  const nowName =
+    isLastYear || !comparison ? "I år" : sameShort ? "Detta block" : cap(shortName(block));
+  const cmpName =
+    isLastYear || !comparison ? "Förra året" : sameShort ? "Jämförelse" : cap(shortName(comparison));
+  const nowLower = nowName.toLowerCase();
+  const cmpLower = cmpName.toLowerCase();
   const length = blockLength(block);
   const ongoing = today >= block.start_date && today <= block.end_date;
   const daysSoFar = ongoing ? dayIndex(today, block.start_date) + 1 : length;
@@ -265,7 +290,8 @@ export default async function AnalysPage({
     .filter((e) => e.day_type === "sick" || e.day_type === "injured")
     .map((e) => ({ date: e.entry_date, dayType: e.day_type as "sick" | "injured" }));
   const interruptionOn = new Map(interruptions.map((i) => [i.date, i.dayType]));
-  const interruptedDays = (b: { start_date: string }, days: number) => {
+  const interruptedDays = (b: AnalysisBlock, days: number) => {
+    days = Math.min(days, blockLength(b));
     const n = { sick: 0, injured: 0 };
     for (const i of interruptions) {
       const d = dayIndex(i.date, b.start_date);
@@ -286,16 +312,22 @@ export default async function AnalysPage({
   const marksBefore = comparison ? marksFor(comparison, blockLength(comparison)) : null;
   const markRows: MarkRow[] = [
     // Årtalet som etikett: kort nog att läsas i 390 px och säger exakt vilket år.
-    { label: block.start_date.slice(0, 4), marks: marksNow },
+    { label: isLastYear ? block.start_date.slice(0, 4) : sameShort ? "detta" : shortName(block), marks: marksNow },
     ...(marksBefore && comparison
-      ? [{ label: comparison.start_date.slice(0, 4), marks: marksBefore, outline: true }]
+      ? [
+          {
+            label: isLastYear ? comparison.start_date.slice(0, 4) : sameShort ? "jmf" : shortName(comparison),
+            marks: marksBefore,
+            outline: true,
+          },
+        ]
       : []),
   ];
   const dayLabels = Array.from({ length }, (_, i) => {
     const key = shiftKey(block.start_date, i);
     const notes = [
-      marksNow[i] ? `${marksNow[i]!.label} i år` : null,
-      marksBefore?.[i] ? `${marksBefore[i]!.label} förra året` : null,
+      marksNow[i] ? `${marksNow[i]!.label} ${nowLower}` : null,
+      marksBefore?.[i] ? `${marksBefore[i]!.label} ${cmpLower}` : null,
     ].filter(Boolean);
     return `Dag ${i + 1} · ${short(key)}${notes.length ? ` · ${notes.join(", ")}` : ""}`;
   });
@@ -326,9 +358,11 @@ export default async function AnalysPage({
   const cross = totalsUpToDay(crossOnly, block, daysSoFar, moving);
   const crossBefore = comparison ? totalsUpToDay(crossOnly, comparison, daysSoFar, moving) : null;
   // Snitt per vecka: delat med antalet veckor som passerat (dagar / 7).
+  // Jämförelseblocket delas med sina egna dagar om det är kortare.
   const per = perWeek ? 7 / daysSoFar : 1;
+  const perBefore = perWeek && comparison ? 7 / Math.min(daysSoFar, blockLength(comparison)) : 1;
   const scaled = (v: number) => v * per;
-  const scaledOrNull = (v: number | null | undefined) => (v == null ? null : v * per);
+  const scaledOrNull = (v: number | null | undefined) => (v == null ? null : v * perBefore);
   // Kvalitets- och styrkepass räknas alltid, oavsett valda typer.
   const nowAll = totalsUpToDay(sessions, block, daysSoFar, moving, diaryStrength);
   const beforeAll = comparison
@@ -367,7 +401,14 @@ export default async function AnalysPage({
   const dailyBefore = comparison ? dailyOf(comparison).slice(0, length) : null;
 
   // Alla länkar på sidan behåller övriga val.
-  const href = (o: { typer?: string | null; visa?: boolean; graf?: string; mot?: string; vy?: string }) => {
+  const href = (o: {
+    typer?: string | null;
+    visa?: boolean;
+    graf?: string;
+    mot?: string;
+    vy?: string;
+    jmf?: string | null;
+  }) => {
     const t = o.typer !== undefined ? o.typer : typer ?? null;
     const v = o.visa ?? perWeek;
     const g = o.graf ?? graf;
@@ -379,7 +420,8 @@ export default async function AnalysPage({
       (v ? "&visa=vecka" : "") +
       (g !== "minuter" ? `&graf=${g}` : "") +
       (m === "plan" ? "&mot=plan" : "") +
-      (y === "ack" ? "&vy=ack" : "")
+      (y === "ack" ? "&vy=ack" : "") +
+      (o.jmf !== undefined ? (o.jmf ? `&jmf=${o.jmf}` : "") : jmf && !isLastYear ? `&jmf=${comparison?.id}` : "")
     );
   };
   const typeHref = (t: string) => {
@@ -455,7 +497,7 @@ export default async function AnalysPage({
       ].filter(Boolean);
       return parts.length ? `${year} ${parts.join(", ")}` : null;
     };
-    const notes = [count(marksNow, "i år"), mot === "plan" ? null : count(marksBefore, "förra året")].filter(Boolean);
+    const notes = [count(marksNow, nowLower), mot === "plan" ? null : count(marksBefore, cmpLower)].filter(Boolean);
     return `v${w + 1} · ${short(s)}–${short(e)}${notes.length ? ` · ${notes.join(" · ")}` : ""}`;
   };
 
@@ -481,9 +523,23 @@ export default async function AnalysPage({
         {block.name}, {block.start_date} – {block.end_date}
         {ongoing ? `, dag ${daysSoFar} av ${length}` : ""}.{" "}
         {comparison
-          ? `Jämförs med ${comparison.name} fram till samma dag i blocket.`
-          : "Det finns inget motsvarande block förra året att jämföra med."}
+          ? blockLength(comparison) < daysSoFar
+            ? `Jämförs med ${comparison.name}, som bara är ${blockLength(comparison)} dagar — hela det blocket mot de första ${daysSoFar} dagarna här.`
+            : `Jämförs med ${comparison.name} fram till samma dag i blocket.`
+          : "Det finns inget block att jämföra med."}
       </p>
+
+      {comparisonOptions.length > 0 && (
+        <Segment
+          label="Jämför block"
+          options={[...comparisonOptions].reverse().map((b) => ({
+            key: b.id,
+            label: b.id === defaultComparison?.id ? `${b.name} (förra året)` : b.name,
+            href: href({ jmf: b.id === defaultComparison?.id ? null : b.id }),
+            active: comparison?.id === b.id,
+          }))}
+        />
+      )}
 
       {/* Vilka passtyper som räknas in i minuter, distans och träningsdagar. */}
       <section className="flex flex-col gap-2">
@@ -551,8 +607,10 @@ export default async function AnalysPage({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          <TotalTile label="Aktiva minuter" now={scaled(now.minutes)} before={scaledOrNull(before?.minutes)} />
+          <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Aktiva minuter" now={scaled(now.minutes)} before={scaledOrNull(before?.minutes)} />
           <TotalTile
+            nowLabel={nowName}
+            beforeLabel={cmpName}
             label={showCross ? "Distans utom alt. träning" : "Distans"}
             now={scaled(kmMain)}
             before={scaledOrNull(kmMainBefore)}
@@ -561,30 +619,34 @@ export default async function AnalysPage({
           />
           {showCross && (
             <TotalTile
+            nowLabel={nowName}
+            beforeLabel={cmpName}
               label="Alternativ träning"
               now={scaled(cross.km)}
               before={scaledOrNull(crossBefore?.km)}
               unit="km"
               digits={perWeek ? 1 : 0}
-              note={`${Math.round(scaled(cross.minutes))} min i år${
-                crossBefore ? `, ${Math.round(scaled(crossBefore.minutes))} min förra året` : ""
+              note={`${Math.round(scaled(cross.minutes))} min ${nowLower}${
+                crossBefore ? `, ${Math.round((crossBefore.minutes * perBefore))} min ${cmpLower}` : ""
               }`}
             />
           )}
-          <TotalTile label="Träningsdagar" now={scaled(now.trainingDays)} before={scaledOrNull(before?.trainingDays)} digits={perWeek ? 1 : 0} />
-          <TotalTile label="Kvalitetspass" now={scaled(nowAll.qualitySessions)} before={scaledOrNull(beforeAll?.qualitySessions)} digits={perWeek ? 1 : 0} />
-          <TotalTile label="Styrkepass" now={scaled(nowAll.strengthSessions)} before={scaledOrNull(beforeAll?.strengthSessions)} digits={perWeek ? 1 : 0} />
+          <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Träningsdagar" now={scaled(now.trainingDays)} before={scaledOrNull(before?.trainingDays)} digits={perWeek ? 1 : 0} />
+          <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Kvalitetspass" now={scaled(nowAll.qualitySessions)} before={scaledOrNull(beforeAll?.qualitySessions)} digits={perWeek ? 1 : 0} />
+          <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Styrkepass" now={scaled(nowAll.strengthSessions)} before={scaledOrNull(beforeAll?.strengthSessions)} digits={perWeek ? 1 : 0} />
           <TotalTile
+            nowLabel={nowName}
+            beforeLabel={cmpName}
             label="Sjuk/skadad, dagar"
             now={scaled(sickNow.sick + sickNow.injured)}
-            before={sickBefore ? scaled(sickBefore.sick + sickBefore.injured) : null}
+            before={sickBefore ? (sickBefore.sick + sickBefore.injured) * perBefore : null}
             digits={perWeek ? 1 : 0}
           />
         </div>
         <p className="text-xs text-[var(--ink-3)]">
           {perWeek
             ? `Snitt per vecka över ${(daysSoFar / 7).toLocaleString("sv-SE", { maximumFractionDigits: 1 })} veckor${
-                comparison ? ", samma antal dagar förra året" : ""
+                comparison ? `, samma antal dagar ${cmpLower}` : ""
               }. `
             : ""}
           Alternativ träning (cykel, crosstrainer, vattenlöpning) räknas för sig, eftersom en km på
@@ -597,7 +659,7 @@ export default async function AnalysPage({
           dagboken som träningsdag; dagboken anger ingen tid, så aktiva minuter tar bara med
           styrkepass som loggats med klockan. Sjuk- och skaddagar är markerade i dagboken
           {sickNow.sick + sickNow.injured > 0
-            ? ` — i år ${[
+            ? ` — ${nowLower} ${[
                 sickNow.sick > 0 ? `${sickNow.sick} sjuk` : null,
                 sickNow.injured > 0 ? `${sickNow.injured} skadad` : null,
               ]
@@ -605,14 +667,14 @@ export default async function AnalysPage({
                 .join(", ")}`
             : ""}
           {sickBefore && sickBefore.sick + sickBefore.injured > 0
-            ? `, förra året ${[
+            ? `, ${cmpLower} ${[
                 sickBefore.sick > 0 ? `${sickBefore.sick} sjuk` : null,
                 sickBefore.injured > 0 ? `${sickBefore.injured} skadad` : null,
               ]
                 .filter(Boolean)
                 .join(", ")}`
             : ""}
-          . De syns som remsor under graferna: fyllda för i år, konturerade för förra året.
+          . De syns som remsor under graferna: fyllda för {nowLower}, konturerade för {cmpLower}.
         </p>
       </section>
 
@@ -620,7 +682,7 @@ export default async function AnalysPage({
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             {GRAF_LABELS[graf]} {vy === "vecka" ? "per vecka" : "ackumulerat"}
-            {mot === "plan" ? " mot planen" : comparison ? " mot förra året" : ""}
+            {mot === "plan" ? " mot planen" : comparison ? ` mot ${cmpLower}` : ""}
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             {mot === "plan"
@@ -648,7 +710,7 @@ export default async function AnalysPage({
               label="Jämför med"
               options={[
                 ...(comparison
-                  ? [{ key: "fjol", label: "Förra året", href: href({ mot: "fjol" }), active: mot === "fjol" }]
+                  ? [{ key: "fjol", label: cmpName, href: href({ mot: "fjol" }), active: mot === "fjol" }]
                   : []),
                 ...(hasPlan
                   ? [{ key: "plan", label: "Planerat", href: href({ mot: "plan" }), active: mot === "plan" }]
@@ -684,10 +746,10 @@ export default async function AnalysPage({
                   ]
                 : [
                     ...(dailyBefore
-                      ? [{ label: "Förra året", values: weeklySums(dailyBefore), color: LAST_YEAR, style: "outline" as const }]
+                      ? [{ label: cmpName, values: weeklySums(dailyBefore), color: LAST_YEAR, style: "outline" as const }]
                       : []),
                     {
-                      label: "I år",
+                      label: nowName,
                       values: Array.from({ length: weeks }, (_, w) => {
                         const ws = weeklySums(dailyNow);
                         return w < ws.length ? ws[w] : null;
@@ -714,9 +776,9 @@ export default async function AnalysPage({
                   ]
                 : [
                     ...(dailyBefore
-                      ? [{ label: "Förra året", values: cumulative(dailyBefore), color: LAST_YEAR, dashed: true }]
+                      ? [{ label: cmpName, values: cumulative(dailyBefore), color: LAST_YEAR, dashed: true }]
                       : []),
-                    { label: "I år", values: cumulative(dailyNow), color: THIS_YEAR },
+                    { label: nowName, values: cumulative(dailyNow), color: THIS_YEAR },
                   ]
             }
           />

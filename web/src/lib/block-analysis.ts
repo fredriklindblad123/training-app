@@ -134,6 +134,9 @@ export function totalsUpToDay(
   /** Dagar med eget styrkepass enligt dagboken (lib/diary-strength.ts). */
   diaryStrengthDates: string[] = [],
 ): BlockTotals {
+  // Aldrig förbi blockets slut: ett kortare jämförelseblock (30 dagar mot
+  // dag 48) får annars med träningen efter att det tagit slut.
+  days = Math.min(days, blockLength(block));
   const inside = sessions.filter((s) => {
     const i = dayIndex(s.date, block.start_date);
     return i >= 0 && i < days;
