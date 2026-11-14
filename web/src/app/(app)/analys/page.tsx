@@ -51,7 +51,12 @@ import {
   themeTable,
   THEMES,
   THEMES_FROM,
+  TONE_COLORS,
+  TONE_LABELS,
+  toneCounts,
+  toneOf,
   type ThemeNote,
+  type Tone,
 } from "@/lib/diary-themes";
 
 /* /analys — ett block i siffror och grafer, mot motsvarande block förra året.
@@ -577,37 +582,54 @@ export default async function AnalysPage({
   const cutoff = cutoffRaw > block.end_date ? block.end_date : cutoffRaw;
   const missed = missedPasses(planned, sessions, diaryStrength, block.start_date, cutoff);
 
-  // --- Teman i dagboken (lib/diary-themes.ts) -------------------------------
-  const [{ data: themeActs }, { data: themeDiary }] = await Promise.all([
-    supabase
-      .from("activities")
-      .select(SESSION_ACTIVITY_COLUMNS)
-      .eq("user_id", userId)
-      .gte("start_time", THEMES_FROM)
-      .order("start_time"),
-    supabase
-      .from("diary_entries")
-      .select("entry_date, notes, day_type")
-      .eq("user_id", userId)
-      .gte("entry_date", THEMES_FROM)
-      .not("notes", "is", null)
-      .order("entry_date"),
-  ]);
-  const themeSessions = groupActivitiesIntoSessions((themeActs ?? []) as unknown as SessionActivity[]);
+  // --- Ur dagboken (lib/diary-themes.ts) -----------------------------------
+  // Samma fönster som resten av sidan: blocket fram till idag, och
+  // jämförelseblocket fram till samma dag i blocket.
+  const { data: themeDiary } = await supabase
+    .from("diary_entries")
+    .select("entry_date, notes, day_type, notes_good_chars, notes_bad_chars")
+    .eq("user_id", userId)
+    .gte("entry_date", from)
+    .lte("entry_date", block.end_date)
+    .order("entry_date");
   const catsByDate = new Map<string, string[]>();
-  for (const x of themeSessions) catsByDate.set(x.date, [...(catsByDate.get(x.date) ?? []), x.category]);
-  const themeNotes: ThemeNote[] = (
-    (themeDiary ?? []) as { entry_date: string; notes: string | null; day_type: string | null }[]
-  )
-    // Rader utan day_type är importskräp. Sjuk- och skaddagar räknas när hon
-    // ändå tränade — då handlar anteckningen om passet (höften 20/10–12/11).
-    .filter((e) => e.day_type != null)
-    .filter((e) => (e.notes ?? "").trim().length >= 10)
-    .flatMap((e) => {
-      const c = mainCategory(catsByDate.get(e.entry_date) ?? []);
-      return c ? [{ date: e.entry_date, category: c, text: (e.notes ?? "").trim() }] : [];
-    });
-  const themes = themeTable(themeNotes);
+  for (const x of sessions) catsByDate.set(x.date, [...(catsByDate.get(x.date) ?? []), x.category]);
+  type DiaryNoteRow = {
+    entry_date: string;
+    notes: string | null;
+    day_type: string | null;
+    notes_good_chars: number | null;
+    notes_bad_chars: number | null;
+  };
+  const notesFor = (b: AnalysisBlock): ThemeNote[] => {
+    const last = shiftKey(b.start_date, Math.min(daysSoFar, blockLength(b)) - 1);
+    return ((themeDiary ?? []) as DiaryNoteRow[])
+      .filter((e) => e.entry_date >= b.start_date && e.entry_date <= last)
+      // Rader utan day_type är importskräp. Sjuk- och skaddagar räknas när
+      // hon ändå tränade — då handlar anteckningen om passet.
+      .filter((e) => e.day_type != null)
+      .flatMap((e) => {
+        const c = mainCategory(catsByDate.get(e.entry_date) ?? []);
+        const tone = toneOf(e.notes_good_chars, e.notes_bad_chars);
+        const text = (e.notes ?? "").trim();
+        if (!c || (!tone && text.length < 10)) return [];
+        return [{ date: e.entry_date, category: c, text, tone }];
+      });
+  };
+  const notesNow = notesFor(block);
+  const notesBefore = comparison ? notesFor(comparison) : [];
+  // Känslan per passtyp, i ordning efter antal markerade anteckningar.
+  // Passtyper från båda blocken, så att jämförelsen syns även när det ena
+  // saknar färgmarkering.
+  const toned = [...notesNow, ...notesBefore].filter((n) => n.tone);
+  const toneCats = [...new Set(toned.map((n) => n.category))].sort(
+    (a, b2) =>
+      toned.filter((n) => n.category === b2).length - toned.filter((n) => n.category === a).length,
+  );
+  const hasTone = notesNow.some((n) => n.tone) || notesBefore.some((n) => n.tone);
+  // Teman ur texten bara från 2026: anteckningstexten 2025 ligger förskjuten.
+  const themeNotes = notesNow.filter((n) => n.date >= THEMES_FROM && n.text.length >= 10);
+  const themes = themeTable(themeNotes, 3);
   const activeTheme = THEMES.find((t) => t.key === tema) ?? null;
   const activeType = themes.categories.find((c) => c.category === tematyp)?.category ?? null;
   const themeQuotes =
@@ -970,95 +992,174 @@ export default async function AnalysPage({
         </section>
       )}
 
-      {/* Vad hon skriver om, per passtyp. Ingen värdering — se
-          lib/diary-themes.ts för varför ett stämningsbetyg inte byggdes. */}
-      <section id="teman" className="flex scroll-mt-4 flex-col gap-3">
+      {/* Ur dagboken: känslan hon själv färgat (grönt/rosa) och vad hon skriver
+          om, per passtyp, i valt block mot jämförelseblocket. Appen värderar
+          inget själv — se lib/diary-themes.ts. */}
+      <section id="teman" className="flex scroll-mt-4 flex-col gap-4">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             Ur dagboken
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Vad anteckningarna tar upp, per passtyp, sedan 1 januari 2026. Andelen är hur många
-            av anteckningarna som nämner temat — inte hur det gick. Tryck på en ruta för att läsa
-            anteckningarna.
+            Hur passen kändes enligt löparens egen färgmarkering i dagboken — grönt för bra, rosa
+            för mindre bra — {ongoing ? `fram till dag ${daysSoFar}` : "hela blocket"}
+            {comparison ? `, mot ${cmpLower} fram till samma dag` : ""}.
           </p>
         </div>
-        {themes.categories.length === 0 ? (
+
+        {!hasTone ? (
           <p className="text-sm text-[var(--ink-3)]">
-            För få anteckningar ännu — minst 20 per passtyp behövs för att jämföra.
+            Det finns ingen färgmarkering för de här veckorna ännu.
           </p>
         ) : (
-          <>
-            <table className="w-full table-fixed text-sm">
-              <thead>
-                <tr className="text-left text-xs text-[var(--ink-3)]">
-                  <th className="w-[30%] pb-1 font-normal">Tema</th>
-                  {themes.categories.map((c) => (
-                    <th key={c.category} className="pb-1 font-normal">
-                      <span className="block truncate">{CATEGORY_LABELS[c.category as ActivityCategory] ?? c.category}</span>
-                      <span className="tabular">{c.notes} st</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {THEMES.map((t) => (
-                  <tr key={t.key} className="border-t border-[var(--line)]">
-                    <td className="py-1.5 pr-2 text-[var(--ink-2)]">{t.label}</td>
-                    {themes.categories.map((c) => {
-                      const cell = themes.cells.get(`${t.key}|${c.category}`);
-                      const n = cell?.count ?? 0;
-                      const active = activeTheme?.key === t.key && activeType === c.category;
-                      return (
-                        <td key={c.category} className="py-1.5">
-                          {n === 0 ? (
-                            <span className="text-[var(--ink-3)]">–</span>
-                          ) : (
-                            <Link
-                              href={active ? themeHref(null, null) : themeHref(t.key, c.category)}
-                              scroll={false}
-                              title={`${n} av ${cell?.notes} anteckningar`}
-                              className={`tabular rounded px-1.5 py-0.5 ${
-                                active
-                                  ? "bg-[var(--foreground)] text-[var(--background)]"
-                                  : "underline decoration-[var(--line)] underline-offset-2"
-                              }`}
-                            >
-                              {Math.round((n / (cell?.notes ?? 1)) * 100)} %
-                            </Link>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {activeTheme && activeType && (
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-medium text-[var(--foreground)]">
-                  {activeTheme.label} · {CATEGORY_LABELS[activeType as ActivityCategory] ?? activeType} ·{" "}
-                  {themeQuotes.length} anteckningar
-                </h3>
-                <ul className="flex flex-col divide-y divide-[var(--line)] rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-                  {themeQuotes.map((q) => (
-                    <li key={q.date}>
-                      <Link href={dayHref(q.date)} className="flex gap-3 px-3 py-2 hover:bg-[var(--surface-raised)]">
-                        <span className="tabular w-12 shrink-0 text-xs text-[var(--ink-3)]">{short(q.date)}</span>
-                        <span className="text-sm text-[var(--ink-2)]">”{quoteFor(q.text, activeTheme.re)}”</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-2)]">
+              {(["bra", "blandat", "mindre_bra"] as Tone[]).map((t) => (
+                <span key={t} className="flex items-center gap-1.5">
+                  <span aria-hidden className="inline-block h-2.5 w-3 rounded-sm" style={{ backgroundColor: TONE_COLORS[t] }} />
+                  {TONE_LABELS[t]}
+                </span>
+              ))}
+            </div>
+            {[null, ...toneCats].map((cat) => {
+              const pick = (ns: ThemeNote[]) => toneCounts(cat ? ns.filter((n) => n.category === cat) : ns);
+              const rows = [
+                { name: nowName, c: pick(notesNow) },
+                ...(comparison ? [{ name: cmpName, c: pick(notesBefore) }] : []),
+              ];
+              return (
+                <div key={cat ?? "alla"} className="flex flex-col gap-1">
+                  <span className="text-sm font-medium text-[var(--foreground)]">
+                    {cat ? (CATEGORY_LABELS[cat as ActivityCategory] ?? cat) : "Alla pass"}
+                  </span>
+                  {rows.map(({ name, c }) => {
+                    const total = c.bra + c.blandat + c.mindre_bra;
+                    return (
+                      <div key={name} className="flex items-center gap-2 text-xs">
+                        <span className="w-16 shrink-0 truncate text-[var(--ink-3)]">{name}</span>
+                        {total === 0 ? (
+                          <span className="text-[var(--ink-3)]">inga markerade anteckningar</span>
+                        ) : (
+                          <>
+                            <span className="flex h-2.5 min-w-0 flex-1 gap-px overflow-hidden rounded-sm">
+                              {(["bra", "blandat", "mindre_bra"] as Tone[]).map((t) =>
+                                c[t] > 0 ? (
+                                  <span
+                                    key={t}
+                                    title={`${TONE_LABELS[t]}: ${c[t]}`}
+                                    style={{ width: `${(c[t] / total) * 100}%`, backgroundColor: TONE_COLORS[t] }}
+                                  />
+                                ) : null,
+                              )}
+                            </span>
+                            <span className="tabular shrink-0 text-right text-[var(--ink-2)]">
+                              {c.bra}/{c.blandat}/{c.mindre_bra} av {total}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
             <p className="text-xs text-[var(--ink-3)]">
-              Underlaget är löparens egna anteckningar, självskattat. En anteckning räknas till dagens
-              mest krävande pass. Dagar utan pass räknas inte. Anteckningarna före 2026
-              blev förskjutna en dag vid importen och används inte här.
+              Siffrorna är bra/blandat/mindre bra av antalet markerade anteckningar. En anteckning räknas som bra när minst två
+              tredjedelar av den färgade texten är grön, mindre bra när minst två tredjedelar är
+              rosa, annars blandat. Få anteckningar per passtyp i ett block — läs dem som en
+              fingervisning, inte ett mått.
             </p>
-          </>
+          </div>
         )}
+
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">Vad anteckningarna tar upp</h3>
+          {block.end_date < THEMES_FROM ? (
+            <p className="text-sm text-[var(--ink-3)]">
+              Anteckningstexten före 2026 blev förskjuten en dag vid importen och visas inte här.
+            </p>
+          ) : themes.categories.length === 0 ? (
+            <p className="text-sm text-[var(--ink-3)]">För få anteckningar i blocket ännu.</p>
+          ) : (
+            <>
+              <table className="w-full table-fixed text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-[var(--ink-3)]">
+                    <th className="w-[30%] pb-1 font-normal">Tema</th>
+                    {themes.categories.map((c) => (
+                      <th key={c.category} className="pb-1 font-normal">
+                        <span className="block truncate">{CATEGORY_LABELS[c.category as ActivityCategory] ?? c.category}</span>
+                        <span className="tabular">{c.notes} st</span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {THEMES.map((t) => (
+                    <tr key={t.key} className="border-t border-[var(--line)]">
+                      <td className="py-1.5 pr-2 text-[var(--ink-2)]">{t.label}</td>
+                      {themes.categories.map((c) => {
+                        const cell = themes.cells.get(`${t.key}|${c.category}`);
+                        const n = cell?.count ?? 0;
+                        const active = activeTheme?.key === t.key && activeType === c.category;
+                        return (
+                          <td key={c.category} className="py-1.5">
+                            {n === 0 ? (
+                              <span className="text-[var(--ink-3)]">–</span>
+                            ) : (
+                              <Link
+                                href={active ? themeHref(null, null) : themeHref(t.key, c.category)}
+                                scroll={false}
+                                title={`${n} av ${cell?.notes} anteckningar`}
+                                className={`tabular rounded px-1.5 py-0.5 ${
+                                  active
+                                    ? "bg-[var(--foreground)] text-[var(--background)]"
+                                    : "underline decoration-[var(--line)] underline-offset-2"
+                                }`}
+                              >
+                                {n}/{cell?.notes}
+                              </Link>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {activeTheme && activeType && themeQuotes.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-sm font-medium text-[var(--foreground)]">
+                    {activeTheme.label} · {CATEGORY_LABELS[activeType as ActivityCategory] ?? activeType} ·{" "}
+                    {themeQuotes.length} anteckningar
+                  </h4>
+                  <ul className="flex flex-col divide-y divide-[var(--line)] rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+                    {themeQuotes.map((q) => (
+                      <li key={q.date}>
+                        <Link href={dayHref(q.date)} className="flex items-start gap-3 px-3 py-2 hover:bg-[var(--surface-raised)]">
+                          <span className="tabular w-12 shrink-0 text-xs text-[var(--ink-3)]">{short(q.date)}</span>
+                          {q.tone && (
+                            <span
+                              aria-label={TONE_LABELS[q.tone]}
+                              title={TONE_LABELS[q.tone]}
+                              className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: TONE_COLORS[q.tone] }}
+                            />
+                          )}
+                          <span className="text-sm text-[var(--ink-2)]">”{quoteFor(q.text, activeTheme.re)}”</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+          <p className="text-xs text-[var(--ink-3)]">
+            Underlaget är löparens egna anteckningar, självskattat. En anteckning räknas till dagens
+            mest krävande pass. Dagar utan pass räknas inte.
+          </p>
+        </div>
       </section>
     </div>
   );

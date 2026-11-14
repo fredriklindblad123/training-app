@@ -43,19 +43,60 @@ export const THEMES: Theme[] = [
   { key: "vader", label: "Väder och underlag", re: /\b(vind\w*|blåst\w*|blås\w*|regn\w*|kallt|kyla|varmt|värme\w*|halt|storm\w*|snö\w*|motvind|medvind|gräs\w*|is)\b/i },
 ];
 
-export type ThemeNote = { date: string; category: string; text: string };
+export type ThemeNote = { date: string; category: string; text: string; tone: Tone | null };
+
+/* ------------------------------ känslan ---------------------------------- *
+ * Alice färgar sina kommentarer enligt FIG:s mall: grönt = bra, rosa = mindre
+ * bra. Färgen läses ur källdokumentet (scripts/import_diary_tone.py) och
+ * sparas som antal tecken per färg. Det är HENNES markering — appen tolkar
+ * ingenting, den räknar bara hur hon själv färgat.
+ *
+ * Per anteckning: minst två tredjedelar grönt = "bra", minst två tredjedelar
+ * rosa = "mindre bra", annars "blandat". Tredjedelsgränsen är vald så att en
+ * anteckning med en kort rosa bisats ("men lite seg i början") fortfarande
+ * räknas som bra. Under TONE_MIN_CHARS färgade tecken räknas den inte. */
+export type Tone = "bra" | "blandat" | "mindre_bra";
+export const TONE_LABELS: Record<Tone, string> = {
+  bra: "Bra",
+  blandat: "Blandat",
+  mindre_bra: "Mindre bra",
+};
+/* Hennes egna färger (grönt och rosa), lite dämpade för att läsas på båda
+ * bakgrunderna. Blandat är neutralt grått. */
+export const TONE_COLORS: Record<Tone, string> = {
+  bra: "#22b55a",
+  blandat: "var(--ink-3)",
+  mindre_bra: "#d63fd0",
+};
+const TONE_MIN_CHARS = 10;
+
+export function toneOf(good: number | null, bad: number | null): Tone | null {
+  if (good == null || bad == null || good + bad < TONE_MIN_CHARS) return null;
+  const share = good / (good + bad);
+  return share >= 2 / 3 ? "bra" : share <= 1 / 3 ? "mindre_bra" : "blandat";
+}
+
+export type ToneCount = Record<Tone, number>;
+export function toneCounts(notes: ThemeNote[]): ToneCount {
+  const out: ToneCount = { bra: 0, blandat: 0, mindre_bra: 0 };
+  for (const n of notes) if (n.tone) out[n.tone]++;
+  return out;
+}
 
 export type ThemeCell = { count: number; notes: number };
 
 /** Antal anteckningar per passtyp och hur många av dem som nämner varje tema. */
-export function themeTable(notes: ThemeNote[]): {
+export function themeTable(
+  notes: ThemeNote[],
+  minNotes = MIN_NOTES,
+): {
   categories: { category: string; notes: number }[];
   cells: Map<string, ThemeCell>; // nyckel `${theme}|${category}`
 } {
   const byCat = new Map<string, ThemeNote[]>();
   for (const n of notes) byCat.set(n.category, [...(byCat.get(n.category) ?? []), n]);
   const categories = [...byCat.entries()]
-    .filter(([, ns]) => ns.length >= MIN_NOTES)
+    .filter(([, ns]) => ns.length >= minNotes)
     .map(([category, ns]) => ({ category, notes: ns.length }))
     .sort((a, b) => b.notes - a.notes);
   const cells = new Map<string, ThemeCell>();
