@@ -77,7 +77,9 @@ function DayStrips({ rows, xOf, width }: { rows: MarkRow[]; xOf: (i: number) => 
 function markLegend(rows: MarkRow[] | undefined) {
   const seen = new Map<string, string>();
   for (const r of rows ?? []) for (const m of r.marks) if (m && !seen.has(m.label)) seen.set(m.label, m.color);
-  return [...seen].map(([label, color]) => ({ label, color, kind: "fill" as const }));
+  // "(remsa)" skiljer markeringarna under axeln från stapelsegmenten, som kan
+  // ha liknande färg (Alternativ träning mot Skadad).
+  return [...seen].map(([label, color]) => ({ label: `${label} (remsa)`, color, kind: "fill" as const }));
 }
 
 export type LineSeries = {
@@ -257,6 +259,11 @@ export type BarSeries = {
   values: (number | null)[];
   color: string;
   style: "fill" | "outline";
+  /** Fylld stapel uppdelad i segment, t.ex. per passtyp. Segmentens summa ska
+   * vara `values`. Segmenten ritas nerifrån i given ordning, med 1 px glapp i
+   * bakgrundsfärg mellan sig, och färgen bär identiteten — namnet står i
+   * förklaringen och i raden under grafen, aldrig bara i färgen. */
+  stack?: { label: string; color: string; values: number[] }[];
 };
 
 export function GroupedBarChart({
@@ -300,7 +307,16 @@ export function GroupedBarChart({
 
   return (
     <div className="flex flex-col gap-2">
-      <Legend items={[...series.map((s) => ({ label: s.label, color: s.color, kind: s.style })), ...markLegend(markRows)]} />
+      <Legend
+        items={[
+          ...series.flatMap((s) =>
+            s.stack
+              ? s.stack.map((seg) => ({ label: seg.label, color: seg.color, kind: "fill" as const }))
+              : [{ label: s.label, color: s.color, kind: s.style }],
+          ),
+          ...markLegend(markRows),
+        ]}
+      />
       <svg
         ref={ref}
         viewBox={`0 0 ${W} ${H}`}
@@ -331,6 +347,29 @@ export function GroupedBarChart({
                 if (v == null) return null;
                 const h = Math.max(v > 0 ? 1.5 : 0, PAD.top + PH - y(v));
                 const bx = gx + si * (bw + 2);
+                if (s.stack) {
+                  let base = PAD.top + PH;
+                  return (
+                    <g key={s.label}>
+                      {s.stack.map((seg) => {
+                        const sv = seg.values[i] ?? 0;
+                        if (sv <= 0) return null;
+                        const sh = Math.max(1.5, (sv / max) * PH);
+                        base -= sh;
+                        return (
+                          <rect
+                            key={seg.label}
+                            x={bx}
+                            y={base}
+                            width={bw}
+                            height={Math.max(0.5, sh - 1)}
+                            fill={seg.color}
+                          />
+                        );
+                      })}
+                    </g>
+                  );
+                }
                 return s.style === "fill" ? (
                   <rect key={s.label} x={bx} y={PAD.top + PH - h} width={bw} height={h} rx={1.5} fill={s.color} />
                 ) : (
@@ -363,12 +402,24 @@ export function GroupedBarChart({
       <p className="text-sm text-[var(--ink-2)]">
         <span className="tabular">{groupLabels[hi]}</span>
         {series.map((s) => (
-          <span key={s.label} className="whitespace-nowrap">
-            {" · "}
-            {s.label}{" "}
-            <span className="tabular font-medium text-[var(--foreground)]">
-              {s.values[hi] == null ? "–" : `${fmt(s.values[hi] as number)} ${unit}`}
+          <span key={s.label}>
+            <span className="whitespace-nowrap">
+              {" · "}
+              {s.label}{" "}
+              <span className="tabular font-medium text-[var(--foreground)]">
+                {s.values[hi] == null ? "–" : `${fmt(s.values[hi] as number)} ${unit}`}
+              </span>
             </span>
+            {s.stack && s.values[hi] != null && (
+              <span className="text-xs text-[var(--ink-3)]">
+                {" ("}
+                {s.stack
+                  .filter((seg) => (seg.values[hi] ?? 0) > 0)
+                  .map((seg) => `${seg.label} ${fmt(seg.values[hi])}`)
+                  .join(", ")}
+                {")"}
+              </span>
+            )}
           </span>
         ))}
       </p>

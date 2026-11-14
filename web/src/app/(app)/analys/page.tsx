@@ -421,6 +421,44 @@ export default async function AnalysPage({
   const dailyNow = dailyOf(block).slice(0, daysSoFar);
   const dailyBefore = comparison ? dailyOf(comparison).slice(0, length) : null;
 
+  // Staplat per passtyp när flera typer är valda (veckovyn, mot förra året).
+  // Segmenten summerar till årets stapel: samma underlag, bara uppdelat per
+  // typ. Distansdelen av ett tröskelpass ligger i Distans (quality-split).
+  const typesShown = TYPE_OPTIONS.filter((t) => include.has(t));
+  const weeklyByType =
+    typesShown.length > 1
+      ? typesShown
+          .map((t) => {
+            let daily: number[];
+            if (graf === "pass") {
+              daily = dailyValues(
+                sessions.filter((x) => x.category === t),
+                block,
+                () => 1,
+              );
+              if (t === "strength") {
+                for (const d of diaryStrength) {
+                  const i = dayIndex(d, block.start_date);
+                  if (i < 0 || i >= daily.length) continue;
+                  if (!sessions.some((x) => x.date === d && x.category === "strength")) daily[i]++;
+                }
+              }
+            } else {
+              daily = dailyValues(
+                volumeSessions.filter((x) => x.category === t),
+                block,
+                graf === "minuter" ? minutesOf : sessionKm,
+              );
+            }
+            return {
+              label: CATEGORY_LABELS[t],
+              color: categoryColorVar(t) ?? "var(--ink-3)",
+              values: weeklySums(daily.slice(0, daysSoFar)),
+            };
+          })
+          .filter((seg) => seg.values.some((v) => v > 0))
+      : null;
+
   // Alla länkar på sidan behåller övriga val.
   const href = (o: {
     typer?: string | null;
@@ -774,6 +812,7 @@ export default async function AnalysPage({
                       }),
                       color: THIS_YEAR,
                       style: "fill" as const,
+                      ...(weeklyByType && weeklyByType.length > 1 ? { stack: weeklyByType } : {}),
                     },
                   ]
             }
