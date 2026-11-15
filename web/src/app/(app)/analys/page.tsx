@@ -56,6 +56,8 @@ import {
   toneCounts,
   toneOf,
   topWords,
+  mentionCounts,
+  mentionTone,
   type ThemeNote,
   type Tone,
 } from "@/lib/diary-themes";
@@ -131,6 +133,24 @@ function TotalTile({
       )}
       {note && <span className="tabular text-xs text-[var(--ink-3)]">{note}</span>}
     </div>
+  );
+}
+
+/** Liten stapel under ett tal i tematabellen: hur omnämnandena fördelar sig på
+ * grönt (bra), blandat och rosa (mindre bra) — se mentionTone. */
+function MentionBar({ c }: { c: { bra: number; blandat: number; mindre_bra: number } }) {
+  const total = c.bra + c.blandat + c.mindre_bra;
+  if (total === 0) return null;
+  return (
+    <span
+      className="mt-0.5 flex h-1 w-10 gap-px overflow-hidden rounded-sm"
+      title={`${c.bra} bra · ${c.blandat} blandat · ${c.mindre_bra} mindre bra`}
+      aria-label={`${c.bra} bra, ${c.blandat} blandat, ${c.mindre_bra} mindre bra`}
+    >
+      {(["bra", "blandat", "mindre_bra"] as const).map((t) =>
+        c[t] > 0 ? <span key={t} style={{ width: `${(c[t] / total) * 100}%`, backgroundColor: TONE_COLORS[t] }} /> : null,
+      )}
+    </span>
   );
 }
 
@@ -593,7 +613,7 @@ export default async function AnalysPage({
   // jämförelseblocket fram till samma dag i blocket.
   const { data: themeDiary } = await supabase
     .from("diary_entries")
-    .select("entry_date, notes, day_type, notes_good_chars, notes_bad_chars")
+    .select("entry_date, notes, day_type, notes_good_chars, notes_bad_chars, notes_good_text, notes_bad_text")
     .eq("user_id", userId)
     .gte("entry_date", from)
     .lte("entry_date", block.end_date)
@@ -606,6 +626,8 @@ export default async function AnalysPage({
     day_type: string | null;
     notes_good_chars: number | null;
     notes_bad_chars: number | null;
+    notes_good_text: string | null;
+    notes_bad_text: string | null;
   };
   const notesFor = (b: AnalysisBlock): ThemeNote[] => {
     const last = shiftKey(b.start_date, Math.min(daysSoFar, blockLength(b)) - 1);
@@ -619,7 +641,7 @@ export default async function AnalysPage({
         const tone = toneOf(e.notes_good_chars, e.notes_bad_chars);
         const text = (e.notes ?? "").trim();
         if (!c || (!tone && text.length < 10)) return [];
-        return [{ date: e.entry_date, category: c, text, tone }];
+        return [{ date: e.entry_date, category: c, text, tone, good: e.notes_good_text, bad: e.notes_bad_text }];
       });
   };
   const notesNow = notesFor(block);
@@ -1164,12 +1186,12 @@ export default async function AnalysPage({
                       <li key={q.date}>
                         <Link href={dayHref(q.date)} className="flex items-start gap-3 py-2 hover:bg-[var(--surface-raised)]">
                           <span className="tabular w-12 shrink-0 text-xs text-[var(--ink-3)]">{short(q.date)}</span>
-                          {q.tone && (
+                          {(activeTheme ? mentionTone(q, activeTheme.re) : q.tone) && (
                             <span
-                              aria-label={TONE_LABELS[q.tone]}
-                              title={TONE_LABELS[q.tone]}
+                              aria-label={TONE_LABELS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!]}
+                              title={TONE_LABELS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!]}
                               className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: TONE_COLORS[q.tone] }}
+                              style={{ backgroundColor: TONE_COLORS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!] }}
                             />
                           )}
                           <span className="text-sm text-[var(--ink-2)]">
@@ -1195,6 +1217,12 @@ export default async function AnalysPage({
           <h3 className="text-sm font-semibold text-[var(--foreground)]">
             Vad anteckningarna tar upp{selLabel ? ` · ${selLabel}` : ""}
           </h3>
+          <p className="-mt-1 text-xs text-[var(--ink-3)]">
+            Stapeln under varje tal visar i vilken färg temat skrevs:{" "}
+            <span style={{ color: TONE_COLORS.bra }}>grönt</span> = bra,{" "}
+            <span style={{ color: TONE_COLORS.mindre_bra }}>rosa</span> = mindre bra, grått = båda i samma
+            anteckning.
+          </p>
           {selLabel ? (
             <table className="w-full table-fixed text-sm">
               <thead>
@@ -1212,8 +1240,9 @@ export default async function AnalysPage({
               </thead>
               <tbody>
                 {THEMES.map((t) => {
-                  const n = selNotes.filter((x) => t.re.test(x.text)).length;
-                  const all = selPool.filter((x) => t.re.test(x.text)).length;
+                  const mc = mentionCounts(selNotes, t.re);
+                  const n = mc.total;
+                  const all = mentionCounts(selPool, t.re).total;
                   const active = activeTheme?.key === t.key;
                   return (
                     <tr key={t.key} className="border-t border-[var(--line)]">
@@ -1234,6 +1263,7 @@ export default async function AnalysPage({
                             {n}/{selNotes.length}
                           </Link>
                         )}
+                        <MentionBar c={mc} />
                       </td>
                       {selTone && (
                         <td className="tabular py-1.5 text-[var(--ink-3)]">{all === 0 ? "–" : `${all}/${selPool.length}`}</td>
@@ -1270,6 +1300,7 @@ export default async function AnalysPage({
                       {themes.categories.map((c) => {
                         const cell = themes.cells.get(`${t.key}|${c.category}`);
                         const n = cell?.count ?? 0;
+                        const mc = mentionCounts(themeNotes.filter((x) => x.category === c.category), t.re);
                         const active = activeTheme?.key === t.key && activeType === c.category;
                         return (
                           <td key={c.category} className="py-1.5">
@@ -1289,6 +1320,7 @@ export default async function AnalysPage({
                                 {n}/{cell?.notes}
                               </Link>
                             )}
+                            <MentionBar c={mc} />
                           </td>
                         );
                       })}
@@ -1307,12 +1339,12 @@ export default async function AnalysPage({
                       <li key={q.date}>
                         <Link href={dayHref(q.date)} className="flex items-start gap-3 px-3 py-2 hover:bg-[var(--surface-raised)]">
                           <span className="tabular w-12 shrink-0 text-xs text-[var(--ink-3)]">{short(q.date)}</span>
-                          {q.tone && (
+                          {(activeTheme ? mentionTone(q, activeTheme.re) : q.tone) && (
                             <span
-                              aria-label={TONE_LABELS[q.tone]}
-                              title={TONE_LABELS[q.tone]}
+                              aria-label={TONE_LABELS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!]}
+                              title={TONE_LABELS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!]}
                               className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: TONE_COLORS[q.tone] }}
+                              style={{ backgroundColor: TONE_COLORS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!] }}
                             />
                           )}
                           <span className="text-sm text-[var(--ink-2)]">”{quoteFor(q.text, activeTheme.re)}”</span>

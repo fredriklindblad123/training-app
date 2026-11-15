@@ -46,7 +46,39 @@ export const THEMES: Theme[] = [
   { key: "vader", label: "Väder och underlag", re: /\b(vind\w*|blåst\w*|blås\w*|regn\w*|kallt|kyla|varmt|värme\w*|halt|storm\w*|snö\w*|motvind|medvind|gräs\w*|is)\b/i },
 ];
 
-export type ThemeNote = { date: string; category: string; text: string; tone: Tone | null };
+export type ThemeNote = {
+  date: string;
+  category: string;
+  text: string;
+  tone: Tone | null;
+  /** Den gröna respektive rosa texten ur källdokumentet, när den finns. */
+  good?: string | null;
+  bad?: string | null;
+};
+
+/** I vilken färg ett tema togs upp i en anteckning: grön text = bra, rosa =
+ * mindre bra, båda = blandat. Står temat bara i ofärgad text (eller saknas
+ * färgad text) gäller anteckningens helhetsfärg. */
+export function mentionTone(n: ThemeNote, re: RegExp): Tone | null {
+  const inGood = !!n.good && re.test(n.good);
+  const inBad = !!n.bad && re.test(n.bad);
+  if (inGood && inBad) return "blandat";
+  if (inGood) return "bra";
+  if (inBad) return "mindre_bra";
+  return n.tone;
+}
+
+/** Omnämnanden av ett tema fördelade på färg. */
+export function mentionCounts(notes: ThemeNote[], re: RegExp): ToneCount & { total: number } {
+  const out = { bra: 0, blandat: 0, mindre_bra: 0, total: 0 };
+  for (const n of notes) {
+    if (!re.test(n.text) && !(n.good && re.test(n.good)) && !(n.bad && re.test(n.bad))) continue;
+    out.total++;
+    const t = mentionTone(n, re);
+    if (t) out[t]++;
+  }
+  return out;
+}
 
 /* ------------------------------ känslan ---------------------------------- *
  * Alice färgar sina kommentarer enligt FIG:s mall: grönt = bra, rosa = mindre
