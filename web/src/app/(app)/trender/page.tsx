@@ -317,7 +317,7 @@ export default async function TrendsPage({
     // finns kvar men skulle bli döda länkar.
     supabase
       .from("athlete_reports")
-      .select("id, title, url, summary, published_on")
+      .select("id, title, url, summary, published_on, body_md")
       .eq("user_id", scopedUserId)
       .gte("published_on", REPORTS_FROM)
       .order("published_on", { ascending: false }),

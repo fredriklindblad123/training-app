@@ -20,27 +20,30 @@
 export type AthleteReport = {
   id: string;
   title: string;
-  url: string;
+  url: string | null;
   summary: string | null;
   published_on: string;
+  /** Rapportens text i appen. Finns den läses rapporten på /rapport/<id>,
+   * bakom appens inloggning — en claude.ai-länk kräver ett claude.ai-konto. */
+  body_md?: string | null;
 };
 
 export function ReportLinks({ reports }: { reports: AthleteReport[] }) {
-  if (reports.length === 0) return null;
+  const shown = reports.filter((r) => r.body_md || r.url);
+  if (shown.length === 0) return null;
 
   return (
     <section className="flex flex-col gap-2">
       <h2 className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-        {reports.length === 1 ? "Djupanalys" : "Djupanalyser"}
+        {shown.length === 1 ? "Djupanalys" : "Djupanalyser"}
       </h2>
 
       <div className="flex flex-wrap gap-3">
-        {reports.map((r) => (
+        {shown.map((r) => (
           <a
             key={r.id}
-            href={r.url}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={r.body_md ? `/rapport/${r.id}` : (r.url ?? undefined)}
+            {...(r.body_md ? {} : { target: "_blank", rel: "noopener noreferrer" })}
             title={r.summary ?? undefined}
             className="group flex w-full max-w-[22rem] flex-1 items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)] hover:bg-[var(--surface-raised)] sm:w-auto sm:min-w-[16rem]"
           >
