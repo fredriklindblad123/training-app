@@ -309,10 +309,21 @@ export function GroupedBarChart({
     <div className="flex flex-col gap-2">
       <Legend
         items={[
-          ...series.flatMap((s) =>
+          // Staplade serier: passtyperna en gång, och sedan serierna själva
+          // (fylld mot ljus med kontur) så att man ser vilket år som är vilket.
+          ...(() => {
+            const seen = new Set<string>();
+            const cats = series.flatMap((s) => s.stack ?? []).filter((seg) => {
+              if (seen.has(seg.label)) return false;
+              seen.add(seg.label);
+              return true;
+            });
+            return cats.map((seg) => ({ label: seg.label, color: seg.color, kind: "fill" as const }));
+          })(),
+          ...series.map((s) =>
             s.stack
-              ? s.stack.map((seg) => ({ label: seg.label, color: seg.color, kind: "fill" as const }))
-              : [{ label: s.label, color: s.color, kind: s.style }],
+              ? { label: s.style === "outline" ? `${s.label} (ljus)` : `${s.label} (fylld)`, color: s.color, kind: s.style }
+              : { label: s.label, color: s.color, kind: s.style },
           ),
           ...markLegend(markRows),
         ]}
@@ -349,8 +360,25 @@ export function GroupedBarChart({
                 const bx = gx + si * (bw + 2);
                 if (s.stack) {
                   let base = PAD.top + PH;
+                  // En konturerad serie (jämförelsen) staplas i samma färger
+                  // men ljusare, med en kontur runt totalen — samma formspråk
+                  // som den okonturerade jämförelsestapeln, så året syns även
+                  // utan färg.
+                  const faded = s.style === "outline";
                   return (
                     <g key={s.label}>
+                      {faded && h > 0 && (
+                        <rect
+                          x={bx + 0.5}
+                          y={PAD.top + PH - h + 0.5}
+                          width={Math.max(1, bw - 1)}
+                          height={Math.max(0, h - 0.5)}
+                          rx={1.5}
+                          fill="none"
+                          stroke={s.color}
+                          strokeWidth={1}
+                        />
+                      )}
                       {s.stack.map((seg) => {
                         const sv = seg.values[i] ?? 0;
                         if (sv <= 0) return null;
@@ -364,6 +392,7 @@ export function GroupedBarChart({
                             width={bw}
                             height={Math.max(0.5, sh - 1)}
                             fill={seg.color}
+                            fillOpacity={faded ? 0.4 : 1}
                           />
                         );
                       })}

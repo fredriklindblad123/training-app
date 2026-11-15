@@ -466,39 +466,45 @@ export default async function AnalysPage({
   // Segmenten summerar till årets stapel: samma underlag, bara uppdelat per
   // typ. Distansdelen av ett tröskelpass ligger i Distans (quality-split).
   const typesShown = TYPE_OPTIONS.filter((t) => include.has(t));
-  const weeklyByType =
-    typesShown.length > 1
-      ? typesShown
-          .map((t) => {
-            let daily: number[];
-            if (graf === "pass") {
-              daily = dailyValues(
-                sessions.filter((x) => x.category === t),
-                block,
-                () => 1,
-              );
-              if (t === "strength") {
-                for (const d of diaryStrength) {
-                  const i = dayIndex(d, block.start_date);
-                  if (i < 0 || i >= daily.length) continue;
-                  if (!sessions.some((x) => x.date === d && x.category === "strength")) daily[i]++;
-                }
-              }
-            } else {
-              daily = dailyValues(
-                volumeSessions.filter((x) => x.category === t),
-                block,
-                graf === "minuter" ? minutesOf : sessionKm,
-              );
-            }
-            return {
-              label: CATEGORY_LABELS[t],
-              color: categoryColorVar(t) ?? "var(--ink-3)",
-              values: weeklySums(daily.slice(0, daysSoFar)),
-            };
-          })
-          .filter((seg) => seg.values.some((v) => v > 0))
-      : null;
+  // Samma passtyper och ordning för båda blocken, så att färgerna matchar.
+  const stackFor = (b: AnalysisBlock, days: number) =>
+    typesShown.map((t) => {
+      let daily: number[];
+      if (graf === "pass") {
+        daily = dailyValues(
+          sessions.filter((x) => x.category === t),
+          b,
+          () => 1,
+        );
+        if (t === "strength") {
+          for (const d of diaryStrength) {
+            const i = dayIndex(d, b.start_date);
+            if (i < 0 || i >= daily.length) continue;
+            if (!sessions.some((x) => x.date === d && x.category === "strength")) daily[i]++;
+          }
+        }
+      } else {
+        daily = dailyValues(
+          volumeSessions.filter((x) => x.category === t),
+          b,
+          graf === "minuter" ? minutesOf : sessionKm,
+        );
+      }
+      return {
+        label: CATEGORY_LABELS[t],
+        color: categoryColorVar(t) ?? "var(--ink-3)",
+        values: weeklySums(daily.slice(0, days)),
+      };
+    });
+  const stackNow = typesShown.length > 1 ? stackFor(block, daysSoFar) : null;
+  const stackBefore =
+    typesShown.length > 1 && comparison ? stackFor(comparison, blockLength(comparison)) : null;
+  // Passtyper utan ett enda värde i något av blocken tas bort ur båda.
+  const usedTypes = new Set(
+    [...(stackNow ?? []), ...(stackBefore ?? [])].filter((seg) => seg.values.some((v) => v > 0)).map((seg) => seg.label),
+  );
+  const weeklyByType = stackNow ? stackNow.filter((seg) => usedTypes.has(seg.label)) : null;
+  const weeklyByTypeBefore = stackBefore ? stackBefore.filter((seg) => usedTypes.has(seg.label)) : null;
 
   // Alla länkar på sidan behåller övriga val.
   const href = (o: {
@@ -925,7 +931,15 @@ export default async function AnalysPage({
                   ]
                 : [
                     ...(dailyBefore
-                      ? [{ label: cmpName, values: weeklySums(dailyBefore), color: LAST_YEAR, style: "outline" as const }]
+                      ? [
+                          {
+                            label: cmpName,
+                            values: weeklySums(dailyBefore),
+                            color: LAST_YEAR,
+                            style: "outline" as const,
+                            ...(weeklyByTypeBefore && weeklyByTypeBefore.length > 1 ? { stack: weeklyByTypeBefore } : {}),
+                          },
+                        ]
                       : []),
                     {
                       label: nowName,
