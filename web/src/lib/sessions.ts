@@ -419,3 +419,17 @@ export function categorizeSession(
 
   return { category, dominantActivity };
 }
+
+/** Träningstid för ett pass i sekunder (2026-11-16, Fredriks regel):
+ * passets HELA tid — vila där man står still räknas med — men aldrig
+ * styrkepass, som inte alltid loggas med tid och då hade gett ett tal som
+ * beror på om klockan var på. Alternativ träning räknas. Används av alla
+ * sidor som visar träningstid (Idag, Analys, Uppföljning, Säsongsöversikt),
+ * så att de aldrig kan säga olika.
+ *
+ * Räknar på fragmenten, så att ett pass som Analys delat i tröskel- och
+ * distansdel (lib/quality-split.ts) får rätt tid för varje del. */
+export function trainingSeconds(s: Pick<TrainingSession, "category" | "activities">): number {
+  if (s.category === "strength") return 0;
+  return s.activities.reduce((sum, f) => sum + (f.duration_seconds ?? 0), 0);
+}

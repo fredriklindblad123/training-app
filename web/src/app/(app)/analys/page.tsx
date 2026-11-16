@@ -4,6 +4,7 @@ import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { getViewMode } from "@/lib/view-mode";
 import {
   groupActivitiesIntoSessions,
+  trainingSeconds,
   SESSION_ACTIVITY_COLUMNS,
   type SessionActivity,
   type TrainingSession,
@@ -14,7 +15,6 @@ import { STATUS_COLOR_VAR, STATUS_LABEL } from "@/lib/calendar-utils";
 import { WORKOUT_LABELS, type WorkoutType } from "@/lib/planning";
 import { CATEGORY_LABELS, categoryColorVar, type ActivityCategory } from "@/lib/categories";
 import {
-  activeSeconds,
   blockLength,
   cumulative,
   dailyValues,
@@ -27,7 +27,6 @@ import {
   weeklySums,
   type AnalysisBlock,
   type BlockTotals,
-  type MovingById,
 } from "@/lib/block-analysis";
 
 /* Passtyperna användaren kan välja in i minuter, distans och träningsdagar,
@@ -154,7 +153,7 @@ function MentionBar({ c }: { c: { bra: number; blandat: number; mindre_bra: numb
   );
 }
 
-const GRAF_LABELS = { minuter: "Aktiva minuter", distans: "Distans", pass: "Pass" } as const;
+const GRAF_LABELS = { minuter: "Träningstid (min)", distans: "Distans", pass: "Pass" } as const;
 
 /** En rad val där ett är aktivt, som länkar. scroll={false} så att sidan
  * står kvar vid grafen när man byter. */
@@ -305,8 +304,7 @@ export default async function AnalysPage({
   const [{ data: activityRows }, { data: plannedRows }, { data: diaryRows }] = await Promise.all([
     supabase
       .from("activities")
-      // Tid i rörelse ur raw_data, utan att hämta hela raw_data.
-      .select(`${SESSION_ACTIVITY_COLUMNS}, moving:raw_data->>movingDuration`)
+      .select(SESSION_ACTIVITY_COLUMNS)
       .eq("user_id", userId)
       .gte("start_time", from)
       .lt("start_time", shiftKey(block.end_date, 1))
@@ -373,10 +371,7 @@ export default async function AnalysPage({
     ].filter(Boolean);
     return `Dag ${i + 1} · ${short(key)}${notes.length ? ` · ${notes.join(", ")}` : ""}`;
   });
-  const rows = (activityRows ?? []) as unknown as (SessionActivity & { moving: string | null })[];
-  const moving: MovingById = new Map(
-    rows.filter((r) => r.moving != null).map((r) => [r.id, Number(r.moving)]),
-  );
+  const rows = (activityRows ?? []) as unknown as SessionActivity[];
   const sessions: TrainingSession[] = groupActivitiesIntoSessions(rows);
   // Minuter, distans och träningsdagar räknas på de valda passtyperna.
   const chosen = sessions.filter((s) => include.has(s.category));
@@ -387,7 +382,7 @@ export default async function AnalysPage({
   const volumeSessions: TrainingSession[] = sessions.flatMap((s) => {
     const e = easyParts.get(s.dominantActivity.id);
     if (!e) return [s];
-    const qualitySeconds = Math.max(0, activeSeconds(s, moving) - e.seconds);
+    const qualitySeconds = Math.max(0, trainingSeconds(s) - e.seconds);
     const qualityMeters = Math.max(0, sessionKm(s) * 1000 - e.meters);
     const part = (suffix: string, meters: number, seconds: number) => ({
       ...s.dominantActivity,
@@ -407,9 +402,9 @@ export default async function AnalysPage({
   // Styrka loggas oftast bara i dagboken. Är styrka vald räknas en dag med
   // ett eget styrkepass där som träningsdag; minuter finns inte i dagboken.
   const chosenDiaryStrength = include.has("strength") ? diaryStrength : [];
-  const now: BlockTotals = totalsUpToDay(chosenVolume, block, daysSoFar, moving, chosenDiaryStrength);
+  const now: BlockTotals = totalsUpToDay(chosenVolume, block, daysSoFar, chosenDiaryStrength);
   const before: BlockTotals | null = comparison
-    ? totalsUpToDay(chosenVolume, comparison, daysSoFar, moving, chosenDiaryStrength)
+    ? totalsUpToDay(chosenVolume, comparison, daysSoFar, chosenDiaryStrength)
     : null;
   // Alternativ träning räknas aldrig i distans, bara i tid (sessionKm), så
   // Distans är löpdistansen och alternativ träning visas i minuter.
@@ -417,8 +412,8 @@ export default async function AnalysPage({
   const kmMainBefore = before?.km ?? null;
   const crossOnly = sessions.filter((s) => s.category === "cross_training");
   const showCross = include.has("cross_training");
-  const cross = totalsUpToDay(crossOnly, block, daysSoFar, moving);
-  const crossBefore = comparison ? totalsUpToDay(crossOnly, comparison, daysSoFar, moving) : null;
+  const cross = totalsUpToDay(crossOnly, block, daysSoFar);
+  const crossBefore = comparison ? totalsUpToDay(crossOnly, comparison, daysSoFar) : null;
   // Snitt per vecka: delat med antalet veckor som passerat (dagar / 7).
   // Jämförelseblocket delas med sina egna dagar om det är kortare.
   const per = perWeek ? 7 / daysSoFar : 1;
@@ -426,9 +421,9 @@ export default async function AnalysPage({
   const scaled = (v: number) => v * per;
   const scaledOrNull = (v: number | null | undefined) => (v == null ? null : v * perBefore);
   // Kvalitets- och styrkepass räknas alltid, oavsett valda typer.
-  const nowAll = totalsUpToDay(sessions, block, daysSoFar, moving, diaryStrength);
+  const nowAll = totalsUpToDay(sessions, block, daysSoFar, diaryStrength);
   const beforeAll = comparison
-    ? totalsUpToDay(sessions, comparison, daysSoFar, moving, diaryStrength)
+    ? totalsUpToDay(sessions, comparison, daysSoFar, diaryStrength)
     : null;
 
   // --- Grafen: ett mått, en jämförelse, en vy -----------------------------
@@ -442,7 +437,7 @@ export default async function AnalysPage({
   const vy: "vecka" | "ack" = vyParam === "ack" ? "ack" : "vecka";
   const unit = graf === "minuter" ? "min" : graf === "distans" ? "km" : "pass";
 
-  const minutesOf = (s: TrainingSession) => activeSeconds(s, moving) / 60;
+  const minutesOf = (s: TrainingSession) => trainingSeconds(s) / 60;
   // Antal pass av de valda typerna. Med styrka vald räknas ett styrkepass i
   // dagboken som ett pass, om klockan inte redan har ett styrkepass den dagen.
   const passDaily = (b: AnalysisBlock) => {
@@ -763,8 +758,8 @@ export default async function AnalysPage({
           })}
         </div>
         <p className="text-xs text-[var(--ink-3)]">
-          Aktiv tid är tid i rörelse — vila där man står still räknas inte. För styrka och pass
-          inomhus, där klockan inte kan mäta rörelse, räknas passets hela tid.
+          Träningstid är passets hela tid, vila i intervallpass inräknad. Styrka räknas inte i
+          tid, eftersom de passen inte alltid anges i tid.
         </p>
       </section>
 
@@ -795,7 +790,7 @@ export default async function AnalysPage({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-          <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Aktiva minuter" now={scaled(now.minutes)} before={scaledOrNull(before?.minutes)} />
+          <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Träningstid (min)" now={scaled(now.minutes)} before={scaledOrNull(before?.minutes)} />
           <TotalTile
             nowLabel={nowName}
             beforeLabel={cmpName}
@@ -834,15 +829,15 @@ export default async function AnalysPage({
               }. `
             : ""}
           Alternativ träning (cykel, crosstrainer, vattenlöpning) räknas i tid men aldrig i
-          distans, eftersom en km på cykel inte är en km löpning. Den ingår i aktiva minuter och
+          distans, eftersom en km på cykel inte är en km löpning. Den ingår i träningstid och
           träningsdagar.
         </p>
         <p className="text-xs text-[var(--ink-3)]">
           Styrkepass räknas också ur dagbokens passlogg, där de oftast skrivs in: gym, cirkel,
           medicinboll och liknande egna pass. Det underlaget är självskattat. Styrka som tillägg
           efter ett löppass räknas inte. Med styrka vald räknas en dag med ett styrkepass i
-          dagboken som träningsdag; dagboken anger ingen tid, så aktiva minuter tar bara med
-          styrkepass som loggats med klockan. Sjuk- och skaddagar är markerade i dagboken
+          dagboken som träningsdag; styrka räknas aldrig i
+          träningstid. Sjuk- och skaddagar är markerade i dagboken
           {sickNow.sick + sickNow.injured > 0
             ? ` — ${nowLower} ${[
                 sickNow.sick > 0 ? `${sickNow.sick} sjuk` : null,
@@ -873,7 +868,7 @@ export default async function AnalysPage({
             {mot === "plan"
               ? "Kvalitet, distans och styrka räknas inom veckan, inte dag för dag. Bara dagar som passerat räknas. Ett planerat pass på en sjuk- eller skaddag som inte blev av räknas inte" +
                 (blockStats.excusedCount > 0 ? ` (${blockStats.excusedCount} i blocket).` : ".")
-              : `${graf === "minuter" ? "Aktiv tid" : graf === "distans" ? "Sträckan" : "Antal pass"} för de valda passtyperna${
+              : `${graf === "minuter" ? "Träningstiden" : graf === "distans" ? "Sträckan" : "Antal pass"} för de valda passtyperna${
                   vy === "vecka" ? ", per blockvecka" : ", dag för dag i blocket"
                 }. Tryck i grafen för att se en ${vy === "vecka" ? "vecka" : "dag"}.`}
           </p>

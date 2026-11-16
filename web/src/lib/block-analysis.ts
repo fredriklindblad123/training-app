@@ -14,15 +14,13 @@
  * pass. Planen jämförs i antal pass per slag, samma regel som Uppföljning
  * (lib/range-stats.ts).
  *
- * AKTIV TID är tid i rörelse (Garmins movingDuration), så vila där man står
- * still i ett intervallpass inte räknas — uppmätt på Alices pass ger det 27
- * mot 36 min i snitt för intervall, 30 mot 33 för tröskel och ingen skillnad
- * för distans. Garmin mäter rörelse med GPS, så för styrka och pass inomhus
- * blir den nära noll (styrka 0 av 50 min, alternativ träning 2 av 46). Är
- * tiden i rörelse under halva passets tid används därför hela tiden.
+ * TRÄNINGSTID är passets hela tid utan styrka (trainingSeconds i
+ * lib/sessions.ts, Fredriks regel 2026-11-16) — samma tal som Idag och
+ * Uppföljning. Tidigare räknades tid i rörelse här, och då visade sidorna
+ * olika tid för samma pass.
  * ------------------------------------------------------------------------ */
 
-import type { TrainingSession } from "@/lib/sessions";
+import { trainingSeconds, type TrainingSession } from "@/lib/sessions";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
 import type { PlannedWorkout } from "@/lib/plan-matching";
 import { planKind } from "@/lib/range-stats";
@@ -69,18 +67,6 @@ export function findComparisonBlock(
     }
   }
   return best;
-}
-
-/** Tid i rörelse per aktivitet (sekunder), ur raw_data.movingDuration. */
-export type MovingById = Map<string, number>;
-
-/** Passets aktiva tid i sekunder, se filhuvudet. */
-export function activeSeconds(s: TrainingSession, moving: MovingById): number {
-  return s.activities.reduce((sum, f) => {
-    const total = f.duration_seconds ?? 0;
-    const m = moving.get(f.id);
-    return sum + (m != null && m >= total * 0.5 ? Math.min(m, total) : total);
-  }, 0);
 }
 
 /** Passets distans i km. Alternativ träning räknas aldrig i distans, bara i
@@ -134,7 +120,6 @@ export function totalsUpToDay(
   sessions: TrainingSession[],
   block: AnalysisBlock,
   days: number,
-  moving: MovingById,
   /** Dagar med eget styrkepass enligt dagboken (lib/diary-strength.ts). */
   diaryStrengthDates: string[] = [],
 ): BlockTotals {
@@ -152,7 +137,7 @@ export function totalsUpToDay(
   return {
     // En dag med bara ett styrkepass i dagboken är också en träningsdag.
     trainingDays: new Set([...inside.map((s) => s.date), ...diaryInside]).size,
-    minutes: inside.reduce((a, s) => a + activeSeconds(s, moving) / 60, 0),
+    minutes: inside.reduce((a, s) => a + trainingSeconds(s) / 60, 0),
     km: inside.reduce((a, s) => a + sessionKm(s), 0),
     qualitySessions: inside.filter((s) =>
       (QUALITY_WORKOUT_TYPES as readonly string[]).includes(s.category),

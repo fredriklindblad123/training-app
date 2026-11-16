@@ -4,7 +4,7 @@ import {
   type PlannedWorkout,
 } from "@/lib/plan-matching";
 import { QUALITY_WORKOUT_TYPES, type WorkoutType } from "@/lib/planning";
-import type { TrainingSession } from "@/lib/sessions";
+import { trainingSeconds, type TrainingSession } from "@/lib/sessions";
 
 /* Statistik för ett datumspann — planerat, utfall och fördelning per passtyp.
  *
@@ -41,7 +41,7 @@ export type RangeStats = {
    * summan kan överstiga plannedCount. */
   plannedByType: { type: string; count: number }[];
   plannedRestDays: number;
-  plannedHours: number | null;
+  plannedMinutes: number | null;
   plannedKm: number | null;
   /** Planerade pass per vecka, avrundat till en decimal. */
   passesPerWeek: number;
@@ -50,7 +50,8 @@ export type RangeStats = {
   qualityShare: number | null;
   sessionCount: number;
   actualKm: number;
-  actualHours: number;
+  /** Träningstid i minuter, enligt trainingSeconds (lib/sessions.ts). */
+  actualMinutes: number;
   trainingLoad: number;
   completedCount: number;
   qualityPlanned: number;
@@ -254,13 +255,13 @@ export function computeRangeStats({
     plannedRestDays,
     // Mål-tid och mål-distans är valfria fält; är de aldrig ifyllda ska
     // raden döljas i stället för att påstå "0 h".
-    plannedHours: plannedSeconds > 0 ? plannedSeconds / 3600 : null,
+    plannedMinutes: plannedSeconds > 0 ? plannedSeconds / 60 : null,
     plannedKm: plannedMeters > 0 ? plannedMeters / 1000 : null,
     passesPerWeek: Math.round((plannedCount / weeks) * 10) / 10,
     qualityShare: plannedCount > 0 ? qualityPlannedCount / plannedCount : null,
     sessionCount: rangeSessions.length,
     actualKm: rangeSessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000,
-    actualHours: rangeSessions.reduce((sum, s) => sum + s.durationSeconds, 0) / 3600,
+    actualMinutes: rangeSessions.reduce((sum, s) => sum + trainingSeconds(s), 0) / 60,
     trainingLoad: rangeSessions.reduce((sum, s) => sum + s.trainingLoad, 0),
     completedCount: compliance.completedCount,
     qualityPlanned: compliance.qualityPlanned,

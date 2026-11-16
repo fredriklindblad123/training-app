@@ -245,8 +245,12 @@ function BlockStatsPanel({ stats }: { stats: RangeStats }) {
         <Stat
           size="sm"
           label="Tid"
-          value={`${stats.actualHours.toFixed(1)} h`}
-          sub={stats.plannedHours != null ? `plan ${stats.plannedHours.toFixed(1)} h` : "genomfört"}
+          value={`${Math.round(stats.actualMinutes).toLocaleString("sv-SE")} min`}
+          sub={
+            stats.plannedMinutes != null
+              ? `plan ${Math.round(stats.plannedMinutes).toLocaleString("sv-SE")} min`
+              : "genomfört, utan styrka"
+          }
         />
         <Stat size="sm" label="Belastning" value={String(Math.round(stats.trainingLoad))} sub="genomfört" />
         <Stat

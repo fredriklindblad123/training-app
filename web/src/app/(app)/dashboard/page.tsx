@@ -22,6 +22,7 @@ import { buildReadinessAlert } from "@/lib/readiness-alert";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
+  trainingSeconds,
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
@@ -589,16 +590,26 @@ export default async function DashboardPage({
 
   const dailyDistanceKm = new Map<string, number>();
   const dailyLoad = new Map<string, number>();
+  // Träningstid (2026-11-16, begärt): passens hela tid utan styrka, med
+  // alternativ träning — trainingSeconds i lib/sessions.ts, samma regel som
+  // Analys och Uppföljning. Distansen räknar bara löpning, så tiden är det
+  // mått där en vecka med mycket cykel syns som den träning den är.
+  const dailyMinutes = new Map<string, number>();
   for (const s of allSessions) {
     dailyDistanceKm.set(s.date, (dailyDistanceKm.get(s.date) ?? 0) + s.distanceMeters / 1000);
     dailyLoad.set(s.date, (dailyLoad.get(s.date) ?? 0) + s.trainingLoad);
+    dailyMinutes.set(s.date, (dailyMinutes.get(s.date) ?? 0) + trainingSeconds(s) / 60);
   }
+
 
   const volumeRings = [
     rollingWeekRing("Distans", dailyDistanceKm, todayKey, yearStartKey, (v) =>
       v > 0 ? `${v.toFixed(1)} km` : "0 km",
     ),
     rollingWeekRing("Belastning", dailyLoad, todayKey, yearStartKey, (v) => String(Math.round(v))),
+    rollingWeekRing("Träningstid", dailyMinutes, todayKey, yearStartKey, (v) =>
+      `${Math.round(v).toLocaleString("sv-SE")} min`,
+    ),
   ];
 
   /* --- Varven från senaste passet ------------------------------------- */
@@ -890,7 +901,7 @@ export default async function DashboardPage({
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-3">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}

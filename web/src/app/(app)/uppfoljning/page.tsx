@@ -501,7 +501,8 @@ export default async function UppfoljningPage({
                         )}
                       </td>
                       <td data-label="Tid" className={FOLLOW_UP_CELL}>
-                        {stats.actualHours.toFixed(1)} h
+                        {/* Hela passens tid utan styrka (trainingSeconds). */}
+                        {Math.round(stats.actualMinutes).toLocaleString("sv-SE")} min
                       </td>
                       {/* Genomförda av alla tävlingar i perioden, även kommande:
                           "0/1" är en tävling som ligger framför. */}
