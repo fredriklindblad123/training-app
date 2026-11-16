@@ -921,14 +921,15 @@ export default async function AnalysPage({
             series={
               mot === "plan"
                 ? [
-                    { label: "Planerat", values: weekStats.map((x) => (x ? x.due : null)), color: "var(--ink-2)", style: "outline" as const },
-                    { label: "Gjort", values: weekStats.map((x) => (x ? x.done : null)), color: THIS_YEAR, style: "fill" as const },
+                    { label: "Planerat", short: "plan", values: weekStats.map((x) => (x ? x.due : null)), color: "var(--ink-2)", style: "outline" as const },
+                    { label: "Gjort", short: "gjort", values: weekStats.map((x) => (x ? x.done : null)), color: THIS_YEAR, style: "fill" as const },
                   ]
                 : [
                     ...(dailyBefore
                       ? [
                           {
                             label: cmpName,
+                            short: markRows[1]?.label,
                             values: weeklySums(dailyBefore),
                             color: LAST_YEAR,
                             style: "outline" as const,
@@ -938,6 +939,7 @@ export default async function AnalysPage({
                       : []),
                     {
                       label: nowName,
+                      short: markRows[0].label,
                       values: Array.from({ length: weeks }, (_, w) => {
                         const ws = weeklySums(dailyNow);
                         return w < ws.length ? ws[w] : null;

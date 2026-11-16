@@ -264,6 +264,9 @@ export type BarSeries = {
    * bakgrundsfärg mellan sig, och färgen bär identiteten — namnet står i
    * förklaringen och i raden under grafen, aldrig bara i färgen. */
   stack?: { label: string; color: string; values: number[] }[];
+  /** Kort namn för totalraden under grafen, t.ex. årtalet — samma som
+   * remsornas etikett. */
+  short?: string;
 };
 
 export function GroupedBarChart({
@@ -287,7 +290,11 @@ export function GroupedBarChart({
   /** Lång etikett per grupp, t.ex. "v3 · 12/10–18/10". */
   groupLabels: string[];
 }) {
+  // Ett tryck väljer en vecka och valet ligger kvar; en mus som pekar visar
+  // en vecka tillfälligt. På pekskärm finns ingen hovring, så där räknas
+  // bara trycket.
   const [hover, setHover] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
   const ref = useRef<SVGSVGElement | null>(null);
   const max = niceMax(Math.max(1, ...series.flatMap((s) => s.values.map((v) => v ?? 0))));
   const gw = PW / groups.length;
@@ -296,14 +303,39 @@ export function GroupedBarChart({
   const bw = Math.max(3, (inner - 2 * (series.length - 1)) / series.length);
   const y = (v: number) => PAD.top + PH - (v / max) * PH;
   const lastWithData = groups.reduce((last, _, i) => (series.some((s) => s.values[i] != null) ? i : last), 0);
-  const hi = hover ?? defaultIndex ?? lastWithData;
+  const hi = hover ?? selected ?? defaultIndex ?? lastWithData;
+  const focus = hover ?? selected;
 
-  const onPointer = (e: React.PointerEvent<SVGSVGElement>) => {
+  const groupAt = (e: React.PointerEvent<SVGSVGElement>) => {
     const r = ref.current?.getBoundingClientRect();
-    if (!r || r.width === 0) return;
+    if (!r || r.width === 0) return null;
     const px = ((e.clientX - r.left) / r.width) * W;
-    setHover(Math.max(0, Math.min(groups.length - 1, Math.floor((px - PAD.left) / gw))));
+    return Math.max(0, Math.min(groups.length - 1, Math.floor((px - PAD.left) / gw)));
   };
+
+  // Totalerna står som sifferrader under veckoetiketterna, en rad per serie
+  // och i linje med veckan — tal ovanför staplarna blir för trånga när två
+  // staplar delar en vecka på 390 px. Den fyllda serien (nuet) överst, i
+  // samma ordning som remsorna.
+  const totalRows = [...series].sort((a, b) => (a.style === b.style ? 0 : a.style === "fill" ? -1 : 1));
+  const ROW = 11;
+  const HB = H + 4 + totalRows.length * ROW;
+
+  // Passtyperna i den valda veckan, med värdet för varje serie.
+  const stacked = series.some((s) => s.stack);
+  const typeRows = (() => {
+    const order: { label: string; color: string }[] = [];
+    for (const s of totalRows)
+      for (const seg of s.stack ?? []) if (!order.some((o) => o.label === seg.label)) order.push(seg);
+    return order
+      .map((o) => ({
+        ...o,
+        values: totalRows.map((s) =>
+          s.values[hi] == null ? null : (s.stack?.find((x) => x.label === o.label)?.values[hi] ?? 0),
+        ),
+      }))
+      .filter((o) => o.values.some((v) => (v ?? 0) > 0));
+  })();
 
   return (
     <div className="flex flex-col gap-2">
@@ -330,14 +362,29 @@ export function GroupedBarChart({
       />
       <svg
         ref={ref}
-        viewBox={`0 0 ${W} ${H}`}
+        viewBox={`0 0 ${W} ${HB}`}
         className="h-auto w-full max-w-2xl touch-pan-y"
         role="img"
         aria-label={ariaLabel}
-        onPointerMove={onPointer}
-        onPointerDown={onPointer}
+        onPointerMove={(e) => e.pointerType === "mouse" && setHover(groupAt(e))}
+        onPointerDown={(e) => {
+          const g = groupAt(e);
+          setSelected((cur) => (cur === g ? null : g));
+        }}
         onPointerLeave={() => setHover(null)}
       >
+        {totalRows.map((s, ri) => (
+          <text
+            key={s.label}
+            x={PAD.left - 4}
+            y={H + 4 + ri * ROW + 6}
+            textAnchor="end"
+            className="tabular fill-[var(--ink-3)]"
+            style={{ fontSize: 8 }}
+          >
+            {s.short ?? s.label}
+          </text>
+        ))}
         {[0, max / 2, max].map((t) => (
           <g key={t}>
             <line x1={PAD.left} x2={W - PAD.right} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeWidth={0.5} />
@@ -352,7 +399,7 @@ export function GroupedBarChart({
         {groups.map((g, i) => {
           const gx = PAD.left + i * gw + (gw - inner) / 2;
           return (
-            <g key={g} opacity={hover == null || hover === i ? 1 : 0.55}>
+            <g key={g} opacity={focus == null || focus === i ? 1 : 0.55}>
               {series.map((s, si) => {
                 const v = s.values[i];
                 if (v == null) return null;
@@ -424,34 +471,80 @@ export function GroupedBarChart({
               >
                 {g}
               </text>
+              {totalRows.map((s, ri) => {
+                const v = s.values[i];
+                return (
+                  <text
+                    key={s.label}
+                    x={PAD.left + i * gw + gw / 2}
+                    y={H + 4 + ri * ROW + 6}
+                    textAnchor="middle"
+                    className={`tabular ${s.style === "fill" ? "fill-[var(--foreground)]" : "fill-[var(--ink-3)]"}`}
+                    style={{ fontSize: 8.5, fontWeight: i === hi ? 700 : s.style === "fill" ? 500 : 400 }}
+                  >
+                    {v == null ? "" : fmt(v)}
+                  </text>
+                );
+              })}
             </g>
           );
         })}
       </svg>
-      <p className="text-sm text-[var(--ink-2)]">
-        <span className="tabular">{groupLabels[hi]}</span>
-        {series.map((s) => (
-          <span key={s.label}>
-            <span className="whitespace-nowrap">
+      {stacked && typeRows.length > 0 ? (
+        <div className="flex max-w-md flex-col gap-1.5">
+          <p className="tabular text-sm font-medium text-[var(--foreground)]">{groupLabels[hi]}</p>
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="text-left text-xs text-[var(--ink-3)]">
+                <th className="py-1 pr-2 font-normal">Passtyp</th>
+                {totalRows.map((s) => (
+                  <th key={s.label} className="py-1 pl-2 text-right font-normal">
+                    {s.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {typeRows.map((t) => (
+                <tr key={t.label} className="border-t border-[var(--line)]">
+                  <td className="py-1 pr-2 text-[var(--ink-2)]">
+                    <span className="flex items-center gap-1.5">
+                      <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: t.color }} />
+                      {t.label}
+                    </span>
+                  </td>
+                  {t.values.map((v, j) => (
+                    <td key={j} className="tabular py-1 pl-2 text-right text-[var(--ink-2)]">
+                      {v != null && v > 0 ? fmt(v) : "–"}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              <tr className="border-t border-[var(--ink-3)]">
+                <td className="py-1 pr-2 font-medium text-[var(--foreground)]">Totalt</td>
+                {totalRows.map((s) => (
+                  <td key={s.label} className="tabular py-1 pl-2 text-right font-medium text-[var(--foreground)]">
+                    {s.values[hi] == null ? "–" : `${fmt(s.values[hi] as number)} ${unit}`}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-sm text-[var(--ink-2)]">
+          <span className="tabular">{groupLabels[hi]}</span>
+          {series.map((s) => (
+            <span key={s.label} className="whitespace-nowrap">
               {" · "}
               {s.label}{" "}
               <span className="tabular font-medium text-[var(--foreground)]">
                 {s.values[hi] == null ? "–" : `${fmt(s.values[hi] as number)} ${unit}`}
               </span>
             </span>
-            {s.stack && s.values[hi] != null && (
-              <span className="text-xs text-[var(--ink-3)]">
-                {" ("}
-                {s.stack
-                  .filter((seg) => (seg.values[hi] ?? 0) > 0)
-                  .map((seg) => `${seg.label} ${fmt(seg.values[hi])}`)
-                  .join(", ")}
-                {")"}
-              </span>
-            )}
-          </span>
-        ))}
-      </p>
+          ))}
+        </p>
+      )}
     </div>
   );
 }
