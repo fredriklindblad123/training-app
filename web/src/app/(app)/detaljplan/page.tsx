@@ -401,7 +401,7 @@ export default async function DetaljplanPage({
     "display rounded-md border border-[var(--line)] px-2.5 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ink-3)]";
 
   return (
-    <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">

@@ -179,6 +179,7 @@ export default async function AppLayout({
           isCoach={isCoach}
           planOwnedByCoach={!canEditPlanning(scoped)}
           runnerMode={runnerMode}
+          athletes={isCoach && !runnerMode ? viewableAthletes(scoped) : []}
         />
       </Suspense>
     </div>

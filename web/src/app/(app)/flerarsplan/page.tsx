@@ -75,7 +75,7 @@ export default async function FlerarsplanPage({
   const yearPlans = (plans ?? []) as YearPlanRow[];
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Flerårsplan</h1>

@@ -75,7 +75,10 @@ export function BottomNav({
   isCoach,
   planOwnedByCoach,
   runnerMode,
+  athletes = [],
 }: {
+  /** Coachens löpare — för namnet i raden "‹ Gruppen · Alice". */
+  athletes?: { id: string; fullName: string | null }[];
   isCoach: boolean;
   /** Adept med länkad tränare — då ägs planeringen av någon annan. */
   planOwnedByCoach: boolean;
@@ -115,72 +118,56 @@ export function BottomNav({
   const suffixFor = (href: string) =>
     PLAN.some((p) => href === p.href) || href === GRUPPEN.href ? "" : loggSuffix;
 
-  const groupPill = (on: boolean) =>
-    `display rounded-full px-3 py-0.5 text-[0.65rem] font-bold tracking-[0.1em] uppercase transition-colors ${
-      on
-        ? "bg-[var(--foreground)] text-[var(--background)]"
-        : "text-[var(--ink-3)] hover:text-[var(--foreground)]"
-    }`;
+  /* Ingen Logg/Plan-växel sedan 2026-11-21 (ny UX). Coachen startar på
+     Gruppen och öppnar en löpare därifrån; står hon på en löpares sida visas
+     en rad med löparens namn och vägen tillbaka till Gruppen. En löpare som
+     planerar själv (ingen tränare) får i stället en länk till planeringen. */
+  const athleteName = athletes.find((a) => a.id === athlete)?.fullName ?? null;
+  const tab = (t: Tab) => {
+    const on = pathname === t.href || pathname.startsWith(`${t.href}/`);
+    return (
+      <Link
+        key={t.href}
+        href={`${t.href}${suffixFor(t.href)}`}
+        aria-current={on ? "page" : undefined}
+        className={`flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-[10px] py-1.5 transition-colors sm:min-w-24 sm:flex-none ${
+          on ? "bg-[var(--surface-raised)] font-bold text-[var(--foreground)]" : "text-[var(--ink-2)] hover:text-[var(--foreground)]"
+        }`}
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={on ? 2.1 : 1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d={t.icon} />
+        </svg>
+        <span className="text-xs">{t.label}</span>
+      </Link>
+    );
+  };
 
   return (
     <div
-      className="sticky bottom-0 z-40 flex flex-col items-center gap-1 border-t border-[var(--line)] bg-[var(--background)]/95 px-2 pt-1.5 backdrop-blur sm:border-0 sm:bg-transparent sm:pb-4 sm:backdrop-blur-none"
-      /* Marginal för iPhones hemindikator. Utan den hamnar nedersta raden
-         text under systemets streck. */
-      style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
+      className="sticky bottom-0 z-40 border-t border-[var(--line)] bg-[var(--background)]"
+      /* Marginal för iPhones hemindikator. */
+      style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
     >
-      {showPlan && (
-        <div
-          role="group"
-          aria-label="Välj grupp"
-          className="flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--surface)] p-0.5"
-        >
-          {/* Växeln navigerar till gruppens första vy i stället för att sätta
-              ett läge. Ingen växel utan mål: man ser direkt vad man fick. */}
-          <Link href={`${LOGG[0].href}${loggSuffix}`} className={groupPill(!isPlanPath)}>
-            Logg
+      {coaching && !isPlanPath && (
+        <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-1.5 text-sm">
+          <Link href="/gruppen" className="flex min-h-8 items-center text-[var(--ink-2)] hover:text-[var(--foreground)]">
+            ‹ Gruppen
           </Link>
-          <Link href={PLAN[0].href} className={groupPill(isPlanPath)}>
-            Plan
+          {athleteName && <span className="font-semibold text-[var(--foreground)]">{athleteName}</span>}
+        </div>
+      )}
+      {showPlan && !coaching && (
+        <div className="flex justify-end border-b border-[var(--line)] px-4 py-1.5 text-sm">
+          <Link href={isPlanPath ? LOGG[0].href : PLAN[0].href} className="flex min-h-8 items-center text-[var(--ink-2)] hover:text-[var(--foreground)]">
+            {isPlanPath ? "‹ Min träning" : "Planering ›"}
           </Link>
         </div>
       )}
-
       <nav
-        aria-label={showPlan && isPlanPath ? "Planering" : "Logg"}
-        className="flex w-full sm:mx-auto sm:w-fit sm:gap-1 sm:rounded-full sm:border sm:border-[var(--line)] sm:bg-[var(--background)]/95 sm:px-2 sm:py-0.5 sm:shadow-lg sm:backdrop-blur"
+        aria-label={isPlanPath ? "Planering" : "Träning"}
+        className="mx-auto flex w-full max-w-3xl gap-1 px-1 pt-2"
       >
-        {tabs.map((t) => {
-          const on = pathname === t.href || pathname.startsWith(`${t.href}/`);
-          return (
-            <Link
-              key={t.href}
-              href={`${t.href}${suffixFor(t.href)}`}
-              aria-current={on ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center gap-0.5 rounded-lg py-1 transition-colors sm:min-w-20 sm:flex-none ${
-                on
-                  ? "bg-[var(--surface-raised)] text-[var(--foreground)] sm:rounded-full"
-                  : "text-[var(--ink-3)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={on ? 2.2 : 1.7}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
-              >
-                <path d={t.icon} />
-              </svg>
-              <span className="display text-[0.65rem] font-semibold tracking-[0.06em] uppercase">
-                {t.label}
-              </span>
-            </Link>
-          );
-        })}
+        {tabs.map(tab)}
       </nav>
     </div>
   );

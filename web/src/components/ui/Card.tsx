@@ -28,7 +28,7 @@ type CardProps = {
 export function Card({ children, raised = false, className = "" }: CardProps) {
   return (
     <div
-      className={`rounded-lg border border-[var(--line)] p-4 ${
+      className={`rounded-[14px] border border-[var(--line)] p-4 ${
         raised ? "bg-[var(--surface-raised)]" : "bg-[var(--surface)]"
       } ${className}`}
     >

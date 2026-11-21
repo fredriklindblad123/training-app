@@ -765,7 +765,7 @@ export default async function TavlingsresultatPage({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       <PageHeader title="Lopp" lead="Nästa lopp, dina bästa tider och hur grenarna har utvecklats." />
 
       {/* Överst sedan 2026-11-21: det man går hit för. Karriärens fyra tal

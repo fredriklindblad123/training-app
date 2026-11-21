@@ -1089,7 +1089,7 @@ export default async function ArsplanPage({
    * väg vidare. Samma startläge som Blockplan redan har. */
   if ((athleteParam == null || athleteParam === "alla") && scoped.role === "coach") {
     return (
-      <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+      <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Säsongsöversikt</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
@@ -1374,7 +1374,7 @@ export default async function ArsplanPage({
       : [null, null];
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       <div>
         {/* Vems plan det är står i rubriken, inte bara i en väljare någon
             annanstans. Sidan visar EN löpares block, och utan namnet gick det

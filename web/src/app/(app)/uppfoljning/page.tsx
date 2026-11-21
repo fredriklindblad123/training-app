@@ -310,7 +310,7 @@ export default async function UppfoljningPage({
     }`;
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Uppföljning</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">

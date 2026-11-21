@@ -1,11 +1,12 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
-import { formatKmSv } from "@/lib/format";
+import { formatDateShort, formatKmSv, formatNumber, formatPace } from "@/lib/format";
+import { PageHeader } from "@/components/ui/Page";
+import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
+import { fetchSameSessions } from "@/lib/same-session";
 import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
-import { DailyStatus } from "@/components/DailyStatus";
-import { KpiRing } from "@/components/KpiRing";
 import type { TrendDirection } from "@/components/ui/TrendMark";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
@@ -25,7 +26,6 @@ import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySe
 import { reviewSession, type ReviewRep, type SessionReview } from "@/lib/session-review";
 import type { PhaseType } from "@/lib/planning";
 import { RecordCard } from "@/components/RecordCard";
-import { SeasonContext } from "@/components/SeasonContext";
 import { WeekStrip, type WeekStripDay } from "@/components/WeekStrip";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
@@ -194,7 +194,6 @@ export default async function DashboardPage({
     { data: todayPlannedRows },
     { data: recentSplitRows },
     { data: currentBlockRows },
-    { data: nextRaceRow },
     { data: weekPlannedRows },
   ] = await Promise.all([
     // Bara dagens aktiviteter — sidan äger dagen, inget periodfönster.
@@ -276,14 +275,6 @@ export default async function DashboardPage({
       .maybeSingle(),
     // Nästa tävling framåt. Dagens räknas med — en tävling man ska springa om
     // några timmar är fortfarande nästa.
-    supabase
-      .from("competitions")
-      .select("name, competition_date, priority")
-      .eq("user_id", scopedUserId)
-      .gte("competition_date", todayKey)
-      .order("competition_date")
-      .limit(1)
-      .maybeSingle(),
     /* Veckans planerade pass, till veckoremsan under dagens pass. Bara typ
        och datum — remsan ritar en prick per pass, inget innehåll. De
        genomförda passen kommer ur allSessions, som redan är hämtad. */
@@ -311,7 +302,6 @@ export default async function DashboardPage({
   }));
   const dailyStatus = computeDailyStatus(statusRows, todayKey, statusCurrentWindowDays);
 
-  const statusPeriodLabel = `Senaste 7 dagarna mot din ${BASELINE_WINDOW_DAYS}-dagars baslinje`;
 
   // --- K3: beredskap kopplad till morgondagens pass -----------------------
   // "Andra dagen i rad" räknas ur samma markördata som dailyStatus, bara en
@@ -523,6 +513,9 @@ export default async function DashboardPage({
     sessions.map((s) => ({ category: s.category })),
   );
 
+  const bodyMarkers = dailyStatus.markers.filter((m) => m.spec.key !== "sleepHours" && m.spec.key !== "feeling");
+  const sameSession = (await fetchSameSessions(supabase, scopedUserId, todayKey, { maxGroups: 1 }))[0] ?? null;
+
   const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}${athleteQuery}`;
 
@@ -533,59 +526,19 @@ export default async function DashboardPage({
        vilodag, eller inget pass alls — sätts ingen variabel, och .day-theme
        faller tillbaka på appens vanliga ytor via sina egna fallback-värden. */
     <div
-      className="day-theme flex flex-1 flex-col gap-8 px-6 py-8"
+      className="day-theme flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8"
       style={pageAccent ? ({ "--day-accent": pageAccent } as React.CSSProperties) : undefined}
     >
-      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Idag</h1>
-
-      {/* Var i säsongen man är, före dagens pass. Dagens pass svarar på VAD
-          man ska göra; det här svarar på varför — vilket block man bygger i
-          och vad man bygger mot. */}
-      <SeasonContext
-        block={
-          currentBlockRows
-            ? {
-                id: currentBlockRows.id as string,
-                name: currentBlockRows.name as string,
-                phase: currentBlockRows.phase as string,
-                startDate: currentBlockRows.start_date as string,
-                endDate: currentBlockRows.end_date as string,
-              }
-            : null
-        }
-        nextRace={
-          nextRaceRow
-            ? {
-                name: nextRaceRow.name as string,
-                date: nextRaceRow.competition_date as string,
-                priority: nextRaceRow.priority as string,
-              }
-            : null
-        }
-        todayKey={todayKey}
-        athleteQuery={athleteQuery}
+      <PageHeader
+        title="Idag"
+        lead={`${formatDateShort(todayKey, true)}${
+          currentBlockRows && (currentBlockRows.start_date as string) <= todayKey
+            ? ` · ${currentBlockRows.name as string}, vecka ${
+                Math.floor((Date.parse(todayKey) - Date.parse(currentBlockRows.start_date as string)) / (7 * 86_400_000)) + 1
+              } av ${Math.ceil((Date.parse(currentBlockRows.end_date as string) - Date.parse(currentBlockRows.start_date as string) + 86_400_000) / (7 * 86_400_000))}`
+            : ""
+        }`}
       />
-
-      {/* --- Veckan, mellan säsongen och dagen. Sidan går från grovt till
-          fint: vilket block och vilken tävling man bygger mot, sedan hur
-          veckan ser ut, sedan vad som gäller idag. Veckan är sammanhanget
-          dagen ska läsas i — är det tredje kvalitetspasset på fyra dagar
-          betyder "Intervaller" något annat än om det vore det första.
-          Låg först som en textlänk längst ner, sedan under dagens pass, och
-          före säsongsraden innan den hamnade här. ------------------- */}
-      <WeekStrip
-        days={weekDays}
-        doneCount={weekDoneCount}
-        plannedCount={(weekPlannedRows ?? []).length}
-        kilometres={weekKilometres}
-        href={`/calendar/vecka/${todayKey}${athleteQuery}`}
-      />
-      <Link
-        href={`/calendar/vecka/${shiftDateKey(weekStartKey, -7)}${athleteQuery}`}
-        className="-mt-5 self-end text-sm text-[var(--ink-2)] underline underline-offset-2 hover:text-[var(--foreground)]"
-      >
-        Förra veckans bokslut →
-      </Link>
 
       {/* --- Dagens pass, efter veckan.
           Den första frågan en löpare har när hon öppnar appen är vad som
@@ -628,6 +581,7 @@ export default async function DashboardPage({
         }))}
         href={todayHref}
         labSet={labZoneSet}
+        compact
       />
 
 
@@ -647,6 +601,23 @@ export default async function DashboardPage({
         />
       )}
 
+      <section className="flex flex-col gap-2.5">
+        <div className="flex items-baseline justify-between gap-2">
+          <Eyebrow>Veckan</Eyebrow>
+          <Link href={`/calendar/vecka/${shiftDateKey(weekStartKey, -7)}${athleteQuery}`} className="text-sm underline underline-offset-2">
+            Förra veckans bokslut →
+          </Link>
+        </div>
+        <WeekStrip
+          days={weekDays}
+          doneCount={weekDoneCount}
+          plannedCount={(weekPlannedRows ?? []).length}
+          kilometres={weekKilometres}
+          href={`/calendar/vecka/${todayKey}${athleteQuery}`}
+        />
+      </section>
+
+
       {/* Varven direkt under dagens pass: det är de två sakerna en löpare
           öppnar appen för — vad ska jag göra, och hur gick det sist.
           Ritas bara när passet faktiskt har varv; ett lugnt distanspass har
@@ -659,19 +630,29 @@ export default async function DashboardPage({
           redan underkänts — den mätte fart, inte form. Syreupptaget bor på
           Form. Sviten likaså (Kontinuitet). */}
 
-      {/* --- Volym och belastning: egen sektion, rullande 7 dagar mot årets
-          snitt per vecka (P1.5) — flyttad hit från den borttagna /veckan
-          2026-08-13. ---------------------------------------------------- */}
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Läget · senaste 7 dagarna</h2>
-        {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
-            stället för kort vars bredd styrs av hur långt mätvärdet råkar
-            vara. */}
-        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
+      <section className="flex flex-col gap-2.5">
+        <Eyebrow>Läget · senaste 7 dagarna</Eyebrow>
+        <div className="grid grid-cols-2 gap-2.5">
           {volumeRings.map((r) => (
-            <KpiRing key={r.label} {...r} />
+            <div key={r.label} className="flex flex-col gap-1 rounded-[14px] border border-[var(--line)] p-3.5">
+              <span className="display text-xs font-semibold tracking-[0.06em] text-[var(--ink-3)] uppercase">{r.label}</span>
+              <span className="display tabular text-[1.75rem] leading-none font-bold text-[var(--foreground)]">{r.valueText}</span>
+              {r.trend && (
+                <span className="self-start rounded-full bg-[var(--surface-raised)] px-2 py-0.5 text-[0.8125rem] text-[var(--ink-2)]">
+                  {r.trend.text}
+                </span>
+              )}
+              {r.targetText && <span className="text-[0.8125rem] text-[var(--ink-3)]">{r.targetText}</span>}
+            </div>
           ))}
         </div>
+        <HowCalculated>
+          <p>
+            Träningstid är hela passets tid med vila, alternativträning inräknad, styrka aldrig. Distans är
+            löpning utan alternativträning. Snittet är ditt eget snitt per vecka i år. Ökningen visas grå: mer
+            träning är varken bra eller dåligt i sig.
+          </p>
+        </HowCalculated>
       </section>
 
       {/* --- K3: beredskap kopplad till morgondagens pass. Visas bara när
@@ -712,7 +693,62 @@ export default async function DashboardPage({
           är en bakgrundsfråga — den styr inte vad man gör idag, den färgar hur
           man läser resten. Överst tog den plats från dagens pass, som är det
           man öppnar appen för. */}
-      <DailyStatus status={dailyStatus} periodLabel={statusPeriodLabel} />
+      {bodyMarkers.length > 0 && (
+        <section className="flex flex-col gap-2.5">
+          <Eyebrow>Kroppen · senaste 7 dagarna</Eyebrow>
+          <div className="overflow-hidden rounded-[14px] border border-[var(--line)]">
+            {bodyMarkers.map((m, i) => (
+              <div key={m.spec.key} className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3.5 py-3 ${i > 0 ? "border-t border-[var(--line)]" : ""}`}>
+                <span className="flex flex-col">
+                  <span className="font-medium text-[var(--foreground)]">{m.spec.label}</span>
+                  <span className="text-[0.8125rem] text-[var(--ink-3)]">
+                    ditt vanliga: {m.baseline == null ? "–" : `${formatNumber(m.baseline, 0)}${m.spec.unit ? ` ${m.spec.unit}` : ""}`}
+                  </span>
+                </span>
+                <span className="flex flex-col items-end gap-0.5">
+                  <span className="display tabular text-[1.375rem] font-bold text-[var(--foreground)]">
+                    {m.current == null ? "–" : formatNumber(m.current, 0)}
+                  </span>
+                  {m.band && m.band !== "good" && (
+                    <span className="rounded-full px-2 py-0.5 text-xs" style={{ backgroundColor: "color-mix(in oklab, var(--status-watch) 18%, transparent)", color: "var(--status-watch-ink)" }}>
+                      utanför ditt vanliga
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+          <HowCalculated>
+            <p>
+              Ur klockan över natten. &quot;Ditt vanliga&quot; är medianen av dina senaste {BASELINE_WINDOW_DAYS} dagar. Gult
+              när veckan ligger utanför det som är vanligt för dig — aldrig grönt eller rött för en vanlig vecka.
+            </p>
+          </HowCalculated>
+        </section>
+      )}
+
+      {sameSession && (
+        <section className="flex flex-col gap-2.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <Eyebrow>Form · samma pass igen</Eyebrow>
+            <Link href={`/trender${athleteQuery}`} className="text-sm underline underline-offset-2">
+              Form →
+            </Link>
+          </div>
+          <div className="flex flex-col gap-1.5 rounded-[14px] border border-[var(--line)] p-3.5">
+            <span className="font-semibold text-[var(--foreground)]">{sameSession.name}</span>
+            {sameSession.times.slice(0, 3).map((t, i) => (
+              <div key={t.activityId} className={`flex justify-between text-sm ${i === 0 ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)]"}`}>
+                <span>{formatDateShort(t.date)} {t.date.slice(0, 4)}</span>
+                <span className="tabular">
+                  {formatPace(t.pace).replace(" /km", "/km")}
+                  {t.endHr != null ? ` · puls ${Math.round(t.endHr)}` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
     </div>
   );

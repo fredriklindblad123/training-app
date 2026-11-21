@@ -15,7 +15,7 @@ import type { ReactNode } from "react";
 
 /** Sidans yttre behållare. Ett enda avstånd mellan sektioner i hela appen. */
 export function Page({ children }: { children: ReactNode }) {
-  return <div className="flex flex-1 flex-col gap-8 px-6 py-8">{children}</div>;
+  return <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">{children}</div>;
 }
 
 /**

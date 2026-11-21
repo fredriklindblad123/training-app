@@ -48,12 +48,10 @@ export function WeekStrip({
   return (
     <Link
       href={href}
-      className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)] hover:bg-[var(--surface-raised)]"
+      className="flex flex-col gap-2 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)] hover:bg-[var(--surface-raised)]"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-          Veckan
-        </span>
+<span />
         <span className="flex items-center gap-1 text-xs text-[var(--ink-3)]">
           Öppna veckan
           <span

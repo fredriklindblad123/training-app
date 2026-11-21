@@ -97,7 +97,10 @@ export function TodaySession({
   done,
   href,
   labSet = null,
+  compact = false,
 }: {
+  /** Utan varvlistan — Idag visar bara sammanfattningen. */
+  compact?: boolean;
   planned: TodayPlanned[];
   done: TodayDone[];
   /** Uppmätt zonuppsättning, se lib/zone-sources.ts. */
@@ -106,18 +109,13 @@ export function TodaySession({
   href: string;
 }) {
   const empty = planned.length === 0 && done.length === 0;
-  /* Kortets kulör: det planerade passets typ i första hand, annars det
-     genomförda. Vila, test och häck saknar kategorifärg och ger null, vilket
-     lämnar kortet i den vanliga ytan — en vilodag ska inte skrika. */
-  const accent = dayAccent(planned, done);
-
   return (
     /* Rubriken står UTANFÖR kortet, som i sektionerna nedanför (flyttad
        2026-09-15). Den låg tidigare inuti, vilket gav sidan två sorters
        rubriker: en fristående ovanför ett rutnät och en inbakad i en ruta.
        Samma sektionsskal som Status och nyckeltalen redan använder. */
     <section className="flex flex-col gap-3">
-      <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+      <h2 className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">
         Dagens pass
       </h2>
 
@@ -129,23 +127,9 @@ export function TodaySession({
           stället för att lysa. */}
       <Link
         href={href}
-        className="relative flex flex-col gap-3 overflow-hidden rounded-lg border p-4 transition-colors"
-        style={{
-          borderColor: accent
-            ? `color-mix(in oklab, ${accent} 55%, var(--line))`
-            : "var(--line)",
-          /* Övertoning från hörnet, inte en jämn tonplatta.
-             Först låg färgen på tio procents inblandning, vilket knappt
-             syntes — kortet såg ut som alla andra kort med en färgad ram.
-             Rapporterat mot designförslagets mockup, som har en verklig
-             övertoning. Den startar starkt uppe till vänster där rubriken
-             står och tonar ut mot mitten, så att texten längre ned behåller
-             sin kontrast mot en nästan vanlig yta. */
-          backgroundImage: accent
-            ? `radial-gradient(125% 135% at 0% 0%, color-mix(in oklab, ${accent} 42%, var(--surface)), color-mix(in oklab, ${accent} 6%, var(--surface)) 62%)`
-            : undefined,
-          backgroundColor: "var(--surface)",
-        }}
+        /* Platt kort sedan 2026-11-21 (ny UX): passtypen bärs av en prick
+           vid rubriken, inte av en färgad toning över kortet. */
+        className="relative flex flex-col gap-3 overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--ink-3)]"
       >
         {/* Tomt läge sägs rakt ut. En vilodag är ett giltigt svar på "vad ska
             jag göra idag", och ska inte se ut som att något saknas. */}
@@ -164,23 +148,22 @@ export function TodaySession({
             /* Typen som rubrik, repetitionerna som det stora talet. "5×1000"
                är vad passet ÄR — det stod tidigare som en grå detaljrad under
                namnet, i samma storlek som allt annat på kortet. */
-            <div key={p.id} className="flex flex-col gap-1">
-              <span className="display text-2xl leading-none font-bold text-[var(--foreground)] uppercase">
-                {label}
-              </span>
-              {/* Repetitionerna i bärnsten och med siffror i fast bredd, som i
-                  mockupen: talet är kortets andra rubrik, inte en
-                  underrubrik, och ska läsas i samma blick som typen. */}
-              {detail && (
-                <span className="tabular text-2xl leading-tight font-bold text-[var(--status-watch)]">
-                  {detail}
+            <div key={p.id} className="flex flex-col gap-1.5">
+              <span className="flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: workoutTypeColorVar(p.workout_type) ?? "var(--ink-3)" }}
+                />
+                <span className="display text-[1.375rem] leading-tight font-bold text-[var(--foreground)]">
+                  {p.title ?? label}
                 </span>
-              )}
-              {p.title && <span className="text-sm text-[var(--ink-2)]">{p.title}</span>}
+              </span>
+              <span className="tabular text-[0.9375rem] text-[var(--ink-2)]">
+                {[p.title ? label : null, detail].filter(Boolean).join(" · ")}
+              </span>
               {comment && (
-                <p className="mt-0.5 border-l-2 border-[var(--line)] pl-2 text-sm leading-snug whitespace-pre-line text-[var(--ink-2)]">
-                  {comment}
-                </p>
+                <p className="line-clamp-3 text-sm leading-snug whitespace-pre-line text-[var(--ink-2)]">{comment}</p>
               )}
               {!detail && !p.title && !comment && (
                 <span className="text-sm text-[var(--ink-3)]">Planerat</span>
@@ -217,7 +200,9 @@ export function TodaySession({
                     (uppvärmning och nerjogg) {formatKm(d.easy.meters)}
                   </p>
                 )}
-                <SessionDetail
+                {/* Varvlistan bor i kalenderns dagvy sedan 2026-11-21: på Idag
+                    tog den halva skärmen, och kortet är en länk dit ändå. */}
+                {!compact && <SessionDetail
                   splits={d.splits}
                   category={d.category}
                   summary={{
@@ -228,7 +213,7 @@ export function TodaySession({
                     labZoneSeconds: d.labZoneSeconds,
                   }}
                   labSet={labSet}
-                />
+                />}
                 {d.review && (
                   <div className="flex flex-col gap-1 border-t border-[var(--line)] pt-2">
                     <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">

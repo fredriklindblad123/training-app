@@ -263,61 +263,9 @@ body {
  *
  * Allt går via color-mix mot befintliga tokens, så mörkt läge följer med av
  * sig självt och inget värde behöver dubbleras per tema. */
-.day-theme {
-  /* Ambient ton bakom hela sidan: stark i överkanten där dagens pass står,
-     helt utslocknad en bit ned. En jämn platta över hela sidan hade läst som
-     att någon bytt bakgrundsfärg; en toning läser som ljus. */
-  background-image: radial-gradient(
-    120% 55% at 50% 0%,
-    color-mix(in oklab, var(--day-accent, transparent) 14%, transparent),
-    transparent 70%
-  );
-}
+/* Dagens färg som toning över sidan och korten togs bort 2026-11-21 (ny
+   UX): mockupen är platt och ljus, och färgen ska bara bära passtyp — en
+   prick vid passet, inte en ton över hela sidan. Klasserna finns kvar så att
+   sidorna som sätter dem inte behöver ändras. */
+.day-theme {}
 
-/* Korten får samma tonade övertoning som dagens pass, fast svagare (begärt
-   2026-09-16). Dagens pass är sidans huvudkort och behåller sin starkare
-   toning; de övriga ska kännas som samma familj utan att konkurrera.
-
-   Övertoningen bygger på TRANSPARENS och inte på inblandning mot ytan, och det
-   är nödvändigt: flera av korten är rutnät vars bakgrund är linjefärgen som
-   lyser igenom ett enpixelsmellanrum och ritar skiljelinjerna. En ogenomskinlig
-   toning hade målat över den bakgrunden och raderat linjerna. Med transparens
-   läggs tonen ovanpå vad som än finns under — yta eller linje. */
-.day-theme :is(.day-surface, .day-grid) {
-  border-color: color-mix(in oklab, var(--day-accent, var(--line)) 22%, var(--line));
-}
-
-/* Toningen läggs på KORTET, och flera av "korten" är i själva verket celler i
-   ett rutnät: behållaren har linjefärg som bakgrund och ett enpixelsmellanrum
-   mellan cellerna ritar skiljelinjerna. Cellerna är ogenomskinliga och hade
-   täckt en toning som låg på behållaren — därför träffar regeln både den
-   ensamma kortytan och cellerna i ett rutnät.
-   Att varje cell får sin egen toning är inte en kompromiss utan det avsedda:
-   var och en av dem ÄR ett kort, och ska se ut som ett.
-
-   Transparens och inte inblandning mot ytan, så att tonen kan läggas ovanpå
-   vilken bakgrund som helst utan att radera den — och så att den hamnar bakom
-   texten i stället för över den. */
-.day-theme .day-surface,
-.day-theme .day-grid > * {
-  background-image: radial-gradient(
-    125% 135% at 0% 0%,
-    color-mix(in oklab, var(--day-accent, transparent) 13%, transparent),
-    transparent 62%
-  );
-}
-
-/* Sektionsrubrikerna får ett litet märke i dagens färg. Det är den billigaste
-   möjliga kopplingen mellan rubrik och tema — ingen extra yta, ingen text som
-   byter färg och tappar kontrast. */
-.day-theme section > h2::before,
-.day-theme section > div > h2::before {
-  content: "";
-  display: inline-block;
-  width: 3px;
-  height: 0.78em;
-  margin-right: 0.5rem;
-  vertical-align: baseline;
-  border-radius: 2px;
-  background: var(--day-accent, var(--line));
-}

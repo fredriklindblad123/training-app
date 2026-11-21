@@ -272,7 +272,7 @@ export default async function AnalysPage({
 
   if (!block) {
     return (
-      <div className="flex flex-1 flex-col gap-6 px-6 py-8">
+      <div className="flex flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
         {header}
         <p className="text-sm text-[var(--ink-3)]">Inga påbörjade block att analysera än.</p>
       </div>
@@ -705,7 +705,7 @@ export default async function AnalysPage({
   const nextBlockFrom = toDateKey(planAddDays(new Date(`${block.end_date}T12:00:00`), 1));
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       {header}
 
       {/* ===== Blockbokslut (C5, 2026-11-21) ===== */}

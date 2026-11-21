@@ -807,7 +807,7 @@ export default async function BlockplanPage() {
    * egna block, och för henne är "hela gruppen" hon själv. */
   if (scoped.role === "coach") {
     return (
-      <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+      <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
         <ScrollToAnchor fromWeek={currentMondayKey()} />
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
@@ -869,7 +869,7 @@ export default async function BlockplanPage() {
 
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       <ScrollToAnchor fromWeek={currentMondayKey()} />
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>

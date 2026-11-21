@@ -31,7 +31,7 @@ export function CollapsibleSection({
 }) {
   return (
     <details
-      className="group rounded-lg border border-[var(--line)] bg-[var(--surface)]"
+      className="group rounded-[14px] border border-[var(--line)] bg-[var(--surface)]"
       open={defaultOpen}
     >
       <summary className="flex cursor-pointer list-none items-start gap-3 p-4">

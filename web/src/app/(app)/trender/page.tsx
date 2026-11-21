@@ -636,7 +636,7 @@ export default async function TrendsPage({
           : `Senaste veckan ${loadRamp.change > 0 ? "+" : ""}${Math.round(loadRamp.change * 100)} % mot veckorna innan, ett jämnt steg.`;
 
   return (
-    <div className="flex flex-1 flex-col gap-8 px-6 py-8">
+    <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
 
       <PageHeader
         title="Form"
