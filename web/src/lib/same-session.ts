@@ -1,4 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
+import { toneOf, type Tone } from "@/lib/diary-themes";
 
 /* "Samma pass igen" — ersättaren för formkurvan (2026-11-20, omgjord
  * 2026-11-21).
@@ -95,6 +96,9 @@ export type SameTime = {
   /** Passets eget namn i Garmin, t.ex. "10x30sek/30sek vila + 3x3min …". */
   title: string | null;
   category: string | null;
+  /** Känslan i dagboken den dagen, ur hennes egen färgmarkering — null när
+   * dagen saknar anteckning. Självskattat. */
+  feel: { tone: Tone | null; good: string | null; bad: string | null } | null;
 };
 export type SameSessionGroup = { key: string; name: string; times: SameTime[] };
 
@@ -187,6 +191,7 @@ export async function fetchSameSessions(
       parts: p.parts,
       title: a.name?.trim() || null,
       category: a.category,
+      feel: null,
       structKey: p.key,
       nameK: nameKey(a.name),
     });
@@ -209,9 +214,39 @@ export async function fetchSameSessions(
   });
 
   const recentFrom = new Date(Date.parse(`${todayKey}T12:00:00Z`) - recentDays * 86_400_000).toISOString().slice(0, 10);
-  return [...groups.entries()]
-    .filter(([, times]) => times.length >= 2 && times[0].date >= recentFrom)
-    .sort((a, b) => b[1][0].date.localeCompare(a[1][0].date))
+  const picked = [...groups.entries()]
+    .filter(([, ts]) => ts.length >= 2 && ts[0].date >= recentFrom)
+    .sort((a2, b2) => b2[1][0].date.localeCompare(a2[1][0].date))
     .slice(0, maxGroups)
     .map(([key, ts]) => ({ key, name: (ts[0] as SameTime & { structKey: string }).structKey, times: ts.slice(0, maxTimes) }));
+
+  // Känslan i dagboken för de visade gångerna (2026-11-21, begärt).
+  const dates = [...new Set(picked.flatMap((g) => g.times.map((t) => t.date)))];
+  if (dates.length > 0) {
+    const { data: diaryRows } = await supabase
+      .from("diary_entries")
+      .select("entry_date, notes_good_chars, notes_bad_chars, notes_good_text, notes_bad_text")
+      .eq("user_id", userId)
+      .in("entry_date", dates);
+    const byDate = new Map(
+      ((diaryRows ?? []) as {
+        entry_date: string;
+        notes_good_chars: number | null;
+        notes_bad_chars: number | null;
+        notes_good_text: string | null;
+        notes_bad_text: string | null;
+      }[]).map((d) => [d.entry_date, d]),
+    );
+    for (const g of picked)
+      for (const t of g.times) {
+        const d = byDate.get(t.date);
+        if (d && (d.notes_good_text || d.notes_bad_text || (d.notes_good_chars ?? 0) + (d.notes_bad_chars ?? 0) > 0))
+          t.feel = {
+            tone: toneOf(d.notes_good_chars, d.notes_bad_chars),
+            good: d.notes_good_text?.trim() || null,
+            bad: d.notes_bad_text?.trim() || null,
+          };
+      }
+  }
+  return picked;
 }
