@@ -372,17 +372,18 @@ export async function DayContent({
        Ändra    alla formulär, infällda
      Statusen är grå: "Genomfört" i grönt var ett betyg (B4). */
   const reviewBySession = new Map(sessionReviews.map((r) => [r.sessionId, r.review]));
+  /* Ingen status vid planen (2026-11-21, begärt): att det genomförda står
+     under planen säger redan att passet blev av. Bara det som INTE syns av
+     sig självt skrivs ut — att passet blev en annan passtyp, eller inte av. */
   const statusText = !plannedWorkout
     ? null
     : hasOutcome
       ? dayPlanMatches.some((m) => m.outcome === "avvikande typ")
-        ? "Blev av, som en annan passtyp"
-        : "Genomfört"
+        ? "Blev av som en annan passtyp än planerat."
+        : null
       : planStatus === "missed"
-        ? "Blev inte av"
-        : planStatus === "today"
-          ? "Idag"
-          : "Planerat";
+        ? "Blev inte av."
+        : null;
   const eyebrow = "display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase";
   const card = "rounded-[14px] border border-[var(--line)] bg-[var(--surface)]";
 
@@ -409,14 +410,7 @@ export async function DayContent({
           <div className={`${card} flex flex-col`}>
             {includePlanned && hasPlan && (
               <div className="flex flex-col gap-2 px-4 py-3.5">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs text-[var(--ink-3)]">Plan</span>
-                  {statusText && (
-                    <span className="rounded-full bg-[var(--surface-raised)] px-2.5 py-0.5 text-xs text-[var(--ink-2)]">
-                      {statusText}
-                    </span>
-                  )}
-                </div>
+                <span className="text-xs text-[var(--ink-3)]">Plan</span>
                 {(plannedWorkouts ?? []).map((p, i) => (
                   <div key={p.id ?? i} className="flex flex-col gap-0.5">
                     <span className="flex items-center gap-2">
@@ -430,6 +424,7 @@ export async function DayContent({
                     )}
                   </div>
                 ))}
+                {statusText && <p className="text-sm text-[var(--ink-2)]">{statusText}</p>}
               </div>
             )}
 

@@ -4,6 +4,7 @@ import { formatDateShort, formatKmSv, formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/ui/Page";
 import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
 import { fetchSameSessions } from "@/lib/same-session";
+import { blockVsPlan, type PlanRow } from "@/lib/block-vs-plan";
 import { SameSessionTable } from "@/components/SameSessionTable";
 import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
@@ -518,6 +519,22 @@ export default async function DashboardPage({
   const bodyMarkers = dailyStatus.markers.filter((m) => m.spec.key !== "sleepHours" && m.spec.key !== "feeling");
   const sameSession = (await fetchSameSessions(supabase, scopedUserId, todayKey, { maxGroups: 1 }))[0] ?? null;
 
+  // Blocket mot planen (lib/block-vs-plan.ts): planerade pass med siffror i
+  // det block som pågår, mot årets pass (allSessions täcker hela året).
+  const block =
+    currentBlockRows && (currentBlockRows.start_date as string) <= todayKey
+      ? { start: currentBlockRows.start_date as string, end: currentBlockRows.end_date as string, name: currentBlockRows.name as string }
+      : null;
+  const { data: blockPlanRows } = block
+    ? await supabase
+        .from("planned_workouts")
+        .select("scheduled_date, workout_type, target_distance_meters, target_duration_seconds")
+        .eq("user_id", scopedUserId)
+        .gte("scheduled_date", block.start)
+        .lte("scheduled_date", block.end)
+    : { data: [] };
+  const vsPlan = block ? blockVsPlan((blockPlanRows ?? []) as PlanRow[], allSessions, block.end, todayKey) : null;
+
   const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}${athleteQuery}`;
 
@@ -696,6 +713,58 @@ export default async function DashboardPage({
           är en bakgrundsfråga — den styr inte vad man gör idag, den färgar hur
           man läser resten. Överst tog den plats från dagens pass, som är det
           man öppnar appen för. */}
+      {vsPlan && block && (
+        <section className="flex flex-col gap-2.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <Eyebrow>Blocket mot planen</Eyebrow>
+            <Link href={`/analys${athleteQuery}`} className="text-sm underline underline-offset-2">
+              Blocket →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[
+              { l: "Distans", done: vsPlan.doneKm, plan: vsPlan.plannedKm, total: vsPlan.blockPlannedKm, fmt: (v: number) => formatNumber(v, 1), unit: "km" },
+              { l: "Träningstid", done: vsPlan.doneMin, plan: vsPlan.plannedMin, total: vsPlan.blockPlannedMin, fmt: (v: number) => formatNumber(v, 0), unit: "min" },
+            ].map((t) => {
+              const diff = t.done - t.plan;
+              const share = t.plan > 0 ? Math.min(1, t.done / t.plan) : 0;
+              return (
+                <div key={t.l} className="flex flex-col gap-1 rounded-[14px] border border-[var(--line)] p-3.5">
+                  <span className="display text-xs font-semibold tracking-[0.06em] text-[var(--ink-3)] uppercase">{t.l}</span>
+                  <span className="display tabular text-[1.5rem] leading-none font-bold text-[var(--foreground)]">
+                    {t.fmt(t.done)} <span className="text-sm font-medium text-[var(--ink-2)]">{t.unit}</span>
+                  </span>
+                  <span className="text-[0.8125rem] text-[var(--ink-3)]">
+                    av {t.fmt(t.plan)} {t.unit} planerat hittills
+                  </span>
+                  <span aria-hidden className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--surface-raised)]">
+                    <span className="block h-full rounded-full bg-[var(--ink-3)]" style={{ width: `${share * 100}%` }} />
+                  </span>
+                  <span className="self-start rounded-full bg-[var(--surface-raised)] px-2 py-0.5 text-[0.8125rem] text-[var(--ink-2)]">
+                    {Math.abs(diff) < (t.unit === "km" ? 0.5 : 5)
+                      ? "som planerat"
+                      : `${diff > 0 ? "+" : "−"}${t.fmt(Math.abs(diff))} ${t.unit} mot planen`}
+                  </span>
+                  <span className="text-[0.8125rem] text-[var(--ink-3)]">
+                    hela blocket: {t.fmt(t.total)} {t.unit}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <HowCalculated>
+            <p>
+              {block.name}, från {formatDateShort(vsPlan.from)} till och med {formatDateShort(vsPlan.to)}
+              {vsPlan.from > block.start
+                ? `. Planen har distans och tid först från ${formatDateShort(vsPlan.from)} — dagarna före räknas inte, eftersom det inte finns något att jämföra med`
+                : ""}
+              . Bara dagar som passerat räknas, och idag först när dagens pass är gjort. Distans är löpning utan
+              alternativträning; tid är hela passet, styrka inte med — samma regler som resten av appen.
+            </p>
+          </HowCalculated>
+        </section>
+      )}
+
       {bodyMarkers.length > 0 && (
         <section className="flex flex-col gap-2.5">
           <Eyebrow>Kroppen · senaste 7 dagarna</Eyebrow>
