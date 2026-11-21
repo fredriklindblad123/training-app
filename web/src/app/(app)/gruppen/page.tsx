@@ -208,6 +208,22 @@ export default async function GruppenPage() {
                   <div className="font-semibold text-[var(--foreground)]">{c.todayLabel}</div>
                 </div>
               </div>
+              <nav aria-label={`${c.athlete.fullName ?? "Löparen"}s sidor`} className="grid grid-cols-4 gap-1.5">
+                {[
+                  { l: "Idag", h: "/dashboard" },
+                  { l: "Kalender", h: "/calendar" },
+                  { l: "Form", h: "/trender" },
+                  { l: "Blocket", h: "/analys" },
+                ].map((x) => (
+                  <Link
+                    key={x.h}
+                    href={`${x.h}?athlete=${c.athlete.id}`}
+                    className="flex min-h-10 items-center justify-center rounded-[10px] bg-[var(--surface-raised)] text-sm text-[var(--foreground)] hover:opacity-80"
+                  >
+                    {x.l}
+                  </Link>
+                ))}
+              </nav>
               {(c.interruption || c.lastDiary) && (
                 <ul className="flex list-disc flex-col gap-1 border-t border-[var(--line)] pt-2.5 pl-4 text-sm text-[var(--ink-2)]">
                   {c.interruption && (

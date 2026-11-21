@@ -12,6 +12,7 @@ import {
   PHASE_LABELS,
   PHASE_COLOR_VARS,
   addDays,
+  workoutTypeColorVar,
   toDateKey,
   type AvailabilityPeriod,
   type PhaseType,
@@ -19,6 +20,7 @@ import {
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
+  trainingSeconds,
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
@@ -34,6 +36,7 @@ import { typeLabel, unmatchedCompetitions, COMPETED_BADGE_COLOR } from "@/lib/da
 import { athleteBlocks, blockHrefFor } from "@/lib/calendar-block";
 import { isoWeekStart, weekLabel } from "@/lib/stats-utils";
 import { getViewMode } from "@/lib/view-mode";
+import { mentionsStrength } from "@/lib/diary-text";
 
 /* Blocket som kalenderhorisont (begäran 2026-09-21).
  *
@@ -254,7 +257,74 @@ export default async function BlockPage({
       {/* Veckokolumn + sju dagar. Skrollar i egen behållare: åtta kolumner
           får inte plats på en telefon, och sidan i sig ska aldrig skrolla i
           sidled. */}
-      <div className="overflow-x-auto">
+      {/* Mobil (ny UX 2026-11-21): ett kompakt rutnät som ryms på 390 px —
+          en prick per dag i det planerade passets färg, fylld när det blev
+          gjort, ett streck under för sjuk eller skadad, och veckans minuter.
+          Det breda rutnätet med text i varje cell finns kvar från sm och uppåt. */}
+      <section className="flex flex-col gap-1.5 sm:hidden">
+        <div className="grid grid-cols-[34px_repeat(7,minmax(0,1fr))_52px] gap-1 text-center text-xs text-[var(--ink-3)]">
+          <span />
+          {SV_WEEKDAYS_SHORT.map((wd) => (
+            <span key={wd}>{wd.slice(0, 1)}</span>
+          ))}
+          <span className="text-right">min</span>
+        </div>
+        {weeks.map((monday) => {
+          const days = Array.from({ length: 7 }, (_, i) => toDateKey(addDays(new Date(`${monday}T00:00:00`), i)));
+          const current = todayKey >= days[0] && todayKey <= days[6];
+          const minutes = days.reduce(
+            (sum, d) => sum + (sessionsByDay.get(d) ?? []).reduce((m, x) => m + trainingSeconds(x), 0) / 60,
+            0,
+          );
+          return (
+            <Link
+              key={monday}
+              href={`/calendar/vecka/${monday}${athleteQuery}`}
+              className={`grid grid-cols-[34px_repeat(7,minmax(0,1fr))_52px] items-center gap-1 rounded-lg py-1 ${current ? "bg-[var(--surface-raised)]" : ""}`}
+            >
+              <span className="pl-0.5 text-xs text-[var(--ink-2)]">{weekLabel(monday).replace(/^V\./i, "v")}</span>
+              {days.map((d) => {
+                const outside = d < start || d > end;
+                const planned = (plannedByDay.get(d) ?? []).find((p) => p.workout_type !== "rest");
+                const done =
+                  (sessionsByDay.get(d) ?? []).length > 0 ||
+                  (planned?.workout_type === "strength" && mentionsStrength(diaryLogByDay.get(d) ?? null));
+                const color = planned ? (workoutTypeColorVar(planned.workout_type) ?? "var(--ink-3)") : done ? "var(--ink-3)" : "var(--line)";
+                const status = diaryByDay.get(d);
+                return (
+                  <span key={d} className="flex flex-col items-center gap-0.5" style={{ opacity: outside ? 0.25 : 1 }}>
+                    <span
+                      className="h-[22px] w-[22px] rounded-full"
+                      style={{ border: `2px solid ${color}`, backgroundColor: done ? color : "transparent" }}
+                    />
+                    <span
+                      className="h-[3px] w-4 rounded"
+                      style={{
+                        backgroundColor:
+                          status === "injured" ? "var(--day-injured)" : status === "sick" ? "var(--day-sick)" : "transparent",
+                      }}
+                    />
+                  </span>
+                );
+              })}
+              <span className={`tabular text-right text-[0.8125rem] ${current ? "font-bold text-[var(--foreground)]" : "text-[var(--ink-2)]"}`}>
+                {days[0] > todayKey ? "" : Math.round(minutes)}
+              </span>
+            </Link>
+          );
+        })}
+        <div className="flex flex-wrap gap-x-3.5 gap-y-1.5 pt-1.5 text-[0.8125rem] text-[var(--ink-2)]">
+          <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded-full bg-[var(--cat-easy)]" />Gjort</span>
+          <span className="flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded-full border-2 border-[var(--cat-easy)]" />Planerat</span>
+          <span className="flex items-center gap-1.5"><span className="h-[3px] w-4 rounded bg-[var(--day-injured)]" />Skadad</span>
+          <span className="flex items-center gap-1.5"><span className="h-[3px] w-4 rounded bg-[var(--day-sick)]" />Sjuk</span>
+        </div>
+        <p className="text-[0.8125rem] text-[var(--ink-3)]">
+          Färgen är det planerade passet. Fyllt betyder att det blev gjort. Tryck på en vecka för att öppna den.
+        </p>
+      </section>
+
+      <div className="hidden overflow-x-auto sm:block">
         <div className="grid min-w-3xl grid-cols-[3.5rem_repeat(7,minmax(0,1fr))] gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] text-xs">
           <div className="bg-[var(--surface-raised)] px-2 py-1 text-center font-medium text-[var(--ink-3)]">
             Vecka

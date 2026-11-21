@@ -1,11 +1,11 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
-import { PageHeader, Section } from "@/components/ui/Page";
+import { PageHeader } from "@/components/ui/Page";
 import { Segmented } from "@/components/ui/Segmented";
-import { HowCalculated } from "@/components/ui/Explain";
+import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
 import { DataTable } from "@/components/ui/DataTable";
 import { fetchSameSessions, SAME_MIN_REPS } from "@/lib/same-session";
-import { formatDateShort, formatPace } from "@/lib/format";
+import { formatDateShort, formatNumber, formatPace } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
@@ -23,6 +23,7 @@ import {
   EMPTY_THRESHOLD_PROFILE,
   PHASE_INTENSITY_MODEL,
   addZoneSeconds,
+  bandsFromZones,
   emptyZoneSeconds,
   type ThresholdProfile,
   type ZoneSeconds,
@@ -635,6 +636,16 @@ export default async function TrendsPage({
           ? `Senaste veckan ${Math.round(loadRamp.change * 100)} % mot veckorna innan — en lugnare vecka.`
           : `Senaste veckan ${loadRamp.change > 0 ? "+" : ""}${Math.round(loadRamp.change * 100)} % mot veckorna innan, ett jämnt steg.`;
 
+  // Fördelningen i perioden, ur samma veckor som intensitetsdiagrammet.
+  const distribution = (() => {
+    const z = emptyZoneSeconds();
+    for (const w of labIntensityWeeks ?? intensityWeeks) addZoneSeconds(z, w.zoneSeconds);
+    const b = bandsFromZones(z);
+    const total = b.easy + b.middle + b.threshold;
+    if (total <= 0) return null;
+    return { easy: (b.easy / total) * 100, middle: (b.middle / total) * 100, threshold: (b.threshold / total) * 100 };
+  })();
+
   return (
     <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
 
@@ -703,97 +714,16 @@ export default async function TrendsPage({
       )}
 
 
-      {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet =====
-          Sektionen visas ALLTID. Laktatkurvan och förklaringen av de tre
-          formerna är kunskap, inte mätning — den som inte kopplat en klocka
-          eller fyllt i trösklar ska ändå kunna läsa hur medeldistansträning
-          hänger ihop. Diagrammet med eget utfall tillkommer när det finns
-          underlag. */}
-      <CollapsibleSection
-        title="Träningens tre växlar"
-        /* Sektionen undervisar — den analyserar inte adeptens träning. Det
-           gör Distans, Tröskel och Intervall nedanför (begäran 2026-10-08). */
-        meta="Distans, tröskel och intervall — vad de gör och varför"
-        headline={
-          <span className="text-sm text-[var(--ink-2)]">
-            Så hänger träningsformerna ihop med laktatet och dina trösklar.
-          </span>
-        }
-      >
-        {/* Ramen först: vyn ska läsas som vägledning, inte som facit. */}
-        <FormIntro
-          lt1={thresholdProfile.lt1Hr}
-          lt2={thresholdProfile.lt2Hr}
-          lt2Source={(profileRow?.lt2_source as string | null) ?? null}
-          lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
-          hasGarminData={sessions.length > 0}
-        />
-
-        <LactateCurve lt1={gears?.lt1 ?? null} lt2={gears?.lt2 ?? null} />
-
-        {/* Kurvan ovanför är principen; det här är de egna mätningarna.
-            Tröskelvärdena i profilen är självskattade tills ett riktigt test
-            finns, och det här är ytan där de kan bli mätta i stället.
-            Begäran 2026-09-26. */}
-        <CollapsibleSection
-          title="Dina laktatvärden"
-          headline={
-            <span className="text-sm text-[var(--ink-2)]">
-              {lactateReadings.length > 0
-                ? `${lactateReadings.length} loggade stick`
-                : "Inga loggade än"}
-            </span>
-          }
-        >
-          <LactateHistory readings={lactateReadings} lt2Hr={profileRow?.lt2_hr ?? null} />
-        </CollapsibleSection>
-
-        {gears && <TrainingGears data={gears} />}
-
-          {/* Intensitetsfördelningen svarar på samma fråga som diagrammet
-              ovan, fast ur pulszoner i stället för ur dina egna trösklar.
-              Med en uppmätt zonuppsättning (lib/zone-sources.ts) räknas den
-              mot laktattestets zoner; utan en finns bara Garmins zonhinkar. Den ligger nedfälld intill sin bättre informerade
-              granne — inte som en andra sanning längre ner. */}
-          <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-            <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
-              {labIntensityWeeks && labZoneSet
-                ? `Samma fråga ur pulszonerna från ${labSourceName(labZoneSet).toLowerCase()}`
-                : "Samma fråga ur Garmins pulszoner"}
-            </summary>
-            <div className="flex flex-col gap-3 border-t border-[var(--line)] p-4">
-      <section className="flex flex-col gap-3">
-        <div>
-          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h3>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
-            {labIntensityWeeks
-              ? zoneSourceTotals.sessionsWithLab
-              : sessionsWithZoneData}{" "}
-            av {sessions.length} pass i perioden har zondata.
-            Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
-          </p>
-        </div>
-
-        <IntensityChart
-          weeks={intensityWeeks}
-          labWeeks={labIntensityWeeks}
-          labSet={labIntensityWeeks ? labZoneSet : null}
-          labCoverage={labCoverage}
-          defaultModelId={
-            activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
-          }
-          profile={thresholdProfile}
-          emptyLabel="Ingen pulszondata i perioden."
-        />
-      </section>
-
-          </div>
-        </details>
-      </CollapsibleSection>
-
+      {/* ===== Läget · tre växlar (ny UX 2026-11-21) =====
+          Ett kort, en rad per växel med medianpulsen till höger. Raden fälls
+          ut till diagrammet med ett märke per pass. */}
+      <section className="flex flex-col gap-2.5">
+        <Eyebrow>Läget · tre växlar</Eyebrow>
+        <div className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)]">
       {/* ===== Växel 1 ===== */}
       <CollapsibleSection
+        variant="row"
+        value={gearByKey.get("distans")?.actual?.median != null ? Math.round(gearByKey.get("distans")!.actual!.median) : undefined}
         title="Distans"
         accent={GEAR_COLOR_VAR.distans}
         meta={GEAR_PURPOSE.distans}
@@ -811,6 +741,8 @@ export default async function TrendsPage({
 
       {/* ===== Växel 2 ===== */}
       <CollapsibleSection
+        variant="row"
+        value={gearByKey.get("troskel")?.actual?.median != null ? Math.round(gearByKey.get("troskel")!.actual!.median) : undefined}
         title="Tröskel"
         accent={GEAR_COLOR_VAR.troskel}
         meta={GEAR_PURPOSE.troskel}
@@ -865,6 +797,8 @@ export default async function TrendsPage({
 
       {/* ===== Växel 3 ===== */}
       <CollapsibleSection
+        variant="row"
+        value={gearByKey.get("intervall")?.actual?.median != null ? Math.round(gearByKey.get("intervall")!.actual!.median) : undefined}
         title="Intervall"
         accent={GEAR_COLOR_VAR.intervall}
         meta={GEAR_PURPOSE.intervall}
@@ -897,14 +831,86 @@ export default async function TrendsPage({
         </div>
       </CollapsibleSection>
 
+        </div>
+        <HowCalculated>
+          <p>
+            Distans: snittpulsen per pass, distans- och långpass på minst 20 minuter. Tröskel och intervall:
+            pulsen vid slutet av varje rep. Uppvärmning och nerjogg räknas bort. Banden kommer från dina
+            trösklar.
+          </p>
+        </HowCalculated>
+      </section>
+
+      {/* ===== Fördelning ===== */}
+      {distribution && (
+        <section className="flex flex-col gap-2.5">
+          <Eyebrow>Fördelning · {activeBlock ? activeBlock.name : `senaste ${weeks} veckorna`}</Eyebrow>
+          <div className="flex flex-col gap-2.5 rounded-[14px] border border-[var(--line)] p-3.5">
+            <div className="flex h-3.5 gap-0.5 overflow-hidden rounded" role="img" aria-label={`Lugnt ${distribution.easy} procent, mitten ${distribution.middle} procent, tröskel och över ${distribution.threshold} procent`}>
+              <span style={{ flex: distribution.easy, backgroundColor: "var(--zone-2)" }} />
+              <span style={{ flex: distribution.middle, backgroundColor: "var(--ink-3)" }} />
+              <span style={{ flex: distribution.threshold, backgroundColor: "var(--zone-5)" }} />
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-sm">
+              <div><div className="font-semibold text-[var(--foreground)]">{formatNumber(distribution.easy, distribution.easy < 10 ? 1 : 0)} %</div><div className="text-[var(--ink-2)]">Lugnt</div></div>
+              <div><div className="font-semibold text-[var(--foreground)]">{formatNumber(distribution.middle, distribution.middle < 10 ? 1 : 0)} %</div><div className="text-[var(--ink-2)]">Mitten</div></div>
+              <div><div className="font-semibold text-[var(--foreground)]">{formatNumber(distribution.threshold, distribution.threshold < 10 ? 1 : 0)} %</div><div className="text-[var(--ink-2)]">Tröskel och över</div></div>
+            </div>
+          </div>
+          <HowCalculated summary="Veckorna och jämförelse mot modell">
+          {/* Intensitetsfördelningen svarar på samma fråga som diagrammet
+              ovan, fast ur pulszoner i stället för ur dina egna trösklar.
+              Med en uppmätt zonuppsättning (lib/zone-sources.ts) räknas den
+              mot laktattestets zoner; utan en finns bara Garmins zonhinkar. Den ligger nedfälld intill sin bättre informerade
+              granne — inte som en andra sanning längre ner. */}
+          <details className="rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+            <summary className="cursor-pointer p-4 text-sm text-[var(--ink-2)]">
+              {labIntensityWeeks && labZoneSet
+                ? `Samma fråga ur pulszonerna från ${labSourceName(labZoneSet).toLowerCase()}`
+                : "Samma fråga ur Garmins pulszoner"}
+            </summary>
+            <div className="flex flex-col gap-3 border-t border-[var(--line)] p-4">
+      <section className="flex flex-col gap-3">
+        <div>
+          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">Intensitetsfördelning</h3>
+          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
+            Andel av veckans pulstid per zon, summerad över passets alla fragment.{" "}
+            {labIntensityWeeks
+              ? zoneSourceTotals.sessionsWithLab
+              : sessionsWithZoneData}{" "}
+            av {sessions.length} pass i perioden har zondata.
+            Medeldistansträning handlar mindre om hur mycket och mer om fördelningen.
+          </p>
+        </div>
+
+        <IntensityChart
+          weeks={intensityWeeks}
+          labWeeks={labIntensityWeeks}
+          labSet={labIntensityWeeks ? labZoneSet : null}
+          labCoverage={labCoverage}
+          defaultModelId={
+            activeBlock ? PHASE_INTENSITY_MODEL[activeBlock.phase] : undefined
+          }
+          profile={thresholdProfile}
+          emptyLabel="Ingen pulszondata i perioden."
+        />
+      </section>
+
+          </div>
+        </details>
+          </HowCalculated>
+        </section>
+      )}
+
       {/* ===== Samma pass igen (2026-11-21) =====
           Ersätter formkurvan som formjämförelse. Se lib/same-session.ts för
           varför det inte är en trendlinje. */}
       {sameSessions.length > 0 && (
-        <Section
-          title="Samma pass igen"
-          description="Pass med samma upplägg, varje gång det körts. Fart och slutpuls står bredvid varandra — har båda ändrats är det vald intensitet, inte form."
-        >
+        <section className="flex flex-col gap-2.5">
+          <Eyebrow>Samma pass igen</Eyebrow>
+          <p className="-mt-1 text-sm text-[var(--ink-2)]">
+            Fart och slutpuls bredvid varandra — har båda ändrats är det vald intensitet, inte form.
+          </p>
           {sameSessions.map((g) => (
             <div key={g.key} className="flex flex-col gap-1.5 rounded-[14px] border border-[var(--line)] p-3.5">
               <span className="font-semibold text-[var(--foreground)]">{g.name}</span>
@@ -936,15 +942,59 @@ export default async function TrendsPage({
               och skillnaden mellan perioder var mindre än skillnaden mellan enskilda pass.
             </p>
           </HowCalculated>
-        </Section>
+        </section>
       )}
 
       {/* Det senaste laktattestet, ritat som i testrapporten. Hela testet,
           oavsett vald period — samma skäl som laktatstickens historik:
           ett test tas ett par gånger per säsong. Begäran 2026-09-29. */}
+      {/* Laktattestet som två rutor (ny UX); kurvan och alla stick ligger
+          kvar i kortet under. */}
+      {labZoneSet && (labZoneSet.lt1Hr != null || labZoneSet.lt2Hr != null) && (
+        <section className="flex flex-col gap-2.5">
+          <Eyebrow>Laktattest · {formatDateShort(labZoneSet.validFrom)} {labZoneSet.validFrom.slice(0, 4)}</Eyebrow>
+          <div className="grid grid-cols-2 gap-2.5">
+            {[
+              { l: "Aerob tröskel", hr: labZoneSet.lt1Hr, kmh: labZoneSet.lt1SpeedKmh },
+              { l: "Anaerob tröskel", hr: labZoneSet.lt2Hr, kmh: labZoneSet.lt2SpeedKmh },
+            ].map((t) => (
+              <div key={t.l} className="rounded-[14px] border border-[var(--line)] p-3.5">
+                <div className="display text-xs font-semibold tracking-[0.06em] text-[var(--ink-3)] uppercase">{t.l}</div>
+                <div className="display tabular text-[1.625rem] font-bold text-[var(--foreground)]">
+                  {t.hr ?? "–"} <span className="text-sm font-medium text-[var(--ink-2)]">slag/min</span>
+                </div>
+                {t.kmh != null && (
+                  <div className="text-[0.8125rem] text-[var(--ink-3)]">
+                    {formatPace(3600 / t.kmh).replace(" /km", "/km")} · {formatNumber(t.kmh, 1)} km/h
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       {labZoneSet && labTestSteps.length > 1 && (
         <LactateTestSection set={labZoneSet} steps={labTestSteps} />
       )}
+
+      {/* Kontinuitet och syreupptag som två rutor (ny UX). */}
+      <section className="flex flex-col gap-2.5">
+        <Eyebrow>Kontinuitet och syreupptag</Eyebrow>
+        <div className="grid grid-cols-2 gap-2.5">
+          <div className="rounded-[14px] border border-[var(--line)] p-3.5">
+            <div className="display text-xs font-semibold tracking-[0.06em] text-[var(--ink-3)] uppercase">Steg mot veckorna innan</div>
+            <div className="display tabular text-[1.625rem] font-bold text-[var(--foreground)]">
+              {loadRamp ? `${loadRamp.change >= 0 ? "+" : "−"}${Math.abs(Math.round(loadRamp.change * 100))} %` : "–"}
+            </div>
+            <div className="text-[0.8125rem] text-[var(--ink-3)]">belastning, senaste veckan</div>
+          </div>
+          <div className="rounded-[14px] border border-[var(--line)] p-3.5">
+            <div className="display text-xs font-semibold tracking-[0.06em] text-[var(--ink-3)] uppercase">Syreupptag</div>
+            <div className="display tabular text-[1.625rem] font-bold text-[var(--foreground)]">{vo2max ? Math.round(vo2max.current) : "–"}</div>
+            <div className="text-[0.8125rem] text-[var(--ink-3)]">Garmins skattning, inte en mätning</div>
+          </div>
+        </div>
+      </section>
 
       {/* ===== Utfallen: blir motorn större? ===== */}
       {/* Formkurvan (meter per hjärtslag) togs bort 2026-11-21: samma mått
@@ -976,6 +1026,56 @@ export default async function TrendsPage({
           />
         )}
       </LoadStrip>
+
+      {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet =====
+          Sektionen visas ALLTID. Laktatkurvan och förklaringen av de tre
+          formerna är kunskap, inte mätning — den som inte kopplat en klocka
+          eller fyllt i trösklar ska ändå kunna läsa hur medeldistansträning
+          hänger ihop. Diagrammet med eget utfall tillkommer när det finns
+          underlag. */}
+      <CollapsibleSection
+        title="Om de tre växlarna"
+        /* Sektionen undervisar — den analyserar inte adeptens träning. Det
+           gör Distans, Tröskel och Intervall nedanför (begäran 2026-10-08). */
+        meta="Distans, tröskel och intervall — vad de gör och varför"
+        headline={
+          <span className="text-sm text-[var(--ink-2)]">
+            Så hänger träningsformerna ihop med laktatet och dina trösklar.
+          </span>
+        }
+      >
+        {/* Ramen först: vyn ska läsas som vägledning, inte som facit. */}
+        <FormIntro
+          lt1={thresholdProfile.lt1Hr}
+          lt2={thresholdProfile.lt2Hr}
+          lt2Source={(profileRow?.lt2_source as string | null) ?? null}
+          lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
+          hasGarminData={sessions.length > 0}
+        />
+
+        <LactateCurve lt1={gears?.lt1 ?? null} lt2={gears?.lt2 ?? null} />
+
+        {/* Kurvan ovanför är principen; det här är de egna mätningarna.
+            Tröskelvärdena i profilen är självskattade tills ett riktigt test
+            finns, och det här är ytan där de kan bli mätta i stället.
+            Begäran 2026-09-26. */}
+        <CollapsibleSection
+          title="Dina laktatvärden"
+          headline={
+            <span className="text-sm text-[var(--ink-2)]">
+              {lactateReadings.length > 0
+                ? `${lactateReadings.length} loggade stick`
+                : "Inga loggade än"}
+            </span>
+          }
+        >
+          <LactateHistory readings={lactateReadings} lt2Hr={profileRow?.lt2_hr ?? null} />
+        </CollapsibleSection>
+
+        {gears && <TrainingGears data={gears} />}
+
+      </CollapsibleSection>
+
 
       {/* L5 (docs/tranarloopen.md): loopens utgång. Sidan slutar med nästa
           steg, inte med sista diagrammet — det är det som gör sidorna till en

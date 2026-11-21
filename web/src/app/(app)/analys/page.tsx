@@ -219,9 +219,10 @@ export default async function AnalysPage({
     kc?: string;
     kb?: string;
     kt?: string;
+    missade?: string;
   }>;
 }) {
-  const { block: blockParam, athlete: athleteParam, typer, visa, graf: grafParam, mot: motParam, vy: vyParam, jmf, tema, tematyp, kc, kb, kt } =
+  const { block: blockParam, athlete: athleteParam, typer, visa, graf: grafParam, mot: motParam, vy: vyParam, jmf, tema, tematyp, kc, kb, kt, missade } =
     await searchParams;
   // Hittills-rutorna: summa för blocket eller snitt per vecka.
   const perWeek = visa === "vecka";
@@ -610,6 +611,18 @@ export default async function AnalysPage({
   const cutoffRaw = ongoing ? passedCutoff(today, trainedToday) : block.end_date;
   const cutoff = cutoffRaw > block.end_date ? block.end_date : cutoffRaw;
   const missed = missedPasses(planned, sessions, diaryStrength, block.start_date, cutoff);
+  // Sammanfattningen ovanför listan (ny UX): hur många, och hur många av
+  // dem som låg på sjuk- eller skaddagar — det är det som avgör hur listan
+  // ska läsas.
+  const missedOnInjured = missed.filter((m) => interruptionOn.get(m.planned.scheduled_date) === "injured").length;
+  const missedOnSick = missed.filter((m) => interruptionOn.get(m.planned.scheduled_date) === "sick").length;
+  const missedReplaced = missed.filter((m) => m.doneThatDay.length > 0).length;
+  const missedSummary = `${missed.length} planerade pass blev något annat eller inte av. ${
+    missedReplaced > 0 ? `${missedReplaced} av dem blev ett annat pass samma dag. ` : ""
+  }${missedOnInjured > 0 ? `${missedOnInjured} låg på dagar med skada noterad` : ""}${
+    missedOnInjured > 0 && missedOnSick > 0 ? " och " : ""
+  }${missedOnSick > 0 ? `${missedOnSick} på sjukdagar` : ""}${missedOnInjured + missedOnSick > 0 ? "." : ""}`.trim();
+  const showAllMissed = missade === "alla";
 
   // --- Ur dagboken (lib/diary-themes.ts) -----------------------------------
   // Samma fönster som resten av sidan: blocket fram till idag, och
@@ -1044,21 +1057,23 @@ export default async function AnalysPage({
       </section>
 
       {hasPlan && (
-        <section className="flex flex-col gap-3">
+        <section id="missade" className="flex scroll-mt-4 flex-col gap-3">
           <div>
             <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-              Planerat som inte blev av
+              Planerat som blev annat
             </h2>
-            <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-              Planerade pass utan ett pass av samma slag samma dag. Ett pass som flyttats till en annan
-              dag står också här. Tryck för att öppna dagen.
-            </p>
           </div>
+          {missed.length > 0 && (
+            <Observations
+              items={[missedSummary]}
+              source="Ur planen, klockan och dagboken · sjuk och skadad är självskattat"
+            />
+          )}
           {missed.length === 0 ? (
             <p className="text-sm text-[var(--ink-3)]">Alla planerade pass hittills blev av.</p>
           ) : (
-            <ul className="flex flex-col divide-y divide-[var(--line)] rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-              {missed.map(({ planned: p, doneThatDay }) => {
+            <ul className="flex flex-col divide-y divide-[var(--line)] overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)]">
+              {(showAllMissed ? missed : missed.slice(-4).reverse()).map(({ planned: p, doneThatDay }) => {
                 const t = interruptionOn.get(p.scheduled_date);
                 return (
                   <li key={p.id}>
@@ -1098,6 +1113,11 @@ export default async function AnalysPage({
                 );
               })}
             </ul>
+          )}
+          {missed.length > 4 && (
+            <Link href={`${href({})}${showAllMissed ? "" : "&missade=alla"}#missade`} scroll={false} className="text-sm underline underline-offset-2">
+              {showAllMissed ? "Visa bara de senaste" : `Visa alla ${missed.length} →`}
+            </Link>
           )}
         </section>
       )}
