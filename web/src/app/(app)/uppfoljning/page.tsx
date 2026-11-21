@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Segmented } from "@/components/ui/Segmented";
+import { SegmentedSmall } from "@/components/ui/Segmented";
+import { formatDateShort, formatNumber } from "@/lib/format";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -39,7 +40,6 @@ import {
   workoutTypeColorVar,
   type WorkoutType,
 } from "@/lib/planning";
-import { buttonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
 import { strengthDatesFromDiary } from "@/lib/diary-strength";
 
@@ -291,6 +291,30 @@ export default async function UppfoljningPage({
           };
         });
 
+  /* Löpare utan kopplad klocka (inga aktiviteter alls) visas som "ingen
+     klocka", inte som 0 km och 0 min — det är en frånvaro av data, inte av
+     träning (B2, tomt läge). */
+  const watchCounts = await Promise.all(
+    athletes.map((a) =>
+      supabase.from("activities").select("id", { count: "exact", head: true }).eq("user_id", a.id),
+    ),
+  );
+  const withWatch = new Set(athletes.filter((_, i) => (watchCounts[i].count ?? 0) > 0).map((a) => a.id));
+
+  /* Planerad distans visas bara när planen har distans för nästan hela
+     perioden (minst 80 % av löppassen). Alices höstblock har siffror först
+     från 16/11 — "406,7 km / plan 332,5" jämförde hela blocket med en plan
+     för fem veckor. */
+  const planKmCoverage = new Map<string, boolean>(
+    athletes.map((a) => {
+      const runs = ((plannedRows ?? []) as PlannedRow[]).filter(
+        (p) => p.user_id === a.id && !["rest", "strength", "cross_training"].includes(p.workout_type),
+      );
+      const withKm = runs.filter((p) => (p.target_distance_meters ?? 0) > 0).length;
+      return [a.id, runs.length > 0 && withKm / runs.length >= 0.8];
+    }),
+  );
+
   /** Bygger en länk som byter EN sak och behåller resten — samma
    * URL-param-mönster som /sasongsoversikt och /tavlingsresultat redan använder. */
   function href(next: { period?: PeriodKind; datum?: string; block?: string }): string {
@@ -313,53 +337,49 @@ export default async function UppfoljningPage({
         </p>
       </div>
 
-      {/* Granularitet */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="w-full">
-          <Segmented
-            label="Period"
-            options={PERIOD_KINDS.map((k) => ({ key: k, label: PERIOD_LABELS[k], href: href({ period: k }), active: kind === k }))}
-          />
-        </div>
-
-        {/* Periodnavigering. Datumperioder är oändliga åt båda håll; block
-            tar slut, och då döljs pilen hellre än att visas död. */}
+      {/* Perioden i en ruta (2026-11-21): pilarna på var sin sida om det de
+          bläddrar i, och vilken sorts period som en liten väljare under —
+          förut en fullbred knapprad, pilar långt från perioden och samma
+          datum två gånger. */}
+      <div className="flex flex-col gap-2.5 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-2.5">
         {period && (
-          <div className="flex items-center gap-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
             {period.prevAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.prevAnchor }) : href({ datum: period.prevAnchor })}
-                className={buttonClass}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-lg text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
                 aria-label="Föregående period"
               >
-                ←
+                ‹
               </Link>
             ) : (
-              <span className="px-2 py-1 text-[var(--ink-3)]" aria-hidden>
-                ←
-              </span>
+              <span className="h-10 w-10 shrink-0" aria-hidden />
             )}
-            <span className="min-w-48 text-center font-medium text-[var(--foreground)]">
-              {period.label}
+            <span className="flex min-w-0 flex-col items-center text-center">
+              <span className="truncate font-semibold text-[var(--foreground)]">{period.label}</span>
+              <span className="tabular text-xs text-[var(--ink-3)]">
+                {formatDateShort(period.startDate)}–{formatDateShort(period.endDate)} {period.endDate.slice(0, 4)}
+              </span>
             </span>
             {period.nextAnchor ? (
               <Link
                 href={kind === "block" ? href({ block: period.nextAnchor }) : href({ datum: period.nextAnchor })}
-                className={buttonClass}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-lg text-[var(--foreground)] hover:bg-[var(--surface-raised)]"
                 aria-label="Nästa period"
               >
-                →
+                ›
               </Link>
             ) : (
-              <span className="px-2 py-1 text-[var(--ink-3)]" aria-hidden>
-                →
-              </span>
+              <span className="h-10 w-10 shrink-0" aria-hidden />
             )}
-            <span className="text-xs text-[var(--ink-3)]">
-              {period.startDate} – {period.endDate}
-            </span>
           </div>
         )}
+        <div className="flex justify-center">
+          <SegmentedSmall
+            label="Period"
+            options={PERIOD_KINDS.map((k) => ({ key: k, label: PERIOD_LABELS[k], href: href({ period: k }), active: kind === k }))}
+          />
+        </div>
       </div>
 
       {kind === "block" && period == null && (
@@ -417,7 +437,7 @@ export default async function UppfoljningPage({
             <StatCell>
               <Stat
                 label="Distans"
-                value={rows.reduce((n, r) => n + r.stats.actualKm, 0).toFixed(1)}
+                value={formatNumber(rows.reduce((n, r) => n + r.stats.actualKm, 0), 1)}
                 unit="km"
                 sub="genomfört"
               />
@@ -469,32 +489,42 @@ export default async function UppfoljningPage({
                           rött för vad någon gjort eller inte gjort hör inte
                           hemma i appen (docs/tranarloopen.md 6). */}
                       <td data-label="Efterlevnad" className={FOLLOW_UP_CELL}>
-                        {doneOf(
+                        {!withWatch.has(athlete.id) ? <span className="text-[var(--ink-3)]">ingen klocka</span> : doneOf(
                           stats.qualityDone + stats.distanceDone + stats.strengthDone,
                           stats.qualityDue + stats.distanceDue + stats.strengthDue,
                         )}
                       </td>
                       <td data-label="Kvalitet" className={FOLLOW_UP_CELL}>
-                        {doneOf(stats.qualityDone, stats.qualityDue)}
+                        {!withWatch.has(athlete.id) ? <span className="text-[var(--ink-3)]">–</span> : doneOf(stats.qualityDone, stats.qualityDue)}
                       </td>
                       <td data-label="Distanspass" className={FOLLOW_UP_CELL}>
-                        {doneOf(stats.distanceDone, stats.distanceDue)}
+                        {!withWatch.has(athlete.id) ? <span className="text-[var(--ink-3)]">–</span> : doneOf(stats.distanceDone, stats.distanceDue)}
                       </td>
                       <td data-label="Styrka" className={FOLLOW_UP_CELL}>
-                        {doneOf(stats.strengthDone, stats.strengthDue)}
+                        {!withWatch.has(athlete.id) ? <span className="text-[var(--ink-3)]">–</span> : doneOf(stats.strengthDone, stats.strengthDue)}
                       </td>
                       <td data-label="Distans" className={FOLLOW_UP_CELL}>
-                        {stats.actualKm.toFixed(1)} km
-                        {stats.plannedKm != null && (
-                          <span className="text-xs text-[var(--ink-3)]">
-                            {" "}
-                            / plan {stats.plannedKm.toFixed(1)}
-                          </span>
+                        {withWatch.has(athlete.id) ? (
+                          <>
+                            {formatNumber(stats.actualKm, 1)} km
+                            {stats.plannedKm != null && planKmCoverage.get(athlete.id) === true && (
+                              <span className="text-xs text-[var(--ink-3)]">
+                                {" "}
+                                / plan {formatNumber(stats.plannedKm, 1)}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-[var(--ink-3)]">ingen klocka</span>
                         )}
                       </td>
                       <td data-label="Tid" className={FOLLOW_UP_CELL}>
                         {/* Hela passens tid utan styrka (trainingSeconds). */}
-                        {Math.round(stats.actualMinutes).toLocaleString("sv-SE")} min
+                        {withWatch.has(athlete.id) ? (
+                          `${Math.round(stats.actualMinutes).toLocaleString("sv-SE")} min`
+                        ) : (
+                          <span className="text-[var(--ink-3)]">ingen klocka</span>
+                        )}
                       </td>
                       {/* Genomförda av alla tävlingar i perioden, även kommande:
                           "0/1" är en tävling som ligger framför. */}
