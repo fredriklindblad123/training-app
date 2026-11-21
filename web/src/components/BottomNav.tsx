@@ -36,20 +36,27 @@ import { usePathname, useSearchParams } from "next/navigation";
 
 type Tab = { href: string; label: string; icon: string };
 
+/* Löparens fem vyer (2026-11-21, A3): Alice är den som använder appen mest,
+ * och hennes rad ska bara innehålla det hon själv läser. "Lopp" i stället
+ * för "Resultat": sidan visar nu nästa lopp och personbästa överst, inte
+ * bara en resultatlista. "Blocket" i stället för "Analys": sidan börjar med
+ * blockets bokslut och är blocket i siffror. */
 const LOGG: Tab[] = [
   { href: "/dashboard", label: "Idag", icon: "M4 13h5v7H4zM10 4h4v16h-4zM15 9h5v11h-5z" },
   { href: "/calendar", label: "Kalender", icon: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4" },
   { href: "/trender", label: "Form", icon: "M4 17l5-6 4 4 7-8" },
-  /* "Resultat", inte "Lopp" (2026-09-17). Vyn är dit man går för att fylla i
-   * vad det BLEV — själva loppen läggs upp av tränaren under Tävling. */
-  { href: "/tavlingsresultat", label: "Resultat", icon: "M7 4v16M7 4h10l-2.5 3.5L17 11H7" },
-  /* Blocket i siffror och grafer, mot motsvarande block förra året
-   * (2026-11-13). */
-  { href: "/analys", label: "Analys", icon: "M4 20h16M7 16v-5M12 16V7M17 16v-8" },
+  { href: "/tavlingsresultat", label: "Lopp", icon: "M7 4v16M7 4h10l-2.5 3.5L17 11H7" },
+  { href: "/analys", label: "Blocket", icon: "M4 20h16M7 16v-5M12 16V7M17 16v-8" },
 ];
 
 /* Kortast horisont först, samma ordning som menyn hade: veckan man är i
  * öppnas dagligen, blocköversikten några gånger per säsong. */
+const GRUPPEN: Tab = {
+  href: "/gruppen",
+  label: "Gruppen",
+  icon: "M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20a6 6 0 0 1 12 0M17 11a2.5 2.5 0 1 0 0-5M21 20a5 5 0 0 0-4-4.9",
+};
+
 const PLAN: Tab[] = [
   { href: "/detaljplan", label: "Vecka", icon: "M4 6h16v14H4zM4 10h16M9 14h6" },
   { href: "/blockplan", label: "Block", icon: "M4 5h16v4H4zM4 11h16v4H4zM4 17h10v3H4z" },
@@ -59,17 +66,10 @@ const PLAN: Tab[] = [
   { href: "/tavlingar", label: "Tävling", icon: "M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0zM6 6H3v2a3 3 0 0 0 3 3M18 6h3v2a3 3 0 0 1-3 3" },
 ];
 
-const UPPFOLJNING: Tab = {
-  href: "/uppfoljning",
-  label: "Uppföljn",
-  icon: "M12 20a8 8 0 1 1 8-8M12 12l5-3",
-};
-
-const INSTALLNINGAR: Tab = {
-  href: "/settings",
-  label: "Inställn",
-  icon: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM4 12h2M18 12h2M12 4v2M12 18v2",
-};
+/* Uppföljning och Inställningar har inga egna flikar sedan 2026-11-21:
+ * Uppföljningen nås från Gruppen, Inställningar från toppraden. Sidorna
+ * räknas ändå till planeringsgruppen så att raden stämmer när man står där. */
+const PLAN_EXTRA = ["/uppfoljning", "/settings", "/flerarsplan"];
 
 export function BottomNav({
   isCoach,
@@ -89,12 +89,12 @@ export function BottomNav({
   const coaching = isCoach && !runnerMode;
   const showPlan = coaching || (!isCoach && !planOwnedByCoach);
 
-  const planTabs = [...PLAN, ...(coaching ? [UPPFOLJNING] : []), INSTALLNINGAR];
-  const loggTabs = showPlan ? LOGG : [...LOGG, INSTALLNINGAR];
+  const planTabs = coaching ? [GRUPPEN, ...PLAN] : PLAN;
+  const loggTabs = LOGG;
 
-  const isPlanPath = planTabs.some(
-    (t) => pathname === t.href || pathname.startsWith(`${t.href}/`),
-  );
+  const isPlanPath =
+    planTabs.some((t) => pathname === t.href || pathname.startsWith(`${t.href}/`)) ||
+    (coaching && PLAN_EXTRA.some((h) => pathname === h || pathname.startsWith(`${h}/`)));
   const tabs = showPlan && isPlanPath ? planTabs : loggTabs;
 
   /* Löparvalet följer med mellan LOGGVYERNA, aldrig in i planeringen.
@@ -113,7 +113,7 @@ export function BottomNav({
   const athlete = params.get("athlete");
   const loggSuffix = athlete ? `?athlete=${athlete}` : "";
   const suffixFor = (href: string) =>
-    PLAN.some((p) => href === p.href) || href === UPPFOLJNING.href ? "" : loggSuffix;
+    PLAN.some((p) => href === p.href) || href === GRUPPEN.href ? "" : loggSuffix;
 
   const groupPill = (on: boolean) =>
     `display rounded-full px-3 py-0.5 text-[0.65rem] font-bold tracking-[0.1em] uppercase transition-colors ${

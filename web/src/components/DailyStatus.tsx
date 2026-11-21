@@ -56,8 +56,11 @@ function formatBaseline(marker: MarkerStatus): string {
  * betyda "uppåt" hade gjort just den markören obegriplig.
  */
 /** Bandet översatt till den gemensamma statusfärgen. */
+/* Inom det normala är grått, inte grönt (B4, 2026-11-21): en vanlig vecka
+ * är ingen prestation. Gult och rött finns kvar för det som faktiskt ligger
+ * utanför löparens eget normalläge. */
 const BAND_STATUS: Record<MarkerBand, RingStatus> = {
-  good: "good",
+  good: "neutral",
   watch: "watch",
   concern: "concern",
 };
@@ -91,7 +94,10 @@ function MarkerCard({ marker }: { marker: MarkerStatus }) {
   // kortet skriver 0.0%. En pil bredvid en nolla hade sett ut som ett fel.
   const direction: TrendDirection =
     pct == null || Math.abs(pct * 100) < 0.05 ? "flat" : pct > 0 ? "up" : "down";
-  const devText = pct == null ? null : `${pct > 0 ? "+" : ""}${(pct * 100).toFixed(1)}%`;
+  const devText =
+    pct == null
+      ? null
+      : `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct * 100).toLocaleString("sv-SE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
 
   const higher = marker.spec.direction === "higher_is_better";
   const riktning = higher ? "under" : "över";
@@ -181,7 +187,7 @@ export function DailyStatus({
        nyckeltalsringarnas sektioner på dashboarden. */
     <section className="flex flex-col gap-3">
       <div>
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Status</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Kroppen</h2>
         {periodLabel && <p className="text-xs text-[var(--ink-3)]">{periodLabel}</p>}
       </div>
 

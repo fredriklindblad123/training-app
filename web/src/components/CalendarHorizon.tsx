@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Segmented } from "@/components/ui/Segmented";
 import { type PhaseType } from "@/lib/planning";
 import { buttonClass, fieldClass } from "@/components/ui/controls";
 
@@ -43,23 +44,17 @@ export function HorizonToggle({
     { key: "year", label: "År", href: yearHref },
   ];
 
+  // Samma periodväljare som resten av appen (B2, 2026-11-21).
   return (
-    <div className="flex gap-1 text-sm" role="group" aria-label="Tidshorisont">
-      {items.map((item) => (
-        <Link
-          key={item.key}
-          href={item.href}
-          aria-current={current === item.key ? "page" : undefined}
-          className={`rounded px-3 py-1 ${
-            current === item.key
-              ? "bg-[var(--foreground)] text-[var(--background)]"
-              : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
-          }`}
-        >
-          {item.label}
-        </Link>
-      ))}
-    </div>
+    <Segmented
+      label="Tidshorisont"
+      options={items.map((item) => ({
+        key: item.key,
+        label: item.label,
+        href: item.href,
+        active: current === item.key,
+      }))}
+    />
   );
 }
 

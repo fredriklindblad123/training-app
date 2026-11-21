@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { after } from "next/server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -8,7 +9,6 @@ import {
   resolveScopedUserId,
   viewableAthletes,
 } from "@/lib/auth-scope";
-import { signOut } from "@/app/login/actions";
 import { RefreshGarmin } from "@/components/RefreshGarmin";
 import { BottomNav } from "@/components/BottomNav";
 import { TopBar } from "@/components/TopBar";
@@ -145,27 +145,15 @@ export default async function AppLayout({
                   att växla mellan. */}
               {isCoach && <ModeCircle mode={mode} />}
 
-              <form action={signOut} className="flex">
-                <button
-                  type="submit"
-                  title="Logga ut"
-                  aria-label="Logga ut"
-                  className={circleButtonClass}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.9}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <path d="M15 17l5-5-5-5M20 12H9M11 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5" />
-                  </svg>
-                </button>
-              </form>
+              {/* Inställningar bor här sedan 2026-11-21: bottenraden fick
+                  annars sex flikar och avhuggna ord ("Inställn"). Man går
+                  dit sällan, och det är ett sammanhang, inte en vy. */}
+              <Link href="/settings" title="Inställningar" aria-label="Inställningar" className={circleButtonClass}>
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+                </svg>
+              </Link>
             </>
           }
         />

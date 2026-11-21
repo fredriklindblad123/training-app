@@ -874,15 +874,18 @@ export default async function BlockplanPage() {
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Varje blocks eget dag-för-dag-veckomönster — precis som Excel-mallens Blockplan-flik.
-          Ett pass läggs till direkt på blocket och syns i kalendern omedelbart, utan ett
-          separat &quot;rulla ut&quot;-steg. Block och standardvecka skapas på{" "}
-          <Link href="/sasongsoversikt" className="underline">
-            Säsongsöversikt
-          </Link>{" "}
-          — nya block dyker upp här automatiskt.
+          Varje blocks eget dag-för-dag-veckomönster. Ett pass som läggs till här syns i
+          kalendern direkt.
         </p>
       </div>
+      {/* Nytt block skapas i ett flöde i tre steg sedan 2026-11-21 —
+          ram, veckomönster och veckornas typ på ett ställe. */}
+      <Link
+        href="/blockplan/nytt"
+        className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--foreground)] px-4 font-semibold text-[var(--background)] hover:opacity-90"
+      >
+        Skapa nytt block →
+      </Link>
 
       {/* Planens omfattning i tre tal. Sidan öppnade tidigare direkt i en lista
           av block, så "hur mycket är planerat" gick bara att få genom att räkna

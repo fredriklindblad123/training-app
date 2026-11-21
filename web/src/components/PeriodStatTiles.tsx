@@ -1,9 +1,7 @@
-import { RING_STATUS_TEXT } from "@/components/KpiRing";
-import { ringFillAndStatus } from "@/lib/kpi-ring";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
-import { formatDuration } from "@/lib/format";
+import { formatMinutes, formatNumber } from "@/lib/format";
 import type { Compliance } from "@/lib/plan-matching";
-import type { TrainingSession } from "@/lib/sessions";
+import { trainingSeconds, type TrainingSession } from "@/lib/sessions";
 
 /* Nyckeltalsraden — Distanspass, Kvalitetspass, Distans, Tid, Belastning —
  * delad av kalenderns dag-, vecko-, månads- och årsvy (2026-08-14). Fanns
@@ -18,33 +16,19 @@ import type { TrainingSession } from "@/lib/sessions";
  * KpiRing (RING_STATUS_TEXT) — grönt/gult/rött betyder samma sak här som på
  * /dashboard. Utan plan visas bara talet. */
 
+/* Målet ("av 5") är alltid grått sedan 2026-11-21 (B4). Det färgades förr
+ * grönt eller gult efter hur nära planen man låg — men talet är genomförda
+ * pass, alltså något en människa gjort eller inte gjort. */
 function statTile({
   label,
-  value,
   valueText,
   target,
-  targetLabel,
 }: {
   label: string;
-  value: number;
   valueText: string;
-  target: number | null;
-  targetLabel: string;
-}): { label: string; valueText: string; targetText: string | null; statusClass: string } {
-  if (target == null) {
-    return { label, valueText, targetText: null, statusClass: "" };
-  }
-  const { status } = ringFillAndStatus(value, target, "higher_is_better");
-  return {
-    label,
-    valueText,
-    targetText: `${targetLabel} ${target}`,
-    /* Aldrig rött: talet är genomförda pass mot planen, alltså något en
-       människa gjort eller inte gjort (CLAUDE.md, Ton mot adepterna). Den
-       lägsta nivån visas neutralt i stället — "0 av 1" i rött stod tidigare
-       under varje adept som inte tränat ännu i dagsvyn. */
-    statusClass: RING_STATUS_TEXT[status === "concern" ? "neutral" : status],
-  };
+  target: string | null;
+}): { label: string; valueText: string; targetText: string | null } {
+  return { label, valueText, targetText: target == null ? null : `av ${target}` };
 }
 
 export function PeriodStatTiles({
@@ -55,8 +39,6 @@ export function PeriodStatTiles({
   compliance: Compliance;
 }) {
   const totalKm = sessions.reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
-  const totalSeconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
-  const totalLoad = sessions.reduce((sum, s) => sum + s.trainingLoad, 0);
 
   const qualityCount = sessions.filter((s) =>
     (QUALITY_WORKOUT_TYPES as readonly string[]).includes(s.category),
@@ -65,41 +47,31 @@ export function PeriodStatTiles({
   const distancePlanned =
     compliance.plannedCount > 0 ? compliance.plannedCount - compliance.qualityPlanned : null;
 
+  // Tid enligt samma regel som Idag och Blocket: hela passet, styrka inte
+  // med (trainingSeconds). Belastningen (Garmins tal) togs bort 2026-11-21 —
+  // den står inte heller på Idag längre, och fem rutor lämnade en tom ruta
+  // på mobil.
+  const minutes = sessions.reduce((sum, s) => sum + trainingSeconds(s), 0) / 60;
   const tiles = [
     statTile({
       label: "Distanspass",
-      value: distanceSessionCount,
       valueText: String(distanceSessionCount),
-      target: distancePlanned,
-      targetLabel: "av",
+      target: distancePlanned == null ? null : String(distancePlanned),
     }),
     statTile({
       label: "Kvalitetspass",
-      value: qualityCount,
       valueText: String(qualityCount),
-      target: compliance.plannedCount > 0 ? compliance.qualityPlanned : null,
-      targetLabel: "av",
+      target: compliance.plannedCount > 0 ? String(compliance.qualityPlanned) : null,
     }),
     statTile({
       label: "Distans",
-      value: totalKm,
-      valueText: totalKm > 0 ? `${totalKm.toFixed(1)} km` : "—",
-      target: compliance.plannedKm,
-      targetLabel: "av",
+      valueText: totalKm > 0 ? `${formatNumber(totalKm, 1)} km` : "—",
+      target: compliance.plannedKm == null ? null : formatNumber(compliance.plannedKm, 1),
     }),
     statTile({
       label: "Tid",
-      value: totalSeconds,
-      valueText: totalSeconds > 0 ? formatDuration(totalSeconds) : "—",
+      valueText: minutes > 0 ? formatMinutes(minutes) : "—",
       target: null,
-      targetLabel: "av",
-    }),
-    statTile({
-      label: "Belastning",
-      value: totalLoad,
-      valueText: totalLoad > 0 ? String(Math.round(totalLoad)) : "—",
-      target: null,
-      targetLabel: "av",
     }),
   ];
 
@@ -109,7 +81,7 @@ export function PeriodStatTiles({
      statusfärg som Stat medvetet inte modellerar, och dl/dt/dd-semantiken är
      rätt här och ska inte tappas för enhetlighetens skull. */
   return (
-    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-5">
+    <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-4">
       {tiles.map((t) => (
         <div key={t.label} className="bg-[var(--surface)] px-3 py-3">
           <dt className="text-[0.6875rem] font-semibold tracking-wider text-[var(--ink-3)] uppercase">
@@ -119,7 +91,7 @@ export function PeriodStatTiles({
             <span className="tabular text-2xl leading-none font-semibold text-[var(--foreground)]">
               {t.valueText}
             </span>
-            {t.targetText && <span className={`text-xs ${t.statusClass}`}>{t.targetText}</span>}
+            {t.targetText && <span className="text-xs text-[var(--ink-3)]">{t.targetText}</span>}
           </dd>
         </div>
       ))}

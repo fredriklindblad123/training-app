@@ -8,10 +8,14 @@ import { SLOT_LABELS } from "@/lib/planning";
 import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
+  trainingSeconds,
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
+import { weekClosure, type WeekClosure } from "@/lib/week-closure";
+import { formatDateShort } from "@/lib/format";
+import { Observations } from "@/components/ui/Explain";
 import { AvailabilityBand } from "@/components/AvailabilityBand";
 import type { AvailabilityPeriod } from "@/lib/planning";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
@@ -202,6 +206,31 @@ export default async function WeekPage({
   }
   const compliance = summarizeCompliance(planMatches);
 
+  /* Veckobokslut (C4): bara för en vecka som är slut. Årssnittet räknas ur
+     årets pass fram till veckans slut, med samma tidsregel (trainingSeconds)
+     som Idag och Blocket. */
+  const weekIsOver = to < todayKey;
+  let closure: WeekClosure | null = null;
+  if (weekIsOver) {
+    const yearStart = `${to.slice(0, 4)}-01-01`;
+    const { data: yearRows } = await supabase
+      .from("activities")
+      .select(SESSION_ACTIVITY_COLUMNS)
+      .eq("user_id", scopedUserId)
+      .gte("start_time", yearStart)
+      .lt("start_time", nextExclusive)
+      .order("start_time");
+    const yearSessions = groupActivitiesIntoSessions((yearRows ?? []) as unknown as SessionActivity[]);
+    const yearDays = Math.round((Date.parse(nextExclusive) - Date.parse(yearStart)) / 86_400_000);
+    const yearMinutes = yearSessions.reduce((sum, x) => sum + trainingSeconds(x), 0) / 60;
+    closure = weekClosure({
+      matches: planMatches,
+      sessions,
+      diary: (diaryRows ?? []) as { entry_date: string; session_log: string | null; day_type: string | null }[],
+      yearAvgMinutesPerWeek: yearDays >= 28 ? (yearMinutes / yearDays) * 7 : null,
+    });
+  }
+
   /* Horisontväxlarna pekar alltid på INNEVARANDE period (uttrycklig begäran
      2026-09-14). Tidigare följde de den period man råkade titta på: från mars
      2027 landade "Dag" på 1 mars 2027 och "Vecka" på veckan däromkring — ett
@@ -235,7 +264,7 @@ export default async function WeekPage({
           <>
             {weekLabel(from)}{" "}
             <span className="text-sm font-normal text-[var(--ink-3)]">
-              {from} – {to}
+              {formatDateShort(from)}–{formatDateShort(to)}
             </span>
           </>
         }
@@ -250,7 +279,24 @@ export default async function WeekPage({
         athleteId={scoped.role === "coach" ? scopedUserId : undefined}
       />
 
+      {closure && closure.lines.length > 0 && (
+        <Observations
+          title={`Bokslut ${weekLabel(from)}`}
+          items={closure.lines}
+          source={`Ur klockan och planen${closure.selfReported ? " · sjuk, skada och styrka ur dagboken, självskattat" : ""}`}
+        />
+      )}
+
       <PeriodStatTiles sessions={sessions} compliance={compliance} />
+
+      {closure && scoped.role === "coach" && !runnerMode && (
+        <Link
+          href={`/detaljplan?week=${toKey(addDays(mondayOf(todayKey), 7))}`}
+          className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--foreground)] px-4 font-semibold text-[var(--background)] hover:opacity-90"
+        >
+          Planera nästa vecka →
+        </Link>
+      )}
 
       <AvailabilityBand
         periods={(availabilityRows ?? []) as AvailabilityPeriod[]}

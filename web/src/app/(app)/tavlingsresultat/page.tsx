@@ -1,7 +1,10 @@
 import Link from "next/link";
+import { PageHeader, Section } from "@/components/ui/Page";
+import { HowCalculated } from "@/components/ui/Explain";
+import { DataTable } from "@/components/ui/DataTable";
+import { formatDateShort, formatRaceSeconds } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
-import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
   addCompetitionEvent,
   deleteCompetitionEvent,
@@ -416,6 +419,42 @@ export default async function TavlingsresultatPage({
   }
   // Minst två resultat, annars finns ingen utveckling att visa — sorterad
   // flest först så väljaren öppnar på grenen med mest att visa.
+  /* Personbästa och säsongsbästa (2026-11-21). Grenar med minst fem lopp —
+     en gren med ett enda lopp har inget att visa som "bästa". */
+  const mainEvents = [...eventCounts.entries()].filter(([, n]) => n >= 5).map(([e]) => e);
+  // Medeldistansgrenarna först, i loppordning; övriga grenar bara om de
+  // saknas. Sortering efter antal lopp gav 1500 m hinder från 2024 före
+  // 3000 m — fel svar på "vad är mina bästa tider".
+  const PB_EVENTS = ["800m", "1500m", "2000m H", "3000m"];
+  const pbEvents = PB_EVENTS.filter((e) => eventCounts.has(e));
+  const personalBests = (pbEvents.length > 0 ? pbEvents : mainEvents)
+    .map((event) => {
+      const best = eventResults
+        .filter((r) => r.event === event)
+        .sort((x, y) => x.resultSeconds - y.resultSeconds)[0];
+      return { event: event.replace(/m( |$)/, " m$1").trim(), seconds: best.resultSeconds, date: best.competitionDate, name: best.competitionName };
+    })
+    .slice(0, 4);
+  const sbEvents = ["800m", "1500m"].filter((e) => mainEvents.includes(e));
+  const sbYears = [...new Set(eventResults.filter((r) => sbEvents.includes(r.event)).map((r) => r.competitionDate.slice(0, 4)))]
+    .sort()
+    .reverse()
+    .slice(0, 5);
+  const seasonBest = {
+    events: sbEvents.map((e) => e.replace("m", " m")),
+    rows: sbYears.map((year) => ({
+      year,
+      cells: sbEvents.map((e) => {
+        const xs = eventResults.filter((r) => r.event === e && r.competitionDate.startsWith(year)).map((r) => r.resultSeconds);
+        return xs.length ? Math.min(...xs) : null;
+      }),
+    })),
+  };
+  const nextRace = allCompetitions
+    .filter((c) => c.competition_date >= todayKey)
+    .sort((a, b) => a.competition_date.localeCompare(b.competition_date))[0];
+  const daysToNext = nextRace ? Math.round((Date.parse(nextRace.competition_date) - Date.parse(todayKey)) / 86_400_000) : 0;
+
   const eventOptions = [...eventCounts.entries()]
     .filter(([, count]) => count >= 2)
     .map(([event, count]) => ({ event, count }))
@@ -727,62 +766,62 @@ export default async function TavlingsresultatPage({
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Resultat</h1>
+      <PageHeader title="Lopp" lead="Nästa lopp, dina bästa tider och hur grenarna har utvecklats." />
 
-      {/* Karriären i fyra tal. Sidan öppnade tidigare direkt i grenväljaren,
-          så omfattningen — hur många lopp, hur länge, vad som väntar — fanns
-          bara underförstådd i diagrammet. "Nästa" räknas ur framtida datum,
-          inte ur prioritet: ett lopp nästa vecka är mer relevant än ett
-          A-lopp om ett halvår, och prioriteten styr ingen planering. */}
-      <StatRow columns={4}>
-        <StatCell>
-          <Stat
-            label="Tävlingar"
-            value={allCompetitions.length > 0 ? allCompetitions.length : "—"}
-            sub="totalt inlagda"
+      {/* Överst sedan 2026-11-21: det man går hit för. Karriärens fyra tal
+          (antal tävlingar, säsonger) fick ge plats — de svarar inte på
+          någon fråga inför nästa lopp. */}
+      {nextRace && (
+        <div className="flex flex-col gap-1 rounded-[14px] border border-[var(--line)] p-4">
+          <span className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
+            Nästa lopp · om {daysToNext} {daysToNext === 1 ? "dag" : "dagar"}
+          </span>
+          <span className="display text-2xl font-bold text-[var(--foreground)]">
+            {nextRace.name} · {formatDateShort(nextRace.competition_date, true)}
+          </span>
+        </div>
+      )}
+
+      {personalBests.length > 0 && (
+        <Section title="Personbästa">
+          <div className="grid grid-cols-2 gap-2.5">
+            {personalBests.map((pb) => (
+              <div key={pb.event} className="rounded-[14px] border border-[var(--line)] p-3">
+                <div className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">{pb.event}</div>
+                <div className="display tabular text-[1.625rem] font-bold text-[var(--foreground)]">{formatRaceSeconds(pb.seconds)}</div>
+                <div className="text-xs text-[var(--ink-3)]">
+                  {pb.name} · {formatDateShort(pb.date)} {pb.date.slice(0, 4)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
+      {seasonBest.rows.length > 0 && (
+        <Section title="Säsongsbästa per år">
+          <DataTable
+            head={["År", ...seasonBest.events]}
+            emphasis={null}
+            rows={seasonBest.rows.map((row) => ({
+              key: row.year,
+              cells: [row.year, ...row.cells.map((c) => (c == null ? "–" : formatRaceSeconds(c)))],
+            }))}
           />
-        </StatCell>
-        <StatCell>
-          <Stat
-            label="Tidtagna lopp"
-            value={eventResults.length > 0 ? eventResults.length : "—"}
-            sub={`${eventOptions.length} grenar`}
-          />
-        </StatCell>
-        <StatCell>
-          <Stat
-            label="Säsonger"
-            value={competitionYears.length > 0 ? competitionYears.length : "—"}
-            sub={
-              competitionYears.length > 0
-                ? `${competitionYears[competitionYears.length - 1]}–${competitionYears[0]}`
-                : undefined
-            }
-          />
-        </StatCell>
-        <StatCell>
-          <Stat
-            label="Nästa tävling"
-            value={(() => {
-              const next = allCompetitions
-                .filter((c) => c.competition_date >= todayKey)
-                .sort((a, b) => a.competition_date.localeCompare(b.competition_date))[0];
-              return next ? next.competition_date.slice(5).replace("-", "/") : "—";
-            })()}
-            sub={(() => {
-              const next = allCompetitions
-                .filter((c) => c.competition_date >= todayKey)
-                .sort((a, b) => a.competition_date.localeCompare(b.competition_date))[0];
-              return next ? next.name : "inget inlagt";
-            })()}
-          />
-        </StatCell>
-      </StatRow>
+          <HowCalculated>
+            <p>Bästa tid per kalenderår och gren, inne och ute tillsammans. Bara grenar med minst fem lopp.</p>
+          </HowCalculated>
+        </Section>
+      )}
 
       <section className="flex flex-col gap-3">
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Grenutveckling</h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
+            Välj en eller flera grenar. Kurvan visar tiden som andel av grenens personbästa.
+          </p>
+          <HowCalculated>
+          <p>
             Välj en eller flera grenar för att se dem som egna kurvor i samma graf — minst en
             måste vara vald. Y-axeln är
             andel av respektive grens eget personbästa, inte råtid — grenar med olika längd går
@@ -793,6 +832,7 @@ export default async function TavlingsresultatPage({
             betyda något). Tidsknapparna ovanför grafen zoomar in ett kortare fönster;
             personbästa räknas alltid ut från hela historiken, oavsett vad som visas just nu.
           </p>
+          </HowCalculated>
         </div>
 
         {allCompetitions.length === 0 ? (
@@ -1017,11 +1057,13 @@ export default async function TavlingsresultatPage({
             block-stats.ts, utan färgar bara markörer och väljer nästa A-tävling. Löftet
             togs bort 2026-09-13 i stället för att byggas — planeringen ska styras av
             tränaren, inte av ett antagande appen gör åt honom. */}
-        <p className="max-w-3xl text-sm text-[var(--ink-3)]">
+        <HowCalculated summary="Vad betyder A och B?">
+        <p>
           Prioriteten märker upp säsongen: A är huvudmålen, B allt annat. Den visas i
           tidslinjen och väljer &quot;Nästa A-tävling&quot;, men styr ingen planering — hur
           veckorna ser ut inför ett lopp bestämmer du i Säsongsöversikt och Blockplan.
         </p>
+        </HowCalculated>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           {/* Årsväljare. Byggd ur datan (competitionYears), inte en hårdkodad

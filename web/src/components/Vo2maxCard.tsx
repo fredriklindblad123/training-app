@@ -76,7 +76,10 @@ export function Vo2maxCard({ trend }: { trend: Vo2maxTrend }) {
 
         <div className="mt-4 flex gap-3">
           <div className="relative w-8 shrink-0" style={{ height: H }} aria-hidden>
-            {[max, min].map((v) => (
+            {/* Ett skalvärde när min och max är samma (syreupptaget har
+                stått still) — två lika nycklar gav konsolfel och två
+                överlagda tal. */}
+            {(max === min ? [max] : [max, min]).map((v) => (
               <span
                 key={v}
                 className="absolute right-0 -translate-y-1/2 text-[0.65rem] tabular-nums text-[var(--ink-3)]"

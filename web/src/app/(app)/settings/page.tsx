@@ -1,3 +1,4 @@
+import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/server";
 import {
   connectGarmin,
@@ -526,6 +527,18 @@ export default async function SettingsPage({
           </label>
           <button type="submit" className={buttonClass}>
             Byt lösenord
+          </button>
+        </form>
+      </section>
+
+      {/* Utloggningen bor här sedan 2026-11-21. Toppraden fick plats för
+          kugghjulet till den här sidan i stället — sju runda knappar gick
+          inte in på 390 px. */}
+      <section className="flex flex-col gap-3">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Logga ut</h2>
+        <form action={signOut}>
+          <button type="submit" className={buttonClass}>
+            Logga ut
           </button>
         </form>
       </section>

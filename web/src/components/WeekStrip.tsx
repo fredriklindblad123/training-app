@@ -101,7 +101,7 @@ export function WeekStrip({
         {kilometres > 0 && (
           <>
             {" · "}
-            <span className="tabular">{kilometres.toFixed(0)} km</span>
+            <span className="tabular">{Math.round(kilometres)} km</span>
           </>
         )}
       </p>

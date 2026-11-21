@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getScopedProfile } from "@/lib/auth-scope";
+import { getViewMode } from "@/lib/view-mode";
 
 /* Roten är bara en vägvisare.
  *
@@ -19,6 +21,11 @@ export default async function Home() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  redirect(user ? "/dashboard" : "/login");
+  /* Coachen startar på Gruppen, löparen på Idag (A3, 2026-11-21). Läget
+   * "egen träning" gör coachen till löpare även här. */
+  const scoped = await getScopedProfile(supabase);
+  const runnerMode = (await getViewMode()) === "runner";
+  redirect(scoped?.role === "coach" && !runnerMode ? "/gruppen" : "/dashboard");
 }

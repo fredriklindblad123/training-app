@@ -959,12 +959,20 @@ async function ArsplanOverview({
       {/* Infällt bakom en rad: formuläret är nästan lika långt som hela
           blocklistan och används några gånger per säsong. Öppet direkt när
           man kommer från "Skapa nästa block" på Form-sidan. */}
+      <Link
+        href={`/blockplan/nytt${nyttBlockFranParam ? `?fran=${nyttBlockFranParam}` : ""}`}
+        className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--foreground)] px-4 font-semibold text-[var(--background)] hover:opacity-90"
+      >
+        Skapa nytt block i tre steg →
+      </Link>
+      {/* Det gamla formuläret finns kvar, infällt, för den som bara vill
+          lägga in ramen utan mönster. */}
       <details
-        open={nyttBlockFranParam != null}
+        open={false}
         className="group rounded-lg border border-[var(--line)] bg-[var(--surface)]"
       >
         <summary className="cursor-pointer list-none p-4 font-medium text-[var(--foreground)]">
-          + Nytt block
+          Lägg in bara ramen för ett block
         </summary>
         <div className="flex flex-col gap-3 border-t border-[var(--line)] p-4">
         <form action={createBlock} className="flex flex-col gap-3 rounded-lg border border-[var(--line)] p-4">

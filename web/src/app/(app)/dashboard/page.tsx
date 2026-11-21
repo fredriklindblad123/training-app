@@ -1,5 +1,6 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
+import { formatKmSv } from "@/lib/format";
 import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
@@ -8,14 +9,6 @@ import { KpiRing } from "@/components/KpiRing";
 import type { TrendDirection } from "@/components/ui/TrendMark";
 import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
-import {
-  computeEfficiencyPoints,
-  efficiencyTrend,
-  EF_MIN_POINTS,
-  EF_NOISE_PCT,
-  EF_WINDOW_DAYS,
-  type EfficiencyPoint,
-} from "@/lib/efficiency";
 import { isoWeekStart } from "@/lib/stats-utils";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
 import { buildReadinessAlert } from "@/lib/readiness-alert";
@@ -27,19 +20,12 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import { toDateKey } from "@/lib/week-series";
-import {
-  computeContinuityStreaks,
-  type ContinuitySession,
-  type ContinuityStreaks,
-  type InterruptionDay,
-} from "@/lib/continuity";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
 import { reviewSession, type ReviewRep, type SessionReview } from "@/lib/session-review";
 import type { PhaseType } from "@/lib/planning";
 import { RecordCard } from "@/components/RecordCard";
 import { SeasonContext } from "@/components/SeasonContext";
-import { StreakStrip, type StreakWeek } from "@/components/StreakStrip";
 import { WeekStrip, type WeekStripDay } from "@/components/WeekStrip";
 
 /* Dashboard (döpt om från /idag 2026-08-12, på uttrycklig begäran): start-
@@ -69,13 +55,10 @@ import { WeekStrip, type WeekStripDay } from "@/components/WeekStrip";
 /** Under den här förändringen räknas formen som oförändrad — EF svänger
  * naturligt någon procent mellan enskilda pass utan att något ändrats. */
 
-/** Hur långt tillbaka VO2max-ringen jämför. Garmins skattning uppdateras
- * sällan och oregelbundet, så ett kort fönster (som EF:s 28 dagar) skulle
- * ofta sakna en jämförelsepunkt helt. */
-const VO2MAX_LOOKBACK_DAYS = 60;
-/** Under så här stor förändring räknas konditionen som oförändrad — Garmins
- * skattning studsar ±1 mellan omräkningar utan att något faktiskt ändrats. */
-const VO2MAX_NOISE_THRESHOLD = 1;
+/** Under den här förändringen räknas rullande volym som oförändrad (pilen
+ * blir ett streck). Baslinjen är årets snitt, ett stabilt tal, så 8 % är
+ * redan ett meningsfullt utslag. */
+const WEEKLY_NOISE_THRESHOLD_PCT = 0.08;
 
 function shiftDateKey(dateKey: string, days: number): string {
   const d = new Date(`${dateKey}T00:00:00`);
@@ -83,25 +66,7 @@ function shiftDateKey(dateKey: string, days: number): string {
   return toDateKey(d);
 }
 
-/** Statusen en trend ska visas med. Två färger: rött bara för en verklig
- * försämring, grönt för allt annat.
- *
- * Brusbandet låg tidigare på en egen färg — först indigo, sedan grått. Båda
- * lästes som att kortet var trasigt snarare än som ett besked, och
- * rapporterades två gånger. Ett oförändrat värde är heller inget att åtgärda,
- * vilket är precis vad grönt betyder här: inte "du har förbättrats", utan
- * "inget som kräver något av dig". Att talet står stilla syns ändå — pilen
- * blir ett streck (trendDirection) och texten säger 0.
- *
- * Grått finns kvar, men bara för "unknown": när det inte finns någon
- * förändring att bedöma alls. Det är en frånvaro av data, inte en frånvaro av
- * bedömning, och då är ett neutralt kort rätt svar. */
-function trendRingStatus(change: number | null, noiseThreshold: number): RingStatus {
-  if (change == null) return "unknown";
-  return change <= -noiseThreshold ? "concern" : "good";
-}
-
-/** Pilens riktning för samma förändring som trendRingStatus bedömer.
+/** Pilens riktning för en förändring, med samma brustal som kortet.
  *
  * Skild funktion, samma tröskel: färgen säger OM förändringen är bra, pilen
  * säger ÅT VILKET HÅLL talet gick. För belastning kan de två peka olika, och
@@ -112,118 +77,11 @@ function trendDirection(change: number | null, noiseThreshold: number): TrendDir
   return change > 0 ? "up" : "down";
 }
 
+/** "+53 %", "−4 %" — hela procent och svenskt mellanslag (B3, 2026-11-21). */
 function formatPctChange(pctChange: number): string {
-  return `${pctChange >= 0 ? "+" : ""}${(pctChange * 100).toFixed(1)}%`;
+  const v = Math.round(pctChange * 100);
+  return `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v)} %`;
 }
-
-/** Formkurvan som nyckeltal.
- *
- * Talen kommer från efficiencyTrend i lib/efficiency.ts — samma funktion som
- * Form-vyns dom använder, så de två ytorna aldrig kan säga olika saker om
- * samma kurva. Urvalet är distans- och långpass, så en hård intervallvecka
- * inte får kurvan att se sämre ut än den är. */
-function efficiencyRing(efPoints: { date: string; ef: number }[], todayKey: string) {
-  const t = efficiencyTrend(efPoints as EfficiencyPoint[], todayKey);
-  const { current, baseline, changePct: pctChange } = t;
-  const recent = { length: t.recentCount };
-  const prior = { length: t.priorCount };
-
-  const { fill } = ringFillAndStatus(current, baseline, "higher_is_better");
-  const status = trendRingStatus(pctChange, EF_NOISE_PCT);
-
-  return {
-    label: "Formkurva",
-    valueText: current != null ? current.toFixed(2) : "–",
-    unit: "m/slag",
-    fill,
-    status,
-    trend:
-      pctChange != null
-        ? {
-            direction: trendDirection(pctChange, EF_NOISE_PCT),
-            text: formatPctChange(pctChange),
-          }
-        : null,
-    // Bara perioden kvar — talet står i symbolen och ska inte stå två gånger.
-    targetText: pctChange != null ? "senaste 4 v" : undefined,
-    detailRows: [
-      {
-        label: `Senaste ${EF_WINDOW_DAYS} dagarna`,
-        value:
-          current != null
-            ? `${current.toFixed(2)} m/slag (${recent.length} pass)`
-            : `bygger underlag (${recent.length} av ${EF_MIN_POINTS} pass)`,
-      },
-      {
-        label: `${EF_WINDOW_DAYS} dagarna innan dess`,
-        value:
-          baseline != null
-            ? `${baseline.toFixed(2)} m/slag (${prior.length} pass)`
-            : `bygger underlag (${prior.length} av ${EF_MIN_POINTS} pass)`,
-      },
-      { label: "Förändring", value: pctChange != null ? formatPctChange(pctChange) : "–" },
-    ],
-    hint:
-      "Meter per hjärtslag på distans- och långpass (minst 20 min), senaste 4 veckorna mot de 4 " +
-      `veckorna innan — visar om du bättrar dig, inte var du ligger mot ditt vanliga. Under ±` +
-      `${(EF_NOISE_PCT * 100).toFixed(0)}% räknas som brus. Hela kurvan finns på /trender.`,
-  };
-}
-
-/** Kondition (VO2max): Garmins egen skattning, nu mot vad den var för ~60
- * dagar sedan — visar riktningen (blir jag bättre?), inte bara nuläget.
- * Jämförs mot faktiska värdet vid den tidpunkten, inte mot "senaste andra
- * värdet", som kan ligga hur långt eller kort tillbaka som helst beroende på
- * hur ofta klockan råkat räkna om det. */
-function vo2maxRing(readings: { date: string; value: number }[], todayKey: string) {
-  const current = readings.length > 0 ? readings[readings.length - 1].value : null;
-  const lookbackFrom = shiftDateKey(todayKey, -VO2MAX_LOOKBACK_DAYS);
-
-  let baseline: number | null = null;
-  for (let i = readings.length - 1; i >= 0; i--) {
-    if (readings[i].date <= lookbackFrom) {
-      baseline = readings[i].value;
-      break;
-    }
-  }
-  const delta = current != null && baseline != null ? current - baseline : null;
-
-  const { fill } = ringFillAndStatus(current, baseline, "higher_is_better");
-  const status = trendRingStatus(delta, VO2MAX_NOISE_THRESHOLD);
-
-  return {
-    label: "Kondition",
-    valueText: current != null ? String(Math.round(current)) : "–",
-    unit: "VO2max",
-    fill,
-    status,
-    trend:
-      delta != null
-        ? {
-            direction: trendDirection(delta, VO2MAX_NOISE_THRESHOLD),
-            text: `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}`,
-          }
-        : null,
-    targetText: delta != null ? `senaste ${VO2MAX_LOOKBACK_DAYS} d` : undefined,
-    detailRows: [
-      { label: "Nu", value: current != null ? `${Math.round(current)} ml/kg/min` : "–" },
-      {
-        label: `För ~${VO2MAX_LOOKBACK_DAYS} dagar sedan`,
-        value: baseline != null ? `${Math.round(baseline)} ml/kg/min` : "ingen mätning så långt tillbaka än",
-      },
-      { label: "Förändring", value: delta != null ? `${delta >= 0 ? "+" : ""}${delta.toFixed(0)}` : "–" },
-    ],
-    hint:
-      "Garmins egen konditionsskattning, nu jämfört med för ungefär två månader sedan — visar " +
-      "riktningen, inte bara nuläget. Uppdateras sällan och oregelbundet, inte per pass.",
-  };
-}
-
-/** Under den här förändringen räknas rullande volym/belastning som
- * oförändrad. Satt lägre än den gamla vecka-mot-vecka-jämförelsen (15%) —
- * baslinjen är nu årets snitt, ett mycket stabilare tal än förra veckan, så
- * en mindre avvikelse mot den baslinjen är redan ett meningsfullt utslag. */
-const WEEKLY_NOISE_THRESHOLD_PCT = 0.08;
 
 /** Distans/belastning (P1.5): rullande 7 dagar mot årets snitt per vecka —
  * inte förra veckan, som bara flyttar jämförelsen en vecka bakåt utan att
@@ -256,7 +114,11 @@ function rollingWeekRing(
   const pctChange = baseline > 0 ? (recent - baseline) / baseline : null;
 
   const { fill } = ringFillAndStatus(recent, baseline, "higher_is_better");
-  const status = trendRingStatus(pctChange, WEEKLY_NOISE_THRESHOLD_PCT);
+  /* Alltid neutral (B4, 2026-11-21). Mer eller mindre träning är varken bra
+   * eller dåligt i sig — kortet sa "Bra" om +50 % distans, och det mönstret
+   * hade föregått fyra av tolv sjuk- och skadeperioder. Pilen visar riktning,
+   * färgen säger ingenting. */
+  const status: RingStatus = pctChange == null ? "unknown" : "neutral";
 
   return {
     label,
@@ -270,7 +132,7 @@ function rollingWeekRing(
             text: formatPctChange(pctChange),
           }
         : null,
-    targetText: pctChange != null ? "mot årets snitt" : undefined,
+    targetText: pctChange != null ? `mot ditt snitt ${formatValue(baseline)}/v` : undefined,
     detailRows: [
       { label: "Senaste 7 dagarna", value: formatValue(recent) },
       { label: "Årets snitt per vecka", value: formatValue(baseline) },
@@ -319,15 +181,14 @@ export default async function DashboardPage({
   weekEnd.setDate(weekEnd.getDate() + 6);
   const weekEndKey = toDateKey(weekEnd);
 
-  // Se kommentaren vid kontinuitetsfrågan nedan. Tre år är gott om historik
-  // för en 17-årings sviter och håller radantalet långt under PostgREST:s
-  // tak — dagens data börjar 2025-07.
-  const continuityFrom = toDateKey(new Date(now.getTime() - 3 * 365 * 86_400_000));
+  // Årets aktiviteter räcker sedan 2026-11-21: sviten och formkurvan, som
+  // behövde tre års historik, har flyttat från Idag. Kvar är årssnittet för
+  // Läget, som bara ser på innevarande år.
+  const historyFrom = `${todayKey.slice(0, 4)}-01-01`;
 
   const [
     { data: activityRows },
     { data: allActivityRows },
-    { data: allInterruptionEntries },
     { data: statusMetrics },
     { data: tomorrowQualityWorkouts },
     { data: todayPlannedRows },
@@ -343,26 +204,12 @@ export default async function DashboardPage({
       .eq("user_id", scopedUserId)
       .gte("start_time", todayKey)
       .order("start_time"),
-    // Kontinuitetssviterna (K6) mäts över historiken, inte dagen — "personbästa"
-    // ska vara personbästa, inte "bästa idag". Fönstret är ändå bundet, av två
-    // skäl: PostgREST returnerar som mest 1 000 rader per fråga, och det finns
-    // redan ~666 aktiviteter, så en ofiltrerad hämtning skulle inom ett år
-    // börja trunkeras *tyst* och ge felräknade svitlängder utan att något
-    // syns. Dessutom ligger den här frågan på appens landningssida och får
-    // inte växa obegränsat. continuityFrom (tre år) täcker all befintlig
-    // historik med marginal.
     supabase
       .from("activities")
       .select(SESSION_ACTIVITY_COLUMNS)
       .eq("user_id", scopedUserId)
-      .gte("start_time", continuityFrom)
+      .gte("start_time", historyFrom)
       .order("start_time"),
-    supabase
-      .from("diary_entries")
-      .select("entry_date, day_type")
-      .eq("user_id", scopedUserId)
-      .gte("entry_date", continuityFrom)
-      .in("day_type", ["sick", "injured"]),
     // P1.2-baslinjen (fysiologi) är alltid de senaste 60 dagarna.
     supabase
       .from("daily_metrics")
@@ -556,32 +403,6 @@ export default async function DashboardPage({
   const allSessions: TrainingSession[] = groupActivitiesIntoSessions(
     (allActivityRows ?? []) as unknown as SessionActivity[],
   );
-  const continuityInterruptions: InterruptionDay[] = (allInterruptionEntries ?? []).map((e) => ({
-    date: e.entry_date as string,
-    dayType: e.day_type as "sick" | "injured",
-  }));
-  const continuitySessions: ContinuitySession[] = allSessions.map((s) => ({
-    date: s.date,
-    category: s.category,
-  }));
-  const continuity: ContinuityStreaks = computeContinuityStreaks(
-    continuityInterruptions,
-    continuitySessions,
-    todayKey,
-  );
-
-  // --- Form och kondition -------------------------------------------------
-  // Samma treårsfönster som kontinuiteten (allSessions) — formkurvan och
-  // VO2max-trenden ska kunna se bakåt, inte bara dagens/veckans data.
-  const efPoints = computeEfficiencyPoints(allSessions);
-  const vo2maxReadings = allSessions
-    .flatMap((s) => s.activities.map((a) => ({ date: s.date, value: a.vo2max })))
-    .filter((r): r is { date: string; value: number } => r.value != null)
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-
-
-  const formRings = [efficiencyRing(efPoints, todayKey), vo2maxRing(vo2maxReadings, todayKey)];
-
   // --- Volym och belastning -----------------------------------------------
   // Samma treårsfönster (allSessions) som Form och kondition ovan, summerat
   // per dag så att både det rullande 7-dagarsfönstret och årssnittet kan
@@ -604,9 +425,8 @@ export default async function DashboardPage({
 
   const volumeRings = [
     rollingWeekRing("Distans", dailyDistanceKm, todayKey, yearStartKey, (v) =>
-      v > 0 ? `${v.toFixed(1)} km` : "0 km",
+      formatKmSv(v),
     ),
-    rollingWeekRing("Belastning", dailyLoad, todayKey, yearStartKey, (v) => String(Math.round(v))),
     rollingWeekRing("Träningstid", dailyMinutes, todayKey, yearStartKey, (v) =>
       `${Math.round(v).toLocaleString("sv-SE")} min`,
     ),
@@ -697,51 +517,6 @@ export default async function DashboardPage({
 
     const latestSession = allSessions.length > 0 ? allSessions[allSessions.length - 1] : null;
 
-  /* --- Sviten som rutor -------------------------------------------------- */
-  // En ruta per kalendervecka bakåt, med veckans antal pass och om någon av
-  // dem var kvalitet. Räknas ur allSessions, som redan är hämtad — ingen ny
-  // fråga för det här.
-  const QUALITY_CATEGORIES = new Set(["interval", "threshold", "race"]);
-  const weekAgg = new Map<string, { sessions: number; quality: boolean }>();
-  for (const s of allSessions) {
-    const key = isoWeekStart(s.date);
-    const cur = weekAgg.get(key) ?? { sessions: 0, quality: false };
-    cur.sessions += 1;
-    if (QUALITY_CATEGORIES.has(s.category)) cur.quality = true;
-    weekAgg.set(key, cur);
-  }
-  /* Avbrutna veckor: minst en sjuk- eller skadedag. Det är exakt samma
-     definition som computeContinuityStreaks använder för att bryta sviten,
-     så rutorna kan aldrig visa en obruten rad medan siffran säger noll.
-     Vilken sorts avbrott sparas också — remsan färgar sjuk gult och skada
-     rött, som resten av appen. Skada vinner när veckan hade båda. */
-  const interruptedWeeks = new Map<string, "sick" | "injured">();
-  for (const i of continuityInterruptions) {
-    const key = isoWeekStart(i.date);
-    if (interruptedWeeks.get(key) === "injured") continue;
-    interruptedWeeks.set(key, i.dayType);
-  }
-  // Sammanhängande veckoserie, så att en helt tom vecka blir en tom ruta i
-  // stället för att försvinna och få sviten att se obruten ut.
-  const streakWeeks: StreakWeek[] = [];
-  {
-    const thisWeek = isoWeekStart(todayKey);
-    const cursor = new Date(`${thisWeek}T00:00:00Z`);
-    cursor.setUTCDate(cursor.getUTCDate() - 7 * 13);
-    for (let i = 0; i < 14; i++) {
-      const key = cursor.toISOString().slice(0, 10);
-      const agg = weekAgg.get(key);
-      streakWeeks.push({
-        weekStart: key,
-        sessions: agg?.sessions ?? 0,
-        quality: agg?.quality ?? false,
-        interrupted: interruptedWeeks.get(key) ?? null,
-        isCurrent: key === thisWeek,
-      });
-      cursor.setUTCDate(cursor.getUTCDate() + 7);
-    }
-  }
-
   /* Dagens kulör för HELA sidan. Samma funktion som passkortet använder. */
   const pageAccent = dayAccent(
     (todayPlannedRows ?? []) as unknown as { workout_type: string }[],
@@ -761,7 +536,7 @@ export default async function DashboardPage({
       className="day-theme flex flex-1 flex-col gap-8 px-6 py-8"
       style={pageAccent ? ({ "--day-accent": pageAccent } as React.CSSProperties) : undefined}
     >
-      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Dashboard</h1>
+      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Idag</h1>
 
       {/* Var i säsongen man är, före dagens pass. Dagens pass svarar på VAD
           man ska göra; det här svarar på varför — vilket block man bygger i
@@ -805,6 +580,12 @@ export default async function DashboardPage({
         kilometres={weekKilometres}
         href={`/calendar/vecka/${todayKey}${athleteQuery}`}
       />
+      <Link
+        href={`/calendar/vecka/${shiftDateKey(weekStartKey, -7)}${athleteQuery}`}
+        className="-mt-5 self-end text-sm text-[var(--ink-2)] underline underline-offset-2 hover:text-[var(--foreground)]"
+      >
+        Förra veckans bokslut →
+      </Link>
 
       {/* --- Dagens pass, efter veckan.
           Den första frågan en löpare har när hon öppnar appen är vad som
@@ -870,38 +651,23 @@ export default async function DashboardPage({
           öppnar appen för — vad ska jag göra, och hur gick det sist.
           Ritas bara när passet faktiskt har varv; ett lugnt distanspass har
           inga, och en tom rubrik är värre än ingen. */}
-      <StreakStrip
-        currentWeeks={continuity.currentWeeksWithoutInterruption}
-        bestWeeks={continuity.bestWeeksWithoutInterruption}
-        weeks={streakWeeks}
-      />
 
 
-      {/* --- Form och kondition: överst på sidan, egen sektion. Långa
-          horisontmått precis som Kontinuitet nedan — formkurvan och VO2max
-          ändras inte dag för dag, så de hör hemma bredvid varandra, inte i
-          "dagens" brus. --------------------------------------------------- */}
-      <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Form och kondition</h2>
-        {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
-            stället för kort vars bredd styrs av hur långt mätvärdet råkar
-            vara. */}
-        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
-          {formRings.map((r) => (
-            <KpiRing key={r.label} {...r} />
-          ))}
-        </div>
-      </section>
+
+      {/* Formkurvan och syreupptaget låg här fram till 2026-11-21. Formkurvan
+          (meter per hjärtslag) är samma mått som pulsslag per meter, som
+          redan underkänts — den mätte fart, inte form. Syreupptaget bor på
+          Form. Sviten likaså (Kontinuitet). */}
 
       {/* --- Volym och belastning: egen sektion, rullande 7 dagar mot årets
           snitt per vecka (P1.5) — flyttad hit från den borttagna /veckan
           2026-08-13. ---------------------------------------------------- */}
       <section className="flex flex-col gap-3">
-        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Volym och belastning</h2>
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Läget · senaste 7 dagarna</h2>
         {/* Rutnät och inte flexrad: lika breda kort som radbryter jämnt, i
             stället för kort vars bredd styrs av hur långt mätvärdet råkar
             vara. */}
-        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-3">
+        <div className="day-grid grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2">
           {volumeRings.map((r) => (
             <KpiRing key={r.label} {...r} />
           ))}

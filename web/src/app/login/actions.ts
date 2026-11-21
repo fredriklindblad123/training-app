@@ -24,7 +24,8 @@ export async function login(formData: FormData) {
   }
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  // Roten väljer startsida efter roll: Gruppen för coach, Idag för löpare.
+  redirect("/");
 }
 
 export async function signup(formData: FormData) {

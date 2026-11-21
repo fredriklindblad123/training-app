@@ -1,5 +1,11 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
+import { PageHeader, Section } from "@/components/ui/Page";
+import { Segmented } from "@/components/ui/Segmented";
+import { HowCalculated } from "@/components/ui/Explain";
+import { DataTable } from "@/components/ui/DataTable";
+import { fetchSameSessions, SAME_MIN_REPS } from "@/lib/same-session";
+import { formatDateShort, formatPace } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { buildInsights, insightsForPhase } from "@/lib/insights";
@@ -12,12 +18,7 @@ import {
   loadLatestLabZoneSet,
   sumZoneSources,
 } from "@/lib/zone-sources";
-import {
-  EfficiencyChart,
-  type EfficiencyInterruption,
-  type EfficiencyRace,
-} from "@/components/charts/EfficiencyChart";
-import { computeEfficiencyPoints, efficiencyTrend, efficiencyVerdict } from "@/lib/efficiency";
+import { computeEfficiencyPoints } from "@/lib/efficiency";
 import {
   EMPTY_THRESHOLD_PROFILE,
   PHASE_INTENSITY_MODEL,
@@ -114,40 +115,6 @@ type SeasonBlockRow = {
  * `competitions` är alltså den auktoritativa källan för "ägde en tävling
  * rum den här dagen"; Garmin-taggade race-pass är bara ett komplement för
  * dagar som (ännu) saknar ett importerat resultat. */
-type CompetitionEventLite = { event: string };
-type CompetitionLite = {
-  competition_date: string;
-  name: string;
-  competition_events: CompetitionEventLite[];
-};
-
-function competitionLabel(c: CompetitionLite): string {
-  const events = c.competition_events.map((e) => e.event).join(", ");
-  return events ? `${c.name} (${events})` : c.name;
-}
-
-/** date (YYYY-MM-DD) -> läsbar tävlingsetikett. Unionen av `competitions`
- * (primär källa) och Garmin race-pass på dagar `competitions` inte täcker. */
-function buildRaceDays(
-  competitions: CompetitionLite[],
-  raceSessions: { date: string; dominantActivity: { name: string | null } }[],
-): Map<string, string> {
-  const byDate = new Map<string, CompetitionLite[]>();
-  for (const c of competitions) {
-    byDate.set(c.competition_date, [...(byDate.get(c.competition_date) ?? []), c]);
-  }
-  const raceDays = new Map<string, string>();
-  for (const [date, comps] of byDate) {
-    raceDays.set(date, comps.map(competitionLabel).join(" + "));
-  }
-  for (const s of raceSessions) {
-    if (!raceDays.has(s.date)) {
-      raceDays.set(s.date, s.dominantActivity.name?.trim() || "Tävling");
-    }
-  }
-  return raceDays;
-}
-
 /** Hämtar alla varv för en uppsättning aktiviteter.
  *
  * PostgREST returnerar som standard högst 1000 rader, och varvfrågan hade
@@ -259,7 +226,6 @@ export default async function TrendsPage({
     { data: diaryEntries },
     profileResult,
     { data: plannedRows },
-    { data: competitionRows },
     { data: reportRows },
   ] = await Promise.all([
     (() => {
@@ -302,15 +268,6 @@ export default async function TrendsPage({
       : Promise.resolve({ data: [] as PlannedWorkout[] | null }),
     // Tävlingsdagar från idrottarens egna importerade resultat, inte Garmin
     // — se kommentaren vid buildRaceDays.
-    (() => {
-      let q = supabase
-        .from("competitions")
-        .select("name, competition_date, competition_events(event)")
-        .eq("user_id", scopedUserId)
-        .gte("competition_date", startDate);
-      if (endDateExclusive) q = q.lt("competition_date", endDateExclusive);
-      return q.order("competition_date");
-    })(),
     // Djupanalyser (rapporter publicerade utanför appen). Bara från
     // 2026-10-05: de två rapporterna före dess byggde på pulszoner som
     // tröskeltestet visade var fel, och deras sidor är raderade — raderna
@@ -444,24 +401,8 @@ export default async function TrendsPage({
   }
   const efWeekly = weekSeries.map((wk) => median(efByWeek.get(wk) ?? []));
 
-  const raceDays = buildRaceDays(
-    (competitionRows ?? []) as CompetitionLite[],
-    sessions.filter((s) => s.category === "race"),
-  );
 
-  const efTrend = efficiencyTrend(efPoints, todayKey);
   const vo2max = computeVo2maxTrend(sessions);
-
-  /* Sjuk- och skadedagar till formkurvan. diaryEntries är redan hämtad för
-     perioden — kurvan visar samma fönster, så ingen ny fråga behövs. */
-  const efInterruptions: EfficiencyInterruption[] = (diaryEntries ?? [])
-    .filter((e) => e.day_type === "sick" || e.day_type === "injured")
-    .map((e) => ({
-      date: e.entry_date as string,
-      dayType: e.day_type as "sick" | "injured",
-    }));
-
-  const efRaces: EfficiencyRace[] = [...raceDays].map(([date, label]) => ({ date, label }));
 
   // --- B. Intensitetsfördelning (P1.3) --------------------------------------
   const intensityWeeks: IntensityWeek[] = weekSeries.map((wk) => {
@@ -609,6 +550,8 @@ export default async function TrendsPage({
     ((gears?.hr ?? gears?.pace)?.gears ?? []).map((g) => [g.key, g]),
   );
 
+  const sameSessions = await fetchSameSessions(supabase, scopedUserId, todayKey);
+
   const intervalPeaks = gearSessionPeaks(gearReps, "interval");
   const intervalPeriodMedian =
     gears?.hr?.gears.find((g) => g.key === "intervall")?.actual?.median ?? null;
@@ -695,54 +638,45 @@ export default async function TrendsPage({
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Form</h1>
-          {activeBlock ? (
-            <p className="text-sm text-[var(--ink-3)]">
-              <strong className="font-medium text-[var(--foreground)]">{activeBlock.name}</strong> (
-              {PHASE_LABELS[activeBlock.phase]}), {activeBlock.start_date} – {activeBlock.end_date}
-              {activeBlock.focus ? ` — ${activeBlock.focus}` : ""}.
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-col items-end gap-2 text-sm">
-          <div className="flex gap-2">
-            {WEEK_OPTIONS.map((w) => (
-              <Link
-                key={w}
-                href={`/trender?weeks=${w}${athleteQuery}`}
-                className={`rounded px-3 py-1 ${
-                  !activeBlock && weeks === w
-                    ? "bg-[var(--foreground)] text-[var(--background)]"
-                    : "border border-[var(--line)]"
-                }`}
-              >
-                {w} veckor
-              </Link>
-            ))}
-          </div>
-          {blocks.length > 0 && (
-            <div className="flex flex-wrap justify-end gap-2">
-              {blocks.map((b) => (
+      <PageHeader
+        title="Form"
+        lead={
+          activeBlock
+            ? `${activeBlock.name} (${PHASE_LABELS[activeBlock.phase]}), ${formatDateShort(activeBlock.start_date)}–${formatDateShort(activeBlock.end_date)}${activeBlock.focus ? ` — ${activeBlock.focus}` : ""}.`
+            : "Hur träningen ligger mot dina trösklar, och vad testerna säger."
+        }
+      />
+      <div className="flex flex-col gap-2">
+        <Segmented
+          label="Period"
+          options={WEEK_OPTIONS.map((w) => ({
+            key: String(w),
+            label: `${w} v`,
+            href: `/trender?weeks=${w}${athleteQuery}`,
+            active: !activeBlock && weeks === w,
+          }))}
+        />
+        {blocks.length > 0 && (
+          <details className="group text-sm">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-[var(--ink-2)] [&::-webkit-details-marker]:hidden">
+              <span aria-hidden className="transition-transform group-open:rotate-90">›</span>
+              {activeBlock ? `Block: ${activeBlock.name}` : "Välj ett block i stället"}
+            </summary>
+            <div className="mt-1 flex flex-col gap-1 pl-4">
+              {[...blocks].reverse().map((b) => (
                 <Link
                   key={b.id}
                   href={`/trender?block=${b.id}${athleteQuery}`}
-                  title={`${PHASE_LABELS[b.phase]}, ${b.start_date} – ${b.end_date}`}
-                  className={`rounded px-3 py-1 ${
-                    activeBlock?.id === b.id
-                      ? "bg-[var(--foreground)] text-[var(--background)]"
-                      : "border border-[var(--line)]"
-                  }`}
+                  aria-current={activeBlock?.id === b.id ? "true" : undefined}
+                  className={`flex min-h-9 items-center ${activeBlock?.id === b.id ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)] underline underline-offset-2"}`}
                 >
-                  {b.name}
+                  {b.name} · {formatDateShort(b.start_date)}–{formatDateShort(b.end_date)}
                 </Link>
               ))}
             </div>
-          )}
-        </div>
+          </details>
+        )}
       </div>
-
 
       {/* Toppen är en dom, inte ett lager av nyckeltal. Här låg tidigare
           CV-rutan, efterlevnadskortet och fyra nyckeltal — ett dussin tal
@@ -963,6 +897,48 @@ export default async function TrendsPage({
         </div>
       </CollapsibleSection>
 
+      {/* ===== Samma pass igen (2026-11-21) =====
+          Ersätter formkurvan som formjämförelse. Se lib/same-session.ts för
+          varför det inte är en trendlinje. */}
+      {sameSessions.length > 0 && (
+        <Section
+          title="Samma pass igen"
+          description="Pass med samma upplägg, varje gång det körts. Fart och slutpuls står bredvid varandra — har båda ändrats är det vald intensitet, inte form."
+        >
+          {sameSessions.map((g) => (
+            <div key={g.key} className="flex flex-col gap-1.5 rounded-[14px] border border-[var(--line)] p-3.5">
+              <span className="font-semibold text-[var(--foreground)]">{g.name}</span>
+              <DataTable
+                head={["Gång", "Fart", "Slutpuls", "Rep"]}
+                emphasis={null}
+                rows={g.times.map((t, i) => ({
+                  key: t.activityId,
+                  cells: [
+                    <span key="d" className={i === 0 ? "font-semibold text-[var(--foreground)]" : ""}>
+                      {formatDateShort(t.date)} {t.date.slice(0, 4)}
+                    </span>,
+                    formatPace(t.pace).replace(" /km", "/km"),
+                    t.endHr != null ? Math.round(t.endHr) : "–",
+                    t.reps,
+                  ],
+                }))}
+              />
+            </div>
+          ))}
+          <HowCalculated>
+            <p>
+              Bara utomhuspass med samma namn. Rep på minst 400 m och en minut i 3:30–4:25/km, första
+              repet räknas inte, och en gång visas bara med minst {SAME_MIN_REPS} sådana rep. Inomhus
+              mäter klockan banvarven för kort, så de passen jämförs inte.
+            </p>
+            <p>
+              Ingen formkurva: prövat mot din data 2026-11-20 rörde sig pulsen knappt mellan passen,
+              och skillnaden mellan perioder var mindre än skillnaden mellan enskilda pass.
+            </p>
+          </HowCalculated>
+        </Section>
+      )}
+
       {/* Det senaste laktattestet, ritat som i testrapporten. Hela testet,
           oavsett vald period — samma skäl som laktatstickens historik:
           ett test tas ett par gånger per säsong. Begäran 2026-09-29. */}
@@ -971,10 +947,13 @@ export default async function TrendsPage({
       )}
 
       {/* ===== Utfallen: blir motorn större? ===== */}
-      {(vo2max || efPoints.length > 0) && (
+      {/* Formkurvan (meter per hjärtslag) togs bort 2026-11-21: samma mått
+          som pulsslag per meter, som underkänts (CLAUDE.md) — den mätte fart,
+          inte form. Jämförelsen sker i stället i "Samma pass igen". */}
+      {vo2max && (
         <CollapsibleSection
-          title="Syreupptag och form"
-          meta="Två skattningar av samma sak, med samma svagheter"
+          title="Syreupptag"
+          meta="Garmins skattning ur fart och puls, inte en mätning"
           headline={
             vo2max ? (
               <span className="text-sm text-[var(--ink-2)]">{vo2maxVerdict(vo2max).headline}</span>
@@ -982,49 +961,6 @@ export default async function TrendsPage({
           }
         >
           {vo2max && <Vo2maxCard trend={vo2max} />}
-      <section className="flex flex-col gap-3">
-        <div>
-          <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-            Formkurva (Efficiency Factor)
-          </h3>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Hur långt du kommer per hjärtslag på distanspassen. Stiger kurvan går formen åt rätt
-            håll.
-          </p>
-        </div>
-
-        <p
-          className="text-base font-medium"
-          style={{
-            color:
-              efTrend.direction === "upp"
-                ? "var(--status-good)"
-                : efTrend.direction === "ner"
-                  ? "var(--status-watch)"
-                  : "var(--foreground)",
-          }}
-        >
-          {efficiencyVerdict(efTrend)}
-        </p>
-
-        <EfficiencyChart
-          points={efPoints}
-          races={efRaces}
-          interruptions={efInterruptions}
-          fromDate={startDate}
-          toDate={activeBlock ? activeBlock.end_date : todayKey}
-          emptyLabel="Inga pass i perioden klarar filtret (lugnt/långpass, ≥ 20 min, med snittpuls)."
-        />
-
-        <details className="text-sm">
-          <summary className="cursor-pointer text-[var(--ink-3)]">Så räknas kurvan</summary>
-          <ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-[var(--ink-2)]">
-            <li>Distans- och långpass på minst 20 minuter med puls — {efPoints.length} i perioden.</li>
-            <li>Farten är höjdjusterad, så backar ser inte ut som sämre form.</li>
-            <li>Värme, stress och underlag flyttar kurvan. Läs riktningen över månader, inte ett enskilt pass.</li>
-          </ul>
-        </details>
-      </section>
 
         </CollapsibleSection>
       )}
@@ -1056,11 +992,7 @@ export default async function TrendsPage({
             </p>
           </div>
           <Link
-            href={
-              scoped.role === "coach"
-                ? `/sasongsoversikt?athlete=alla&nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
-                : `/sasongsoversikt?nyttBlockFran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`
-            }
+            href={`/blockplan/nytt?fran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`}
             className="rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
           >
             Skapa nästa block →

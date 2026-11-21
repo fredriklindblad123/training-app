@@ -1,4 +1,11 @@
 import Link from "next/link";
+import { PageHeader, Section } from "@/components/ui/Page";
+import { Segmented } from "@/components/ui/Segmented";
+import { HowCalculated, Observations } from "@/components/ui/Explain";
+import { DataTable } from "@/components/ui/DataTable";
+import { blockClosure, closureLines } from "@/lib/block-closure";
+import { formatDateShort, formatNumber } from "@/lib/format";
+import { addDays as planAddDays, toDateKey, PHASE_LABELS, type PhaseType } from "@/lib/planning";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { getViewMode } from "@/lib/view-mode";
@@ -157,6 +164,9 @@ const GRAF_LABELS = { minuter: "Träningstid (min)", distans: "Distans", pass: "
 
 /** En rad val där ett är aktivt, som länkar. scroll={false} så att sidan
  * står kvar vid grafen när man byter. */
+/* Väljarna på sidan (B2, 2026-11-21): upp till tre korta alternativ blir
+ * den gemensamma periodväljaren; fler, som blocklistan, blir en hopfälld
+ * lista — fem blocknamn i en rad gick inte att läsa på 390 px. */
 function Segment({
   label,
   options,
@@ -164,31 +174,29 @@ function Segment({
   label: string;
   options: { key: string; label: string; href: string; active: boolean; disabled?: boolean }[];
 }) {
+  if (options.length <= 3 && options.every((o) => o.label.length <= 14))
+    return <Segmented label={label} showLabel options={options} />;
+  const active = options.find((o) => o.active);
   return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span className="w-20 shrink-0 text-xs text-[var(--ink-3)]">{label}</span>
-      <div className="flex flex-wrap gap-1 text-sm" role="group" aria-label={label}>
-        {options.map((o) =>
-          o.disabled ? (
-            <span key={o.key} aria-disabled className="rounded border border-dashed border-[var(--line)] px-3 py-1 text-[var(--ink-3)]">
-              {o.label}
-            </span>
-          ) : (
-            <Link
-              key={o.key}
-              href={o.href}
-              scroll={false}
-              aria-current={o.active ? "true" : undefined}
-              className={`rounded px-3 py-1 ${
-                o.active ? "bg-[var(--foreground)] text-[var(--background)]" : "border border-[var(--line)]"
-              }`}
-            >
-              {o.label}
-            </Link>
-          ),
-        )}
+    <details className="group text-sm">
+      <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-[var(--ink-2)] [&::-webkit-details-marker]:hidden">
+        <span aria-hidden className="transition-transform group-open:rotate-90">›</span>
+        {label}: <span className="font-semibold text-[var(--foreground)]">{active?.label ?? "–"}</span>
+      </summary>
+      <div className="mt-1 flex flex-col gap-1 pl-4">
+        {options.map((o) => (
+          <Link
+            key={o.key}
+            href={o.href}
+            scroll={false}
+            aria-current={o.active ? "true" : undefined}
+            className={`flex min-h-9 items-center ${o.active ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)] underline underline-offset-2"}`}
+          >
+            {o.label}
+          </Link>
+        ))}
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -247,23 +255,17 @@ export default async function AnalysPage({
 
   const header = (
     <div className="flex flex-col gap-3">
-      <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Analys</h1>
-      {started.length > 0 && (
-        <div className="flex flex-wrap gap-2 text-sm">
-          {[...started].reverse().slice(0, 6).map((b) => (
-            <Link
-              key={b.id}
-              href={`/analys?block=${b.id}${athleteQuery}`}
-              className={`rounded px-3 py-1 ${
-                block?.id === b.id
-                  ? "bg-[var(--foreground)] text-[var(--background)]"
-                  : "border border-[var(--line)]"
-              }`}
-            >
-              {b.name}
-            </Link>
-          ))}
-        </div>
+      <PageHeader title="Blocket" lead="Blocket i siffror: bokslutet överst, därefter veckorna, det som blev annat och dagboken." />
+      {started.length > 1 && (
+        <Segment
+          label="Block"
+          options={[...started].reverse().slice(0, 6).map((b) => ({
+            key: b.id,
+            label: b.name,
+            href: `/analys?block=${b.id}${athleteQuery}`,
+            active: block?.id === b.id,
+          }))}
+        />
       )}
     </div>
   );
@@ -698,9 +700,71 @@ export default async function AnalysPage({
     new Date(`${key}T12:00:00Z`).toLocaleDateString("sv-SE", { weekday: "short", timeZone: "UTC" });
   const pct = (done: number, due: number) => (due > 0 ? ` · ${Math.round((done / due) * 100)} %` : "");
 
+  const closure = await blockClosure(supabase, userId, blocks, block, today);
+  const closureObs = closureLines(closure);
+  const nextBlockFrom = toDateKey(planAddDays(new Date(`${block.end_date}T12:00:00`), 1));
+
   return (
     <div className="flex flex-1 flex-col gap-8 px-6 py-8">
       {header}
+
+      {/* ===== Blockbokslut (C5, 2026-11-21) ===== */}
+      {closure.length > 1 && (
+        <Section
+          title={ongoing ? "Blocket hittills" : "Bokslut"}
+          description={`Mot de ${closure.length - 1 === 1 ? "senaste blocket" : `${closure.length - 1} senaste blocken`} av samma typ (${PHASE_LABELS[block.phase as PhaseType] ?? block.phase}).`}
+        >
+          <Observations items={closureObs} source="Ur klockan och dagboken · sjuk- och skadedagar är självskattade" />
+          <DataTable
+            minWidth="20rem"
+            head={[
+              "",
+              ...closure.map((c, i) => (
+                <span key={c.block.id} className="flex flex-col">
+                  <span>{i === 0 ? "Detta" : c.block.name.replace(/^Allmän förberedelse /, "").replace(/^Tävlingsperiod /, "")}</span>
+                  <span className="font-normal text-[var(--ink-3)]">{formatNumber(c.weeks, 0)} v{c.ongoing ? " hittills" : ""}</span>
+                </span>
+              )),
+            ]}
+            rows={[
+              { cells: ["Träningstid/v", ...closure.map((c) => `${Math.round(c.minutesPerWeek)} min`)] },
+              { cells: ["Distans/v", ...closure.map((c) => `${Math.round(c.kmPerWeek)} km`)] },
+              { cells: ["Längsta vecka", ...closure.map((c) => `${Math.round(c.longestWeek)} min`)] },
+              { cells: ["Träningsdagar", ...closure.map((c) => `${c.trainingDays} av ${c.days}`)] },
+              { cells: ["Sjukdagar", ...closure.map((c) => c.sickDays)] },
+              { cells: ["Skadedagar", ...closure.map((c) => c.injuredDays)] },
+            ]}
+          />
+          {closure.slice(1).some((c) => c.racesAfter.length > 0) && (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-semibold text-[var(--foreground)]">Lopp efter blocken</span>
+              {closure.slice(1).map((c) =>
+                c.racesAfter.length > 0 ? (
+                  <p key={c.block.id} className="text-sm text-[var(--ink-2)]">
+                    <span className="text-[var(--ink-3)]">{c.block.name}: </span>
+                    {c.racesAfter.map((r) => `${r.event.replace("m", " m")} ${r.result} (${formatDateShort(r.date)})`).join(" · ")}
+                  </p>
+                ) : null,
+              )}
+            </div>
+          )}
+          <HowCalculated>
+            <p>
+              Träningstid och distans är snitt per vecka över blockets dagar — för ett pågående block
+              bara dagarna hittills. Tiden är hela passet utan styrka, samma regel som Idag. Distans
+              räknas utan alternativ träning. Lopp är 800 och 1500 m inom åtta veckor efter blocket.
+            </p>
+          </HowCalculated>
+          {scoped.role === "coach" && !runnerMode && (
+            <Link
+              href={`/blockplan/nytt?fran=${nextBlockFrom}`}
+              className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--foreground)] px-4 font-semibold text-[var(--background)] hover:opacity-90"
+            >
+              Skapa nästa block →
+            </Link>
+          )}
+        </Section>
+      )}
 
       <p className="-mt-4 max-w-3xl text-sm text-[var(--ink-2)]">
         {block.name}, {block.start_date} – {block.end_date}
@@ -724,70 +788,19 @@ export default async function AnalysPage({
         />
       )}
 
-      {/* Vilka passtyper som räknas in i minuter, distans och träningsdagar. */}
-      <section className="flex flex-col gap-2">
-        <h2 className="display text-[0.6875rem] font-semibold tracking-[0.09em] text-[var(--ink-3)] uppercase">
-          Räkna med
-        </h2>
-        <div className="flex flex-wrap gap-2">
-          {TYPE_OPTIONS.map((t) => {
-            const on = include.has(t);
-            return (
-              <Link
-                key={t}
-                href={typeHref(t)}
-                scroll={false}
-                aria-pressed={on}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
-                  on
-                    ? "border-[var(--foreground)] text-[var(--foreground)]"
-                    : "border-[var(--line)] text-[var(--ink-3)]"
-                }`}
-              >
-                <span
-                  aria-hidden
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{
-                    backgroundColor: on ? (categoryColorVar(t) ?? "var(--ink-3)") : "transparent",
-                    border: on ? undefined : "1px solid var(--ink-3)",
-                  }}
-                />
-                {CATEGORY_LABELS[t]}
-              </Link>
-            );
-          })}
-        </div>
-        <p className="text-xs text-[var(--ink-3)]">
-          Träningstid är passets hela tid, vila i intervallpass inräknad. Styrka räknas inte i
-          tid, eftersom de passen inte alltid anges i tid.
-        </p>
-      </section>
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
             {ongoing ? "Hittills i blocket" : "Hela blocket"}
           </h2>
-          <div className="flex gap-1 text-sm" role="group" aria-label="Summering">
-            {[
-              { vecka: false, label: "Totalt" },
-              { vecka: true, label: "Snitt per vecka" },
-            ].map((o) => (
-              <Link
-                key={o.label}
-                href={visaHref(o.vecka)}
-                scroll={false}
-                aria-current={perWeek === o.vecka ? "true" : undefined}
-                className={`rounded px-3 py-1 ${
-                  perWeek === o.vecka
-                    ? "bg-[var(--foreground)] text-[var(--background)]"
-                    : "border border-[var(--line)]"
-                }`}
-              >
-                {o.label}
-              </Link>
-            ))}
-          </div>
+          <Segmented
+            label="Summering"
+            options={[
+              { key: "tot", label: "Totalt", href: visaHref(false), active: !perWeek },
+              { key: "vecka", label: "Per vecka", href: visaHref(true), active: perWeek },
+            ]}
+          />
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           <TotalTile nowLabel={nowName} beforeLabel={cmpName} label="Träningstid (min)" now={scaled(now.minutes)} before={scaledOrNull(before?.minutes)} />
@@ -822,7 +835,8 @@ export default async function AnalysPage({
             digits={perWeek ? 1 : 0}
           />
         </div>
-        <p className="text-xs text-[var(--ink-3)]">
+        <HowCalculated>
+        <p >
           {perWeek
             ? `Snitt per vecka över ${(daysSoFar / 7).toLocaleString("sv-SE", { maximumFractionDigits: 1 })} veckor${
                 comparison ? `, samma antal dagar ${cmpLower}` : ""
@@ -832,7 +846,7 @@ export default async function AnalysPage({
           distans, eftersom en km på cykel inte är en km löpning. Den ingår i träningstid och
           träningsdagar.
         </p>
-        <p className="text-xs text-[var(--ink-3)]">
+        <p >
           Styrkepass räknas också ur dagbokens passlogg, där de oftast skrivs in: gym, cirkel,
           medicinboll och liknande egna pass. Det underlaget är självskattat. Styrka som tillägg
           efter ett löppass räknas inte. Med styrka vald räknas en dag med ett styrkepass i
@@ -856,6 +870,42 @@ export default async function AnalysPage({
             : ""}
           . De syns som remsor under graferna: fyllda för {nowLower}, konturerade för {cmpLower}.
         </p>
+        </HowCalculated>
+      {/* Vilka passtyper som räknas in i minuter, distans och träningsdagar. */}
+        <HowCalculated summary={`Räkna med: ${include.size === TYPE_OPTIONS.length ? "alla passtyper" : `${include.size} av ${TYPE_OPTIONS.length} passtyper`}`}>
+        <div className="flex flex-wrap gap-2">
+          {TYPE_OPTIONS.map((t) => {
+            const on = include.has(t);
+            return (
+              <Link
+                key={t}
+                href={typeHref(t)}
+                scroll={false}
+                aria-pressed={on}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
+                  on
+                    ? "border-[var(--foreground)] text-[var(--foreground)]"
+                    : "border-[var(--line)] text-[var(--ink-3)]"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{
+                    backgroundColor: on ? (categoryColorVar(t) ?? "var(--ink-3)") : "transparent",
+                    border: on ? undefined : "1px solid var(--ink-3)",
+                  }}
+                />
+                {CATEGORY_LABELS[t]}
+              </Link>
+            );
+          })}
+        </div>
+        <p className="text-xs text-[var(--ink-3)]">
+          Träningstid är passets hela tid, vila i intervallpass inräknad. Styrka räknas inte i
+          tid, eftersom de passen inte alltid anges i tid.
+        </p>
+        </HowCalculated>
       </section>
 
       <section className="flex flex-col gap-3">
@@ -879,7 +929,7 @@ export default async function AnalysPage({
             label="Mått"
             options={(["minuter", "distans", "pass"] as const).map((g) => ({
               key: g,
-              label: GRAF_LABELS[g],
+              label: g === "minuter" ? "Tid" : GRAF_LABELS[g],
               href: href({ graf: g }),
               active: graf === g,
               disabled: mot === "plan" && g !== "pass",
