@@ -1,16 +1,14 @@
 import { ManualSessions, type ManualActivity } from "@/components/ManualSessions";
 import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
 import { DaySection } from "@/components/DaySection";
-import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { createClient } from "@/lib/supabase/server";
-import { groupActivitiesIntoSessions, sessionComments, type SessionActivity } from "@/lib/sessions";
+import { groupActivitiesIntoSessions, sessionComments, trainingSeconds, type SessionActivity } from "@/lib/sessions";
 import { SessionComments } from "@/components/ui/SessionComments";
 import {
   matchPlanToSessions,
-  summarizeCompliance,
   type PlannedWorkout,
 } from "@/lib/plan-matching";
-import { dateKey, STATUS_COLOR, type DayStatus } from "@/lib/calendar-utils";
+import { dateKey, type DayStatus } from "@/lib/calendar-utils";
 import { DiaryMarkers } from "@/components/DiaryMarkers";
 import { LactateLog, type LactateReading } from "@/components/LactateLog";
 import type { ActivityCategory } from "@/lib/categories";
@@ -38,11 +36,9 @@ import {
 import {
   CATEGORY_LABELS,
   CATEGORY_VALUES,
-  categoryColorVar,
   isActivityCategory,
 } from "@/lib/categories";
 import { analyzeDiaryNote } from "@/lib/diary-text";
-import { SessionReviewCard } from "@/components/SessionReview";
 import { reviewSession, type ReviewRep } from "@/lib/session-review";
 import {
   easyPartsFromLaps,
@@ -307,25 +303,14 @@ export async function DayContent({
     ]),
   );
   const dayEasyParts = easyPartsFromLaps(scopedUserId, daySessions, lapsByActivity);
-  const dayKm = daySessions.reduce((sum, s) => sum + (s.distanceMeters ?? 0), 0) / 1000;
-  const daySeconds = daySessions.reduce((sum, s) => sum + (s.durationSeconds ?? 0), 0);
 
   // Samma nyckeltalsrad som kalenderns övriga vyer (components/PeriodStatTiles.tsx).
   const dayPlanMatches = matchPlanToSessions(
     (plannedWorkouts ?? []) as unknown as PlannedWorkout[],
     daySessions,
   );
-  const dayCompliance = summarizeCompliance(dayPlanMatches);
 
-  const doneSummary =
-    daySessions.length === 0
-      ? "Inget pass"
-      : `${daySessions.length} ${daySessions.length === 1 ? "pass" : "pass"} · ${dayKm > 0 ? `${formatKm(dayKm * 1000)} · ` : ""}${formatDuration(daySeconds)}`;
 
-  const diarySummary = diaryEntry?.notes
-    ? diaryEntry.notes.replace(/\s+/g, " ").slice(0, 70) +
-      (diaryEntry.notes.length > 70 ? "…" : "")
-    : "Ingen anteckning";
 
   const hasDiaryData = !!(diaryEntry?.notes || diaryEntry?.session_log || diaryEntry?.coach_notes);
 
@@ -362,18 +347,6 @@ export async function DayContent({
     },
   } as const;
 
-  const sleepSummary = dailyMetrics
-    ? [
-        formatHoursMinutes(dailyMetrics.sleep_seconds),
-        dailyMetrics.sleep_score != null ? `poäng ${dailyMetrics.sleep_score}` : null,
-        dailyMetrics.resting_hr != null ? `vilopuls ${dailyMetrics.resting_hr}` : null,
-        dailyMetrics.hrv_overnight_avg != null
-          ? `HRV ${Math.round(dailyMetrics.hrv_overnight_avg)} ms`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" · ")
-    : "Ingen mätning";
 
   const todayStr = dateKey(
     new Date().getFullYear(),
@@ -390,15 +363,33 @@ export async function DayContent({
           ? "missed"
           : "upcoming";
 
+  /* Dagvyn i ny UX (2026-11-21). Förut sju block i rad — Planerat pass,
+     Genomförda pass, Träningsdagbok, Sömn — hopfällda var för sig, med
+     redigeringsformulär blandade med det man läser. Nu i läsordning:
+       Passet   plan och utfall i ett kort, "Så gick passet", kommentaren
+       Kroppen  sömn och återhämtning
+       Dagboken vad hon skrev
+       Ändra    alla formulär, infällda
+     Statusen är grå: "Genomfört" i grönt var ett betyg (B4). */
+  const reviewBySession = new Map(sessionReviews.map((r) => [r.sessionId, r.review]));
+  const statusText = !plannedWorkout
+    ? null
+    : hasOutcome
+      ? dayPlanMatches.some((m) => m.outcome === "avvikande typ")
+        ? "Blev av, som en annan passtyp"
+        : "Genomfört"
+      : planStatus === "missed"
+        ? "Blev inte av"
+        : planStatus === "today"
+          ? "Idag"
+          : "Planerat";
+  const eyebrow = "display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase";
+  const card = "rounded-[14px] border border-[var(--line)] bg-[var(--surface)]";
+
   return (
     <>
-      {/* Vad dagboken säger om dagen, utöver passen. Dagvyn visade det här
-          INGENSTANS: en dag märkt som tränad utan loggat pass såg tom ut när
-          man klickade in sig från månadsrutnätet, som ritade en markör för
-          den. Samma komponent som månads-, block- och veckovyn, så svaret är
-          detsamma oavsett var man kom ifrån. Rapporterat 2026-09-24. */}
       {(diaryEntry?.day_type || diaryEntry?.session_log) && (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="-mt-2 flex flex-wrap items-center gap-3">
           <DiaryMarkers
             dayType={(diaryEntry.day_type as DayStatus | null) ?? null}
             sessionLog={diaryEntry.session_log as string | null}
@@ -407,205 +398,114 @@ export async function DayContent({
         </div>
       )}
 
-      <SessionReviewCard reviews={sessionReviews} />
-
-      {/* Löparens kommentar på passet, synlig direkt (2026-11-21) — inte
-          gömd i den hopfällda listan över genomförda pass. */}
-      {daySessions.some((x) => sessionComments(x).length > 0) && (
-        <section className="flex flex-col gap-1.5">
-          <h2 className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">
-            Kommentar i Garmin
-          </h2>
-          <SessionComments comments={daySessions.flatMap(sessionComments)} />
-        </section>
-      )}
-
-      <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />
-
-
-      {plannedTest && hasOutcome && lt2Estimate && (
-        <ThresholdTestCard
-          dateStr={dateStr}
-          athleteId={scopedUserId}
-          estimate={lt2Estimate}
-          currentLt2={profile?.lt2_hr ?? null}
-          currentSource={profile?.lt2_source ?? null}
-          currentMeasuredOn={profile?.lt2_measured_on ?? null}
-          saveAction={saveTestLt2}
-        />
-      )}
-
-      {includePlanned && (
-        <DaySection
-          title="Planerat pass"
-          hasData={hasPlan}
-          summary={
-            <span className="flex flex-wrap items-center gap-2">
-              {hasPlan ? (
-                (plannedWorkouts ?? []).map((p, i) => (
-                  <span key={p.id ?? i} className="inline-flex items-center gap-1.5">
-                    <TypeDot type={p.workout_type} />
-                    {p.title || typeLabel(p.workout_type)}
-                  </span>
-                ))
-              ) : (
-                "Inget planerat"
-              )}
-              <PlanStatusBadge status={planStatus} />
-            </span>
-          }
-        >
-          <PlannedSessions
-            planned={(plannedWorkouts ?? []) as PlannedRow[]}
-            updateAction={updatePlannedWorkout}
-            deleteAction={deletePlannedWorkout}
-            addRepGroupAction={addPlannedRepGroup}
-            updateRepGroupAction={updatePlannedRepGroup}
-            deleteRepGroupAction={deletePlannedRepGroup}
-          />
-        </DaySection>
-      )}
-
-      <DaySection
-        title="Genomförda pass"
-        hasData={hasOutcome}
-        summary={
-          daySessions.length === 0 ? (
-            doneSummary
-          ) : (
-            <span className="flex flex-wrap items-center gap-2">
-              {daySessions.map((s) => {
-                const e = dayEasyParts.get(s.dominantActivity.id);
-                return (
-                  <span key={s.id} className="inline-flex items-center gap-1.5">
-                    <TypeDot type={s.category} />
-                    {s.category ? CATEGORY_LABELS[s.category] : "Pass"}
-                    {e && (
-                      <span className="text-[var(--ink-3)]">
-                        {/* Delat: kvalitetsdelen och uppvärmning/nerjogg som distans. */}
-                        {sessionParts(s.category, s.distanceMeters, s.durationSeconds, e)
-                          .map(
-                            (part) =>
-                              `${part.category === "easy" ? "distans " : ""}${formatKm(part.meters)}`,
-                          )
-                          .join(" + ")}
+      {/* ---------------- Passet ---------------- */}
+      <section className="flex flex-col gap-2.5">
+        <h2 className={eyebrow}>Passet</h2>
+        {!hasPlan && !hasOutcome ? (
+          <div className="rounded-[14px] border border-dashed border-[var(--line)] px-4 py-3.5 text-sm text-[var(--ink-2)]">
+            Inget planerat och inget genomfört den här dagen.
+          </div>
+        ) : (
+          <div className={`${card} flex flex-col`}>
+            {includePlanned && hasPlan && (
+              <div className="flex flex-col gap-2 px-4 py-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-[var(--ink-3)]">Plan</span>
+                  {statusText && (
+                    <span className="rounded-full bg-[var(--surface-raised)] px-2.5 py-0.5 text-xs text-[var(--ink-2)]">
+                      {statusText}
+                    </span>
+                  )}
+                </div>
+                {(plannedWorkouts ?? []).map((p, i) => (
+                  <div key={p.id ?? i} className="flex flex-col gap-0.5">
+                    <span className="flex items-center gap-2">
+                      <TypeDot type={p.workout_type} />
+                      <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                        {p.title || typeLabel(p.workout_type)}
                       </span>
+                    </span>
+                    {p.description && (
+                      <p className="line-clamp-3 pl-4 text-sm whitespace-pre-line text-[var(--ink-2)]">{p.description}</p>
                     )}
-                  </span>
-                );
-              })}
-              <span className="text-[var(--ink-3)]">
-                {/* Bara alternativ träning ger ingen distans — då bara tiden. */}
-                · {dayKm > 0 ? `${formatKm(dayKm * 1000)} · ` : ""}
-                {formatHoursMinutes(daySeconds)}
-              </span>
-            </span>
-          )
-        }
-      >
-        {garminActivities.length === 0 && (
-          <p className="text-sm text-[var(--ink-3)]">
-            Inget synkat pass den här dagen.
-          </p>
-        )}
+                  </div>
+                ))}
+              </div>
+            )}
 
-        {garminActivities.map((a) => (
-          <div
-            key={a.id}
-            /* Kategorifärgen som en 3 px stapel längs kortets vänsterkant.
-               Passets typ är det första man vill veta i en lista av pass, och
-               en färgad kant läses utan att man flyttar blicken till en
-               etikett — samma grepp som listraderna i PlannedSessions.
-               `borderLeftColor` i stället för en egen <span>: kortet är ett
-               grid, och ett extra barn hade hamnat i en cell. */
-            className="grid grid-cols-2 gap-x-6 gap-y-2 rounded-lg border border-l-[3px] border-[var(--line)] bg-[var(--surface)] p-4 text-sm sm:grid-cols-4"
-            style={{
-              borderLeftColor: (() => {
-                const shown = sessionCategoryByActivity.get(a.id) ?? a.category;
-                return isActivityCategory(shown ?? "")
-                  ? (categoryColorVar(shown as never) as string)
-                  : "var(--line)";
-              })(),
-            }}
-          >
-            {/* Kortet visar EN kategori: den appen räknar passet som. Klockans
-                råa etikett stod tidigare bredvid ("klockan: Tröskel") med en
-                rad som förklarade skillnaden, men det var brus — var passet
-                ett distanspass så var det ett distanspass, och vad Garmins
-                träningseffekt gissade är inte läsarens problem. Vill man se
-                eller ändra värdet finns kategoriväljaren nedanför. */}
-            <div className="col-span-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 sm:col-span-4">
-              <span className="display text-base font-semibold text-[var(--foreground)]">
-                {a.name ?? "Pass"}
-              </span>
-              <span className="text-xs text-[var(--ink-3)]">{a.activity_type}</span>
-              <CategoryBadge category={sessionCategoryByActivity.get(a.id) ?? a.category} />
-            </div>
-            <div className="col-span-2 flex flex-wrap items-center gap-3 sm:col-span-4">
-              <form action={updateActivityCategory} className="flex items-center gap-2">
-                <input type="hidden" name="activity_id" value={a.id} />
-                <select
-                  name="category"
-                  defaultValue={(() => {
-                    const shown = sessionCategoryByActivity.get(a.id) ?? a.category;
-                    return isActivityCategory(shown ?? "") ? shown! : "";
-                  })()}
-                  className={fieldClass}
-                >
-                  {CATEGORY_VALUES.map((c) => (
-                    <option key={c} value={c}>
-                      {CATEGORY_LABELS[c]}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  className={smallButtonClass}
-                >
-                  Spara kategori
-                </button>
-              </form>
-              {a.category_source === "manual" ? (
-                <form action={resetActivityCategory}>
-                  <input type="hidden" name="activity_id" value={a.id} />
-                  <button
-                    type="submit"
-                    className="text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
-                  >
-                    återställ till auto
-                  </button>
-                </form>
-              ) : (
-                <span className="text-xs text-[var(--ink-3)]">auto</span>
-              )}
-            </div>
-            <Stat label="Distans" value={formatKm(a.distance_meters)} />
-            <Stat label="Tid" value={formatDuration(a.duration_seconds)} />
-            <Stat label="Snittpace" value={formatPace(a.avg_pace_seconds_per_km)} />
-            <Stat
-              label="Puls"
-              value={
-                a.avg_hr ? `${Math.round(a.avg_hr)} (max ${Math.round(a.max_hr ?? 0)})` : "–"
-              }
-            />
-            <Stat
-              label="Träningseffekt"
-              value={
-                a.aerobic_training_effect
-                  ? `${a.aerobic_training_effect.toFixed(1)} (${a.training_effect_label ?? ""})`
-                  : "–"
-              }
-            />
-            <Stat
-              label="Kadens"
-              value={a.avg_cadence ? `${Math.round(a.avg_cadence)} spm` : "–"}
-            />
-            <Stat
-              label="Höjdmeter"
-              value={a.elevation_gain != null ? `${Math.round(a.elevation_gain)} m` : "–"}
-            />
-            <Stat label="Kalorier" value={a.calories ? `${Math.round(a.calories)}` : "–"} />
+            {daySessions.map((sess, si) => {
+              const e = dayEasyParts.get(sess.dominantActivity.id);
+              const review = reviewBySession.get(sess.id);
+              const comments = sessionComments(sess);
+              const minutes = trainingSeconds(sess) / 60;
+              const pace = sess.distanceMeters > 0 ? sess.durationSeconds / (sess.distanceMeters / 1000) : null;
+              return (
+                <div key={sess.id} className={`flex flex-col gap-3 px-4 py-3.5 ${includePlanned && hasPlan || si > 0 ? "border-t border-[var(--line)]" : ""}`}>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs text-[var(--ink-3)]">Genomfört</span>
+                    <span className="flex items-center gap-2">
+                      <TypeDot type={sess.category} />
+                      <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                        {sess.category ? CATEGORY_LABELS[sess.category] : "Pass"}
+                      </span>
+                    </span>
+                    {sess.dominantActivity.name && (
+                      <span className="pl-4 text-sm text-[var(--ink-2)]">{sess.dominantActivity.name.trim()}</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { l: "Distans", v: sess.distanceMeters > 0 ? formatKm(sess.distanceMeters).replace(" km", "") : "–", u: sess.distanceMeters > 0 ? "km" : "" },
+                      { l: "Tid", v: String(Math.round(minutes || sess.durationSeconds / 60)), u: "min" },
+                      { l: "Fart", v: pace ? formatPace(pace).replace(" /km", "") : "–", u: pace ? "/km" : "" },
+                      { l: "Puls", v: sess.avgHr ? String(Math.round(sess.avgHr)) : "–", u: "" },
+                    ].map((t) => (
+                      <div key={t.l} className="flex flex-col">
+                        <span className="text-xs text-[var(--ink-3)]">{t.l}</span>
+                        <span className="display tabular text-xl font-bold text-[var(--foreground)]">
+                          {t.v}
+                          {t.u && <span className="ml-0.5 text-xs font-medium text-[var(--ink-3)]">{t.u}</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  {e && (
+                    <p className="text-sm text-[var(--ink-2)]">
+                      {sessionParts(sess.category, sess.distanceMeters, sess.durationSeconds, e)
+                        .map((part) => `${part.category === "easy" ? "uppvärmning och nerjogg" : CATEGORY_LABELS[part.category as ActivityCategory] ?? "kvalitet"} ${formatKm(part.meters)}`)
+                        .join(" · ")}
+                    </p>
+                  )}
+                  {review && (
+                    <div className="flex flex-col gap-1 rounded-[10px] px-3 py-2.5" style={{ backgroundColor: "var(--surface-insight)" }}>
+                      <span className={eyebrow}>Så gick passet</span>
+                      <p className="text-sm font-medium text-[var(--foreground)]">{review.headline}</p>
+                      {review.lines.map((line, i) => (
+                        <p key={i} className="text-sm text-[var(--ink-2)]">{line}</p>
+                      ))}
+                      {review.caveat && <p className="text-xs text-[var(--ink-3)]">{review.caveat}</p>}
+                    </div>
+                  )}
+                  {comments.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      <span className={eyebrow}>Kommentar i Garmin</span>
+                      <SessionComments comments={comments} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
+            {garminActivities.some((a) => a.activity_splits?.length > 0) && (
+              <details className="group border-t border-[var(--line)]">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-4 text-sm text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+                  Varven
+                  <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+                </summary>
+                <div className="flex flex-col gap-3 px-4 pb-4">
+                  {garminActivities.filter((a) => a.activity_splits?.length > 0).map((a) => (
+                    <div key={a.id} className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+                      <span className="col-span-2 font-medium text-[var(--foreground)] sm:col-span-4">{a.name ?? "Pass"}</span>
             {(() => {
               // Tröskeldel och distansdel, samma delning som Analys räknar på.
               const floor = THRESHOLD_FLOOR_PACE[scopedUserId];
@@ -692,16 +592,164 @@ export async function DayContent({
                 </table>
               </div>
             )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
-        ))}
-
-        {manualActivities.length > 0 && (
-          <div className="text-xs font-medium text-[var(--ink-3)]">Egna pass</div>
         )}
-        <p className="text-sm text-[var(--ink-3)]">
-          Träning som inte kommer från klockan — styrka, cykel, simning eller ett löppass du
-          glömt starta klockan på. Flera per dag går bra.
-        </p>
+      </section>
+
+      {plannedTest && hasOutcome && lt2Estimate && (
+        <ThresholdTestCard
+          dateStr={dateStr}
+          athleteId={scopedUserId}
+          estimate={lt2Estimate}
+          currentLt2={profile?.lt2_hr ?? null}
+          currentSource={profile?.lt2_source ?? null}
+          currentMeasuredOn={profile?.lt2_measured_on ?? null}
+          saveAction={saveTestLt2}
+        />
+      )}
+
+      {/* ---------------- Kroppen ---------------- */}
+      {dailyMetrics && (
+        <section className="flex flex-col gap-2.5">
+          <h2 className={eyebrow}>Kroppen · natten före</h2>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { l: "Sömn", v: formatHoursMinutes(dailyMetrics.sleep_seconds).replace(" min", "").replace(" h ", ":") },
+              { l: "Poäng", v: dailyMetrics.sleep_score != null ? String(dailyMetrics.sleep_score) : "–" },
+              { l: "Vilopuls", v: dailyMetrics.resting_hr != null ? String(dailyMetrics.resting_hr) : "–" },
+              { l: "HRV", v: dailyMetrics.hrv_overnight_avg != null ? String(Math.round(dailyMetrics.hrv_overnight_avg)) : "–" },
+            ].map((t) => (
+              <div key={t.l} className="flex flex-col rounded-[12px] border border-[var(--line)] px-2.5 py-2">
+                <span className="text-xs text-[var(--ink-3)]">{t.l}</span>
+                <span className="display tabular text-lg font-bold text-[var(--foreground)]">{t.v}</span>
+              </div>
+            ))}
+          </div>
+          <details className="group text-sm text-[var(--ink-2)]">
+            <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+              <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+              Sömnens faser
+            </summary>
+            <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-2 pl-4 sm:grid-cols-4">
+              <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
+              <Stat label="Djupsömn" value={formatHoursMinutes(dailyMetrics.deep_sleep_seconds)} />
+              <Stat label="REM" value={formatHoursMinutes(dailyMetrics.rem_sleep_seconds)} />
+              <Stat label="Lätt sömn" value={formatHoursMinutes(dailyMetrics.light_sleep_seconds)} />
+              <Stat label="Vaken" value={formatHoursMinutes(dailyMetrics.awake_seconds)} />
+            </div>
+          </details>
+        </section>
+      )}
+
+      {/* ---------------- Dagboken ---------------- */}
+      <section className="flex flex-col gap-2.5">
+        <h2 className={eyebrow}>Dagboken</h2>
+        {hasDiaryData ? (
+          <div className={`${card} flex flex-col gap-3 px-4 py-3.5 text-sm`}>
+            {diaryEntry?.session_log && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-[var(--ink-3)]">Träningslogg</span>
+                <p className="whitespace-pre-wrap text-[var(--foreground)]">{diaryEntry.session_log}</p>
+              </div>
+            )}
+            {diaryEntry?.notes && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-[var(--ink-3)]">Anteckningar</span>
+                <p className="whitespace-pre-wrap text-[var(--foreground)]">{diaryEntry.notes}</p>
+              </div>
+            )}
+            {diaryEntry?.coach_notes && (
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs text-[var(--ink-3)]">Tränarens kommentar</span>
+                <p className="whitespace-pre-wrap text-[var(--foreground)]">{diaryEntry.coach_notes}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-[14px] border border-dashed border-[var(--line)] px-4 py-3.5 text-sm text-[var(--ink-2)]">
+            Ingen anteckning den här dagen.
+          </div>
+        )}
+      </section>
+
+      {/* ---------------- Ändra ---------------- */}
+      <details className={`group ${card}`}>
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+          Ändra dagen
+          <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+        </summary>
+        <div className="flex flex-col gap-5 border-t border-[var(--line)] p-4">
+          {includePlanned && (
+            <div className="flex flex-col gap-2">
+              <span className={eyebrow}>Planerat pass</span>
+          <PlannedSessions
+            planned={(plannedWorkouts ?? []) as PlannedRow[]}
+            updateAction={updatePlannedWorkout}
+            deleteAction={deletePlannedWorkout}
+            addRepGroupAction={addPlannedRepGroup}
+            updateRepGroupAction={updatePlannedRepGroup}
+            deleteRepGroupAction={deletePlannedRepGroup}
+          />
+            </div>
+          )}
+          {garminActivities.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <span className={eyebrow}>Passtyp</span>
+              {garminActivities.map((a) => (
+                <div key={a.id} className="flex flex-col gap-1.5">
+                  <span className="text-sm text-[var(--ink-2)]">{a.name ?? "Pass"}</span>
+                  <div className="flex flex-wrap items-center gap-3">
+              <form action={updateActivityCategory} className="flex items-center gap-2">
+                <input type="hidden" name="activity_id" value={a.id} />
+                <select
+                  name="category"
+                  defaultValue={(() => {
+                    const shown = sessionCategoryByActivity.get(a.id) ?? a.category;
+                    return isActivityCategory(shown ?? "") ? shown! : "";
+                  })()}
+                  className={fieldClass}
+                >
+                  {CATEGORY_VALUES.map((c) => (
+                    <option key={c} value={c}>
+                      {CATEGORY_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="submit"
+                  className={smallButtonClass}
+                >
+                  Spara kategori
+                </button>
+              </form>
+              {a.category_source === "manual" ? (
+                <form action={resetActivityCategory}>
+                  <input type="hidden" name="activity_id" value={a.id} />
+                  <button
+                    type="submit"
+                    className="text-xs text-[var(--ink-3)] underline hover:text-[var(--foreground)]"
+                  >
+                    återställ till auto
+                  </button>
+                </form>
+              ) : (
+                <span className="text-xs text-[var(--ink-3)]">auto</span>
+              )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <span className={eyebrow}>Egna pass</span>
+            <p className="text-sm text-[var(--ink-3)]">
+              Träning som inte kommer från klockan — styrka, cykel, simning eller ett löppass utan klocka.
+            </p>
         <ManualSessions
           dateStr={dateStr}
           activities={manualActivities as ManualActivity[]}
@@ -709,12 +757,9 @@ export async function DayContent({
           deleteAction={deleteManualActivity}
           athleteId={scopedUserId}
         />
-
-        {/* Laktatet hör till passet, inte till dagen. Det låg först som en
-            egen sektion ovanför och lästes då som något vid sidan om
-            träningen — men ett stick tas under eller efter ett pass, och
-            frågan man har framför sig är "vad visade mätaren på det här
-            passet". Rapporterat 2026-09-26. */}
+          </div>
+          <div className="flex flex-col gap-2">
+            <span className={eyebrow}>Laktat</span>
         <LactateLog
           readings={(lactateRows ?? []) as LactateReading[]}
           activityId={daySessions[0]?.dominantActivity?.id ?? null}
@@ -723,27 +768,9 @@ export async function DayContent({
           addAction={addLactateReading}
           deleteAction={deleteLactateReading}
         />
-      </DaySection>
-
-      <DaySection title="Träningsdagbok" summary={diarySummary} hasData={hasDiaryData}>
-        {diaryEntry?.session_log && (
-          <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm">
-            <div className="text-xs text-[var(--ink-3)]">Träningslogg</div>
-            <div className="whitespace-pre-wrap text-[var(--foreground)]">
-              {diaryEntry.session_log}
-            </div>
           </div>
-        )}
-
-        {diaryEntry?.coach_notes && (
-          <div className="rounded border border-sky-300 bg-sky-50/60 p-4 text-sm dark:border-sky-800 dark:bg-sky-950/20">
-            <div className="text-xs text-sky-700 dark:text-sky-400">Tränarens kommentar</div>
-            <div className="whitespace-pre-wrap text-[var(--foreground)]">
-              {diaryEntry.coach_notes}
-            </div>
-          </div>
-        )}
-
+          <div className="flex flex-col gap-2">
+            <span className={eyebrow}>Skriv i dagboken</span>
         <form
           action={saveDiaryEntry}
           className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4"
@@ -776,35 +803,9 @@ export async function DayContent({
             Spara
           </button>
         </form>
-      </DaySection>
-
-      {dailyMetrics && (
-        <DaySection title="Sömn &amp; återhämtning" summary={sleepSummary} hasData={true}>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4 text-sm sm:grid-cols-4">
-            <Stat label="Sömn" value={formatHoursMinutes(dailyMetrics.sleep_seconds)} />
-            <Stat
-              label="Sömnpoäng"
-              value={dailyMetrics.sleep_score ? `${dailyMetrics.sleep_score} / 100` : "–"}
-            />
-            <Stat
-              label="Vilopuls"
-              value={dailyMetrics.resting_hr ? `${dailyMetrics.resting_hr} slag/min` : "–"}
-            />
-            <Stat
-              label="HRV (natt)"
-              value={
-                dailyMetrics.hrv_overnight_avg
-                  ? `${Math.round(dailyMetrics.hrv_overnight_avg)} ms`
-                  : "–"
-              }
-            />
-            <Stat label="Djupsömn" value={formatHoursMinutes(dailyMetrics.deep_sleep_seconds)} />
-            <Stat label="REM" value={formatHoursMinutes(dailyMetrics.rem_sleep_seconds)} />
-            <Stat label="Lätt sömn" value={formatHoursMinutes(dailyMetrics.light_sleep_seconds)} />
-            <Stat label="Vaken" value={formatHoursMinutes(dailyMetrics.awake_seconds)} />
           </div>
-        </DaySection>
-      )}
+        </div>
+      </details>
     </>
   );
 }
@@ -834,38 +835,6 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="text-xs text-[var(--ink-3)]">{label}</div>
       <div className="text-[var(--foreground)]">{value}</div>
     </div>
-  );
-}
-
-function PlanStatusBadge({
-  status,
-}: {
-  status: "done" | "today" | "missed" | "upcoming" | null;
-}) {
-  if (!status) return null;
-  const label = {
-    done: "Genomfört",
-    today: "Idag",
-    missed: "Missat",
-    upcoming: "Planerat",
-  }[status];
-  /* Genomfört lånar STATUS_COLOR.training — "gjort" ska vara samma grönt
-     som en tränad dag i kalendern, inte en egen emerald.
-
-     Missat var tidigare fylld amber, alltså exakt sjukdagens färg, vilket
-     lät ett missat pass se ut som en sjukdomsdag. Det är en frånvaro, inte
-     ett utfall: streckad ram i dämpad ton, samma språk som PassMarkers
-     streckade ring för "tänkt men inte blivet". */
-  const className = {
-    done: `${STATUS_COLOR.training} text-white`,
-    today: "border border-[var(--line)] text-[var(--ink-2)]",
-    missed: "border border-dashed border-[var(--ink-3)] text-[var(--ink-3)]",
-    upcoming: "border border-[var(--line)] text-[var(--ink-2)]",
-  }[status];
-  return (
-    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${className}`}>
-      {label}
-    </span>
   );
 }
 
@@ -960,21 +929,6 @@ function ThresholdTestCard({
         <p className="text-sm text-[var(--ink-2)]">{estimate.reason}</p>
       )}
     </section>
-  );
-}
-
-function CategoryBadge({ category }: { category: string | null }) {
-  if (!category || !isActivityCategory(category)) return null;
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] px-2 py-0.5 text-xs font-normal text-[var(--ink-2)]"
-    >
-      <span
-        className="h-2 w-2 rounded-full"
-        style={{ backgroundColor: `var(--cat-${category})` }}
-      />
-      {CATEGORY_LABELS[category]}
-    </span>
   );
 }
 
