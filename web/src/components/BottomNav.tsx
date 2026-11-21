@@ -66,10 +66,15 @@ const PLAN: Tab[] = [
   { href: "/tavlingar", label: "Tävling", icon: "M8 21h8M12 17v4M6 4h12v4a6 6 0 0 1-12 0zM6 6H3v2a3 3 0 0 0 3 3M18 6h3v2a3 3 0 0 1-3 3" },
 ];
 
-/* Uppföljning och Inställningar har inga egna flikar sedan 2026-11-21:
- * Uppföljningen nås från Gruppen, Inställningar från toppraden. Sidorna
- * räknas ändå till planeringsgruppen så att raden stämmer när man står där. */
-const PLAN_EXTRA = ["/uppfoljning", "/settings", "/flerarsplan"];
+/* Uppföljning är coachens egen flik (åter 2026-11-21, begärt): plan mot
+ * utfall för alla löpare är en egen fråga, inte en länk från Gruppen.
+ * Inställningar nås från toppraden men räknas till planeringsgruppen. */
+const UPPFOLJNING: Tab = {
+  href: "/uppfoljning",
+  label: "Uppföljning",
+  icon: "M12 20a8 8 0 1 1 8-8M12 12l5-3",
+};
+const PLAN_EXTRA = ["/settings", "/flerarsplan"];
 
 export function BottomNav({
   isCoach,
@@ -92,7 +97,7 @@ export function BottomNav({
   const coaching = isCoach && !runnerMode;
   const showPlan = coaching || (!isCoach && !planOwnedByCoach);
 
-  const planTabs = coaching ? [GRUPPEN, ...PLAN] : PLAN;
+  const planTabs = coaching ? [GRUPPEN, ...PLAN, UPPFOLJNING] : PLAN;
   const loggTabs = LOGG;
 
   const isPlanPath =
@@ -116,7 +121,7 @@ export function BottomNav({
   const athlete = params.get("athlete");
   const loggSuffix = athlete ? `?athlete=${athlete}` : "";
   const suffixFor = (href: string) =>
-    PLAN.some((p) => href === p.href) || href === GRUPPEN.href ? "" : loggSuffix;
+    PLAN.some((p) => href === p.href) || href === GRUPPEN.href || href === UPPFOLJNING.href ? "" : loggSuffix;
 
   /* Ingen Logg/Plan-växel sedan 2026-11-21 (ny UX). Coachen startar på
      Gruppen och öppnar en löpare därifrån; står hon på en löpares sida visas
@@ -137,7 +142,7 @@ export function BottomNav({
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={on ? 2.1 : 1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d={t.icon} />
         </svg>
-        <span className="text-xs">{t.label}</span>
+        <span className={tabs.length > 5 ? "text-[0.6875rem] leading-tight" : "text-xs"}>{t.label}</span>
       </Link>
     );
   };

@@ -58,12 +58,11 @@ export default async function GruppenPage() {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
   const weekStart = toDateKey(mondayOf(today));
   const weekEnd = toDateKey(addDays(mondayOf(today), 6));
-  const lastWeekStart = toDateKey(addDays(mondayOf(today), -7));
   const since = toDateKey(addDays(new Date(`${today}T12:00:00`), -60));
 
-  const [{ data: actRows }, { data: planRows }, { data: diaryRows }, { data: blockRows }] =
+  const [{ data: actRows }, { data: planRows }, { data: diaryRows }] =
     ids.length === 0
-      ? [{ data: [] }, { data: [] }, { data: [] }, { data: [] }]
+      ? [{ data: [] }, { data: [] }, { data: [] }]
       : await Promise.all([
           supabase
             .from("activities")
@@ -82,18 +81,11 @@ export default async function GruppenPage() {
             .select("user_id, entry_date, day_type, session_log")
             .in("user_id", ids)
             .gte("entry_date", since),
-          supabase
-            .from("season_blocks")
-            .select("id, name, start_date, end_date, blockFilter:season_block_athletes!inner(athlete_id)")
-            .in("blockFilter.athlete_id", ids)
-            .lte("start_date", today)
-            .gte("end_date", today),
         ]);
 
   const acts = (actRows ?? []) as unknown as SessionActivity[];
   const plans = (planRows ?? []) as PlanRow[];
   const diary = (diaryRows ?? []) as DiaryRow[];
-  const currentBlock = ((blockRows ?? []) as { id: string; name: string; start_date: string; end_date: string }[])[0] ?? null;
 
   const cards = athletes.map((a) => {
     const mine = acts.filter((x) => x.user_id === a.id);
@@ -124,62 +116,14 @@ export default async function GruppenPage() {
     };
   });
 
-  const withWatch = cards.filter((c) => c.hasWatch);
-  const daysLeft = currentBlock
-    ? Math.round((Date.parse(currentBlock.end_date) - Date.parse(today)) / 86_400_000)
-    : null;
 
   return (
     <Page>
       <PageHeader
         title="Gruppen"
-        lead={`${formatDateShort(today, true)} · det som har hänt sedan sist, löpare för löpare.`}
+        lead={`${formatDateShort(today, true)} · veckan hittills, löpare för löpare.`}
       />
 
-      <section className="flex flex-col gap-2.5">
-        <Eyebrow>Att ta ställning till</Eyebrow>
-        {withWatch.map((c) => (
-          <Link
-            key={c.athlete.id}
-            href={`/calendar/vecka/${lastWeekStart}?athlete=${c.athlete.id}`}
-            className="flex min-h-[52px] items-center justify-between gap-3 rounded-xl border border-[var(--line)] px-3.5 py-2.5 hover:bg-[var(--surface-raised)]"
-          >
-            <span className="flex flex-col">
-              <span className="font-semibold text-[var(--foreground)]">Förra veckans bokslut</span>
-              <span className="text-sm text-[var(--ink-2)]">
-                {(c.athlete.fullName ?? "Löpare")} · vecka {formatDateShort(lastWeekStart)}–{formatDateShort(toDateKey(addDays(new Date(`${lastWeekStart}T12:00:00`), 6)))}
-              </span>
-            </span>
-            <span aria-hidden className="text-[var(--ink-3)]">›</span>
-          </Link>
-        ))}
-        {currentBlock && daysLeft != null && daysLeft <= 35 && (
-          <Link
-            href={`/analys${withWatch[0] ? `?athlete=${withWatch[0].athlete.id}` : ""}`}
-            className="flex min-h-[52px] items-center justify-between gap-3 rounded-xl border border-[var(--line)] px-3.5 py-2.5 hover:bg-[var(--surface-raised)]"
-          >
-            <span className="flex flex-col">
-              <span className="font-semibold text-[var(--foreground)]">
-                Blocket slutar om {Math.max(1, Math.round(daysLeft / 7))} {Math.round(daysLeft / 7) === 1 ? "vecka" : "veckor"}
-              </span>
-              <span className="text-sm text-[var(--ink-2)]">
-                {currentBlock.name} · {formatDateShort(currentBlock.end_date)}
-              </span>
-            </span>
-            <span aria-hidden className="text-[var(--ink-3)]">›</span>
-          </Link>
-        )}
-        <Link
-          href="/uppfoljning"
-          className="flex min-h-[52px] items-center justify-between gap-3 rounded-xl border border-[var(--line)] px-3.5 py-2.5 hover:bg-[var(--surface-raised)]"
-        >
-          <span className="flex flex-col">
-            <span className="font-semibold text-[var(--foreground)]">Uppföljning</span>
-            <span className="text-sm text-[var(--ink-2)]">Plan mot utfall för alla löpare, per vecka eller block</span>
-          </span>
-          <span aria-hidden className="text-[var(--ink-3)]">›</span>
-        </Link>
-      </section>
 
       <section className="flex flex-col gap-2.5">
         <Eyebrow>Löparna</Eyebrow>
@@ -188,9 +132,7 @@ export default async function GruppenPage() {
             <article key={c.athlete.id} className="flex flex-col gap-3 rounded-[14px] border border-[var(--line)] p-3.5">
               <div className="flex items-center justify-between">
                 <span className="text-lg font-semibold text-[var(--foreground)]">{(c.athlete.fullName ?? "Löpare")}</span>
-                <Link href={`/dashboard?athlete=${c.athlete.id}`} className="text-sm underline underline-offset-2">
-                  Öppna
-                </Link>
+
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div>
