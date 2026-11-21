@@ -1,7 +1,6 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/Page";
-import { Segmented } from "@/components/ui/Segmented";
 import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
 import { fetchSameSessions } from "@/lib/same-session";
 import { SameSessionTable } from "@/components/SameSessionTable";
@@ -80,7 +79,7 @@ import {
   type RaceResultRow,
 } from "@/lib/race-pace";
 import type { SignatureLap } from "@/lib/session-signature";
-import { addDays as planAddDays, PHASE_LABELS, type PhaseType } from "@/lib/planning";
+import { addDays as planAddDays, type PhaseType } from "@/lib/planning";
 import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { ComplianceCard } from "@/components/ComplianceCard";
 import {
@@ -655,43 +654,62 @@ export default async function TrendsPage({
 
       <PageHeader
         title="Form"
-        lead={
-          activeBlock
-            ? `${activeBlock.name} (${PHASE_LABELS[activeBlock.phase]}), ${formatDateShort(activeBlock.start_date)}–${formatDateShort(activeBlock.end_date)}${activeBlock.focus ? ` — ${activeBlock.focus}` : ""}.`
-            : "Hur träningen ligger mot dina trösklar, och vad testerna säger."
-        }
+        lead={`Hur träningen ligger mot dina trösklar, och vad testerna säger.${activeBlock?.focus ? ` Blockets fokus: ${activeBlock.focus}.` : ""}`}
       />
-      <div className="flex flex-col gap-2">
-        <Segmented
-          label="Period"
-          options={WEEK_OPTIONS.map((w) => ({
-            key: String(w),
-            label: `${w} v`,
-            href: `/trender?weeks=${w}${athleteQuery}`,
-            active: !activeBlock && weeks === w,
-          }))}
-        />
-        {blocks.length > 0 && (
-          <details className="group text-sm">
-            <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-[var(--ink-2)] [&::-webkit-details-marker]:hidden">
-              <span aria-hidden className="transition-transform group-open:rotate-90">›</span>
-              {activeBlock ? `Block: ${activeBlock.name}` : "Välj ett block i stället"}
-            </summary>
-            <div className="mt-1 flex flex-col gap-1 pl-4">
-              {[...blocks].reverse().map((b) => (
-                <Link
-                  key={b.id}
-                  href={`/trender?block=${b.id}${athleteQuery}`}
-                  aria-current={activeBlock?.id === b.id ? "true" : undefined}
-                  className={`flex min-h-9 items-center ${activeBlock?.id === b.id ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)] underline underline-offset-2"}`}
-                >
-                  {b.name} · {formatDateShort(b.start_date)}–{formatDateShort(b.end_date)}
-                </Link>
-              ))}
-            </div>
-          </details>
-        )}
-      </div>
+      {/* En väljare för perioden (2026-11-21): rullande veckor och block i
+          samma lista, i stil med inställningsrutan på Blocket. Förut en
+          fullbred knapprad för veckorna och en lös länklista för blocken,
+          där ingen knapp var vald när ett block var det. */}
+      <details className="group overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)] text-sm">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3.5 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 flex-col">
+            <span className="text-xs text-[var(--ink-3)]">Period</span>
+            <span className="truncate font-medium text-[var(--foreground)]">
+              {activeBlock
+                ? `${activeBlock.name} · ${formatDateShort(activeBlock.start_date)}–${formatDateShort(activeBlock.end_date)}`
+                : `Senaste ${weeks} veckorna`}
+            </span>
+          </span>
+          <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+        </summary>
+        <div className="flex flex-col border-t border-[var(--line)] px-3.5 py-1.5">
+          {blocks.length > 0 && <span className="pt-1.5 text-xs text-[var(--ink-3)]">Block</span>}
+          {[...blocks].sort((x, y) => y.start_date.localeCompare(x.start_date)).map((b) => {
+            const on = activeBlock?.id === b.id;
+            return (
+              <Link
+                key={b.id}
+                href={`/trender?block=${b.id}${athleteQuery}`}
+                aria-current={on ? "true" : undefined}
+                className={`flex min-h-10 items-center justify-between gap-2 ${on ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)] hover:text-[var(--foreground)]"}`}
+              >
+                <span className="flex items-center gap-2">
+                  <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${on ? "bg-[var(--foreground)]" : "bg-transparent"}`} />
+                  {b.name}
+                </span>
+                <span className="tabular text-xs text-[var(--ink-3)]">
+                  {formatDateShort(b.start_date)}–{formatDateShort(b.end_date)} {b.end_date.slice(0, 4)}
+                </span>
+              </Link>
+            );
+          })}
+          <span className="border-t border-[var(--line)] pt-2 text-xs text-[var(--ink-3)]">Rullande</span>
+          {WEEK_OPTIONS.map((w) => {
+            const on = !activeBlock && weeks === w;
+            return (
+              <Link
+                key={w}
+                href={`/trender?weeks=${w}${athleteQuery}`}
+                aria-current={on ? "true" : undefined}
+                className={`flex min-h-10 items-center gap-2 ${on ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)] hover:text-[var(--foreground)]"}`}
+              >
+                <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${on ? "bg-[var(--foreground)]" : "bg-transparent"}`} />
+                Senaste {w} veckorna
+              </Link>
+            );
+          })}
+        </div>
+      </details>
 
       {/* Toppen är en dom, inte ett lager av nyckeltal. Här låg tidigare
           CV-rutan, efterlevnadskortet och fyra nyckeltal — ett dussin tal
