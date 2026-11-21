@@ -242,16 +242,18 @@ export default async function AnalysPage({
   // "ht 2026", "vår 2026" — kort nog för etiketter i 390 px.
   const shortName = (b: AnalysisBlock) =>
     `${Number(b.start_date.slice(5, 7)) >= 7 ? "ht" : "vår"} ${b.start_date.slice(0, 4)}`;
-  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
   // Samma halvår (t.ex. ht 2026 mot Tävlingsperiod 2026 Aug) ger samma korta
   // namn — då "Detta block" mot "Jämförelse", så att de aldrig heter lika.
   const sameShort = comparison != null && shortName(comparison) === shortName(block);
-  const nowName =
-    isLastYear || !comparison ? "I år" : sameShort ? "Detta block" : cap(shortName(block));
-  const cmpName =
-    isLastYear || !comparison ? "Förra året" : sameShort ? "Jämförelse" : cap(shortName(comparison));
-  const nowLower = nowName.toLowerCase();
-  const cmpLower = cmpName.toLowerCase();
+  /* Blocken heter vid namn överallt (2026-11-21): "ht 2026 mot ht 2025", inte
+     "I år mot förra året" — det gick inte att se vilket block som jämfördes,
+     och "förra året" stämde inte när man valt vårblocket. Samma halvår
+     (ht 2026 mot Tävlingsperiod 2026 Aug) skrivs med blockets fulla namn. */
+  const blockLabel = (b: AnalysisBlock) => (sameShort ? b.name : shortName(b));
+  const nowName = blockLabel(block);
+  const cmpName = comparison ? blockLabel(comparison) : "jämförelsen";
+  const nowLower = nowName;
+  const cmpLower = cmpName;
   const length = blockLength(block);
   const ongoing = today >= block.start_date && today <= block.end_date;
   const daysSoFar = ongoing ? dayIndex(today, block.start_date) + 1 : length;
@@ -308,11 +310,11 @@ export default async function AnalysPage({
   const marksBefore = comparison ? marksFor(comparison, blockLength(comparison)) : null;
   const markRows: MarkRow[] = [
     // Årtalet som etikett: kort nog att läsas i 390 px och säger exakt vilket år.
-    { label: isLastYear ? block.start_date.slice(0, 4) : sameShort ? "detta" : shortName(block), marks: marksNow },
+    { label: nowName, marks: marksNow },
     ...(marksBefore && comparison
       ? [
           {
-            label: isLastYear ? comparison.start_date.slice(0, 4) : sameShort ? "jmf" : shortName(comparison),
+            label: cmpName,
             marks: marksBefore,
             outline: true,
           },
@@ -1008,9 +1010,10 @@ export default async function AnalysPage({
               />
             )}
           </div>
-          {mot === "plan" && (
-            <p className="text-xs text-[var(--ink-3)]">Planen har ingen tid eller distans, så den jämförs i antal pass.</p>
-          )}
+          <p className="text-xs text-[var(--ink-3)]">
+            Valen gäller bara den här grafen. Vilket block som jämförs väljer du under Jämför med i toppen.
+            {mot === "plan" ? " Planen jämförs i antal pass." : ""}
+          </p>
         </div>
 
         {vy === "vecka" ? (
