@@ -34,7 +34,14 @@ type Lap = {
   hr_end: number | null;
 };
 
-type Act = { id: string; name: string | null; start_time: string; activity_type: string | null; description: string | null };
+type Act = {
+  id: string;
+  name: string | null;
+  start_time: string;
+  activity_type: string | null;
+  description: string | null;
+  category: string | null;
+};
 
 /** Passets namn som jämförbar nyckel ("Tröskel 5x5min/ 90sek vila" =
  * "Tröskel 5x5min/90sek vila"), eller null om namnet inte beskriver ett
@@ -80,7 +87,15 @@ function median(xs: number[]): number {
 }
 
 export type SamePart = { label: string; reps: number; pace: number; endHr: number | null };
-export type SameTime = { activityId: string; date: string; treadmill: boolean; parts: SamePart[] };
+export type SameTime = {
+  activityId: string;
+  date: string;
+  treadmill: boolean;
+  parts: SamePart[];
+  /** Passets eget namn i Garmin, t.ex. "10x30sek/30sek vila + 3x3min …". */
+  title: string | null;
+  category: string | null;
+};
 export type SameSessionGroup = { key: string; name: string; times: SameTime[] };
 
 /** Ett pass delat i arbetsvarv per replängd, i den ordning delarna kom. */
@@ -127,7 +142,7 @@ export async function fetchSameSessions(
   const since = new Date(Date.parse(`${todayKey}T12:00:00Z`) - 540 * 86_400_000).toISOString().slice(0, 10);
   const { data: actRows } = await supabase
     .from("activities")
-    .select("id, name, start_time, activity_type, description:raw_data->>description")
+    .select("id, name, start_time, activity_type, category, description:raw_data->>description")
     .eq("user_id", userId)
     .in("category", ["threshold", "interval", "threshold_test"])
     .gte("start_time", since)
@@ -170,6 +185,8 @@ export async function fetchSameSessions(
       date: a.start_time.slice(0, 10),
       treadmill: a.activity_type === "treadmill_running",
       parts: p.parts,
+      title: a.name?.trim() || null,
+      category: a.category,
       structKey: p.key,
       nameK: nameKey(a.name),
     });

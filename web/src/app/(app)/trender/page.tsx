@@ -919,17 +919,25 @@ export default async function TrendsPage({
         <section className="flex flex-col gap-2.5">
           <Eyebrow>Samma pass igen</Eyebrow>
           <p className="-mt-1 text-sm text-[var(--ink-2)]">
-            Fart och slutpuls bredvid varandra — har båda ändrats är det vald intensitet, inte form.
+            Pass hon kört förut med samma upplägg, jämförda del för del med förra gången. Fart är snittfarten på
+            delens rep, slutpuls är pulsen i slutet av repen.
           </p>
           {sameSessions.map((g) => (
             <SameSessionTable key={g.key} group={g} />
           ))}
           <HowCalculated>
             <p>
-              Passen paras ihop på upplägget klockan mätte — arbetsvarvens antal och längd — inte på
-              namnet. Fart och slutpuls är medianen för delens rep. Utomhuspass räknas alltid; löpband
-              bara när farten är rättad efter din kommentar i Garmin, och inomhusbana aldrig, eftersom
-              klockan mäter banvarven för kort där.
+              Två pass räknas som samma när klockan mätte samma upplägg — antal rep och replängd — eller när
+              passen har samma namn. Fart och slutpuls är medianen för delens rep.
+            </p>
+            <p>
+              Samma fart med lägre puls kan betyda att passet gick lättare, men det kan också bero på värme,
+              underlag, sömn eller löpband mot ute. Har både fart och puls ändrats valde hon troligen en annan
+              intensitet. Därför visas skillnaden utan färg och utan pilar.
+            </p>
+            <p>
+              Utomhuspass räknas alltid. Löpband bara när farten är rättad efter hennes kommentar i Garmin,
+              inomhusbana aldrig — där mäter klockan banvarven för kort.
             </p>
             <p>
               Ingen formkurva: prövat mot din data 2026-11-20 rörde sig pulsen knappt mellan passen,
