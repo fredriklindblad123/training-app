@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { PageHeader, Section } from "@/components/ui/Page";
-import { Segmented } from "@/components/ui/Segmented";
+import { SegmentedSmall } from "@/components/ui/Segmented";
 import { HowCalculated, Observations } from "@/components/ui/Explain";
 import { DataTable } from "@/components/ui/DataTable";
 import { ToneDots } from "@/components/ToneDots";
 import { blockClosure, closureLines } from "@/lib/block-closure";
 import { formatDateShort, formatNumber } from "@/lib/format";
-import { addDays as planAddDays, toDateKey, PHASE_LABELS, type PhaseType } from "@/lib/planning";
+import { PHASE_LABELS, type PhaseType } from "@/lib/planning";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { getViewMode } from "@/lib/view-mode";
@@ -164,42 +164,6 @@ const GRAF_LABELS = { minuter: "Träningstid (min)", distans: "Distans", pass: "
 
 /** En rad val där ett är aktivt, som länkar. scroll={false} så att sidan
  * står kvar vid grafen när man byter. */
-/* Väljarna på sidan (B2, 2026-11-21): upp till tre korta alternativ blir
- * den gemensamma periodväljaren; fler, som blocklistan, blir en hopfälld
- * lista — fem blocknamn i en rad gick inte att läsa på 390 px. */
-function Segment({
-  label,
-  options,
-}: {
-  label: string;
-  options: { key: string; label: string; href: string; active: boolean; disabled?: boolean }[];
-}) {
-  if (options.length <= 3 && options.every((o) => o.label.length <= 14))
-    return <Segmented label={label} showLabel options={options} />;
-  const active = options.find((o) => o.active);
-  return (
-    <details className="group text-sm">
-      <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1.5 text-[var(--ink-2)] [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="transition-transform group-open:rotate-90">›</span>
-        {label}: <span className="font-semibold text-[var(--foreground)]">{active?.label ?? "–"}</span>
-      </summary>
-      <div className="mt-1 flex flex-col gap-1 pl-4">
-        {options.map((o) => (
-          <Link
-            key={o.key}
-            href={o.href}
-            scroll={false}
-            aria-current={o.active ? "true" : undefined}
-            className={`flex min-h-9 items-center ${o.active ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)] underline underline-offset-2"}`}
-          >
-            {o.label}
-          </Link>
-        ))}
-      </div>
-    </details>
-  );
-}
-
 export default async function AnalysPage({
   searchParams,
 }: {
@@ -257,17 +221,6 @@ export default async function AnalysPage({
   const header = (
     <div className="flex flex-col gap-3">
       <PageHeader title="Blocket" lead="Blocket i siffror: bokslutet överst, därefter veckorna, det som blev annat och dagboken." />
-      {started.length > 1 && (
-        <Segment
-          label="Block"
-          options={[...started].reverse().slice(0, 6).map((b) => ({
-            key: b.id,
-            label: b.name,
-            href: `/analys?block=${b.id}${athleteQuery}`,
-            active: block?.id === b.id,
-          }))}
-        />
-      )}
     </div>
   );
 
@@ -755,11 +708,121 @@ export default async function AnalysPage({
 
   const closure = await blockClosure(supabase, userId, blocks, block, today);
   const closureObs = closureLines(closure);
-  const nextBlockFrom = toDateKey(planAddDays(new Date(`${block.end_date}T12:00:00`), 1));
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       {header}
+
+      {/* Sidans inställningar, samlade i toppen (2026-11-21): de styr både
+          bokslutet, rutorna och graferna. Grafens egna val (mått, visning)
+          sitter vid grafen. Varje rad fälls ut till sina alternativ. */}
+      <div className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)] text-sm">
+        {[
+          {
+            key: "block",
+            label: "Block",
+            value: `${block.name} · ${ongoing ? `dag ${daysSoFar} av ${length}` : `${Math.round(length / 7)} v`}`,
+            body: (
+              <div className="flex flex-col">
+                {[...started].reverse().slice(0, 8).map((b) => (
+                  <Link
+                    key={b.id}
+                    href={`/analys?block=${b.id}${athleteQuery}`}
+                    aria-current={block.id === b.id ? "true" : undefined}
+                    className={`flex min-h-10 items-center justify-between gap-2 ${block.id === b.id ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)]"}`}
+                  >
+                    {b.name}
+                    <span className="tabular text-xs text-[var(--ink-3)]">
+                      {formatDateShort(b.start_date)}–{formatDateShort(b.end_date)} {b.end_date.slice(0, 4)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            ),
+          },
+          ...(comparisonOptions.length > 0
+            ? [
+                {
+                  key: "jmf",
+                  label: "Jämför med",
+                  value: comparison
+                    ? `${comparison.name}${blockLength(comparison) < daysSoFar ? " (hela)" : ", samma dag"}`
+                    : "inget block",
+                  body: (
+                    <div className="flex flex-col">
+                      {[...comparisonOptions].reverse().map((b) => (
+                        <Link
+                          key={b.id}
+                          href={href({ jmf: b.id === defaultComparison?.id ? null : b.id })}
+                          scroll={false}
+                          aria-current={comparison?.id === b.id ? "true" : undefined}
+                          className={`flex min-h-10 items-center justify-between gap-2 ${comparison?.id === b.id ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)]"}`}
+                        >
+                          {b.name}
+                          {b.id === defaultComparison?.id && <span className="text-xs text-[var(--ink-3)]">förra året</span>}
+                        </Link>
+                      ))}
+                      {comparison && blockLength(comparison) < daysSoFar && (
+                        <p className="pt-1 text-xs text-[var(--ink-3)]">
+                          {comparison.name} är bara {blockLength(comparison)} dagar — hela det blocket jämförs med de första {daysSoFar} dagarna här.
+                        </p>
+                      )}
+                    </div>
+                  ),
+                },
+              ]
+            : []),
+          {
+            key: "typer",
+            label: "Räkna med",
+            value: include.size === TYPE_OPTIONS.length ? "alla passtyper" : `${include.size} av ${TYPE_OPTIONS.length} passtyper`,
+            body: (
+              <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
+                  {TYPE_OPTIONS.map((t) => {
+                    const on = include.has(t);
+                    return (
+                      <Link
+                        key={t}
+                        href={typeHref(t)}
+                        scroll={false}
+                        aria-pressed={on}
+                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
+                          on
+                            ? "border-[var(--foreground)] text-[var(--foreground)]"
+                            : "border-[var(--line)] text-[var(--ink-3)]"
+                        }`}
+                      >
+                        <span
+                          aria-hidden
+                          className="inline-block h-2 w-2 rounded-full"
+                          style={{
+                            backgroundColor: on ? (categoryColorVar(t) ?? "var(--ink-3)") : "transparent",
+                            border: on ? undefined : "1px solid var(--ink-3)",
+                          }}
+                        />
+                        {CATEGORY_LABELS[t]}
+                      </Link>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-[var(--ink-3)]">Styr träningstid, distans och träningsdagar i rutorna och grafen.</p>
+              </div>
+            ),
+          },
+        ].map((row, i) => (
+          <details key={row.key} className={`group ${i > 0 ? "border-t border-[var(--line)]" : ""}`}>
+            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3.5 [&::-webkit-details-marker]:hidden">
+              <span className="flex min-w-0 flex-col">
+                <span className="text-xs text-[var(--ink-3)]">{row.label}</span>
+                <span className="truncate font-medium text-[var(--foreground)]">{row.value}</span>
+              </span>
+              <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+            </summary>
+            <div className="border-t border-[var(--line)] px-3.5 py-2">{row.body}</div>
+          </details>
+        ))}
+      </div>
 
       {/* ===== Blockbokslut (C5, 2026-11-21) ===== */}
       {closure.length > 1 && (
@@ -808,46 +871,16 @@ export default async function AnalysPage({
               räknas utan alternativ träning. Lopp är 800 och 1500 m inom åtta veckor efter blocket.
             </p>
           </HowCalculated>
-          {scoped.role === "coach" && !runnerMode && (
-            <Link
-              href={`/blockplan/nytt?fran=${nextBlockFrom}`}
-              className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--foreground)] px-4 font-semibold text-[var(--background)] hover:opacity-90"
-            >
-              Skapa nästa block →
-            </Link>
-          )}
         </Section>
-      )}
-
-      <p className="-mt-4 max-w-3xl text-sm text-[var(--ink-2)]">
-        {block.name}, {block.start_date} – {block.end_date}
-        {ongoing ? `, dag ${daysSoFar} av ${length}` : ""}.{" "}
-        {comparison
-          ? blockLength(comparison) < daysSoFar
-            ? `Jämförs med ${comparison.name}, som bara är ${blockLength(comparison)} dagar — hela det blocket mot de första ${daysSoFar} dagarna här.`
-            : `Jämförs med ${comparison.name} fram till samma dag i blocket.`
-          : "Det finns inget block att jämföra med."}
-      </p>
-
-      {comparisonOptions.length > 0 && (
-        <Segment
-          label="Jämför block"
-          options={[...comparisonOptions].reverse().map((b) => ({
-            key: b.id,
-            label: b.id === defaultComparison?.id ? `${b.name} (förra året)` : b.name,
-            href: href({ jmf: b.id === defaultComparison?.id ? null : b.id }),
-            active: comparison?.id === b.id,
-          }))}
-        />
       )}
 
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            {ongoing ? "Hittills i blocket" : "Hela blocket"}
+            {comparison ? `Mot ${cmpLower}` : ongoing ? "Hittills i blocket" : "Hela blocket"}
           </h2>
-          <Segmented
+          <SegmentedSmall
             label="Summering"
             options={[
               { key: "tot", label: "Totalt", href: visaHref(false), active: !perWeek },
@@ -924,41 +957,6 @@ export default async function AnalysPage({
           . De syns som remsor under graferna: fyllda för {nowLower}, konturerade för {cmpLower}.
         </p>
         </HowCalculated>
-      {/* Vilka passtyper som räknas in i minuter, distans och träningsdagar. */}
-        <HowCalculated summary={`Räkna med: ${include.size === TYPE_OPTIONS.length ? "alla passtyper" : `${include.size} av ${TYPE_OPTIONS.length} passtyper`}`}>
-        <div className="flex flex-wrap gap-2">
-          {TYPE_OPTIONS.map((t) => {
-            const on = include.has(t);
-            return (
-              <Link
-                key={t}
-                href={typeHref(t)}
-                scroll={false}
-                aria-pressed={on}
-                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${
-                  on
-                    ? "border-[var(--foreground)] text-[var(--foreground)]"
-                    : "border-[var(--line)] text-[var(--ink-3)]"
-                }`}
-              >
-                <span
-                  aria-hidden
-                  className="inline-block h-2 w-2 rounded-full"
-                  style={{
-                    backgroundColor: on ? (categoryColorVar(t) ?? "var(--ink-3)") : "transparent",
-                    border: on ? undefined : "1px solid var(--ink-3)",
-                  }}
-                />
-                {CATEGORY_LABELS[t]}
-              </Link>
-            );
-          })}
-        </div>
-        <p className="text-xs text-[var(--ink-3)]">
-          Träningstid är passets hela tid, vila i intervallpass inräknad. Styrka räknas inte i
-          tid, eftersom de passen inte alltid anges i tid.
-        </p>
-        </HowCalculated>
       </section>
 
       <section className="flex flex-col gap-3">
@@ -978,36 +976,38 @@ export default async function AnalysPage({
         </div>
 
         <div className="flex flex-col gap-2">
-          <Segment
-            label="Mått"
-            options={(["minuter", "distans", "pass"] as const).map((g) => ({
-              key: g,
-              label: g === "minuter" ? "Tid" : GRAF_LABELS[g],
-              href: href({ graf: g }),
-              active: graf === g,
-              disabled: mot === "plan" && g !== "pass",
-            }))}
-          />
-          {(comparison || hasPlan) && (
-            <Segment
-              label="Jämför med"
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedSmall
+              label="Mått"
+              options={(["minuter", "distans", "pass"] as const).map((g) => ({
+                key: g,
+                label: g === "minuter" ? "Tid" : GRAF_LABELS[g],
+                href: href({ graf: g }),
+                active: graf === g,
+                disabled: mot === "plan" && g !== "pass",
+              }))}
+            />
+            <SegmentedSmall
+              label="Visa"
               options={[
-                ...(comparison
-                  ? [{ key: "fjol", label: cmpName, href: href({ mot: "fjol" }), active: mot === "fjol" }]
-                  : []),
-                ...(hasPlan
-                  ? [{ key: "plan", label: "Planerat", href: href({ mot: "plan" }), active: mot === "plan" }]
-                  : []),
+                { key: "vecka", label: "Per vecka", href: href({ vy: "vecka" }), active: vy === "vecka" },
+                { key: "ack", label: "Ackumulerat", href: href({ vy: "ack" }), active: vy === "ack" },
               ]}
             />
-          )}
-          <Segment
-            label="Visa"
-            options={[
-              { key: "vecka", label: "Per vecka", href: href({ vy: "vecka" }), active: vy === "vecka" },
-              { key: "ack", label: "Ackumulerat", href: href({ vy: "ack" }), active: vy === "ack" },
-            ]}
-          />
+            {(comparison || hasPlan) && (
+              <SegmentedSmall
+                label="Jämför med"
+                options={[
+                  ...(comparison
+                    ? [{ key: "fjol", label: `mot ${cmpLower}`, href: href({ mot: "fjol" }), active: mot === "fjol" }]
+                    : []),
+                  ...(hasPlan
+                    ? [{ key: "plan", label: "mot planen", href: href({ mot: "plan" }), active: mot === "plan" }]
+                    : []),
+                ]}
+              />
+            )}
+          </div>
           {mot === "plan" && (
             <p className="text-xs text-[var(--ink-3)]">Planen har ingen tid eller distans, så den jämförs i antal pass.</p>
           )}

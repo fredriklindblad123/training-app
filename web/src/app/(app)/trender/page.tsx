@@ -1076,23 +1076,8 @@ export default async function TrendsPage({
           loop i stället för fyra hus. Datumet förifylls så det nya blocket
           börjar dagen efter det nuvarande slutar, i stället för att man
           landar på ett tomt formulär och får räkna själv. */}
-      {activeBlock && (
-        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4">
-          <div className="flex-1">
-            <p className="font-medium text-[var(--foreground)]">Nästa block</p>
-            <p className="text-sm text-[var(--ink-3)]">
-              {activeBlock.name} slutar {activeBlock.end_date}. Utvärderingen ovan är underlaget för
-              hur nästa ska se ut.
-            </p>
-          </div>
-          <Link
-            href={`/blockplan/nytt?fran=${toDateKey(planAddDays(new Date(`${activeBlock.end_date}T00:00:00`), 1))}`}
-            className="rounded bg-[var(--foreground)] px-4 py-2 text-sm text-[var(--background)] hover:opacity-90"
-          >
-            Skapa nästa block →
-          </Link>
-        </div>
-      )}
+      {/* "Skapa nästa block" låg här fram till 2026-11-21. Löparen skapar
+          inte block — det gör tränaren under Block. */}
     </div>
   );
 }

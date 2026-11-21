@@ -69,3 +69,32 @@ export function Segmented({
     </div>
   );
 }
+
+/* Liten väljare som sitter vid en graf (2026-11-21). Den stora periodväljaren
+ * tar hela bredden och hör till sidans topp; en graf har ofta två–tre små val
+ * (mått, visning) som ska få plats på en rad, intill det de styr. */
+export function SegmentedSmall({ options, label }: { options: SegmentOption[]; label: string }) {
+  return (
+    <div role="group" aria-label={label} className="inline-flex rounded-[9px] bg-[var(--surface-raised)] p-[2px]">
+      {options.map((o) =>
+        o.disabled ? (
+          <span key={o.key} aria-disabled className="flex min-h-8 items-center rounded-[7px] px-2.5 text-xs text-[var(--ink-3)] opacity-60">
+            {o.label}
+          </span>
+        ) : (
+          <Link
+            key={o.key}
+            href={o.href}
+            scroll={false}
+            aria-current={o.active ? "true" : undefined}
+            className={`flex min-h-8 items-center rounded-[7px] px-2.5 text-xs ${
+              o.active ? "bg-[var(--surface)] font-semibold text-[var(--foreground)] shadow-sm" : "text-[var(--ink-2)] hover:text-[var(--foreground)]"
+            }`}
+          >
+            {o.label}
+          </Link>
+        ),
+      )}
+    </div>
+  );
+}
