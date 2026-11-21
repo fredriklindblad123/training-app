@@ -34,7 +34,7 @@ import {
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
-import { coefficientOfVariation, isoWeekStart, median, weekLabel } from "@/lib/stats-utils";
+import { coefficientOfVariation, isoWeekStart, median, percentile, weekLabel } from "@/lib/stats-utils";
 import { EasyDiscipline } from "@/components/EasyDiscipline";
 import { LoadStrip } from "@/components/LoadStrip";
 import { TrainingGears } from "@/components/TrainingGears";
@@ -56,6 +56,7 @@ import {
   GEAR_COLOR_VAR,
   GEAR_PURPOSE,
   gearSessionPeaks,
+  intervalSessionMaxima,
   INTERVAL_MIN_REP_SECONDS,
   trimWarmupCooldown,
   warmupCooldownLapIndexes,
@@ -553,9 +554,12 @@ export default async function TrendsPage({
 
   const sameSessions = await fetchSameSessions(supabase, scopedUserId, todayKey);
 
-  const intervalPeaks = gearSessionPeaks(gearReps, "interval");
+  // Intervall: passets högsta puls under repen (begärt 2026-11-21), inte
+  // medianen av slutpulsen. Raden och grafens streckade linje visar medianen
+  // av passens toppar, så att alla tre talen är samma mått.
+  const intervalPeaks = intervalSessionMaxima(gearReps);
   const intervalPeriodMedian =
-    gears?.hr?.gears.find((g) => g.key === "intervall")?.actual?.median ?? null;
+    intervalPeaks.length > 0 ? Math.round(percentile(intervalPeaks.map((p) => p.hr), 0.5) as number) : null;
   const thresholdPeaks = gearSessionPeaks(gearReps, "threshold");
   const thresholdPeriodMedian =
     gears?.hr?.gears.find((g) => g.key === "troskel")?.actual?.median ?? null;
@@ -798,31 +802,37 @@ export default async function TrendsPage({
       {/* ===== Växel 3 ===== */}
       <CollapsibleSection
         variant="row"
-        value={gearByKey.get("intervall")?.actual?.median != null ? Math.round(gearByKey.get("intervall")!.actual!.median) : undefined}
+        value={intervalPeriodMedian ?? undefined}
         title="Intervall"
         accent={GEAR_COLOR_VAR.intervall}
         meta={GEAR_PURPOSE.intervall}
         headline={
-          gearByKey.has("intervall") ? (
+          intervalPeriodMedian != null ? (
             <span className="text-sm text-[var(--ink-2)]">
-              {gearVerdict(gearByKey.get("intervall") as Gear, gears?.lt1 ?? 0, gears?.lt2 ?? 0)}
+              Högsta puls per pass, median {intervalPeriodMedian}
+              {thresholdProfile.lt2Hr != null
+                ? intervalPeriodMedian > thresholdProfile.lt2Hr
+                  ? `, över anaerob tröskel ${thresholdProfile.lt2Hr}.`
+                  : `, under anaerob tröskel ${thresholdProfile.lt2Hr}.`
+                : "."}
             </span>
           ) : undefined
         }
       >
         <div className="flex flex-col gap-2">
           <h3 className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-            Slutpuls per intervallpass
+            Högsta puls per intervallpass
           </h3>
           <p className="max-w-3xl text-sm text-[var(--ink-2)]">
-            Pulsen vid slutet av varje rep, ett pass per prick. De två första repen räknas inte —
-            där har pulsen inte hunnit upp. Tryck för att se passet.
+            Den högsta pulsen under passets rep, ett pass per prick. Strecket visar spannet mellan
+            repens toppar. Uppvärmning och nerjogg räknas inte. Tryck för att se passet.
           </p>
           <GearSessionChart
             peaks={intervalPeaks}
+            mode="max"
             markers={hrMarkers([[thresholdProfile.lt2Hr, "LT2"]])}
             periodMedian={intervalPeriodMedian}
-            label="Slutpuls per intervallpass"
+            label="Högsta puls per intervallpass"
             emptyLabel="Inga intervallpass i perioden."
             fromDate={startDate}
             toDate={activeBlock ? activeBlock.end_date : todayKey}

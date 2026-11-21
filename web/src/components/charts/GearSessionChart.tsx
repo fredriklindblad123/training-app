@@ -52,6 +52,7 @@ function monthTicks(fromMs: number, toMs: number): { ms: number; label: string }
 
 export function GearSessionChart({
   peaks,
+  mode = "median",
   markers,
   periodMedian,
   label,
@@ -61,6 +62,8 @@ export function GearSessionChart({
   color,
 }: {
   peaks: GearSessionPeak[];
+  /** "max": värdet är passets högsta puls, inte median (intervallpassen). */
+  mode?: "median" | "max";
   /** Referenslinjer, t.ex. LT1 och LT2. */
   markers: { value: number; label: string }[];
   /** Intervallväxelns median i växeldiagrammet, om den finns. */
@@ -240,7 +243,9 @@ export function GearSessionChart({
         {hoveredPeak.name ? ` · ${hoveredPeak.name}` : ""} ·{" "}
         <span className="tabular font-medium text-[var(--foreground)]">{hoveredPeak.hr} slag/min</span>
         {hoveredPeak.reps > 1
-          ? ` — median av ${hoveredPeak.reps} rep, ${hoveredPeak.low}–${hoveredPeak.high}`
+          ? mode === "max"
+            ? ` — högst under ${hoveredPeak.reps} rep, repens topp ${hoveredPeak.low}–${hoveredPeak.high}`
+            : ` — median av ${hoveredPeak.reps} rep, ${hoveredPeak.low}–${hoveredPeak.high}`
           : " — ett rep"}
         {hoveredPeak.fallbackReps > 0
           ? ` (${hoveredPeak.fallbackReps === hoveredPeak.reps ? "alla" : hoveredPeak.fallbackReps} utan pulskurva)`

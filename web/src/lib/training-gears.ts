@@ -357,6 +357,44 @@ export function gearSessionPeaks(
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
+/* Högsta puls per intervallpass (2026-11-21, begärt av tränaren).
+ *
+ * I stället för medianen av repens slutpuls: den högsta pulsen under passets
+ * arbetsrep — det högsta varvet (activity_splits.max_hr) bland repen.
+ * Alla rep räknas, också de två första: frågan är hur högt pulsen nådde,
+ * inte var den låg när den hunnit upp.
+ *
+ * Ur repen och inte ur passets egen maxpuls: mätt mot Alices åtta
+ * intervallpass sep–nov 2026 var de samma i sju, men 2026-10-20 låg
+ * klockans max (195) utanför repen, i uppvärmning eller nerjogg, medan
+ * repen nådde 193. Uppvärmningens stegringar ska inte räknas som passets
+ * topp. Värdena låg 193–196 mot medianen av slutpulsen 183–192.
+ *
+ * `low`/`high` blir spannet för repens högsta puls, så att strecket i
+ * grafen visar hur jämnt pulsen nådde upp. */
+export function intervalSessionMaxima(reps: GearRep[]): GearSessionPeak[] {
+  const bySession = new Map<string, GearRep[]>();
+  for (const r of reps.filter((x) => isGearRep(x, "interval"))) {
+    if (!r.sessionId || !r.date) continue;
+    bySession.set(r.sessionId, [...(bySession.get(r.sessionId) ?? []), r]);
+  }
+  return [...bySession.entries()]
+    .map(([sessionId, rs]) => {
+      const values = rs.map((r) => r.maxHr ?? r.endHr ?? r.avgHr);
+      return {
+        sessionId,
+        date: rs[0].date as string,
+        name: rs[0].sessionName ?? null,
+        hr: Math.round(Math.max(...values)),
+        reps: values.length,
+        low: Math.round(Math.min(...values)),
+        high: Math.round(Math.max(...values)),
+        fallbackReps: rs.filter((r) => r.maxHr == null).length,
+      };
+    })
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
 /** Marginal under LT1 för distansmålet, samma som lib/easy-discipline.ts. */
 const EASY_LOWER_MARGIN = 25;
 const EASY_UPPER_MARGIN = 8;
