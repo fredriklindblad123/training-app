@@ -3,8 +3,8 @@ import Link from "next/link";
 import { PageHeader } from "@/components/ui/Page";
 import { Segmented } from "@/components/ui/Segmented";
 import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
-import { DataTable } from "@/components/ui/DataTable";
-import { fetchSameSessions, SAME_MIN_REPS } from "@/lib/same-session";
+import { fetchSameSessions } from "@/lib/same-session";
+import { SameSessionTable } from "@/components/SameSessionTable";
 import { formatDateShort, formatNumber, formatPace } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
@@ -922,30 +922,14 @@ export default async function TrendsPage({
             Fart och slutpuls bredvid varandra — har båda ändrats är det vald intensitet, inte form.
           </p>
           {sameSessions.map((g) => (
-            <div key={g.key} className="flex flex-col gap-1.5 rounded-[14px] border border-[var(--line)] p-3.5">
-              <span className="font-semibold text-[var(--foreground)]">{g.name}</span>
-              <DataTable
-                head={["Gång", "Fart", "Slutpuls", "Rep"]}
-                emphasis={null}
-                rows={g.times.map((t, i) => ({
-                  key: t.activityId,
-                  cells: [
-                    <span key="d" className={i === 0 ? "font-semibold text-[var(--foreground)]" : ""}>
-                      {formatDateShort(t.date)} {t.date.slice(0, 4)}
-                    </span>,
-                    formatPace(t.pace).replace(" /km", "/km"),
-                    t.endHr != null ? Math.round(t.endHr) : "–",
-                    t.reps,
-                  ],
-                }))}
-              />
-            </div>
+            <SameSessionTable key={g.key} group={g} />
           ))}
           <HowCalculated>
             <p>
-              Bara utomhuspass med samma namn. Rep på minst 400 m och en minut i 3:30–4:25/km, första
-              repet räknas inte, och en gång visas bara med minst {SAME_MIN_REPS} sådana rep. Inomhus
-              mäter klockan banvarven för kort, så de passen jämförs inte.
+              Passen paras ihop på upplägget klockan mätte — arbetsvarvens antal och längd — inte på
+              namnet. Fart och slutpuls är medianen för delens rep. Utomhuspass räknas alltid; löpband
+              bara när farten är rättad efter din kommentar i Garmin, och inomhusbana aldrig, eftersom
+              klockan mäter banvarven för kort där.
             </p>
             <p>
               Ingen formkurva: prövat mot din data 2026-11-20 rörde sig pulsen knappt mellan passen,

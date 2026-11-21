@@ -64,7 +64,22 @@ export type SessionActivity = {
    * motsvarar på plant underlag. Formkurvan räknar på den i stället för rå
    * fart, se lib/efficiency.ts. */
   avg_gap_seconds_per_km: number | null;
+  /** Löparens egen kommentar på passet i Garmin Connect (raw_data.description).
+   * Visas vid passet sedan 2026-11-21 — Alice skriver där hur passet kändes,
+   * när klockan mätt fel, och farten på löpband (se _apply_treadmill_pace_notes
+   * i api/index.py). Null när ingen kommentar finns. */
+  description?: string | null;
 };
+
+/** Passets kommentarer, en per fragment som har en, i tidsordning. */
+export function sessionComments(s: Pick<TrainingSession, "activities">): string[] {
+  return s.activities
+    .map((a) =>
+      // Sidor som hämtar hela raden (select "*") har kommentaren kvar i raw_data.
+      (a.description ?? (a as { raw_data?: { description?: string | null } }).raw_data?.description ?? "").trim(),
+    )
+    .filter((t) => t.length > 0);
+}
 
 /** Kolumnlistan för `.select()` — håll i synk med `SessionActivity`. */
 export const SESSION_ACTIVITY_COLUMNS =
@@ -73,7 +88,7 @@ export const SESSION_ACTIVITY_COLUMNS =
   "hr_zone_1_seconds, hr_zone_2_seconds, hr_zone_3_seconds, hr_zone_4_seconds, hr_zone_5_seconds, " +
   "lab_zone_1_seconds, lab_zone_2_seconds, lab_zone_3_seconds, lab_zone_4_seconds, " +
   "lab_zone_5_seconds, lab_zone_set_id, " +
-  "garmin_feel, garmin_rpe, vo2max, elevation_gain, avg_gap_seconds_per_km";
+  "garmin_feel, garmin_rpe, vo2max, elevation_gain, avg_gap_seconds_per_km, description:raw_data->>description";
 
 /** Ett träningspass: aggregatet av de fragment som hör ihop. */
 export type TrainingSession = {

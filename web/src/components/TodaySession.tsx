@@ -1,5 +1,6 @@
 import { formatKm } from "@/lib/format";
 import Link from "next/link";
+import { SessionComments } from "@/components/ui/SessionComments";
 import type { LabZoneSet } from "@/lib/zone-sources";
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
 import { WORKOUT_LABELS, workoutTypeColorVar, type WorkoutType } from "@/lib/planning";
@@ -46,6 +47,8 @@ export type TodayDone = {
   id: string;
   category: string;
   name: string | null;
+  /** Löparens kommentarer på passet i Garmin Connect. */
+  comments?: string[];
   distanceMeters: number;
   durationSeconds: number;
   avgHr: number | null;
@@ -194,6 +197,7 @@ export function TodaySession({
                     Genomfört
                   </span>
                 </div>
+                {d.comments && d.comments.length > 0 && <SessionComments comments={d.comments} />}
                 {d.easy && d.easy.meters > 0 && (
                   <p className="text-xs text-[var(--ink-2)]">
                     {label} {formatKm(Math.max(0, d.distanceMeters - d.easy.meters))} · distans

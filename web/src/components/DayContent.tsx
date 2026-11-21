@@ -3,7 +3,8 @@ import { PlannedSessions, type PlannedRow } from "@/components/PlannedSessions";
 import { DaySection } from "@/components/DaySection";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
 import { createClient } from "@/lib/supabase/server";
-import { groupActivitiesIntoSessions, type SessionActivity } from "@/lib/sessions";
+import { groupActivitiesIntoSessions, sessionComments, type SessionActivity } from "@/lib/sessions";
+import { SessionComments } from "@/components/ui/SessionComments";
 import {
   matchPlanToSessions,
   summarizeCompliance,
@@ -408,6 +409,17 @@ export async function DayContent({
 
       <SessionReviewCard reviews={sessionReviews} />
 
+      {/* Löparens kommentar på passet, synlig direkt (2026-11-21) — inte
+          gömd i den hopfällda listan över genomförda pass. */}
+      {daySessions.some((x) => sessionComments(x).length > 0) && (
+        <section className="flex flex-col gap-1.5">
+          <h2 className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">
+            Kommentar i Garmin
+          </h2>
+          <SessionComments comments={daySessions.flatMap(sessionComments)} />
+        </section>
+      )}
+
       <PeriodStatTiles sessions={daySessions} compliance={dayCompliance} />
 
 
@@ -485,7 +497,7 @@ export async function DayContent({
               <span className="text-[var(--ink-3)]">
                 {/* Bara alternativ träning ger ingen distans — då bara tiden. */}
                 · {dayKm > 0 ? `${formatKm(dayKm * 1000)} · ` : ""}
-                {formatDuration(daySeconds)}
+                {formatHoursMinutes(daySeconds)}
               </span>
             </span>
           )
@@ -496,6 +508,7 @@ export async function DayContent({
             Inget synkat pass den här dagen.
           </p>
         )}
+
         {garminActivities.map((a) => (
           <div
             key={a.id}

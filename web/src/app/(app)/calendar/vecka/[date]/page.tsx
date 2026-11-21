@@ -9,6 +9,7 @@ import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
   trainingSeconds,
+  sessionComments,
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
@@ -16,6 +17,7 @@ import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@
 import { weekClosure, type WeekClosure } from "@/lib/week-closure";
 import { formatDateShort } from "@/lib/format";
 import { Observations } from "@/components/ui/Explain";
+import { SessionComments } from "@/components/ui/SessionComments";
 import { AvailabilityBand } from "@/components/AvailabilityBand";
 import type { AvailabilityPeriod } from "@/lib/planning";
 import { PeriodStatTiles } from "@/components/PeriodStatTiles";
@@ -446,6 +448,7 @@ export default async function WeekPage({
                         {part.seconds ? ` · ${Math.round(part.seconds / 60)}′` : ""}
                       </span>
                     ))}
+                    <SessionComments comments={sessionComments(sess)} compact />
                   </span>
                 </div>
               ))}

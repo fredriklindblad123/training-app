@@ -1,9 +1,10 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
-import { formatDateShort, formatKmSv, formatNumber, formatPace } from "@/lib/format";
+import { formatDateShort, formatKmSv, formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/ui/Page";
 import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
 import { fetchSameSessions } from "@/lib/same-session";
+import { SameSessionTable } from "@/components/SameSessionTable";
 import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
@@ -17,6 +18,7 @@ import {
   SESSION_ACTIVITY_COLUMNS,
   groupActivitiesIntoSessions,
   trainingSeconds,
+  sessionComments,
   type SessionActivity,
   type TrainingSession,
 } from "@/lib/sessions";
@@ -556,6 +558,7 @@ export default async function DashboardPage({
           id: s.id,
           category: s.category,
           name: s.dominantActivity.name,
+          comments: sessionComments(s),
           distanceMeters: s.distanceMeters,
           durationSeconds: s.durationSeconds,
           avgHr: s.avgHr,
@@ -735,18 +738,7 @@ export default async function DashboardPage({
               Form →
             </Link>
           </div>
-          <div className="flex flex-col gap-1.5 rounded-[14px] border border-[var(--line)] p-3.5">
-            <span className="font-semibold text-[var(--foreground)]">{sameSession.name}</span>
-            {sameSession.times.slice(0, 3).map((t, i) => (
-              <div key={t.activityId} className={`flex justify-between text-sm ${i === 0 ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)]"}`}>
-                <span>{formatDateShort(t.date)} {t.date.slice(0, 4)}</span>
-                <span className="tabular">
-                  {formatPace(t.pace).replace(" /km", "/km")}
-                  {t.endHr != null ? ` · puls ${Math.round(t.endHr)}` : ""}
-                </span>
-              </div>
-            ))}
-          </div>
+          <SameSessionTable group={sameSession} />
         </section>
       )}
 

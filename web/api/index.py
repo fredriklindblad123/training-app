@@ -26,6 +26,7 @@ diary_entries.session_log/coach_notes i docs/data-model.md.
 """
 
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -543,6 +544,105 @@ def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
     return written
 
 
+# --- Löpbandsfart ur löparens egen kommentar (2026-11-21) -------------------
+#
+# På löpband mäter klockan farten med handledsrörelsen, och den blir fel:
+# Alices 30-sekundersrep 2026-11-21 stod på 4:27–5:35/km när bandet gick i
+# 3:10–3:05. Hon skriver därför farten i passets beskrivning i Garmin-appen,
+# en rad per repgrupp: "30sekundrarna: 3.10-3.05", "3minutrarna: 3.34-3.31".
+# Första farten gäller första repet i gruppen, den andra det sista, och
+# repen däremellan får en jämn stegring.
+#
+# Distansen räknas om ur tiden: distans = tid / fart. Bara aktiva varv vars
+# längd stämmer med gruppens replängd (±10 %, minst 3 s) rättas; vila,
+# uppvärmning och nerjogg behåller klockans värden. Passets totala distans
+# blir summan av varven. Steget är idempotent — det räknar från tid och
+# kommentar, aldrig från tidigare rättade värden — så det kan köras vid
+# varje synk, också när kommentaren skrivs först efter passet.
+PACE_NOTE_LINE = re.compile(
+    r"(\d+)\s*(sek|s\b|sekund|min|minut)\w*\s*[:=]?\s*(\d{1,2})[.:,](\d{2})"
+    r"(?:\s*[-–]\s*(\d{1,2})[.:,](\d{2}))?",
+    re.IGNORECASE,
+)
+TREADMILL_TYPES = {"treadmill_running"}
+
+
+def _parse_pace_notes(description: Optional[str]) -> list[tuple[int, int, int]]:
+    """[(replängd i s, första repets fart, sista repets fart)], fart i s/km."""
+    out = []
+    for m in PACE_NOTE_LINE.finditer(description or ""):
+        n = int(m.group(1))
+        rep = n if m.group(2).lower().startswith("s") else n * 60
+        first = int(m.group(3)) * 60 + int(m.group(4))
+        last = int(m.group(5)) * 60 + int(m.group(6)) if m.group(5) else first
+        # Rimlighetsspärr: 2:30–9:00/km. Allt annat är troligen inte en fart.
+        if 150 <= first <= 540 and 150 <= last <= 540:
+            out.append((rep, first, last))
+    return out
+
+
+def _apply_treadmill_pace_notes(user_id: str, activities: list[dict]) -> int:
+    """Rättar löpbandspassens varv och distans efter löparens angivna fart."""
+    targets = [
+        a for a in activities
+        if ((a.get("activityType") or {}).get("typeKey") in TREADMILL_TYPES)
+        and _parse_pace_notes(a.get("description"))
+        and a.get("activityId") is not None
+    ]
+    fixed = 0
+    for a in targets:
+        rows = _sb_select(
+            "activities", "id",
+            {"user_id": f"eq.{user_id}", "external_id": f"eq.{a['activityId']}"},
+        )
+        if not rows:
+            continue
+        activity_id = rows[0]["id"]
+        laps = _sb_select(
+            "activity_splits",
+            "split_index,split_type,distance_meters,duration_seconds",
+            {"activity_id": f"eq.{activity_id}", "order": "split_index"},
+        )
+        if not laps:
+            continue
+        new_distance: dict[int, float] = {}
+        for rep, first, last in _parse_pace_notes(a.get("description")):
+            tol = max(3, 0.1 * rep)
+            group = [
+                l for l in laps
+                if l.get("split_type") == "active"
+                and l.get("duration_seconds") is not None
+                and abs(float(l["duration_seconds"]) - rep) <= tol
+            ]
+            for i, lap in enumerate(group):
+                pace = first if len(group) == 1 else first + (last - first) * i / (len(group) - 1)
+                new_distance[lap["split_index"]] = float(lap["duration_seconds"]) / pace * 1000
+        if not new_distance:
+            continue
+        for lap in laps:
+            if lap["split_index"] not in new_distance:
+                continue
+            d = new_distance[lap["split_index"]]
+            requests.patch(
+                f"{SUPABASE_URL}/rest/v1/activity_splits",
+                headers={**_sb_headers(), "Prefer": "return=minimal"},
+                params={"activity_id": f"eq.{activity_id}", "split_index": f"eq.{lap['split_index']}"},
+                json={
+                    "distance_meters": round(d, 1),
+                    "avg_pace_seconds_per_km": round(float(lap["duration_seconds"]) / d * 1000, 1),
+                },
+                timeout=30,
+            ).raise_for_status()
+        total = sum(new_distance.get(l["split_index"], float(l.get("distance_meters") or 0)) for l in laps)
+        duration = float(a.get("duration") or 0)
+        _sb_patch("activities", activity_id, {
+            "distance_meters": round(total, 1),
+            "avg_pace_seconds_per_km": round(duration / total * 1000, 1) if total > 0 and duration > 0 else None,
+        })
+        fixed += 1
+    return fixed
+
+
 def _parse_hr_stream(details: dict) -> Optional[tuple[list[int], list[int]]]:
     """(sekunder från start, puls) ur get_activity_details. Samma tolkning som
     scripts/backfill_hr_streams.py — håll dem i synk."""
@@ -777,6 +877,12 @@ def _sync_one_user(user_id: str, min_interval_minutes: Optional[int] = None) -> 
     except Exception:
         # Varvdata är sekundärt och får aldrig fälla synken.
         split_count = 0
+
+    # Löpbandsfart ur kommentaren — efter varven, som den rättar.
+    try:
+        _apply_treadmill_pace_notes(user_id, activities)
+    except Exception:
+        pass
 
     # Pulskurva mot uppmätta zoner, samma resonemang.
     try:
