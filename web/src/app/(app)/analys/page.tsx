@@ -3,6 +3,7 @@ import { PageHeader, Section } from "@/components/ui/Page";
 import { Segmented } from "@/components/ui/Segmented";
 import { HowCalculated, Observations } from "@/components/ui/Explain";
 import { DataTable } from "@/components/ui/DataTable";
+import { ToneDots } from "@/components/ToneDots";
 import { blockClosure, closureLines } from "@/lib/block-closure";
 import { formatDateShort, formatNumber } from "@/lib/format";
 import { addDays as planAddDays, toDateKey, PHASE_LABELS, type PhaseType } from "@/lib/planning";
@@ -59,7 +60,6 @@ import {
   THEMES_FROM,
   TONE_COLORS,
   TONE_LABELS,
-  toneCounts,
   toneOf,
   topWords,
   mentionCounts,
@@ -690,6 +690,46 @@ export default async function AnalysPage({
       }${selTone ? ` · ${TONE_LABELS[selTone]}` : ""}`
     : null;
   const selWords = selCat ? topWords(selNotes) : [];
+  /* Observationer ur dagboken (2026-11-21). Bara det som går att räkna
+     direkt ur hennes färgmarkering — inga omdömen, och bara när underlaget
+     är mer än ett par anteckningar. */
+  const diaryObs: string[] = (() => {
+    const out: string[] = [];
+    const tonedNow = notesNow.filter((n) => n.tone);
+    const tonedBefore = notesBefore.filter((n) => n.tone);
+    if (tonedNow.length >= 3) {
+      const g = tonedNow.filter((n) => n.tone === "bra").length;
+      const gb = tonedBefore.filter((n) => n.tone === "bra").length;
+      out.push(
+        `${g} av ${tonedNow.length} anteckningar ${ongoing ? "hittills " : ""}är mest i grönt${
+          comparison && tonedBefore.length >= 3 ? ` — ${cmpLower} ${gb} av ${tonedBefore.length}` : ""
+        }.`,
+      );
+    }
+    const pinkCat = toneCats
+      .map((c) => {
+        const ns = tonedNow.filter((n) => n.category === c);
+        return { c, n: ns.length, pink: ns.filter((n) => n.tone === "mindre_bra").length };
+      })
+      .filter((x) => x.n >= 3 && x.pink >= 2)
+      .sort((a2, b2) => b2.pink / b2.n - a2.pink / a2.n)[0];
+    if (pinkCat)
+      out.push(
+        `Mest rosa i ${(CATEGORY_LABELS[pinkCat.c as ActivityCategory] ?? pinkCat.c).toLowerCase()}: ${pinkCat.pink} av ${pinkCat.n} anteckningar.`,
+      );
+    const themeStats = THEMES.map((t) => ({ t, c: mentionCounts(themeNotes, t.re) }));
+    const pinkTheme = themeStats.filter((x) => x.c.mindre_bra >= 3).sort((a2, b2) => b2.c.mindre_bra - a2.c.mindre_bra)[0];
+    if (pinkTheme)
+      out.push(
+        `${pinkTheme.t.label} tas upp i ${pinkTheme.c.total} anteckningar, ${pinkTheme.c.mindre_bra} gånger i rosa text.`,
+      );
+    const greenTheme = themeStats
+      .filter((x) => x.c.bra >= 3 && x.t.key !== pinkTheme?.t.key)
+      .sort((a2, b2) => b2.c.bra - a2.c.bra)[0];
+    if (greenTheme)
+      out.push(`${greenTheme.t.label} tas upp i ${greenTheme.c.total} anteckningar, ${greenTheme.c.bra} gånger i grön text.`);
+    return out;
+  })();
   const themes = themeTable(themeNotes, 3);
   const activeTheme = THEMES.find((t) => t.key === tema) ?? null;
   const activeType = themes.categories.find((c) => c.category === tematyp)?.category ?? null;
@@ -1143,74 +1183,49 @@ export default async function AnalysPage({
           </p>
         ) : (
           <div className="flex flex-col gap-3">
+            <Observations items={diaryObs} source="Färgerna är hennes egen markering i dagboken — självskattat." />
+            <div className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)]">
+              <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-2 border-b border-[var(--line)] px-3.5 py-2 text-xs text-[var(--ink-3)]">
+                <span>Passtyp</span>
+                <span className="font-semibold text-[var(--foreground)]">{nowName}</span>
+                <span>{comparison ? cmpName : ""}</span>
+              </div>
+              {[null, ...toneCats].map((cat) => {
+                const catKey = cat ?? "alla";
+                const dotsFor = (ns: ThemeNote[]) =>
+                  (cat ? ns.filter((n) => n.category === cat) : ns)
+                    .filter((n) => n.tone)
+                    .map((n) => ({ date: n.date, tone: n.tone }));
+                const selected = selCat === catKey;
+                return (
+                  <div
+                    key={catKey}
+                    className={`grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] items-start gap-2 border-t border-[var(--line)] px-3.5 py-2.5 first:border-t-0 ${
+                      selected ? "bg-[var(--surface-raised)]" : ""
+                    }`}
+                  >
+                    <Link
+                      href={selected ? toneHref(null, "nu", null) : toneHref(catKey, "nu", null)}
+                      scroll={false}
+                      className={`text-sm ${cat ? "text-[var(--ink-2)]" : "font-semibold text-[var(--foreground)]"} underline decoration-[var(--line)] underline-offset-2`}
+                    >
+                      {cat ? (CATEGORY_LABELS[cat as ActivityCategory] ?? cat) : "Alla pass"}
+                    </Link>
+                    <ToneDots dots={dotsFor(notesNow)} hrefFor={dayHref} />
+                    {comparison ? <ToneDots dots={dotsFor(notesBefore)} hrefFor={dayHref} size={8} /> : <span />}
+                  </div>
+                );
+              })}
+            </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ink-2)]">
               {(["bra", "blandat", "mindre_bra"] as Tone[]).map((t) => (
                 <span key={t} className="flex items-center gap-1.5">
-                  <span aria-hidden className="inline-block h-2.5 w-3 rounded-sm" style={{ backgroundColor: TONE_COLORS[t] }} />
+                  <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: TONE_COLORS[t] }} />
                   {TONE_LABELS[t]}
                 </span>
               ))}
+              <span>· en prick per anteckning, tryck för dagen · tryck på passtypen för att läsa</span>
             </div>
-            {[null, ...toneCats].map((cat) => {
-              const pick = (ns: ThemeNote[]) => toneCounts(cat ? ns.filter((n) => n.category === cat) : ns);
-              const rows = [
-                { name: nowName, blk: "nu" as const, c: pick(notesNow) },
-                ...(comparison ? [{ name: cmpName, blk: "jmf" as const, c: pick(notesBefore) }] : []),
-              ];
-              const catKey = cat ?? "alla";
-              return (
-                <div key={cat ?? "alla"} className="flex flex-col gap-1">
-                  <span className="text-sm font-medium text-[var(--foreground)]">
-                    {cat ? (CATEGORY_LABELS[cat as ActivityCategory] ?? cat) : "Alla pass"}
-                  </span>
-                  {rows.map(({ name, blk, c }) => {
-                    const total = c.bra + c.blandat + c.mindre_bra;
-                    const selected = selCat === catKey && selBlock === blk;
-                    if (total === 0) {
-                      return (
-                        <div key={name} className="flex items-center gap-2 px-1 py-1 text-xs">
-                          <span className="w-16 shrink-0 truncate text-[var(--ink-3)]">{name}</span>
-                          <span className="text-[var(--ink-3)]">inga markerade anteckningar</span>
-                        </div>
-                      );
-                    }
-                    return (
-                      <Link
-                        key={name}
-                        href={selected ? toneHref(null, "nu", null) : toneHref(catKey, blk, null)}
-                        scroll={false}
-                        aria-current={selected ? "true" : undefined}
-                        className={`flex items-center gap-2 rounded px-1 py-1 text-xs ${
-                          selected ? "bg-[var(--surface-raised)] ring-1 ring-[var(--foreground)]" : "hover:bg-[var(--surface-raised)]"
-                        }`}
-                      >
-                        <span className="w-16 shrink-0 truncate text-[var(--ink-3)]">{name}</span>
-                        {total === 0 ? (
-                          <span className="text-[var(--ink-3)]">inga markerade anteckningar</span>
-                        ) : (
-                          <>
-                            <span className="flex h-2.5 min-w-0 flex-1 gap-px overflow-hidden rounded-sm">
-                              {(["bra", "blandat", "mindre_bra"] as Tone[]).map((t) =>
-                                c[t] > 0 ? (
-                                  <span
-                                    key={t}
-                                    title={`${TONE_LABELS[t]}: ${c[t]}`}
-                                    style={{ width: `${(c[t] / total) * 100}%`, backgroundColor: TONE_COLORS[t] }}
-                                  />
-                                ) : null,
-                              )}
-                            </span>
-                            <span className="tabular shrink-0 text-right text-[var(--ink-2)]">
-                              {c.bra}/{c.blandat}/{c.mindre_bra} av {total}
-                            </span>
-                          </>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              );
-            })}
             {selLabel && (
               <div className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-3">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -1285,12 +1300,13 @@ export default async function AnalysPage({
                 )}
               </div>
             )}
-            <p className="text-xs text-[var(--ink-3)]">
-              Siffrorna är bra/blandat/mindre bra av antalet markerade anteckningar. En anteckning räknas som bra när minst två
-              tredjedelar av den färgade texten är grön, mindre bra när minst två tredjedelar är
-              rosa, annars blandat. Få anteckningar per passtyp i ett block — läs dem som en
-              fingervisning, inte ett mått.
-            </p>
+            <HowCalculated>
+              <p>
+                En anteckning räknas som bra när minst två tredjedelar av den färgade texten är grön, mindre bra
+                när minst två tredjedelar är rosa, annars blandat. Anteckningen hör till dagens mest krävande
+                pass. Få anteckningar per passtyp i ett block — läs dem som en fingervisning, inte ett mått.
+              </p>
+            </HowCalculated>
           </div>
         )}
 
@@ -1299,7 +1315,7 @@ export default async function AnalysPage({
             Vad anteckningarna tar upp{selLabel ? ` · ${selLabel}` : ""}
           </h3>
           <p className="-mt-1 text-xs text-[var(--ink-3)]">
-            Stapeln under varje tal visar i vilken färg temat skrevs:{" "}
+            En prick per anteckning som tar upp temat, i den färg temat skrevs:{" "}
             <span style={{ color: TONE_COLORS.bra }}>grönt</span> = bra,{" "}
             <span style={{ color: TONE_COLORS.mindre_bra }}>rosa</span> = mindre bra, grått = båda i samma
             anteckning.
@@ -1368,7 +1384,11 @@ export default async function AnalysPage({
                     <th className="w-[30%] pb-1 font-normal">Tema</th>
                     {themes.categories.map((c) => (
                       <th key={c.category} className="pb-1 font-normal">
-                        <span className="block truncate">{CATEGORY_LABELS[c.category as ActivityCategory] ?? c.category}</span>
+                        <span className="block truncate">
+                          {({ cross_training: "Alt.träning", interval: "Intervall" } as Record<string, string>)[c.category] ??
+                            CATEGORY_LABELS[c.category as ActivityCategory] ??
+                            c.category}
+                        </span>
                         <span className="tabular">{c.notes} st</span>
                       </th>
                     ))}
@@ -1381,27 +1401,24 @@ export default async function AnalysPage({
                       {themes.categories.map((c) => {
                         const cell = themes.cells.get(`${t.key}|${c.category}`);
                         const n = cell?.count ?? 0;
-                        const mc = mentionCounts(themeNotes.filter((x) => x.category === c.category), t.re);
+                        const dots = themeNotes
+                          .filter((x) => x.category === c.category && (t.re.test(x.text) || (x.good && t.re.test(x.good)) || (x.bad && t.re.test(x.bad))))
+                          .map((x) => ({ date: x.date, tone: mentionTone(x, t.re) }));
                         const active = activeTheme?.key === t.key && activeType === c.category;
                         return (
-                          <td key={c.category} className="py-1.5">
+                          <td key={c.category} className="py-2 pr-1 align-top">
                             {n === 0 ? (
                               <span className="text-[var(--ink-3)]">–</span>
                             ) : (
                               <Link
                                 href={active ? themeHref(null, null) : themeHref(t.key, c.category)}
                                 scroll={false}
-                                title={`${n} av ${cell?.notes} anteckningar`}
-                                className={`tabular rounded px-1.5 py-0.5 ${
-                                  active
-                                    ? "bg-[var(--foreground)] text-[var(--background)]"
-                                    : "underline decoration-[var(--line)] underline-offset-2"
-                                }`}
+                                title={`${n} av ${cell?.notes} anteckningar — tryck för att läsa`}
+                                className={`inline-flex rounded-md p-1 ${active ? "bg-[var(--surface-raised)] ring-1 ring-[var(--foreground)]" : "hover:bg-[var(--surface-raised)]"}`}
                               >
-                                {n}/{cell?.notes}
+                                <ToneDots dots={dots} size={8} />
                               </Link>
                             )}
-                            <MentionBar c={mc} />
                           </td>
                         );
                       })}
