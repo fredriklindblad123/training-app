@@ -82,7 +82,9 @@ export function Stat({
  * borders får ytterkanterna dubbla streck så fort raden bryts till två rader
  * på smal skärm. */
 export function StatRow({ children, columns = 3 }: { children: ReactNode; columns?: 2 | 3 | 4 }) {
-  const cols = { 2: "grid-cols-2", 3: "grid-cols-2 sm:grid-cols-3", 4: "grid-cols-2 sm:grid-cols-4" }[
+  // Tre rutor står i tre kolumner även på mobil (2026-11-21) — två kolumner
+  // lämnade en tom grå ruta, som på Flerårsplan.
+  const cols = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-2 sm:grid-cols-4" }[
     columns
   ];
   return (

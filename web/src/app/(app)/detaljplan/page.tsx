@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatDateShort } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, viewableAthletes, type AthleteOption } from "@/lib/auth-scope";
 import {
@@ -191,7 +192,7 @@ function PassCard({
       </div>
 
       {group.diverges && (
-        <span className="text-[11px] text-[var(--status-watch)]">Löparna har olika innehåll</span>
+        <span className="text-[11px] text-[var(--ink-2)]">Löparna har olika innehåll</span>
       )}
     </Link>
   );
@@ -398,18 +399,17 @@ export default async function DetaljplanPage({
   const prevHref = `/detaljplan?week=${addDaysKey(weekStart, -7)}`;
   const nextHref = `/detaljplan?week=${addDaysKey(weekStart, 7)}`;
   const navClass =
-    "display rounded-md border border-[var(--line)] px-2.5 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ink-3)]";
+    "display flex min-h-10 min-w-10 items-center justify-center rounded-[10px] border border-[var(--line)] px-3 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[var(--ink-3)]";
 
   return (
     <div className="flex flex-1 flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
-            Detaljplan
+            Vecka {planWeek.isoWeekNumber}
           </h1>
           <p className="mt-1 text-sm text-[var(--ink-2)]">
-            Vecka {planWeek.isoWeekNumber} · {weekStart} till {weekEnd}. Tryck på en dag eller ett
-            pass för dagsvyn.
+            {formatDateShort(weekStart)}–{formatDateShort(weekEnd)} · hela gruppen. Tryck på en dag eller ett pass för dagsvyn.
           </p>
         </div>
 

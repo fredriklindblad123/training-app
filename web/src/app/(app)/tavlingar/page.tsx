@@ -1,3 +1,5 @@
+import { PageHeader } from "@/components/ui/Page";
+import { formatDateShort } from "@/lib/format";
 import { priorityLabel } from "@/lib/planning";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, assignableAthletes, canEditPlanning } from "@/lib/auth-scope";
@@ -8,7 +10,6 @@ import {
   toggleCompetitionAthlete,
   updatePlannedCompetition,
 } from "./actions";
-import { RaceTimeline } from "@/components/RaceTimeline";
 
 /* Tävlingsplaneringen: vad gruppen har framför sig, och hur man ändrar det.
  *
@@ -107,7 +108,9 @@ export default async function TavlingarPage() {
         </div>
 
         <div className="tabular flex flex-wrap items-baseline gap-x-2 text-xs text-[var(--ink-3)]">
-          <span>{race.date}</span>
+          <span>
+            {formatDateShort(race.date, true)} {race.date.slice(0, 4)}
+          </span>
           {!isPast && (
             <span>
               ·{" "}
@@ -211,39 +214,23 @@ export default async function TavlingarPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
-      <div>
-        <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
-          Tävlingar
-        </h1>
-        <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Vad gruppen har framför sig, i datumordning. Tävlingarna dyker upp
-          automatiskt i planeringsvyerna och i träningskalendern. Resultaten
-          fyller du i under Lopp.
-        </p>
-      </div>
-
-      {/* Tidslinjen överst: hela säsongen framför en, i ett svep. Listan
-          nedanför svarar på "vad står på tur"; bandet svarar på "hur ligger de
-          mot varandra" — om tre lopp klumpar ihop sig i maj eller om det är
-          två månader utan något. */}
-      <RaceTimeline
-        races={upcoming.map((r) => ({
-          name: r.name,
-          date: r.date,
-          priority: r.priority,
-          athletes: r.athletes.size,
-        }))}
-        todayKey={todayKey}
+      <PageHeader
+        title="Tävling"
+        lead="Vad gruppen har framför sig. Tävlingarna syns i planeringen och kalendern; resultaten fylls i under Lopp."
       />
 
+      {/* Tidslinjen ovanför listan togs bort 2026-11-21 (ny UX): den visade
+          samma lopp som listan under, och sidan var 20 000 px hög på mobil. */}
+
       {canEdit && (
-        <section className="flex flex-col gap-3">
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Lägg till tävling
-          </h2>
+        <details className="group rounded-[14px] border border-[var(--line)] bg-[var(--surface)]">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+            + Lägg till tävling
+            <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+          </summary>
           <form
             action={createPlannedCompetition}
-            className="flex flex-col gap-3 rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4"
+            className="flex flex-col gap-3 border-t border-[var(--line)] p-4"
           >
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1 text-sm">
@@ -295,7 +282,7 @@ export default async function TavlingarPage() {
               Lägg till
             </button>
           </form>
-        </section>
+        </details>
       )}
 
       <section className="flex flex-col gap-3">
@@ -314,16 +301,17 @@ export default async function TavlingarPage() {
       </section>
 
       {past.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            Genomförda
-          </h2>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <details className="group flex flex-col gap-3">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+            Genomförda ({past.length})
+            <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {past.map((r) => (
               <RaceCard key={`${r.date}|${r.name}`} race={r} past />
             ))}
           </div>
-        </section>
+        </details>
       )}
     </div>
   );

@@ -1,5 +1,6 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
+import { formatDateShort } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import {
   assignableAthletes,
@@ -333,7 +334,7 @@ function BlockCard({
             {b.name}
           </span>
           <span className="tabular text-xs text-[var(--ink-3)]">
-            {b.start_date} – {b.end_date} · {weeksBetween(b.start_date, b.end_date)} v
+            {formatDateShort(b.start_date)}–{formatDateShort(b.end_date)} {b.end_date.slice(0, 4)} · {weeksBetween(b.start_date, b.end_date)} v
           </span>
         </span>
         {/* Säsongen som eget märke, inte som ett ord i radan. Listan är
@@ -909,33 +910,28 @@ async function ArsplanOverview({
               // säsongerna får streckad ram, så de inte läses som en säsong.
               const between = kind === "none";
               return (
-                <section
+                /* Ny UX 2026-11-21: säsongen som ett vanligt kort med
+                   versalrubrik, i stället för svart rubrikfält. Säsonger som
+                   är slut är hopfällda — sidan börjar annars 2025. */
+                <details
                   key={`${g.key}-${gi}`}
-                  className={`overflow-hidden rounded-xl border-2 ${
-                    between
-                      ? "border-dashed border-[var(--line)]"
-                      : "border-[var(--ink-3)] bg-[var(--surface-raised)]"
+                  open={to >= new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" })}
+                  className={`group overflow-hidden rounded-[14px] border ${
+                    between ? "border-dashed border-[var(--line)]" : "border-[var(--line)] bg-[var(--surface)]"
                   }`}
                 >
-                  <header
-                    className={`flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 px-4 py-3 ${
-                      between ? "" : "bg-[var(--foreground)] text-[var(--background)]"
-                    }`}
-                  >
-                    <h3
-                      className={`display text-lg leading-tight font-semibold ${
-                        between ? "text-[var(--ink-2)]" : ""
-                      }`}
-                    >
-                      {title}
-                    </h3>
-                    <span
-                      className={`tabular text-xs ${between ? "text-[var(--ink-3)]" : "opacity-80"}`}
-                    >
-                      {from} – {to} · {g.blocks.length} block
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                    <span className="flex flex-col">
+                      <span className={`display text-lg leading-tight font-semibold ${between ? "text-[var(--ink-2)]" : "text-[var(--foreground)]"}`}>
+                        {title}
+                      </span>
+                      <span className="tabular text-xs text-[var(--ink-3)]">
+                        {formatDateShort(from)} {from.slice(0, 4)} – {formatDateShort(to)} {to.slice(0, 4)} · {g.blocks.length} block
+                      </span>
                     </span>
-                  </header>
-                  <div className="flex flex-col gap-2 p-3">
+                    <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+                  </summary>
+                  <div className="flex flex-col gap-2 border-t border-[var(--line)] p-3">
                     {g.blocks.map((b) => (
                       <BlockCard
                         key={b.id}
@@ -946,7 +942,7 @@ async function ArsplanOverview({
                       />
                     ))}
                   </div>
-                </section>
+                </details>
               );
             })}
           </div>
@@ -1091,7 +1087,7 @@ export default async function ArsplanPage({
     return (
       <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
         <div>
-          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Säsongsöversikt</h1>
+          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Säsong</h1>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
             Gruppens block i tidsordning. Tryck på ett block för att ändra det.
           </p>
@@ -1389,15 +1385,11 @@ export default async function ArsplanPage({
           </Link>
         )}
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
-          Säsongsöversikt{viewedAthleteName ? ` — ${viewedAthleteName}` : ""}
+          Säsong
         </h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Lägg upp säsongen i block och låt planeringen skärpas ju närmare tävlingarna du
-          kommer. Dag-för-dag-innehållet i varje veckomall redigeras på{" "}
-          <Link href="/blockplan" className="underline">
-            Blockplan
-          </Link>
-          .
+          {viewedAthleteName ? `${viewedAthleteName}s säsong i block. ` : "Säsongen i block. "}Veckornas
+          innehåll redigeras under Block.
         </p>
       </div>
 

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Segmented } from "@/components/ui/Segmented";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -302,32 +303,23 @@ export default async function UppfoljningPage({
     return `/uppfoljning?${params.toString()}`;
   }
 
-  const tab = (active: boolean) =>
-    `rounded px-3 py-1 text-sm ${
-      active
-        ? "bg-[var(--foreground)] text-[var(--background)]"
-        : "border border-[var(--line)] hover:bg-[var(--surface-raised)] hover:bg-[var(--surface-raised)]"
-    }`;
 
   return (
     <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
       <div>
         <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Uppföljning</h1>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-          Alla dina löpare sida vid sida: hur många pass som var planerade, hur många som blev
-          gjorda och hur de fördelade sig. Samma uträkning som blockstatistiken på Säsongsöversikt, så
-          siffrorna kan aldrig säga emot varandra.
+          Alla löpare sida vid sida: planerat, gjort och hur passen fördelade sig.
         </p>
       </div>
 
       {/* Granularitet */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Period">
-          {PERIOD_KINDS.map((k) => (
-            <Link key={k} href={href({ period: k })} aria-current={kind === k ? "page" : undefined} className={tab(kind === k)}>
-              {PERIOD_LABELS[k]}
-            </Link>
-          ))}
+        <div className="w-full">
+          <Segmented
+            label="Period"
+            options={PERIOD_KINDS.map((k) => ({ key: k, label: PERIOD_LABELS[k], href: href({ period: k }), active: kind === k }))}
+          />
         </div>
 
         {/* Periodnavigering. Datumperioder är oändliga åt båda håll; block

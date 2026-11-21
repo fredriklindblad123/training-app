@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { PageHeader } from "@/components/ui/Page";
+import { HowCalculated } from "@/components/ui/Explain";
+import { formatDateShort } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import {
   canEditPlanning,
@@ -9,7 +12,6 @@ import {
 } from "@/lib/auth-scope";
 import { Stat, StatRow, StatCell } from "@/components/ui/Stat";
 import {
-  PERIOD_LABELS,
   PHASE_LABELS,
   PHASE_TYPES,
   QUALITY_WORKOUT_TYPES,
@@ -108,12 +110,21 @@ function BlockWeekSection({
 }) {
   const items = block.week_template_items ?? [];
   return (
-    <details className="rounded-lg border border-[var(--line)] p-3" open>
-      <summary className="cursor-pointer">
-        <span className="font-medium text-[var(--foreground)]">{block.name}</span>
-        <span className="ml-2 text-sm text-[var(--ink-3)]">
-          {PERIOD_LABELS[block.period]} · {PHASE_LABELS[block.phase]} · {block.start_date} –{" "}
-          {block.end_date} · {items.length} pass/vecka
+    <details
+      className="group rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3.5"
+      /* Bara blocket som pågår är utfällt (ny UX 2026-11-21) — sidan var
+         23 000 px hög på mobil när alla block stod öppna, och började med
+         vårens tomma block. */
+      open={block.start_date <= todayKey() && block.end_date >= todayKey()}
+    >
+      <summary className="flex cursor-pointer list-none flex-col gap-0.5 [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center justify-between gap-2">
+          <span className="display text-lg font-semibold text-[var(--foreground)]">{block.name}</span>
+          <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+        </span>
+        <span className="text-sm text-[var(--ink-3)]">
+          {PHASE_LABELS[block.phase]} · {formatDateShort(block.start_date)}–{formatDateShort(block.end_date)}{" "}
+          {block.end_date.slice(0, 4)} · {items.length} pass/vecka
         </span>
         {blockAthletes.length > 0 && (
           <span className="ml-2 text-sm text-[var(--ink-3)]">
@@ -447,6 +458,10 @@ function CompetitionCard({
  * över dygnsskiften, och ett modulvärde hade frusit "nu" vid uppstart.
  * Svensk tid och inte serverns UTC, av samma skäl som i /detaljplan — strax
  * före midnatt är UTC fortfarande gårdagen och pekar då ut fel vecka. */
+function todayKey(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+}
+
 function currentMondayKey(): string {
   const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
   const d = new Date(`${today}T00:00:00Z`);
@@ -809,17 +824,19 @@ export default async function BlockplanPage() {
     return (
       <div className="flex flex-1 flex-col gap-8 px-4 py-6 sm:px-6 sm:py-8">
         <ScrollToAnchor fromWeek={currentMondayKey()} />
-        <div>
-          <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">Blockplan</h1>
-          <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Alla blockens veckor, tidigaste först. Öppna ett pass för att fylla på detaljer, eller
-            tagga på och av löpare direkt i rutan. Tävlingar läggs in på{" "}
-            <Link href="/tavlingsresultat#lagg-till-tavling" className="underline">
-              Tävlingar
-            </Link>{" "}
-            — flera löpare kan taggas på samma tävling — och dyker upp här automatiskt.
+        <PageHeader title="Block" lead="Blockens veckor dag för dag. Det block som pågår är utfällt." />
+        <Link
+          href="/blockplan/nytt"
+          className="flex min-h-12 items-center justify-center rounded-xl bg-[var(--foreground)] px-4 font-semibold text-[var(--background)] hover:opacity-90"
+        >
+          Skapa nytt block →
+        </Link>
+        <HowCalculated summary="Så fungerar Block">
+          <p>
+            Öppna ett pass för att fylla på detaljer, eller tagga på och av löpare direkt i rutan. Tävlingar
+            läggs in under Tävling — flera löpare kan taggas på samma tävling — och dyker upp här automatiskt.
           </p>
-        </div>
+        </HowCalculated>
         <BlockplanOverview supabase={supabase} scoped={scoped} canEdit={canEditPlanning(scoped)} />
       </div>
     );
