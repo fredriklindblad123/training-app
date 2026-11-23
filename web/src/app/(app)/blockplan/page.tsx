@@ -111,6 +111,12 @@ function BlockWeekSection({
   athleteFilter: string;
 }) {
   const items = block.week_template_items ?? [];
+  // Pågående block: veckor som slutat före innevarande vecka döljs bakom en
+  // utfällbar rad. Andra block visas i sin helhet.
+  const monday = currentMondayKey();
+  const ongoing = block.start_date <= todayKey() && block.end_date >= todayKey();
+  const pastWeeks = ongoing ? weeks.filter((w) => w.weekStart < monday) : [];
+  const currentWeeks = ongoing ? weeks.filter((w) => w.weekStart >= monday) : weeks;
   return (
     <details
       className="group rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3.5"
@@ -137,8 +143,26 @@ function BlockWeekSection({
 
       {canEdit && <WeekPattern block={block} items={items} />}
 
+      {/* Blocket börjar på innevarande vecka (2026-11-21, begärt). Veckorna
+          som redan passerat ligger hopfällda överst och går att fälla ut. */}
+      {pastWeeks.length > 0 && (
+        <details className="group mt-3">
+          <summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 text-sm text-[var(--ink-2)] [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+            Visa {pastWeeks.length} tidigare {pastWeeks.length === 1 ? "vecka" : "veckor"}
+          </summary>
+          <WeekGrid
+            weeks={pastWeeks}
+            blockId={block.id}
+            canEdit={canEdit}
+            blockAthletes={blockAthletes}
+            athletesById={athletesById}
+            athleteFilter={athleteFilter}
+          />
+        </details>
+      )}
       <WeekGrid
-        weeks={weeks}
+        weeks={currentWeeks}
         blockId={block.id}
         canEdit={canEdit}
         blockAthletes={blockAthletes}
@@ -333,7 +357,7 @@ function WeekPassCard({
       {/* Skiljer sig innehållet åt mellan löparna (efter en ändring med
           scope "bara en") får kortet inte se ut att gälla alla. */}
       {pass.diverges && (
-        <div className="text-[10px] italic text-amber-700 dark:text-amber-500">olika per löpare</div>
+        <div className="text-[10px] italic text-[var(--ink-2)]">olika per löpare</div>
       )}
 
       {showChips && (
