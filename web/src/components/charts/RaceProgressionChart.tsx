@@ -175,13 +175,13 @@ export function RaceProgressionChart({
 
   const periodOptions: { years: number | null; label: string }[] = [
     { years: null, label: "Alla" },
-    { years: 1, label: "Senaste året" },
-    { years: 2, label: "Senaste 2 åren" },
-    { years: 3, label: "Senaste 3 åren" },
+    { years: 1, label: "1 år" },
+    { years: 2, label: "2 år" },
+    { years: 3, label: "3 år" },
   ];
 
   const periodSelector = (
-    <div className="flex flex-wrap items-center gap-2 text-sm" role="group" aria-label="Tidsperiod">
+    <div className="inline-flex self-start rounded-[9px] bg-[var(--surface-raised)] p-[2px]" role="group" aria-label="Tidsperiod">
       {periodOptions.map((opt) => (
         <button
           key={opt.label}
@@ -194,10 +194,10 @@ export function RaceProgressionChart({
             )
           }
           aria-pressed={period.years === opt.years}
-          className={`rounded px-3 py-1 ${
+          className={`flex min-h-8 items-center rounded-[7px] px-2.5 text-xs ${
             period.years === opt.years
-              ? "bg-[var(--foreground)] text-[var(--background)]"
-              : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
+              ? "bg-[var(--surface)] font-semibold text-[var(--foreground)] shadow-sm"
+              : "text-[var(--ink-2)] hover:text-[var(--foreground)]"
           }`}
         >
           {opt.label}

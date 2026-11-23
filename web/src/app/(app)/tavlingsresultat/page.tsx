@@ -29,10 +29,10 @@ import { computeRaceBuildup, BUILDUP_WINDOW_DAYS, type RaceBuildup } from "@/lib
 import { loadLatestLabZoneSet, type LabZoneSet } from "@/lib/zone-sources";
 import { ComparisonTableRow, zoneBandRows, type ComparisonRow } from "@/components/ZoneSources";
 import {
-  RaceProgressionChart,
   type RaceProgressionPoint,
   type RaceProgressionSeries,
 } from "@/components/charts/RaceProgressionChart";
+import { RaceProgressionPicker } from "@/components/charts/RaceProgressionPicker";
 import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
 import { getViewMode } from "@/lib/view-mode";
 
@@ -362,8 +362,7 @@ export default async function TavlingsresultatPage({
 
   /** Bygger en /tavlingsresultat-länk som behåller tävlingslistans
    * år-/bana-filter — bara den del som skickas in i `overrides` byts ut.
-   * Samma mönster som toggleEventHref/banaHref nedan, som gör motsvarande
-   * för grenutvecklingsgrafens filter. */
+   * Grenutvecklingsgrafens filter sköts i webbläsaren (RaceProgressionPicker). */
   function competitionHref(overrides: { tavlingsAr?: string; tavlingsBana?: string }): string {
     const params = new URLSearchParams();
     params.set("tavlingsAr", overrides.tavlingsAr ?? tavlingsAr);
@@ -492,19 +491,19 @@ export default async function TavlingsresultatPage({
 
   const banaFilter: "alla" | "inne" | "ute" =
     banaParam === "inne" || banaParam === "ute" ? banaParam : "alla";
-  const banaVenue: SeasonKind | null =
-    banaFilter === "inne" ? "indoor" : banaFilter === "ute" ? "outdoor" : null;
 
   // En rad-lista per vald gren, bana-filtrerad — underlaget för grafens kurvor.
+  // Alla valbara grenar, inne och ute — grenvalet och banfiltret sker i
+  // webbläsaren (RaceProgressionPicker, 2026-11-23).
   const rowsByEvent = new Map<string, EventResultRow[]>();
-  for (const event of selectedEvents) {
+  for (const { event } of eventOptions) {
     const rows = eventResults
-      .filter((r) => r.event === event && (!banaVenue || r.venue === banaVenue))
+      .filter((r) => r.event === event)
       .sort((a, b) => (a.competitionDate < b.competitionDate ? -1 : a.competitionDate > b.competitionDate ? 1 : 0));
     rowsByEvent.set(event, rows);
   }
 
-  const series: RaceProgressionSeries[] = selectedEvents.map((event) => ({
+  const series: RaceProgressionSeries[] = eventOptions.map(({ event }) => ({
     event,
     color: eventColor(event),
     points: (rowsByEvent.get(event) ?? []).map(
@@ -527,12 +526,16 @@ export default async function TavlingsresultatPage({
   // Upptrappningsjämförelsens <select>-fält innehåller lopp i någon av de
   // valda grenarna — det är så "jämför upptrappningen" blir konkret utan
   // att låsa jämförelsen till bara en gren i taget.
+  /* Alla lopp med resultat i en gren som går att välja. Förut bara de valda
+     grenarnas lopp, men grenvalet sker nu i webbläsaren (2026-11-23) och
+     servern vet inte längre vad som är valt — namnet bär grenen i stället. */
+  const selectableEvents = eventOptions.map((o) => o.event);
   const racesInSelectedEvents = allCompetitions.filter((c) =>
-    c.competition_events.some((e) => selectedEvents.includes(e.event) && e.actual_result),
+    c.competition_events.some((e) => selectableEvents.includes(e.event) && e.actual_result),
   );
   function raceOptionLabel(c: CompetitionRow): string {
     const matching = c.competition_events
-      .filter((e) => selectedEvents.includes(e.event) && e.actual_result)
+      .filter((e) => selectableEvents.includes(e.event) && e.actual_result)
       .map((e) => e.event);
     return `${c.name} (${c.competition_date})${matching.length > 0 ? ` — ${matching.join(", ")}` : ""}`;
   }
@@ -563,33 +566,6 @@ export default async function TavlingsresultatPage({
     raceAggregateB != null &&
     raceAggregateA.competition.competition_date < TRAINING_DATA_START &&
     raceAggregateB.competition.competition_date < TRAINING_DATA_START;
-
-  // Kryssar en gren i/ur urvalet, behåller övriga val och filter oförändrade.
-  function toggleEventHref(event: string): string {
-    const next = selectedEvents.includes(event)
-      ? selectedEvents.filter((e) => e !== event)
-      : [...selectedEvents, event];
-    const params = new URLSearchParams();
-    if (next.length === 0) params.append("gren", NO_EVENTS);
-    else for (const e of next) params.append("gren", e);
-    if (banaParam) params.set("bana", banaParam);
-    if (raceAParam) params.set("raceA", raceAParam);
-    if (raceBParam) params.set("raceB", raceBParam);
-    if (athleteQuery) params.set("athlete", athleteQuery);
-    return `/tavlingsresultat?${params.toString()}`;
-  }
-
-  // Byter bana-filtret, behåller grenvalen (flera "gren"-parametrar) och en
-  // ev. pågående upptrappningsjämförelse oförändrade.
-  function banaHref(bana: string): string {
-    const params = new URLSearchParams();
-    for (const e of selectedEvents) params.append("gren", e);
-    params.set("bana", bana);
-    if (raceAParam) params.set("raceA", raceAParam);
-    if (raceBParam) params.set("raceB", raceBParam);
-    if (athleteQuery) params.set("athlete", athleteQuery);
-    return `/tavlingsresultat?${params.toString()}`;
-  }
 
   /** Byter vilken löpare en coach tittar på, behåller grenval/bana-filter
    * samt tävlingslistans eget år-/bana-filter. */
@@ -818,7 +794,7 @@ export default async function TavlingsresultatPage({
         <div>
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">Grenutveckling</h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            Välj en eller flera grenar. Kurvan visar tiden som andel av grenens personbästa.
+            Tryck på en gren för att lägga till eller ta bort den. Kurvan visar tiden som andel av grenens personbästa.
           </p>
           <HowCalculated>
           <p>
@@ -854,71 +830,11 @@ export default async function TavlingsresultatPage({
           </p>
         ) : (
           <>
-            {/* Grenval — flera kan vara ikryssade samtidigt, flest resultat
-                först. Ikryssad gren visar sin egen färg som markering. */}
-            <div className="flex flex-wrap gap-2 text-sm">
-              {eventOptions.map((o) => {
-                const active = selectedEvents.includes(o.event);
-                /* Varje gren går alltid att kryssa ur, även den sista.
-                 *
-                 * Förut var den sista valda låst: `selectedEvents` föll
-                 * tillbaka på eventOptions[0] när inget var valt, så ett
-                 * urkryssande landade i samma läge — eller bytte till en
-                 * ANNAN gren om den urkryssade inte råkade ha flest resultat
-                 * ("jag klickar på 800m men den är fortsatt markerad",
-                 * 2026-08-27). Låsningen löste det men skapade ett nytt
-                 * problem: för att byta gren måste man välja den nya FÖRST,
-                 * och klickar man på den gamla händer ingenting alls.
-                 *
-                 * Nu kan tomt urval uttryckas i URL:en (gren=inga), grafen
-                 * visar sin tomma text, och chipen beter sig likadant oavsett
-                 * hur många som är valda. */
-                const chipStyle = active
-                  ? { borderColor: eventColor(o.event), backgroundColor: eventColor(o.event), color: "white" }
-                  : { borderColor: "var(--line)" };
-
-                return (
-                  <Link
-                    key={o.event}
-                    href={toggleEventHref(o.event)}
-                    aria-pressed={active}
-                    className="flex items-center gap-1.5 rounded border px-3 py-1"
-                    style={chipStyle}
-                  >
-                    {o.event} ({o.count})
-                  </Link>
-                );
-              })}
-            </div>
-
-            {/* Inne/ute-filter — samma knappradsstil som grenvalet. Formen
-                (fylld/ihålig) i grafen bär skillnaden när filtret står på
-                "alla"; knapparna här smalnar av vad som visas. */}
-            <div className="flex flex-wrap gap-2 text-sm">
-              {(
-                [
-                  { key: "alla", label: "Alla" },
-                  { key: "inne", label: "Inomhus" },
-                  { key: "ute", label: "Utomhus" },
-                ] as const
-              ).map((b) => (
-                <Link
-                  key={b.key}
-                  href={banaHref(b.key)}
-                  className={`rounded px-3 py-1 ${
-                    banaFilter === b.key
-                      ? "bg-[var(--foreground)] text-[var(--background)]"
-                      : "border border-[var(--line)] hover:bg-[var(--surface-raised)]"
-                  }`}
-                >
-                  {b.label}
-                </Link>
-              ))}
-            </div>
-
-            <RaceProgressionChart
+            <RaceProgressionPicker
               series={series}
-              emptyLabel="Inga lopp i de valda grenarna med det valda banfiltret."
+              counts={Object.fromEntries(eventOptions.map((o) => [o.event, o.count]))}
+              initialSelected={selectedEvents}
+              initialBana={banaFilter}
             />
 
             {/* Ingen egen detaljtabell här längre — samma resultat listas
@@ -931,8 +847,7 @@ export default async function TavlingsresultatPage({
                 valda grenarna. */}
             {racesInSelectedEvents.length < 2 ? (
               <p className="text-sm text-[var(--ink-3)]">
-                Upptrappningsjämförelsen kräver minst två lopp med registrerat resultat i de
-                valda grenarna.
+                Upptrappningsjämförelsen kräver minst två lopp med registrerat resultat.
               </p>
             ) : (
               <>
@@ -941,17 +856,13 @@ export default async function TavlingsresultatPage({
                   method="get"
                   className="flex flex-wrap items-end gap-3 text-sm"
                 >
-                  {selectedEvents.map((e) => (
-                    <input key={e} type="hidden" name="gren" value={e} />
-                  ))}
-                  {banaParam && <input type="hidden" name="bana" value={banaParam} />}
                   {athleteQuery && <input type="hidden" name="athlete" value={athleteQuery} />}
-                  <label className="flex flex-col gap-1">
+                  <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-sm">
                     <span className="text-[var(--ink-2)]">Lopp A</span>
                     <select
                       name="raceA"
                       defaultValue={raceAParam ?? ""}
-                      className={fieldClass}
+                      className={`${fieldClass} w-full min-w-0`}
                     >
                       <option value="" disabled>
                         Välj lopp
@@ -963,12 +874,12 @@ export default async function TavlingsresultatPage({
                       ))}
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1">
+                  <label className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:max-w-sm">
                     <span className="text-[var(--ink-2)]">Lopp B</span>
                     <select
                       name="raceB"
                       defaultValue={raceBParam ?? ""}
-                      className={fieldClass}
+                      className={`${fieldClass} w-full min-w-0`}
                     >
                       <option value="" disabled>
                         Välj lopp
