@@ -141,9 +141,21 @@ export async function fetchSameSessions(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   todayKey: string,
-  { recentDays = 120, maxGroups = 4, maxTimes = 3 }: { recentDays?: number; maxGroups?: number; maxTimes?: number } = {},
+  {
+    from,
+    to = todayKey,
+    maxGroups = 8,
+    maxTimes = 3,
+  }: {
+    /** Perioden jämförelserna gäller: pass vars senaste gång ligger i
+     * [from, to] visas, mot gångerna före. Följer periodvalet på Form. */
+    from: string;
+    to?: string;
+    maxGroups?: number;
+    maxTimes?: number;
+  },
 ): Promise<SameSessionGroup[]> {
-  const since = new Date(Date.parse(`${todayKey}T12:00:00Z`) - 540 * 86_400_000).toISOString().slice(0, 10);
+  const since = new Date(Date.parse(`${from}T12:00:00Z`) - 540 * 86_400_000).toISOString().slice(0, 10);
   const { data: actRows } = await supabase
     .from("activities")
     .select("id, name, start_time, activity_type, category, description:raw_data->>description")
@@ -213,9 +225,9 @@ export async function fetchSameSessions(
     groups.set(root, [...(groups.get(root) ?? []), t]);
   });
 
-  const recentFrom = new Date(Date.parse(`${todayKey}T12:00:00Z`) - recentDays * 86_400_000).toISOString().slice(0, 10);
   const picked = [...groups.entries()]
-    .filter(([, ts]) => ts.length >= 2 && ts[0].date >= recentFrom)
+    .map(([key, ts]) => [key, ts.filter((t) => t.date <= to)] as const)
+    .filter(([, ts]) => ts.length >= 2 && ts[0].date >= from)
     .sort((a2, b2) => b2[1][0].date.localeCompare(a2[1][0].date))
     .slice(0, maxGroups)
     .map(([key, ts]) => ({ key, name: (ts[0] as SameTime & { structKey: string }).structKey, times: ts.slice(0, maxTimes) }));

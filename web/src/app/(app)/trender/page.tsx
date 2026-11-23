@@ -551,7 +551,10 @@ export default async function TrendsPage({
     ((gears?.hr ?? gears?.pace)?.gears ?? []).map((g) => [g.key, g]),
   );
 
-  const sameSessions = await fetchSameSessions(supabase, scopedUserId, todayKey);
+  const sameSessions = await fetchSameSessions(supabase, scopedUserId, todayKey, {
+    from: startDate,
+    to: activeBlock && activeBlock.end_date < todayKey ? activeBlock.end_date : todayKey,
+  });
 
   // Intervall: passets högsta puls under repen (begärt 2026-11-21), inte
   // medianen av slutpulsen. Raden och grafens streckade linje visar medianen
@@ -934,15 +937,30 @@ export default async function TrendsPage({
           Ersätter formkurvan som formjämförelse. Se lib/same-session.ts för
           varför det inte är en trendlinje. */}
       {sameSessions.length > 0 && (
-        <section className="flex flex-col gap-2.5">
-          <Eyebrow>Samma pass igen</Eyebrow>
-          <p className="-mt-1 text-sm text-[var(--ink-2)]">
-            Pass hon kört förut med samma upplägg, jämförda del för del med förra gången. Fart är snittfarten på
-            delens rep, slutpuls är pulsen i slutet av repen.
+        /* Hela avsnittet fälls ihop (2026-11-21): åtta pass tar annars en
+           skärm även med korten hopfällda. Perioden står i rubriken. */
+        <CollapsibleSection
+          title="Samma pass igen"
+          meta={activeBlock ? activeBlock.name : `senaste ${weeks} veckorna`}
+          headline={
+            <span className="text-sm text-[var(--ink-2)]">
+              {sameSessions.length} kvalitetspass {activeBlock ? `i ${activeBlock.name}` : `de senaste ${weeks} veckorna`}{" "}
+              som hon kört förut med samma upplägg.
+            </span>
+          }
+        >
+        <div className="flex flex-col gap-2.5">
+          <p className="text-sm text-[var(--ink-2)]">
+            Varje pass jämförs del för del med förra gången. Byt period överst på sidan. Tryck på ett pass för att
+            se jämförelsen.
           </p>
-          {sameSessions.map((g) => (
-            <SameSessionTable key={g.key} group={g} />
-          ))}
+          {/* -mx-2: kortet ligger i ett kort, och tabellen behöver bredden
+              för att Skillnad-kolumnen inte ska klippas vid 390 px. */}
+          <div className="-mx-2 flex flex-col gap-2.5">
+            {sameSessions.map((g) => (
+              <SameSessionTable key={g.key} group={g} />
+            ))}
+          </div>
           <HowCalculated>
             <p>
               Två pass räknas som samma när klockan mätte samma upplägg — antal rep och replängd — eller när
@@ -962,7 +980,8 @@ export default async function TrendsPage({
               och skillnaden mellan perioder var mindre än skillnaden mellan enskilda pass.
             </p>
           </HowCalculated>
-        </section>
+        </div>
+        </CollapsibleSection>
       )}
 
       {/* Det senaste laktattestet, ritat som i testrapporten. Hela testet,

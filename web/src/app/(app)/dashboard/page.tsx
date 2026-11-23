@@ -3,9 +3,7 @@ import Link from "next/link";
 import { formatDateShort, formatKmSv, formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/ui/Page";
 import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
-import { fetchSameSessions } from "@/lib/same-session";
 import { blockVsPlan, type PlanRow } from "@/lib/block-vs-plan";
-import { SameSessionTable } from "@/components/SameSessionTable";
 import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
@@ -517,7 +515,6 @@ export default async function DashboardPage({
   );
 
   const bodyMarkers = dailyStatus.markers.filter((m) => m.spec.key !== "sleepHours" && m.spec.key !== "feeling");
-  const sameSession = (await fetchSameSessions(supabase, scopedUserId, todayKey, { maxGroups: 1 }))[0] ?? null;
 
   // Blocket mot planen (lib/block-vs-plan.ts): planerade pass med siffror i
   // det block som pågår, mot årets pass (allSessions täcker hela året).
@@ -799,17 +796,6 @@ export default async function DashboardPage({
         </section>
       )}
 
-      {sameSession && (
-        <section className="flex flex-col gap-2.5">
-          <div className="flex items-baseline justify-between gap-2">
-            <Eyebrow>Form · samma pass igen</Eyebrow>
-            <Link href={`/trender${athleteQuery}`} className="text-sm underline underline-offset-2">
-              Form →
-            </Link>
-          </div>
-          <SameSessionTable group={sameSession} />
-        </section>
-      )}
 
     </div>
   );

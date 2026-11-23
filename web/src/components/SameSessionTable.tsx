@@ -104,7 +104,10 @@ export function SameSessionTable({ group }: { group: SameSessionGroup }) {
   const sentence = summary(group);
   const head = "py-2 text-right text-xs font-normal text-[var(--ink-3)]";
   return (
-    <article className="flex flex-col gap-3 rounded-[14px] border border-[var(--line)] p-3.5">
+    /* Hopfälld som standard (2026-11-21): en rad med passet, datumen och
+       sammanfattningen; tabellen och dagboken fälls ut vid behov. */
+    <details className="group rounded-[14px] border border-[var(--line)]">
+      <summary className="flex cursor-pointer list-none flex-col gap-1.5 p-3.5 [&::-webkit-details-marker]:hidden">
       <header className="flex flex-col gap-0.5">
         <span className="flex items-center gap-2">
           {cat && <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: categoryColorVar(cat) }} />}
@@ -113,9 +116,17 @@ export function SameSessionTable({ group }: { group: SameSessionGroup }) {
           </span>
         </span>
         {now.title && <span className="font-semibold text-[var(--foreground)]">{now.title}</span>}
+        <span className="flex items-center justify-between gap-2 text-xs text-[var(--ink-2)]">
+          <span>
+            {dateText(now.date)}
+            {before ? ` mot ${dateText(before.date)}` : ""}
+          </span>
+          <span aria-hidden className="text-base text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+        </span>
       </header>
-
-      {sentence && <p className="text-[0.9375rem] leading-snug text-[var(--foreground)]">{sentence}</p>}
+      {sentence && <p className="text-sm leading-snug text-[var(--ink-2)]">{sentence}</p>}
+      </summary>
+      <div className="flex flex-col gap-3 border-t border-[var(--line)] px-3 py-3.5">
 
       <div className="-mx-1 overflow-x-auto px-1">
         <table className="w-full min-w-[19rem] border-collapse text-sm">
@@ -229,6 +240,7 @@ export function SameSessionTable({ group }: { group: SameSessionGroup }) {
           Även körd {group.times.slice(2).map((t) => dateText(t.date)).join(", ")}.
         </p>
       )}
-    </article>
+      </div>
+    </details>
   );
 }
