@@ -341,3 +341,142 @@ export async function deleteTemplateRepGroup(formData: FormData) {
   await auth.supabase.from("template_rep_groups").delete().eq("id", id);
   refresh();
 }
+
+/* ---------------- Veckomönstret i ett befintligt block (2026-11-21) -------
+ *
+ * Fram till nu gick ett blocks veckomönster bara att sätta när blocket
+ * skapades. Ville tränaren lägga till ett styrkepass varje vecka fick hon
+ * lägga in det dag för dag, tolv gånger i ett tolvveckorsblock.
+ *
+ * addPatternItem lägger ett pass i mönstret och rullar ut det på den
+ * veckodagen från ett valt datum till blockets slut, för alla löpare i
+ * blocket. Pass som redan ligger på samma datum och plats rörs inte — samma
+ * idempotens som utrullningen i lib/template-sync.ts. Dagar före startdatumet
+ * får inget pass: det hade bara blivit planerade pass som "inte blev av". */
+
+function weekdayOf(dateKey: string): number {
+  return ((new Date(`${dateKey}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
+}
+
+function addDaysKey(key: string, n: number): string {
+  const d = new Date(`${key}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+export async function addPatternItem(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const blockId = str(formData, "block_id");
+  const weekday = num(formData, "weekday");
+  const workoutType = str(formData, "workout_type");
+  if (!blockId || !weekday || weekday < 1 || weekday > 7 || !workoutType) return;
+
+  const { data: block } = await supabase
+    .from("season_blocks")
+    .select("id, start_date, end_date")
+    .eq("id", blockId)
+    .single();
+  if (!block) return;
+
+  // Första lediga plats den veckodagen i mönstret.
+  const { data: items } = await supabase
+    .from("week_template_items")
+    .select("slot")
+    .eq("block_id", blockId)
+    .eq("weekday", weekday);
+  const used = new Set((items ?? []).map((i) => i.slot as number));
+  const slot = [1, 2, 3].find((s) => !used.has(s));
+  if (slot == null) return;
+
+  const minutes = num(formData, "target_duration_minutes");
+  const item = {
+    block_id: blockId,
+    weekday,
+    slot,
+    workout_type: workoutType,
+    title: str(formData, "title"),
+    description: str(formData, "description"),
+    target_duration_seconds: minutes != null ? minutes * 60 : null,
+    target_distance_meters: null,
+    training_factor: str(formData, "training_factor"),
+  };
+  const { error } = await supabase.from("week_template_items").insert(item);
+  if (error) return;
+
+  // Utrullning från valt datum (förvalt idag) till blockets slut.
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+  const fromRaw = str(formData, "from_date") ?? today;
+  const from = fromRaw > (block.start_date as string) ? fromRaw : (block.start_date as string);
+  const dates: string[] = [];
+  for (let d = from; d <= (block.end_date as string); d = addDaysKey(d, 1)) if (weekdayOf(d) === weekday) dates.push(d);
+  const athletes = await athletesForBlock(supabase, blockId);
+  if (dates.length === 0 || athletes.length === 0) return refresh();
+
+  const { data: existing } = await supabase
+    .from("planned_workouts")
+    .select("user_id, scheduled_date, slot")
+    .in("user_id", athletes)
+    .in("scheduled_date", dates)
+    .eq("slot", slot);
+  const taken = new Set((existing ?? []).map((r) => `${r.user_id}|${r.scheduled_date}`));
+  const rows = athletes.flatMap((uid) =>
+    dates
+      .filter((d) => !taken.has(`${uid}|${d}`))
+      .map((d) => ({
+        user_id: uid,
+        scheduled_date: d,
+        slot,
+        workout_type: workoutType,
+        title: item.title,
+        description: item.description,
+        target_duration_seconds: item.target_duration_seconds,
+        training_factor: item.training_factor,
+        block_id: blockId,
+        status: "planned",
+      })),
+  );
+  for (let i = 0; i < rows.length; i += 200) await supabase.from("planned_workouts").insert(rows.slice(i, i + 200));
+  refresh();
+}
+
+/** Tar bort ett pass ur veckomönstret och ur kommande veckor från valt datum.
+ * Bara pass med status "planned" tas bort: ett pass som ändrats för hand
+ * ("modified") eller redan genomförts får vara kvar. */
+export async function removePatternItem(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+
+  const itemId = str(formData, "item_id");
+  if (!itemId) return;
+  const { data: item } = await supabase
+    .from("week_template_items")
+    .select("id, block_id, weekday, slot, workout_type")
+    .eq("id", itemId)
+    .single();
+  if (!item) return;
+
+  await supabase.from("week_template_items").delete().eq("id", itemId);
+
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+  const from = str(formData, "from_date") ?? today;
+  const { data: future } = await supabase
+    .from("planned_workouts")
+    .select("id, scheduled_date")
+    .eq("block_id", item.block_id)
+    .eq("slot", item.slot)
+    .eq("workout_type", item.workout_type)
+    .eq("status", "planned")
+    .gte("scheduled_date", from);
+  const ids = (future ?? [])
+    .filter((r) => weekdayOf(r.scheduled_date as string) === item.weekday)
+    .map((r) => r.id as string);
+  if (ids.length > 0) {
+    await supabase.from("planned_rep_groups").delete().in("planned_workout_id", ids);
+    await supabase.from("planned_workouts").delete().in("id", ids);
+  }
+  refresh();
+}

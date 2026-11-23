@@ -31,8 +31,10 @@ import { toggleCompetitionAthlete } from "@/app/(app)/tavlingar/actions";
 import {
   addAthleteToPass,
   addPassOnDate,
+  addPatternItem,
   addTemplateRepGroup,
   deletePlannedPass,
+  removePatternItem,
   deleteTemplateRepGroup,
   removeAthleteFromPass,
   updateTemplateRepGroup,
@@ -133,6 +135,8 @@ function BlockWeekSection({
         )}
       </summary>
 
+      {canEdit && <WeekPattern block={block} items={items} />}
+
       <WeekGrid
         weeks={weeks}
         blockId={block.id}
@@ -142,6 +146,121 @@ function BlockWeekSection({
         athleteFilter={athleteFilter}
       />
     </details>
+  );
+}
+
+/* Blockets veckomönster (2026-11-21): de sju dagarna med standardpassen,
+ * och vägen att lägga till eller ta bort ett pass i VARJE vecka. Förut gick
+ * mönstret bara att sätta när blocket skapades; ett styrkepass per vecka
+ * fick läggas in dag för dag. */
+const WEEKDAY_NAMES = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"];
+
+function WeekPattern({ block, items }: { block: BlockRow; items: TemplateItemRow[] }) {
+  const today = todayKey();
+  const from = today > block.start_date ? today : block.start_date;
+  const ended = block.end_date < today;
+  const input = "h-11 rounded-[10px] border border-[var(--line)] bg-[var(--surface)] px-3 text-base text-[var(--foreground)]";
+  return (
+    <div className="mt-3 flex flex-col gap-2.5 rounded-[12px] bg-[var(--surface-raised)] p-3">
+      <span className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">Veckomönster</span>
+      <div className="flex flex-col">
+        {WEEKDAY_NAMES.map((name, i) => {
+          const day = items.filter((it) => it.weekday === i + 1).sort((a, b) => a.slot - b.slot);
+          return (
+            <div key={name} className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-2 border-t border-[var(--line)] py-1.5 first:border-t-0">
+              <span className="pt-1 text-sm text-[var(--ink-3)]">{name.slice(0, 3)}</span>
+              <span className="flex flex-col gap-1">
+                {day.length === 0 ? (
+                  <span className="pt-1 text-sm text-[var(--ink-3)]">vila</span>
+                ) : (
+                  day.map((it) => (
+                    <span key={it.id} className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-2 text-sm text-[var(--foreground)]">
+                        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: workoutTypeColorVar(it.workout_type) ?? "var(--ink-3)" }} />
+                        <span className="truncate">{it.title || WORKOUT_LABELS[it.workout_type as WorkoutType] || it.workout_type}</span>
+                      </span>
+                      {!ended && (
+                        <form action={removePatternItem}>
+                          <input type="hidden" name="item_id" value={it.id} />
+                          <input type="hidden" name="from_date" value={from} />
+                          <button
+                            type="submit"
+                            aria-label={`Ta bort ${it.title ?? "passet"} från ${name.toLowerCase()}arna från ${formatDateShort(from)}`}
+                            title={`Ta bort från mönstret och från kommande ${name.toLowerCase()}ar`}
+                            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--ink-3)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                          >
+                            ×
+                          </button>
+                        </form>
+                      )}
+                    </span>
+                  ))
+                )}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {!ended && (
+        <details className="group rounded-[10px] bg-[var(--surface)]">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between px-3 text-sm font-semibold text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+            + Lägg till ett pass i varje vecka
+            <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open:rotate-90">›</span>
+          </summary>
+          <form action={addPatternItem} className="flex flex-col gap-3 border-t border-[var(--line)] p-3">
+            <input type="hidden" name="block_id" value={block.id} />
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="flex flex-col gap-1 text-sm">
+                Dag
+                <select name="weekday" defaultValue="4" className={input}>
+                  {WEEKDAY_NAMES.map((n, i) => (
+                    <option key={n} value={i + 1}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                Passtyp
+                <select name="workout_type" defaultValue="strength" className={input}>
+                  {WORKOUT_TYPES.filter((t) => t !== "rest").map((t) => (
+                    <option key={t} value={t}>
+                      {WORKOUT_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <label className="flex flex-col gap-1 text-sm">
+              Rubrik
+              <input name="title" placeholder="t.ex. Styrka – bål och höft" className={input} />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              Beskrivning
+              <textarea name="description" rows={2} placeholder="Vad passet innehåller" className="rounded-[10px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-base text-[var(--foreground)]" />
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="flex flex-col gap-1 text-sm">
+                Tid (min)
+                <input name="target_duration_minutes" type="number" min={0} inputMode="numeric" className={input} />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                Från och med
+                <input name="from_date" type="date" defaultValue={from} min={block.start_date} max={block.end_date} className={input} />
+              </label>
+            </div>
+            <button type="submit" className="flex min-h-11 items-center justify-center rounded-[10px] bg-[var(--foreground)] px-4 font-semibold text-[var(--background)]">
+              Lägg till i veckomönstret
+            </button>
+            <p className="text-xs text-[var(--ink-3)]">
+              Passet läggs in den veckodagen i alla veckor från datumet till blockets slut, för alla löpare i blocket.
+              Pass som redan ligger på samma dag och plats skrivs inte över. × tar bort ett pass ur mönstret och ur
+              kommande veckor; pass som ändrats för hand eller redan gjorts blir kvar.
+            </p>
+          </form>
+        </details>
+      )}
+    </div>
   );
 }
 
@@ -644,7 +763,7 @@ async function BlockplanOverview({
       ? await supabase
           .from("season_blocks")
           .select(
-            "id, name, period, phase, start_date, end_date, week_template_items(id), season_block_athletes(athlete_id)",
+            "id, name, period, phase, start_date, end_date, week_template_items(id, weekday, slot, workout_type, title, description, training_factor), season_block_athletes(athlete_id)",
           )
           .in("id", blockIds)
           .order("start_date")
