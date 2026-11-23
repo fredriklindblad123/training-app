@@ -135,60 +135,49 @@ export function TodaySession({
             och kommentaren i full bredd under paret. Förut alla planerade
             först och alla genomförda sedan — med två pass samma dag fick
             man para ihop dem själv. */}
-        {!empty && (
-          <div className="grid grid-cols-2 gap-3 text-xs text-[var(--ink-3)]">
-            <span>Plan</span>
-            <span>Genomfört</span>
-          </div>
-        )}
         {pairPlanDone(planned, done, (p) => p.workout_type, (d) => d.category).map(({ plan: p, done: d }, i) => {
           const pLabel = p ? (WORKOUT_LABELS[p.workout_type as WorkoutType] ?? p.workout_type) : null;
           const detail = p ? describePlannedWorkout(p) : null;
           const comment = p ? (p.description ?? "").trim() : "";
           const dLabel = d ? (isActivityCategory(d.category) ? CATEGORY_LABELS[d.category] : (d.name ?? "Pass")) : null;
           const dMin = d ? Math.round(d.durationSeconds / 60) : 0;
+          const otherType = p && d && p.workout_type !== d.category && !(p.workout_type === "long_run" && d.category === "easy");
           return (
-            <div key={`${p?.id ?? "x"}-${d?.id ?? "y"}`} className={`flex flex-col gap-2.5 ${i > 0 ? "border-t border-[var(--line)] pt-3" : ""}`}>
-              <div className="grid grid-cols-2 gap-3">
-                {/* Plan */}
-                <div className="flex min-w-0 flex-col gap-1">
-                  {p ? (
-                    <>
-                      <span className="flex items-start gap-1.5">
-                        <span aria-hidden className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: workoutTypeColorVar(p.workout_type) ?? "var(--ink-3)" }} />
-                        <span className="display text-base leading-tight font-bold text-[var(--foreground)]">{p.title ?? pLabel}</span>
-                      </span>
-                      <span className="tabular text-[0.8125rem] text-[var(--ink-2)]">
-                        {[p.title ? pLabel : null, detail].filter(Boolean).join(" · ")}
-                      </span>
-                      {comment && <p className="line-clamp-3 text-xs leading-snug text-[var(--ink-3)]">{comment}</p>}
-                    </>
-                  ) : (
-                    <span className="text-sm text-[var(--ink-3)]">Inte planerat</span>
-                  )}
+            <div key={`${p?.id ?? "x"}-${d?.id ?? "y"}`} className={`flex flex-col gap-2 ${i > 0 ? "border-t border-[var(--line)] pt-3" : ""}`}>
+              {d ? (
+                /* Genomfört: utfallet är huvudsaken, planen en liten rad
+                   (2026-11-21, begärt — en markering räcker). */
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-[var(--ink-3)]">
+                    {p
+                      ? `Planerat: ${[p.title ?? pLabel, detail].filter(Boolean).join(" · ")}${otherType ? " — blev en annan passtyp" : ""}`
+                      : "Inte planerat"}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: isActivityCategory(d.category) ? categoryColorVar(d.category) : "var(--ink-3)" }} />
+                    <span className="display text-[1.375rem] leading-tight font-bold text-[var(--foreground)]">{dLabel}</span>
+                  </span>
+                  <span className="tabular text-[0.9375rem] text-[var(--ink-2)]">
+                    {[d.distanceMeters > 0 ? formatKm(d.distanceMeters) : null, dMin > 0 ? `${dMin} min` : null].filter(Boolean).join(" · ")}
+                    {d.easy && d.easy.meters > 0 ? ` · varav uppvärmning och nerjogg ${formatKm(d.easy.meters)}` : ""}
+                  </span>
                 </div>
-                {/* Genomfört */}
-                <div className="flex min-w-0 flex-col gap-1">
-                  {d ? (
-                    <>
-                      <span className="flex items-start gap-1.5">
-                        <span aria-hidden className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: isActivityCategory(d.category) ? categoryColorVar(d.category) : "var(--ink-3)" }} />
-                        <span className="display text-base leading-tight font-bold text-[var(--foreground)]">{dLabel}</span>
-                      </span>
-                      <span className="tabular text-[0.8125rem] text-[var(--ink-2)]">
-                        {[d.distanceMeters > 0 ? formatKm(d.distanceMeters) : null, dMin > 0 ? `${dMin} min` : null].filter(Boolean).join(" · ")}
-                      </span>
-                      {d.easy && d.easy.meters > 0 && (
-                        <span className="text-xs text-[var(--ink-3)]">
-                          varav uppvärmning och nerjogg {formatKm(d.easy.meters)}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-sm text-[var(--ink-3)]">{p?.workout_type === "strength" ? "Inte loggat med klockan" : "Inte gjort ännu"}</span>
-                  )}
+              ) : p ? (
+                /* Inte genomfört (än): planen är huvudsaken. */
+                <div className="flex flex-col gap-1">
+                  <span className="flex items-center gap-2">
+                    <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: workoutTypeColorVar(p.workout_type) ?? "var(--ink-3)" }} />
+                    <span className="display text-[1.375rem] leading-tight font-bold text-[var(--foreground)]">{p.title ?? pLabel}</span>
+                  </span>
+                  <span className="tabular text-[0.9375rem] text-[var(--ink-2)]">
+                    {[p.title ? pLabel : null, detail].filter(Boolean).join(" · ")}
+                  </span>
+                  {comment && <p className="line-clamp-3 text-sm leading-snug text-[var(--ink-2)]">{comment}</p>}
+                  <span className="text-xs text-[var(--ink-3)]">
+                    {p.workout_type === "strength" ? "Planerat · inte loggat med klockan" : "Planerat · inte gjort ännu"}
+                  </span>
                 </div>
-              </div>
+              ) : null}
               {d && (d.review || (d.comments && d.comments.length > 0)) && (
                 <div className="flex flex-col gap-1.5 rounded-[10px] px-3 py-2.5" style={{ backgroundColor: "var(--surface-insight)" }}>
                   {d.review && (

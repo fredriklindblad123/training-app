@@ -5,10 +5,6 @@ import { createClient } from "@/lib/supabase/server";
 import { groupActivitiesIntoSessions, sessionComments, trainingSeconds, type SessionActivity } from "@/lib/sessions";
 import { SessionComments } from "@/components/ui/SessionComments";
 import { pairPlanDone } from "@/lib/pair-plan";
-import {
-  matchPlanToSessions,
-  type PlannedWorkout,
-} from "@/lib/plan-matching";
 import { dateKey, type DayStatus } from "@/lib/calendar-utils";
 import { DiaryMarkers } from "@/components/DiaryMarkers";
 import { LactateLog, type LactateReading } from "@/components/LactateLog";
@@ -305,11 +301,7 @@ export async function DayContent({
   );
   const dayEasyParts = easyPartsFromLaps(scopedUserId, daySessions, lapsByActivity);
 
-  // Samma nyckeltalsrad som kalenderns övriga vyer (components/PeriodStatTiles.tsx).
-  const dayPlanMatches = matchPlanToSessions(
-    (plannedWorkouts ?? []) as unknown as PlannedWorkout[],
-    daySessions,
-  );
+
 
 
 
@@ -373,18 +365,6 @@ export async function DayContent({
        Ändra    alla formulär, infällda
      Statusen är grå: "Genomfört" i grönt var ett betyg (B4). */
   const reviewBySession = new Map(sessionReviews.map((r) => [r.sessionId, r.review]));
-  /* Ingen status vid planen (2026-11-21, begärt): att det genomförda står
-     under planen säger redan att passet blev av. Bara det som INTE syns av
-     sig självt skrivs ut — att passet blev en annan passtyp, eller inte av. */
-  const statusText = !plannedWorkout
-    ? null
-    : hasOutcome
-      ? dayPlanMatches.some((m) => m.outcome === "avvikande typ")
-        ? "Blev av som en annan passtyp än planerat."
-        : null
-      : planStatus === "missed"
-        ? "Blev inte av."
-        : null;
   const eyebrow = "display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase";
   const card = "rounded-[14px] border border-[var(--line)] bg-[var(--surface)]";
 
@@ -412,10 +392,6 @@ export async function DayContent({
             {/* Plan och utfall pass för pass (2026-11-21): planen till
                 vänster, det genomförda till höger på samma rad, och detaljerna
                 (siffror, Så gick passet, kommentaren) i full bredd under. */}
-            <div className="grid grid-cols-2 gap-3 px-4 pt-3 text-xs text-[var(--ink-3)]">
-              <span>{includePlanned ? "Plan" : ""}</span>
-              <span>Genomfört</span>
-            </div>
             {pairPlanDone(
               includePlanned ? (plannedWorkouts ?? []) : [],
               daySessions,
@@ -429,52 +405,54 @@ export async function DayContent({
               const pace = sess && sess.distanceMeters > 0 ? sess.durationSeconds / (sess.distanceMeters / 1000) : null;
               return (
                 <div key={`${p?.id ?? "x"}-${sess?.id ?? pi}`} className={`flex flex-col gap-3 px-4 py-3 ${pi > 0 ? "border-t border-[var(--line)]" : ""}`}>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      {p ? (
-                        <>
-                          <span className="flex items-start gap-1.5">
-                            <span className="mt-1.5"><TypeDot type={p.workout_type} /></span>
-                            <span className="display text-base leading-tight font-semibold text-[var(--foreground)]">
-                              {p.title || typeLabel(p.workout_type)}
-                            </span>
-                          </span>
-                          {p.description && (
-                            <p className="line-clamp-4 text-xs whitespace-pre-line text-[var(--ink-2)]">{p.description}</p>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-sm text-[var(--ink-3)]">{includePlanned ? "Inte planerat" : ""}</span>
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-col gap-0.5">
-                      {sess ? (
-                        <>
-                          <span className="flex items-start gap-1.5">
-                            <span className="mt-1.5"><TypeDot type={sess.category} /></span>
-                            <span className="display text-base leading-tight font-semibold text-[var(--foreground)]">
-                              {sess.category ? CATEGORY_LABELS[sess.category] : "Pass"}
-                            </span>
-                          </span>
-                          {sess.dominantActivity.name &&
-                            sess.dominantActivity.name.trim().toLowerCase() !==
-                              (sess.category ? CATEGORY_LABELS[sess.category] : "").toLowerCase() && (
-                              <span className="text-xs text-[var(--ink-2)]">{sess.dominantActivity.name.trim()}</span>
-                            )}
-                        </>
-                      ) : (
-                        <span className="text-sm text-[var(--ink-3)]">
-                          {p?.workout_type === "strength"
-                            ? "Inte loggat med klockan"
-                            : planStatus === "missed"
-                              ? "Blev inte av"
-                              : planStatus === "upcoming"
-                                ? "Kommande"
-                                : "Inte gjort ännu"}
+                  {sess ? (
+                    /* Genomfört är huvudsaken; planen en liten rad (2026-11-21). */
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs text-[var(--ink-3)]">
+                        {p
+                          ? `Planerat: ${p.title || typeLabel(p.workout_type)}${
+                              p.workout_type !== sess.category && !(p.workout_type === "long_run" && sess.category === "easy")
+                                ? " — blev en annan passtyp"
+                                : ""
+                            }`
+                          : includePlanned
+                            ? "Inte planerat"
+                            : ""}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <TypeDot type={sess.category} />
+                        <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                          {sess.category ? CATEGORY_LABELS[sess.category] : "Pass"}
                         </span>
-                      )}
+                      </span>
+                      {sess.dominantActivity.name &&
+                        sess.dominantActivity.name.trim().toLowerCase() !==
+                          (sess.category ? CATEGORY_LABELS[sess.category] : "").toLowerCase() && (
+                          <span className="pl-4 text-sm text-[var(--ink-2)]">{sess.dominantActivity.name.trim()}</span>
+                        )}
                     </div>
-                  </div>
+                  ) : p ? (
+                    <div className="flex flex-col gap-0.5">
+                      <span className="flex items-center gap-2">
+                        <TypeDot type={p.workout_type} />
+                        <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
+                          {p.title || typeLabel(p.workout_type)}
+                        </span>
+                      </span>
+                      {p.description && (
+                        <p className="line-clamp-4 pl-4 text-sm whitespace-pre-line text-[var(--ink-2)]">{p.description}</p>
+                      )}
+                      <span className="pl-4 text-xs text-[var(--ink-3)]">
+                        {p.workout_type === "strength"
+                          ? "Planerat · inte loggat med klockan"
+                          : planStatus === "missed"
+                            ? "Planerat · blev inte av"
+                            : planStatus === "upcoming"
+                              ? "Planerat"
+                              : "Planerat · inte gjort ännu"}
+                      </span>
+                    </div>
+                  ) : null}
                   {sess && (
                     <>
                   <div className="grid grid-cols-4 gap-2">
@@ -521,7 +499,6 @@ export async function DayContent({
                 </div>
               );
             })}
-            {statusText && <p className="px-4 pb-3 text-sm text-[var(--ink-2)]">{statusText}</p>}
 
             {garminActivities.some((a) => a.activity_splits?.length > 0) && (
               <details className="group border-t border-[var(--line)]">
