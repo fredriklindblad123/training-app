@@ -863,6 +863,56 @@ export default async function TrendsPage({
       </CollapsibleSection>
 
         </div>
+      {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet =====
+          Ligger direkt under växelraderna (2026-11-23, begärt): förklaringen
+          hör ihop med läget, inte längst ner på sidan.
+          Sektionen visas ALLTID. Laktatkurvan och förklaringen av de tre
+          formerna är kunskap, inte mätning — den som inte kopplat en klocka
+          eller fyllt i trösklar ska ändå kunna läsa hur medeldistansträning
+          hänger ihop. Diagrammet med eget utfall tillkommer när det finns
+          underlag. */}
+      <CollapsibleSection
+        title="Om de tre växlarna"
+        /* Sektionen undervisar — den analyserar inte adeptens träning. Det
+           gör Distans, Tröskel och Intervall ovanför (begäran 2026-10-08). */
+        meta="Distans, tröskel och intervall — vad de gör och varför"
+        headline={
+          <span className="text-sm text-[var(--ink-2)]">
+            Så hänger träningsformerna ihop med laktatet och dina trösklar.
+          </span>
+        }
+      >
+        {/* Ramen först: vyn ska läsas som vägledning, inte som facit. */}
+        <FormIntro
+          lt1={thresholdProfile.lt1Hr}
+          lt2={thresholdProfile.lt2Hr}
+          lt2Source={(profileRow?.lt2_source as string | null) ?? null}
+          lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
+          hasGarminData={sessions.length > 0}
+        />
+
+        <LactateCurve lt1={gears?.lt1 ?? null} lt2={gears?.lt2 ?? null} />
+
+        {/* Kurvan ovanför är principen; det här är de egna mätningarna.
+            Tröskelvärdena i profilen är självskattade tills ett riktigt test
+            finns, och det här är ytan där de kan bli mätta i stället.
+            Begäran 2026-09-26. */}
+        <CollapsibleSection
+          title="Dina laktatvärden"
+          headline={
+            <span className="text-sm text-[var(--ink-2)]">
+              {lactateReadings.length > 0
+                ? `${lactateReadings.length} loggade stick`
+                : "Inga loggade än"}
+            </span>
+          }
+        >
+          <LactateHistory readings={lactateReadings} lt2Hr={profileRow?.lt2_hr ?? null} />
+        </CollapsibleSection>
+
+        {gears && <TrainingGears data={gears} />}
+
+      </CollapsibleSection>
         <HowCalculated>
           <p>
             Distans: snittpulsen per pass, distans- och långpass på minst 20 minuter. Tröskel och intervall:
@@ -1066,54 +1116,6 @@ export default async function TrendsPage({
         )}
       </LoadStrip>
 
-      {/* ===== Träningens tre växlar: kurvan ger ramen, diagrammet utfallet =====
-          Sektionen visas ALLTID. Laktatkurvan och förklaringen av de tre
-          formerna är kunskap, inte mätning — den som inte kopplat en klocka
-          eller fyllt i trösklar ska ändå kunna läsa hur medeldistansträning
-          hänger ihop. Diagrammet med eget utfall tillkommer när det finns
-          underlag. */}
-      <CollapsibleSection
-        title="Om de tre växlarna"
-        /* Sektionen undervisar — den analyserar inte adeptens träning. Det
-           gör Distans, Tröskel och Intervall nedanför (begäran 2026-10-08). */
-        meta="Distans, tröskel och intervall — vad de gör och varför"
-        headline={
-          <span className="text-sm text-[var(--ink-2)]">
-            Så hänger träningsformerna ihop med laktatet och dina trösklar.
-          </span>
-        }
-      >
-        {/* Ramen först: vyn ska läsas som vägledning, inte som facit. */}
-        <FormIntro
-          lt1={thresholdProfile.lt1Hr}
-          lt2={thresholdProfile.lt2Hr}
-          lt2Source={(profileRow?.lt2_source as string | null) ?? null}
-          lt2MeasuredOn={(profileRow?.lt2_measured_on as string | null) ?? null}
-          hasGarminData={sessions.length > 0}
-        />
-
-        <LactateCurve lt1={gears?.lt1 ?? null} lt2={gears?.lt2 ?? null} />
-
-        {/* Kurvan ovanför är principen; det här är de egna mätningarna.
-            Tröskelvärdena i profilen är självskattade tills ett riktigt test
-            finns, och det här är ytan där de kan bli mätta i stället.
-            Begäran 2026-09-26. */}
-        <CollapsibleSection
-          title="Dina laktatvärden"
-          headline={
-            <span className="text-sm text-[var(--ink-2)]">
-              {lactateReadings.length > 0
-                ? `${lactateReadings.length} loggade stick`
-                : "Inga loggade än"}
-            </span>
-          }
-        >
-          <LactateHistory readings={lactateReadings} lt2Hr={profileRow?.lt2_hr ?? null} />
-        </CollapsibleSection>
-
-        {gears && <TrainingGears data={gears} />}
-
-      </CollapsibleSection>
 
 
       {/* L5 (docs/tranarloopen.md): loopens utgång. Sidan slutar med nästa
