@@ -4,6 +4,7 @@ import { DaySection } from "@/components/DaySection";
 import { createClient } from "@/lib/supabase/server";
 import { groupActivitiesIntoSessions, sessionComments, trainingSeconds, type SessionActivity } from "@/lib/sessions";
 import { SessionComments } from "@/components/ui/SessionComments";
+import { pairPlanDone } from "@/lib/pair-plan";
 import {
   matchPlanToSessions,
   type PlannedWorkout,
@@ -408,88 +409,119 @@ export async function DayContent({
           </div>
         ) : (
           <div className={`${card} flex flex-col`}>
-            {includePlanned && hasPlan && (
-              <div className="flex flex-col gap-2 px-4 py-3.5">
-                <span className="text-xs text-[var(--ink-3)]">Plan</span>
-                {(plannedWorkouts ?? []).map((p, i) => (
-                  <div key={p.id ?? i} className="flex flex-col gap-0.5">
-                    <span className="flex items-center gap-2">
-                      <TypeDot type={p.workout_type} />
-                      <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-                        {p.title || typeLabel(p.workout_type)}
-                      </span>
-                    </span>
-                    {p.description && (
-                      <p className="line-clamp-3 pl-4 text-sm whitespace-pre-line text-[var(--ink-2)]">{p.description}</p>
-                    )}
-                  </div>
-                ))}
-                {statusText && <p className="text-sm text-[var(--ink-2)]">{statusText}</p>}
-              </div>
-            )}
-
-            {daySessions.map((sess, si) => {
-              const e = dayEasyParts.get(sess.dominantActivity.id);
-              const review = reviewBySession.get(sess.id);
-              const comments = sessionComments(sess);
-              const minutes = trainingSeconds(sess) / 60;
-              const pace = sess.distanceMeters > 0 ? sess.durationSeconds / (sess.distanceMeters / 1000) : null;
+            {/* Plan och utfall pass för pass (2026-11-21): planen till
+                vänster, det genomförda till höger på samma rad, och detaljerna
+                (siffror, Så gick passet, kommentaren) i full bredd under. */}
+            <div className="grid grid-cols-2 gap-3 px-4 pt-3 text-xs text-[var(--ink-3)]">
+              <span>{includePlanned ? "Plan" : ""}</span>
+              <span>Genomfört</span>
+            </div>
+            {pairPlanDone(
+              includePlanned ? (plannedWorkouts ?? []) : [],
+              daySessions,
+              (p) => p.workout_type as string,
+              (x) => x.category ?? "",
+            ).map(({ plan: p, done: sess }, pi) => {
+              const e = sess ? dayEasyParts.get(sess.dominantActivity.id) : undefined;
+              const review = sess ? reviewBySession.get(sess.id) : undefined;
+              const comments = sess ? sessionComments(sess) : [];
+              const minutes = sess ? trainingSeconds(sess) / 60 : 0;
+              const pace = sess && sess.distanceMeters > 0 ? sess.durationSeconds / (sess.distanceMeters / 1000) : null;
               return (
-                <div key={sess.id} className={`flex flex-col gap-3 px-4 py-3.5 ${includePlanned && hasPlan || si > 0 ? "border-t border-[var(--line)]" : ""}`}>
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs text-[var(--ink-3)]">Genomfört</span>
-                    <span className="flex items-center gap-2">
-                      <TypeDot type={sess.category} />
-                      <span className="display text-lg leading-tight font-semibold text-[var(--foreground)]">
-                        {sess.category ? CATEGORY_LABELS[sess.category] : "Pass"}
-                      </span>
-                    </span>
-                    {sess.dominantActivity.name && (
-                      <span className="pl-4 text-sm text-[var(--ink-2)]">{sess.dominantActivity.name.trim()}</span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { l: "Distans", v: sess.distanceMeters > 0 ? formatKm(sess.distanceMeters).replace(" km", "") : "–", u: sess.distanceMeters > 0 ? "km" : "" },
-                      { l: "Tid", v: String(Math.round(minutes || sess.durationSeconds / 60)), u: "min" },
-                      { l: "Fart", v: pace ? formatPace(pace).replace(" /km", "") : "–", u: pace ? "/km" : "" },
-                      { l: "Puls", v: sess.avgHr ? String(Math.round(sess.avgHr)) : "–", u: "" },
-                    ].map((t) => (
-                      <div key={t.l} className="flex flex-col">
-                        <span className="text-xs text-[var(--ink-3)]">{t.l}</span>
-                        <span className="display tabular text-xl font-bold text-[var(--foreground)]">
-                          {t.v}
-                          {t.u && <span className="ml-0.5 text-xs font-medium text-[var(--ink-3)]">{t.u}</span>}
+                <div key={`${p?.id ?? "x"}-${sess?.id ?? pi}`} className={`flex flex-col gap-3 px-4 py-3 ${pi > 0 ? "border-t border-[var(--line)]" : ""}`}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      {p ? (
+                        <>
+                          <span className="flex items-start gap-1.5">
+                            <span className="mt-1.5"><TypeDot type={p.workout_type} /></span>
+                            <span className="display text-base leading-tight font-semibold text-[var(--foreground)]">
+                              {p.title || typeLabel(p.workout_type)}
+                            </span>
+                          </span>
+                          {p.description && (
+                            <p className="line-clamp-4 text-xs whitespace-pre-line text-[var(--ink-2)]">{p.description}</p>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-sm text-[var(--ink-3)]">{includePlanned ? "Inte planerat" : ""}</span>
+                      )}
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      {sess ? (
+                        <>
+                          <span className="flex items-start gap-1.5">
+                            <span className="mt-1.5"><TypeDot type={sess.category} /></span>
+                            <span className="display text-base leading-tight font-semibold text-[var(--foreground)]">
+                              {sess.category ? CATEGORY_LABELS[sess.category] : "Pass"}
+                            </span>
+                          </span>
+                          {sess.dominantActivity.name &&
+                            sess.dominantActivity.name.trim().toLowerCase() !==
+                              (sess.category ? CATEGORY_LABELS[sess.category] : "").toLowerCase() && (
+                              <span className="text-xs text-[var(--ink-2)]">{sess.dominantActivity.name.trim()}</span>
+                            )}
+                        </>
+                      ) : (
+                        <span className="text-sm text-[var(--ink-3)]">
+                          {p?.workout_type === "strength"
+                            ? "Inte loggat med klockan"
+                            : planStatus === "missed"
+                              ? "Blev inte av"
+                              : planStatus === "upcoming"
+                                ? "Kommande"
+                                : "Inte gjort ännu"}
                         </span>
-                      </div>
-                    ))}
+                      )}
+                    </div>
                   </div>
-                  {e && (
-                    <p className="text-sm text-[var(--ink-2)]">
-                      {sessionParts(sess.category, sess.distanceMeters, sess.durationSeconds, e)
-                        .map((part) => `${part.category === "easy" ? "uppvärmning och nerjogg" : CATEGORY_LABELS[part.category as ActivityCategory] ?? "kvalitet"} ${formatKm(part.meters)}`)
-                        .join(" · ")}
-                    </p>
-                  )}
-                  {review && (
-                    <div className="flex flex-col gap-1 rounded-[10px] px-3 py-2.5" style={{ backgroundColor: "var(--surface-insight)" }}>
-                      <span className={eyebrow}>Så gick passet</span>
-                      <p className="text-sm font-medium text-[var(--foreground)]">{review.headline}</p>
-                      {review.lines.map((line, i) => (
-                        <p key={i} className="text-sm text-[var(--ink-2)]">{line}</p>
-                      ))}
-                      {review.caveat && <p className="text-xs text-[var(--ink-3)]">{review.caveat}</p>}
-                    </div>
-                  )}
-                  {comments.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                      <span className={eyebrow}>Kommentar i Garmin</span>
-                      <SessionComments comments={comments} />
-                    </div>
+                  {sess && (
+                    <>
+                  <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { l: "Distans", v: sess.distanceMeters > 0 ? formatKm(sess.distanceMeters).replace(" km", "") : "–", u: sess.distanceMeters > 0 ? "km" : "" },
+                          { l: "Tid", v: String(Math.round(minutes || sess.durationSeconds / 60)), u: "min" },
+                          { l: "Fart", v: pace ? formatPace(pace).replace(" /km", "") : "–", u: pace ? "/km" : "" },
+                          { l: "Puls", v: sess.avgHr ? String(Math.round(sess.avgHr)) : "–", u: "" },
+                        ].map((t) => (
+                          <div key={t.l} className="flex flex-col">
+                            <span className="text-xs text-[var(--ink-3)]">{t.l}</span>
+                            <span className="display tabular text-xl font-bold text-[var(--foreground)]">
+                              {t.v}
+                              {t.u && <span className="ml-0.5 text-xs font-medium text-[var(--ink-3)]">{t.u}</span>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {e && (
+                        <p className="text-sm text-[var(--ink-2)]">
+                          {sessionParts(sess.category, sess.distanceMeters, sess.durationSeconds, e)
+                            .map((part) => `${part.category === "easy" ? "uppvärmning och nerjogg" : CATEGORY_LABELS[part.category as ActivityCategory] ?? "kvalitet"} ${formatKm(part.meters)}`)
+                            .join(" · ")}
+                        </p>
+                      )}
+                      {review && (
+                        <div className="flex flex-col gap-1 rounded-[10px] px-3 py-2.5" style={{ backgroundColor: "var(--surface-insight)" }}>
+                          <span className={eyebrow}>Så gick passet</span>
+                          <p className="text-sm font-medium text-[var(--foreground)]">{review.headline}</p>
+                          {review.lines.map((line, i) => (
+                            <p key={i} className="text-sm text-[var(--ink-2)]">{line}</p>
+                          ))}
+                          {review.caveat && <p className="text-xs text-[var(--ink-3)]">{review.caveat}</p>}
+                        </div>
+                      )}
+                      {comments.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          <span className={eyebrow}>Kommentar i Garmin</span>
+                          <SessionComments comments={comments} />
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );
             })}
+            {statusText && <p className="px-4 pb-3 text-sm text-[var(--ink-2)]">{statusText}</p>}
 
             {garminActivities.some((a) => a.activity_splits?.length > 0) && (
               <details className="group border-t border-[var(--line)]">
