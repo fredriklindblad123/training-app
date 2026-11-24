@@ -20,9 +20,13 @@ Bygger vidare på samma Garmin-integration som scripts/sync_garmin.py
 (garminconnect/garth) - se docs/garmin-api.md för bakgrund och kända
 begränsningar hos det inofficiella biblioteket.
 
-PDF-dagboksimport (t.ex. FIG:s mall) sköts inte längre via en app-endpoint
-— görs istället manuellt, några gånger per år, direkt mot Supabase. Se
-diary_entries.session_log/coach_notes i docs/data-model.md.
+  POST /api/diary/parse   - tolkar löparens dagbok (PDF, FIG:s mall) till en
+                             post per datum. Skriver ingenting: jämförelsen
+                             mot det som finns och skrivningen sker i
+                             Next-appen (lib/diary-import.ts), så att löparen
+                             ser förhandsvisningen innan något ändras.
+                             Tolkningen ligger i _diary_pdf.py (understreck: Vercel gör
+                             annars filen till en egen funktion).
 """
 
 import os
@@ -34,6 +38,11 @@ import requests
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from garminconnect import Garmin, GarminConnectAuthenticationError
+
+try:  # Vercel kör filen som modul i api/, lokalt körs den från web/
+    from _diary_pdf import parse_diary_pdf
+except ImportError:  # pragma: no cover
+    from api._diary_pdf import parse_diary_pdf
 
 app = FastAPI()
 
@@ -989,6 +998,26 @@ async def watch_today(request: Request):
 @app.get("/api/garmin/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/api/diary/parse")
+async def diary_parse(request: Request):
+    """Tar emot {pdf_base64, today: YYYY-MM-DD} från vår egen Next-server."""
+    if not INTERNAL_SECRET or request.headers.get("x-internal-secret") != INTERNAL_SECRET:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    import base64
+
+    body = await request.json()
+    try:
+        data = base64.b64decode(body["pdf_base64"])
+        today = date.fromisoformat(body["today"])
+    except Exception:
+        return JSONResponse({"error": "pdf_base64 och today krävs"}, status_code=400)
+    try:
+        days = parse_diary_pdf(data, today)
+    except Exception as e:
+        return JSONResponse({"error": f"Kunde inte läsa PDF:en: {e}"}, status_code=422)
+    return JSONResponse({"days": days})
 
 
 @app.post("/api/garmin/login")

@@ -223,6 +223,15 @@ export default async function MonthPage({
 
       <PeriodStatTiles sessions={monthSessions} compliance={monthCompliance} />
 
+      {/* Dagboken skickas in härifrån (2026-11-24) — kalendern är där
+          dagboken syns, så det är här man letar efter hur den kommer in. */}
+      <Link
+        href={`/dagbok${athleteQuery}`}
+        className="-mt-4 self-start text-sm text-[var(--ink-2)] underline underline-offset-2"
+      >
+        Skicka in träningsdagboken (PDF)
+      </Link>
+
       <AvailabilityBand
         periods={(availabilityRows ?? []) as AvailabilityPeriod[]}
         className="-mb-2"

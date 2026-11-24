@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /* Dagboken skickas in som PDF via en serveråtgärd (/dagbok, 2026-11-24).
+   * Standardgränsen 1 MB räcker inte för en hel skolårsdagbok; 3 MB är
+   * åtgärdens egen gräns, plus marginal för multipart-huvudena. */
+  experimental: { serverActions: { bodySizeLimit: "3.5mb" } },
   /* Adressbyten. Redirects i stället för att jaga varje bokmärke och varje
    * sparad länk — och viktigare, för att ett missat revalidatePath-anrop
    * någonstans i serveråtgärderna ska landa rätt i stället för att tyst sluta

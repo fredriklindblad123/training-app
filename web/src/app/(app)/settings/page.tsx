@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { signOut } from "@/app/login/actions";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -122,6 +123,18 @@ export default async function SettingsPage({
       <h1 className="display text-[2rem] leading-[1.08] font-bold text-[var(--foreground)]">
         Inställningar
       </h1>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+          Träningsdagboken
+        </h2>
+        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+          Skicka in dagboken som PDF när du vill. Hela filen går bra — dagar som redan finns känns igen.
+        </p>
+        <Link href="/dagbok" className={buttonClass}>
+          Skicka in dagboken
+        </Link>
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
