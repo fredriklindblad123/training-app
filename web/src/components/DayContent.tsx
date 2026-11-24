@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { groupActivitiesIntoSessions, sessionComments, trainingSeconds, type SessionActivity } from "@/lib/sessions";
 import { SessionComments } from "@/components/ui/SessionComments";
 import { pairPlanDone } from "@/lib/pair-plan";
+import { fetchRepStats, planGap } from "@/lib/plan-gap";
+import { PlanGapTable } from "@/components/PlanGapTable";
 import { dateKey, type DayStatus } from "@/lib/calendar-utils";
 import { DiaryMarkers } from "@/components/DiaryMarkers";
 import { LactateLog, type LactateReading } from "@/components/LactateLog";
@@ -169,9 +171,11 @@ export async function DayContent({
    * En extra runda, inte en per pass: funktionen tar hela dagens aktiviteter
    * som lista. */
   const activityIds = (activities ?? []).map((a) => (a as { id: string }).id);
-  const { data: mergedSplitRows } = activityIds.length
-    ? await supabase.rpc("merged_splits", { activity_ids: activityIds })
-    : { data: [] };
+  const [{ data: mergedSplitRows }, repStats] = await Promise.all([
+    activityIds.length ? supabase.rpc("merged_splits", { activity_ids: activityIds }) : Promise.resolve({ data: [] }),
+    // Plan mot utfall (lib/plan-gap.ts): repen i varje aktivitet.
+    fetchRepStats(supabase, activityIds),
+  ]);
 
   type MergedSplitRow = {
     activity_id: string;
@@ -403,6 +407,31 @@ export async function DayContent({
               const comments = sess ? sessionComments(sess) : [];
               const minutes = sess ? trainingSeconds(sess) / 60 : 0;
               const pace = sess && sess.distanceMeters > 0 ? sess.durationSeconds / (sess.distanceMeters / 1000) : null;
+              /* Plan mot utfall (2026-11-24). Ersätter siffrorutorna när det
+                 finns en plan att jämföra med — annars stod samma värden två
+                 gånger, i rutorna och i tabellens "Gjort". */
+              const gap =
+                sess && p
+                  ? planGap(
+                      {
+                        workout_type: p.workout_type as string,
+                        target_distance_meters: (p.target_distance_meters as number | null) ?? null,
+                        target_duration_seconds: (p.target_duration_seconds as number | null) ?? null,
+                        target_pace_seconds_per_km: (p.target_pace_seconds_per_km as number | null) ?? null,
+                      },
+                      {
+                        distanceMeters: sess.distanceMeters,
+                        seconds: minutes > 0 ? minutes * 60 : sess.durationSeconds,
+                        avgHr: sess.avgHr,
+                      },
+                      repStats.get(sess.dominantActivity.id) ?? null,
+                      {
+                        lt1: profile?.lt1_hr ?? null,
+                        lt2: profile?.lt2_hr ?? null,
+                        measured: profile?.lt2_source !== "manuell",
+                      },
+                    )
+                  : null;
               return (
                 <div key={`${p?.id ?? "x"}-${sess?.id ?? pi}`} className={`flex flex-col gap-3 px-4 py-3 ${pi > 0 ? "border-t border-[var(--line)]" : ""}`}>
                   {sess ? (
@@ -455,6 +484,9 @@ export async function DayContent({
                   ) : null}
                   {sess && (
                     <>
+                  {gap ? (
+                    <PlanGapTable gap={gap} />
+                  ) : (
                   <div className="grid grid-cols-4 gap-2">
                         {[
                           { l: "Distans", v: sess.distanceMeters > 0 ? formatKm(sess.distanceMeters).replace(" km", "") : "–", u: sess.distanceMeters > 0 ? "km" : "" },
@@ -471,6 +503,7 @@ export async function DayContent({
                           </div>
                         ))}
                       </div>
+                  )}
                       {e && (
                         <p className="text-sm text-[var(--ink-2)]">
                           {sessionParts(sess.category, sess.distanceMeters, sess.durationSeconds, e)

@@ -1,6 +1,8 @@
 import { formatKm } from "@/lib/format";
 import Link from "next/link";
 import { pairPlanDone } from "@/lib/pair-plan";
+import { planGap, type GapThresholds, type RepStats } from "@/lib/plan-gap";
+import { PlanGapTable } from "@/components/PlanGapTable";
 import { SessionComments } from "@/components/ui/SessionComments";
 import type { LabZoneSet } from "@/lib/zone-sources";
 import { CATEGORY_LABELS, categoryColorVar, isActivityCategory } from "@/lib/categories";
@@ -37,6 +39,7 @@ export type TodayPlanned = {
   title: string | null;
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
+  target_pace_seconds_per_km?: number | null;
   planned_rep_groups: RepGroupLike[] | null;
   /** Tränarens text till löparen. Det enda på skärmen som är skrivet av en
    * människa till just den här personen — därför står den framme. */
@@ -64,6 +67,8 @@ export type TodayDone = {
   /** Uppvärmning och nerjogg i ett tröskelpass, räknade som distans
    * (lib/quality-split.ts). Saknas för andra pass. */
   easy?: { meters: number; seconds: number } | null;
+  /** Repen i passets huvudaktivitet, för plan mot utfall (lib/plan-gap.ts). */
+  reps?: RepStats | null;
 };
 
 /** Dagens kulör: det planerade passets typ i första hand, annars det
@@ -89,7 +94,10 @@ export function TodaySession({
   href,
   labSet = null,
   compact = false,
+  thresholds = null,
 }: {
+  /** Löparens trösklar, för pulsraden i plan mot utfall. */
+  thresholds?: GapThresholds | null;
   /** Utan varvlistan — Idag visar bara sammanfattningen. */
   compact?: boolean;
   planned: TodayPlanned[];
@@ -142,6 +150,20 @@ export function TodaySession({
           const dLabel = d ? (isActivityCategory(d.category) ? CATEGORY_LABELS[d.category] : (d.name ?? "Pass")) : null;
           const dMin = d ? Math.round(d.durationSeconds / 60) : 0;
           const otherType = p && d && p.workout_type !== d.category && !(p.workout_type === "long_run" && d.category === "easy");
+          const gap =
+            p && d
+              ? planGap(
+                  {
+                    workout_type: p.workout_type,
+                    target_distance_meters: p.target_distance_meters,
+                    target_duration_seconds: p.target_duration_seconds,
+                    target_pace_seconds_per_km: p.target_pace_seconds_per_km ?? null,
+                  },
+                  { distanceMeters: d.distanceMeters, seconds: d.durationSeconds, avgHr: d.avgHr },
+                  d.reps ?? null,
+                  thresholds ?? { lt1: null, lt2: null, measured: true },
+                )
+              : null;
           return (
             <div key={`${p?.id ?? "x"}-${d?.id ?? "y"}`} className={`flex flex-col gap-2 ${i > 0 ? "border-t border-[var(--line)] pt-3" : ""}`}>
               {d ? (
@@ -161,6 +183,11 @@ export function TodaySession({
                     {[d.distanceMeters > 0 ? formatKm(d.distanceMeters) : null, dMin > 0 ? `${dMin} min` : null].filter(Boolean).join(" · ")}
                     {d.easy && d.easy.meters > 0 ? ` · varav uppvärmning och nerjogg ${formatKm(d.easy.meters)}` : ""}
                   </span>
+                  {gap && (
+                    <div className="mt-1.5">
+                      <PlanGapTable gap={gap} />
+                    </div>
+                  )}
                 </div>
               ) : p ? (
                 /* Inte genomfört (än): planen är huvudsaken. */

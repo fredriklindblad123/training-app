@@ -22,6 +22,7 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import { toDateKey } from "@/lib/week-series";
+import { fetchRepStats, type GapThresholds, type RepStats } from "@/lib/plan-gap";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
 import { reviewSession, type ReviewRep, type SessionReview } from "@/lib/session-review";
@@ -244,7 +245,7 @@ export default async function DashboardPage({
       .from("planned_workouts")
       .select(
         "id, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, " +
-          "planned_rep_groups(reps, distance_meters, duration_seconds, sort_order)",
+          "target_pace_seconds_per_km, planned_rep_groups(reps, distance_meters, duration_seconds, sort_order)",
       )
       .eq("user_id", scopedUserId)
       .eq("scheduled_date", todayKey)
@@ -334,16 +335,26 @@ export default async function DashboardPage({
   // Uppvärmning och nerjogg i ett tröskelpass räknas som distans.
   const todayEasyParts = await fetchEasyParts(supabase, scopedUserId, sessions);
   const reviewBySession = new Map<string, SessionReview>();
+  // Plan mot utfall (lib/plan-gap.ts): repen och trösklarna.
+  let repStats = new Map<string, RepStats>();
+  let gapThresholds: GapThresholds = { lt1: null, lt2: null, measured: true };
   if (sessions.length > 0) {
     const dominantIds = sessions.map((s) => s.dominantActivity.id);
-    const [{ data: reviewProfile }, { data: mergedRows }] = await Promise.all([
+    const [{ data: reviewProfile }, { data: mergedRows }, reps] = await Promise.all([
       supabase
         .from("profiles")
         .select("lt1_hr, lt2_hr, max_hr, lt2_source, goal_event, goal_seconds")
         .eq("id", scopedUserId)
         .maybeSingle(),
       supabase.rpc("merged_splits", { activity_ids: dominantIds }),
+      fetchRepStats(supabase, dominantIds),
     ]);
+    repStats = reps;
+    gapThresholds = {
+      lt1: reviewProfile?.lt1_hr ?? null,
+      lt2: reviewProfile?.lt2_hr ?? null,
+      measured: reviewProfile?.lt2_source !== "manuell",
+    };
     type MergedRow = {
       activity_id: string;
       is_rest: boolean;
@@ -586,6 +597,7 @@ export default async function DashboardPage({
           labZoneSeconds: s.labZoneSeconds,
           review: reviewBySession.get(s.id) ?? null,
           easy: todayEasyParts.get(s.dominantActivity.id) ?? null,
+          reps: repStats.get(s.dominantActivity.id) ?? null,
           splits:
             latestSession?.id === s.id
               ? latestSplits.map((r) => ({
@@ -598,6 +610,7 @@ export default async function DashboardPage({
         }))}
         href={todayHref}
         labSet={labZoneSet}
+        thresholds={gapThresholds}
         compact
       />
 
