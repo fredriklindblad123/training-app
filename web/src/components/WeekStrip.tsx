@@ -33,7 +33,10 @@ export function WeekStrip({
   plannedCount,
   kilometres,
   href,
+  bare = false,
 }: {
+  /** Utan egen ram, när remsan ligger i ett annat kort (dagens pass på Idag). */
+  bare?: boolean;
   days: WeekStripDay[];
   doneCount: number;
   plannedCount: number;
@@ -48,10 +51,18 @@ export function WeekStrip({
   return (
     <Link
       href={href}
-      className="flex flex-col gap-2 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)] hover:bg-[var(--surface-raised)]"
+      className={
+        bare
+          ? "flex flex-col gap-2 p-4 transition-colors hover:bg-[var(--surface-raised)]"
+          : "flex flex-col gap-2 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3 transition-colors hover:border-[var(--ink-3)] hover:bg-[var(--surface-raised)]"
+      }
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-<span />
+{bare ? (
+          <span className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">Veckan</span>
+        ) : (
+          <span />
+        )}
         <span className="flex items-center gap-1 text-xs text-[var(--ink-3)]">
           Öppna veckan
           <span

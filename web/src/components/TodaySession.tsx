@@ -95,7 +95,10 @@ export function TodaySession({
   labSet = null,
   compact = false,
   thresholds = null,
+  children,
 }: {
+  /** Visas i samma ram under passet — veckoremsan på Idag. */
+  children?: React.ReactNode;
   /** Löparens trösklar, för pulsraden i plan mot utfall. */
   thresholds?: GapThresholds | null;
   /** Utan varvlistan — Idag visar bara sammanfattningen. */
@@ -124,11 +127,14 @@ export function TodaySession({
           Kulören kommer ur samma --cat-*-token som resten av appen och blandas
           mot ytan med color-mix, så den följer med i mörkt läge automatiskt i
           stället för att lysa. */}
+      {/* En ram för dagen och veckan (2026-11-24, begärt): passkortet och
+          veckoremsan är två länkar under varandra i samma kort. */}
+      <div className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)]">
       <Link
         href={href}
         /* Platt kort sedan 2026-11-21 (ny UX): passtypen bärs av en prick
            vid rubriken, inte av en färgad toning över kortet. */
-        className="relative flex flex-col gap-3 overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-4 transition-colors hover:border-[var(--ink-3)]"
+        className="relative flex flex-col gap-3 p-4 transition-colors hover:bg-[var(--surface-raised)]"
       >
         {/* Tomt läge sägs rakt ut. En vilodag är ett giltigt svar på "vad ska
             jag göra idag", och ska inte se ut som att något saknas. */}
@@ -248,6 +254,8 @@ export function TodaySession({
           <LinkPending />
         </span>
       </Link>
+      {children && <div className="border-t border-[var(--line)]">{children}</div>}
+      </div>
     </section>
   );
 }

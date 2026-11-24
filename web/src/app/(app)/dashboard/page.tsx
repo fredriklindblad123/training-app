@@ -1,14 +1,12 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
-import { formatDateShort, formatKmSv, formatNumber } from "@/lib/format";
+import { formatDateShort, formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/ui/Page";
 import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
 import { blockVsPlan, type PlanRow } from "@/lib/block-vs-plan";
 import { loadLatestLabZoneSet } from "@/lib/zone-sources";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
-import type { TrendDirection } from "@/components/ui/TrendMark";
-import { ringFillAndStatus, type RingStatus } from "@/lib/kpi-ring";
 import { BASELINE_WINDOW_DAYS, computeDailyStatus } from "@/lib/daily-status";
 import { isoWeekStart } from "@/lib/stats-utils";
 import { QUALITY_WORKOUT_TYPES } from "@/lib/planning";
@@ -22,7 +20,8 @@ import {
   type TrainingSession,
 } from "@/lib/sessions";
 import { toDateKey } from "@/lib/week-series";
-import { fetchRepStats, type GapThresholds, type RepStats } from "@/lib/plan-gap";
+import { fetchRepStats, weekGap, type GapThresholds, type WeekPlanRow } from "@/lib/plan-gap";
+import { PlanGapTable } from "@/components/PlanGapTable";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
 import { reviewSession, type ReviewRep, type SessionReview } from "@/lib/session-review";
@@ -57,10 +56,6 @@ import { WeekStrip, type WeekStripDay } from "@/components/WeekStrip";
 /** Under den här förändringen räknas formen som oförändrad — EF svänger
  * naturligt någon procent mellan enskilda pass utan att något ändrats. */
 
-/** Under den här förändringen räknas rullande volym som oförändrad (pilen
- * blir ett streck). Baslinjen är årets snitt, ett stabilt tal, så 8 % är
- * redan ett meningsfullt utslag. */
-const WEEKLY_NOISE_THRESHOLD_PCT = 0.08;
 
 function shiftDateKey(dateKey: string, days: number): string {
   const d = new Date(`${dateKey}T00:00:00`);
@@ -68,84 +63,7 @@ function shiftDateKey(dateKey: string, days: number): string {
   return toDateKey(d);
 }
 
-/** Pilens riktning för en förändring, med samma brustal som kortet.
- *
- * Skild funktion, samma tröskel: färgen säger OM förändringen är bra, pilen
- * säger ÅT VILKET HÅLL talet gick. För belastning kan de två peka olika, och
- * att härleda den ena ur den andra hade gjort just det omöjligt. Brus får ett
- * streck, inte en pil — annars pekar kortet åt ett håll som inte finns. */
-function trendDirection(change: number | null, noiseThreshold: number): TrendDirection {
-  if (change == null || Math.abs(change) < noiseThreshold) return "flat";
-  return change > 0 ? "up" : "down";
-}
 
-/** "+53 %", "−4 %" — hela procent och svenskt mellanslag (B3, 2026-11-21). */
-function formatPctChange(pctChange: number): string {
-  const v = Math.round(pctChange * 100);
-  return `${v > 0 ? "+" : v < 0 ? "−" : "±"}${Math.abs(v)} %`;
-}
-
-/** Distans/belastning (P1.5): rullande 7 dagar mot årets snitt per vecka —
- * inte förra veckan, som bara flyttar jämförelsen en vecka bakåt utan att
- * säga om nuläget faktiskt är högt eller lågt. Årssnittet ger en stabil
- * baslinje att mäta mot hela säsongen, och det rullande fönstret uppdateras
- * varje dag i stället för att hoppa i veckosteg. */
-function rollingWeekRing(
-  label: string,
-  dailyTotals: Map<string, number>,
-  todayKey: string,
-  yearStartKey: string,
-  formatValue: (v: number) => string,
-) {
-  const recentFrom = shiftDateKey(todayKey, -6);
-  let recent = 0;
-  for (const [date, value] of dailyTotals) {
-    if (date >= recentFrom && date <= todayKey) recent += value;
-  }
-
-  let yearTotal = 0;
-  for (const [date, value] of dailyTotals) {
-    if (date >= yearStartKey && date <= todayKey) yearTotal += value;
-  }
-  const yearDays =
-    Math.round(
-      (new Date(`${todayKey}T00:00:00`).getTime() - new Date(`${yearStartKey}T00:00:00`).getTime()) /
-        86_400_000,
-    ) + 1;
-  const baseline = yearDays > 0 ? (yearTotal / yearDays) * 7 : 0;
-  const pctChange = baseline > 0 ? (recent - baseline) / baseline : null;
-
-  const { fill } = ringFillAndStatus(recent, baseline, "higher_is_better");
-  /* Alltid neutral (B4, 2026-11-21). Mer eller mindre träning är varken bra
-   * eller dåligt i sig — kortet sa "Bra" om +50 % distans, och det mönstret
-   * hade föregått fyra av tolv sjuk- och skadeperioder. Pilen visar riktning,
-   * färgen säger ingenting. */
-  const status: RingStatus = pctChange == null ? "unknown" : "neutral";
-
-  return {
-    label,
-    valueText: formatValue(recent),
-    fill,
-    status,
-    trend:
-      pctChange != null
-        ? {
-            direction: trendDirection(pctChange, WEEKLY_NOISE_THRESHOLD_PCT),
-            text: formatPctChange(pctChange),
-          }
-        : null,
-    targetText: pctChange != null ? `mot ditt snitt ${formatValue(baseline)}/v` : undefined,
-    detailRows: [
-      { label: "Senaste 7 dagarna", value: formatValue(recent) },
-      { label: "Årets snitt per vecka", value: formatValue(baseline) },
-      { label: "Förändring", value: pctChange != null ? formatPctChange(pctChange) : "–" },
-    ],
-    hint:
-      `${label} de senaste 7 dagarna jämfört med årets snitt per vecka — visar om nuläget ` +
-      `faktiskt är högt eller lågt, inte bara hur det ändrats sen förra veckan. Under ±` +
-      `${(WEEKLY_NOISE_THRESHOLD_PCT * 100).toFixed(0)}% räknas som brus.`,
-  };
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -282,7 +200,7 @@ export default async function DashboardPage({
        genomförda passen kommer ur allSessions, som redan är hämtad. */
     supabase
       .from("planned_workouts")
-      .select("scheduled_date, workout_type")
+      .select("scheduled_date, workout_type, target_distance_meters, target_duration_seconds, target_pace_seconds_per_km")
       .eq("user_id", scopedUserId)
       .gte("scheduled_date", weekStartKey)
       .lte("scheduled_date", weekEndKey)
@@ -335,26 +253,16 @@ export default async function DashboardPage({
   // Uppvärmning och nerjogg i ett tröskelpass räknas som distans.
   const todayEasyParts = await fetchEasyParts(supabase, scopedUserId, sessions);
   const reviewBySession = new Map<string, SessionReview>();
-  // Plan mot utfall (lib/plan-gap.ts): repen och trösklarna.
-  let repStats = new Map<string, RepStats>();
-  let gapThresholds: GapThresholds = { lt1: null, lt2: null, measured: true };
   if (sessions.length > 0) {
     const dominantIds = sessions.map((s) => s.dominantActivity.id);
-    const [{ data: reviewProfile }, { data: mergedRows }, reps] = await Promise.all([
+    const [{ data: reviewProfile }, { data: mergedRows }] = await Promise.all([
       supabase
         .from("profiles")
         .select("lt1_hr, lt2_hr, max_hr, lt2_source, goal_event, goal_seconds")
         .eq("id", scopedUserId)
         .maybeSingle(),
       supabase.rpc("merged_splits", { activity_ids: dominantIds }),
-      fetchRepStats(supabase, dominantIds),
     ]);
-    repStats = reps;
-    gapThresholds = {
-      lt1: reviewProfile?.lt1_hr ?? null,
-      lt2: reviewProfile?.lt2_hr ?? null,
-      measured: reviewProfile?.lt2_source !== "manuell",
-    };
     type MergedRow = {
       activity_id: string;
       is_rest: boolean;
@@ -405,34 +313,8 @@ export default async function DashboardPage({
   const allSessions: TrainingSession[] = groupActivitiesIntoSessions(
     (allActivityRows ?? []) as unknown as SessionActivity[],
   );
-  // --- Volym och belastning -----------------------------------------------
-  // Samma treårsfönster (allSessions) som Form och kondition ovan, summerat
-  // per dag så att både det rullande 7-dagarsfönstret och årssnittet kan
-  // räknas ur samma dagliga underlag.
-  const yearStartKey = `${todayKey.slice(0, 4)}-01-01`;
-
-  const dailyDistanceKm = new Map<string, number>();
-  const dailyLoad = new Map<string, number>();
-  // Träningstid (2026-11-16, begärt): passens hela tid utan styrka, med
-  // alternativ träning — trainingSeconds i lib/sessions.ts, samma regel som
-  // Analys och Uppföljning. Distansen räknar bara löpning, så tiden är det
-  // mått där en vecka med mycket cykel syns som den träning den är.
-  const dailyMinutes = new Map<string, number>();
-  for (const s of allSessions) {
-    dailyDistanceKm.set(s.date, (dailyDistanceKm.get(s.date) ?? 0) + s.distanceMeters / 1000);
-    dailyLoad.set(s.date, (dailyLoad.get(s.date) ?? 0) + s.trainingLoad);
-    dailyMinutes.set(s.date, (dailyMinutes.get(s.date) ?? 0) + trainingSeconds(s) / 60);
-  }
-
-
-  const volumeRings = [
-    rollingWeekRing("Distans", dailyDistanceKm, todayKey, yearStartKey, (v) =>
-      formatKmSv(v),
-    ),
-    rollingWeekRing("Träningstid", dailyMinutes, todayKey, yearStartKey, (v) =>
-      `${Math.round(v).toLocaleString("sv-SE")} min`,
-    ),
-  ];
+  /* "Läget · senaste 7 dagarna" (distans och träningstid mot eget årssnitt)
+     togs bort 2026-11-24 och ersattes av "Veckan mot planen". */
 
   /* --- Varven från senaste passet ------------------------------------- */
   // Raderna kom sorterade nyast först; alla som hör till samma aktivitet som
@@ -527,6 +409,35 @@ export default async function DashboardPage({
 
   const bodyMarkers = dailyStatus.markers.filter((m) => m.spec.key !== "sleepHours" && m.spec.key !== "feeling");
 
+  /* Plan mot utfall (lib/plan-gap.ts), för dagens pass och för veckan: repen
+     i veckans pass och löparens trösklar. */
+  const weekSessions = allSessions.filter((s) => s.date >= weekStartKey && s.date <= todayKey);
+  const [repStats, { data: gapProfile }] = await Promise.all([
+    fetchRepStats(supabase, [...new Set([...weekSessions, ...sessions].map((s) => s.dominantActivity.id))]),
+    supabase.from("profiles").select("lt1_hr, lt2_hr, lt2_source").eq("id", scopedUserId).maybeSingle(),
+  ]);
+  const gapThresholds: GapThresholds = {
+    lt1: gapProfile?.lt1_hr ?? null,
+    lt2: gapProfile?.lt2_hr ?? null,
+    measured: gapProfile?.lt2_source !== "manuell",
+  };
+  const vsWeek = weekGap(
+    ((weekPlannedRows ?? []) as unknown as WeekPlanRow[]),
+    weekSessions.map((s) => ({
+      date: s.date,
+      category: s.category,
+      distanceMeters: s.distanceMeters,
+      durationSeconds: s.durationSeconds,
+      avgHr: s.avgHr,
+      trainingSeconds: trainingSeconds(s),
+      dominantId: s.dominantActivity.id,
+    })),
+    repStats,
+    gapThresholds,
+    weekStartKey,
+    todayKey,
+  );
+
   // Blocket mot planen (lib/block-vs-plan.ts): planerade pass med siffror i
   // det block som pågår, mot årets pass (allSessions täcker hela året).
   const block =
@@ -612,7 +523,80 @@ export default async function DashboardPage({
         labSet={labZoneSet}
         thresholds={gapThresholds}
         compact
-      />
+      >
+        <WeekStrip
+          bare
+          days={weekDays}
+          doneCount={weekDoneCount}
+          plannedCount={(weekPlannedRows ?? []).length}
+          kilometres={weekKilometres}
+          href={`/calendar/vecka/${todayKey}${athleteQuery}`}
+        />
+      </TodaySession>
+
+      {/* Veckan mot planen (2026-11-24, begärt): ersätter "Läget · senaste 7
+          dagarna" och "Blocket mot planen". Veckans utfall mot planen i tid,
+          distans, fart och puls (lib/plan-gap.ts weekGap), och blocket
+          hittills som en rad under. Läget jämförde de senaste sju dagarna
+          med löparens eget snitt i år — utan planen var det ett mått på
+          volym, inte på hur veckan gick mot det som var tänkt. */}
+      {(vsWeek || (vsPlan && block)) && (
+        <section className="flex flex-col gap-2.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <Eyebrow>Veckan mot planen</Eyebrow>
+            <Link href={`/calendar/vecka/${shiftDateKey(weekStartKey, -7)}${athleteQuery}`} className="text-sm underline underline-offset-2">
+              Förra veckan →
+            </Link>
+          </div>
+          <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3.5">
+            {vsWeek ? (
+              <PlanGapTable gap={vsWeek} title={`${formatDateShort(vsWeek.from)}–${formatDateShort(vsWeek.to)}`} />
+            ) : (
+              <p className="text-sm text-[var(--ink-3)]">Inget planerat pass har passerat än den här veckan.</p>
+            )}
+            {vsPlan && block && (
+              <Link href={`/analys${athleteQuery}`} className="flex flex-col gap-0.5 border-t border-[var(--line)] pt-3 text-sm">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">
+                    Blocket hittills
+                  </span>
+                  <span className="text-xs text-[var(--ink-3)]">Blocket →</span>
+                </span>
+                <span className="tabular text-[var(--ink-2)]">
+                  <span className="font-semibold text-[var(--foreground)]">{formatNumber(vsPlan.doneKm, 1)} km</span> av{" "}
+                  {formatNumber(vsPlan.plannedKm, 1)} planerade ·{" "}
+                  <span className="font-semibold text-[var(--foreground)]">{formatNumber(vsPlan.doneMin, 0)} min</span> av{" "}
+                  {formatNumber(vsPlan.plannedMin, 0)}
+                </span>
+                <span className="text-xs text-[var(--ink-3)]">
+                  {block.name}, {formatDateShort(vsPlan.from)}–{formatDateShort(vsPlan.to)} · hela blocket{" "}
+                  {formatNumber(vsPlan.blockPlannedKm, 1)} km, {formatNumber(vsPlan.blockPlannedMin, 0)} min
+                </span>
+              </Link>
+            )}
+          </div>
+          <HowCalculated>
+            <p>
+              Veckan från måndag till och med {vsWeek ? formatDateShort(vsWeek.to) : "igår"}: bara dagar som
+              passerat, och idag först när dagens pass är gjort. Distans är löpning utan alternativträning; tid är
+              hela passet, styrka inte med.
+            </p>
+            <p>
+              Fart och puls räknas bara på pass som var planerade. Distanspassens fart jämförs med den fart planens
+              distans och tid ger; kvalitetspassens repfart med fartmålet, som median av rep på minst en minut.
+              Pulsen jämförs med dina trösklar för den planerade passtypen: snittpuls mot LT1 för distanspass,
+              slutpuls per rep mot bandet LT1–LT2 för tröskel, högsta puls mot LT2 för intervall — samma mått som på
+              Form.
+            </p>
+            {vsPlan && block && vsPlan.from > block.start && (
+              <p>
+                Blocket räknas från {formatDateShort(vsPlan.from)}, då planen började ha distans och tid — dagarna
+                före har inget att jämföra med.
+              </p>
+            )}
+          </HowCalculated>
+        </section>
+      )}
 
 
       {/* --- Status mot baslinje (P1.2), plats två direkt efter dagens pass.
@@ -631,21 +615,6 @@ export default async function DashboardPage({
         />
       )}
 
-      <section className="flex flex-col gap-2.5">
-        <div className="flex items-baseline justify-between gap-2">
-          <Eyebrow>Veckan</Eyebrow>
-          <Link href={`/calendar/vecka/${shiftDateKey(weekStartKey, -7)}${athleteQuery}`} className="text-sm underline underline-offset-2">
-            Förra veckans bokslut →
-          </Link>
-        </div>
-        <WeekStrip
-          days={weekDays}
-          doneCount={weekDoneCount}
-          plannedCount={(weekPlannedRows ?? []).length}
-          kilometres={weekKilometres}
-          href={`/calendar/vecka/${todayKey}${athleteQuery}`}
-        />
-      </section>
 
 
       {/* Varven direkt under dagens pass: det är de två sakerna en löpare
@@ -660,30 +629,6 @@ export default async function DashboardPage({
           redan underkänts — den mätte fart, inte form. Syreupptaget bor på
           Form. Sviten likaså (Kontinuitet). */}
 
-      <section className="flex flex-col gap-2.5">
-        <Eyebrow>Läget · senaste 7 dagarna</Eyebrow>
-        <div className="grid grid-cols-2 gap-2.5">
-          {volumeRings.map((r) => (
-            <div key={r.label} className="flex flex-col gap-1 rounded-[14px] border border-[var(--line)] p-3.5">
-              <span className="display text-xs font-semibold tracking-[0.06em] text-[var(--ink-3)] uppercase">{r.label}</span>
-              <span className="display tabular text-[1.75rem] leading-none font-bold text-[var(--foreground)]">{r.valueText}</span>
-              {r.trend && (
-                <span className="self-start rounded-full bg-[var(--surface-raised)] px-2 py-0.5 text-[0.8125rem] text-[var(--ink-2)]">
-                  {r.trend.text}
-                </span>
-              )}
-              {r.targetText && <span className="text-[0.8125rem] text-[var(--ink-3)]">{r.targetText}</span>}
-            </div>
-          ))}
-        </div>
-        <HowCalculated>
-          <p>
-            Träningstid är hela passets tid med vila, alternativträning inräknad, styrka aldrig. Distans är
-            löpning utan alternativträning. Snittet är ditt eget snitt per vecka i år. Ökningen visas grå: mer
-            träning är varken bra eller dåligt i sig.
-          </p>
-        </HowCalculated>
-      </section>
 
       {/* --- K3: beredskap kopplad till morgondagens pass. Visas bara när
           avvikelsen (P1.2) och ett kvalitetspass imorgon båda är sanna —
@@ -723,57 +668,6 @@ export default async function DashboardPage({
           är en bakgrundsfråga — den styr inte vad man gör idag, den färgar hur
           man läser resten. Överst tog den plats från dagens pass, som är det
           man öppnar appen för. */}
-      {vsPlan && block && (
-        <section className="flex flex-col gap-2.5">
-          <div className="flex items-baseline justify-between gap-2">
-            <Eyebrow>Blocket mot planen</Eyebrow>
-            <Link href={`/analys${athleteQuery}`} className="text-sm underline underline-offset-2">
-              Blocket →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-2.5">
-            {[
-              { l: "Distans", done: vsPlan.doneKm, plan: vsPlan.plannedKm, total: vsPlan.blockPlannedKm, fmt: (v: number) => formatNumber(v, 1), unit: "km" },
-              { l: "Träningstid", done: vsPlan.doneMin, plan: vsPlan.plannedMin, total: vsPlan.blockPlannedMin, fmt: (v: number) => formatNumber(v, 0), unit: "min" },
-            ].map((t) => {
-              const diff = t.done - t.plan;
-              const share = t.plan > 0 ? Math.min(1, t.done / t.plan) : 0;
-              return (
-                <div key={t.l} className="flex flex-col gap-1 rounded-[14px] border border-[var(--line)] p-3.5">
-                  <span className="display text-xs font-semibold tracking-[0.06em] text-[var(--ink-3)] uppercase">{t.l}</span>
-                  <span className="display tabular text-[1.5rem] leading-none font-bold text-[var(--foreground)]">
-                    {t.fmt(t.done)} <span className="text-sm font-medium text-[var(--ink-2)]">{t.unit}</span>
-                  </span>
-                  <span className="text-[0.8125rem] text-[var(--ink-3)]">
-                    av {t.fmt(t.plan)} {t.unit} planerat hittills
-                  </span>
-                  <span aria-hidden className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--surface-raised)]">
-                    <span className="block h-full rounded-full bg-[var(--ink-3)]" style={{ width: `${share * 100}%` }} />
-                  </span>
-                  <span className="self-start rounded-full bg-[var(--surface-raised)] px-2 py-0.5 text-[0.8125rem] text-[var(--ink-2)]">
-                    {Math.abs(diff) < (t.unit === "km" ? 0.5 : 5)
-                      ? "som planerat"
-                      : `${diff > 0 ? "+" : "−"}${t.fmt(Math.abs(diff))} ${t.unit} mot planen`}
-                  </span>
-                  <span className="text-[0.8125rem] text-[var(--ink-3)]">
-                    hela blocket: {t.fmt(t.total)} {t.unit}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <HowCalculated>
-            <p>
-              {block.name}, från {formatDateShort(vsPlan.from)} till och med {formatDateShort(vsPlan.to)}
-              {vsPlan.from > block.start
-                ? `. Planen har distans och tid först från ${formatDateShort(vsPlan.from)} — dagarna före räknas inte, eftersom det inte finns något att jämföra med`
-                : ""}
-              . Bara dagar som passerat räknas, och idag först när dagens pass är gjort. Distans är löpning utan
-              alternativträning; tid är hela passet, styrka inte med — samma regler som resten av appen.
-            </p>
-          </HowCalculated>
-        </section>
-      )}
 
       {bodyMarkers.length > 0 && (
         <section className="flex flex-col gap-2.5">
