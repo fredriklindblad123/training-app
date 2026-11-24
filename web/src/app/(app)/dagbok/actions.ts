@@ -68,7 +68,16 @@ async function load(formData: FormData): Promise<Ctx | DiaryResult> {
   try {
     const res = await fetch(`${apiBase()}/api/diary/parse`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "" },
+      headers: {
+        "content-type": "application/json",
+        "x-internal-secret": process.env.INTERNAL_API_SECRET ?? "",
+        /* Förhandsversionerna ligger bakom Vercels inloggningsskydd, även för
+           anrop från appen själv. Med "Protection Bypass for Automation"
+           påslaget i projektet sätter Vercel den här variabeln. */
+        ...(process.env.VERCEL_AUTOMATION_BYPASS_SECRET
+          ? { "x-vercel-protection-bypass": process.env.VERCEL_AUTOMATION_BYPASS_SECRET }
+          : {}),
+      },
       body: JSON.stringify({ pdf_base64: bytes.toString("base64"), today: toDateKey(new Date()) }),
     });
     const body = (await res.json().catch(() => ({}))) as { days?: ParsedDiaryDay[]; error?: string };
