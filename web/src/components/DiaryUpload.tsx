@@ -132,8 +132,14 @@ export function DiaryUpload({ athlete }: { athlete: string | null }) {
                     <li key={c.date} className="flex gap-3 px-3.5 py-2">
                       <span className="tabular w-12 shrink-0 text-[var(--ink-3)]">{formatDateShort(c.date)}</span>
                       <span className="text-[var(--ink-2)]">
-                        {c.kind === "new" ? "Ny dag" : c.log === "fill" ? "Passet läggs till" : "Anteckningen läggs till"}
-                        {` · ${short(c.log === "fill" || c.kind === "new" ? c.after.log : c.after.note, 60)}`}
+                        {c.kind === "new"
+                          ? "Ny dag"
+                          : c.log === "fill"
+                            ? "Passet läggs till"
+                            : c.note === "fill"
+                              ? "Anteckningen läggs till"
+                              : "Tränarens kommentar läggs till"}
+                        {` · ${short(c.log === "fill" || c.kind === "new" ? c.after.log : c.note === "fill" ? c.after.note : c.after.coach, 60)}`}
                       </span>
                     </li>
                   );

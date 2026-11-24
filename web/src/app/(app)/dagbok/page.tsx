@@ -37,12 +37,13 @@ export default async function DagbokPage({ searchParams }: { searchParams: Promi
       <HowCalculated>
         <p>
           Appen läser dagboken som den är uppställd i FIG:s mall: en rad per vecka, en kolumn per dag. Svart text
-          blir passet, grön text det som var bra och rosa text det som var mindre bra. Blå text är tränarens och
-          läses inte.
+          blir passet, grön text det som var bra och rosa text det som var mindre bra. Blå text blir tränarens
+          kommentar, liksom svart text överst i en ruta som är signerad av tränaren. Röd text är skolans och läses
+          inte.
         </p>
         <p>
           Dagar som redan finns med samma text hoppas över. Finns dagen redan med annan text behålls den om du inte
-          väljer PDF:ens version. Det som fyllts i i appen — känsla, sömn, tränarens kommentarer — rörs aldrig.
+          väljer PDF:ens version. Det som fyllts i i appen — känsla och sömn — rörs aldrig, och tränarens kommentar fylls bara i om den saknas.
         </p>
         <p>Veckor efter dagens datum läses inte, även om mallen redan har dem ifyllda.</p>
       </HowCalculated>

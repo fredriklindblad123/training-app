@@ -25,7 +25,7 @@ import {
 const MAX_BYTES = 3 * 1024 * 1024;
 
 const COLUMNS =
-  "id, entry_date, session_log, notes, notes_good_text, notes_bad_text, notes_good_chars, notes_bad_chars, day_type";
+  "id, entry_date, session_log, coach_notes, notes, notes_good_text, notes_bad_text, notes_good_chars, notes_bad_chars, day_type";
 
 /* Python-funktionen nås på produktionsdomänen (se lib/garmin-sync.ts för
  * varför inte VERCEL_URL). På en förhandsversion finns den nya endpointen
@@ -144,9 +144,10 @@ export async function importDiaryPdf(formData: FormData): Promise<DiaryImportDon
     const which = {
       log: c.log === "fill" || (swap && c.log === "differs"),
       note: c.note === "fill" || (swap && c.note === "differs"),
+      coach: c.coach === "fill",
     };
     if (c.kind === "differs" && !swap) kept++;
-    if (!which.log && !which.note) continue;
+    if (!which.log && !which.note && !which.coach) continue;
 
     const fields = fieldsFor(p, which);
     if (!row) {

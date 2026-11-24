@@ -11,10 +11,10 @@
  * dagar skilde sig passtexten, och i nästan alla var databasens text den
  * bättre —
  *   - stavning rättad ("Uppvrämning", "Trökskelintervaller"),
- *   - sjukdagar märkta ("Vila, förkyld" där PDF:ens mall bara säger
- *     "Finnkamp" eller "Möte åk 1 08.00"),
- *   - en tränarkommentar skriven i SVART i måndagsrutan (12/10), som
- *     tolkningen inte kan skilja från passtext.
+ *   - dagtypen förtydligad i texten där PDF:ens mall bara har skolans
+ *     förifyllda händelse ("Finnkamp", "Möte åk 1 08.00"),
+ *   - en tränarkommentar skriven i svart (läses numera som tränarkommentar,
+ *     se web/api/_diary_pdf.py).
  * Därför: nya dagar och tomma fält fylls i, och dagar som skiljer sig visas
  * sida vid sida och ersätts bara om någon väljer det. Kommentarerna (grönt
  * och rosa) stämde på 72 av 73 dagar.
@@ -24,12 +24,18 @@
  *   Anteckningen: notes + notes_good/bad_text + tecken (grönt och rosa).
  * En dag kan alltså få anteckningen ifylld men behålla sin passtext.
  *
- * ALDRIG RÖRT: day_type på en befintlig rad, coach_notes, känsla/motivation/
- * sömn (ifyllda i appen) och kopplingarna till pass och plan. */
+ * TRÄNARKOMMENTAREN (coach_notes, blå text eller signerad svart text — se
+ * web/api/_diary_pdf.py) fylls i bara när fältet är tomt. Den kan vara
+ * skriven eller ändrad i appen, och den är tränarens, inte löparens — ett
+ * inskick ersätter den aldrig och den visas inte som en skillnad.
+ *
+ * ALDRIG RÖRT: day_type på en befintlig rad, känsla/motivation/sömn (ifyllda
+ * i appen) och kopplingarna till pass och plan. */
 
 export type ParsedDiaryDay = {
   entry_date: string;
   session_log: string | null;
+  coach_notes: string | null;
   notes: string | null;
   notes_good_text: string | null;
   notes_bad_text: string | null;
@@ -41,6 +47,7 @@ export type ExistingDiaryRow = {
   id: string;
   entry_date: string;
   session_log: string | null;
+  coach_notes: string | null;
   notes: string | null;
   notes_good_text: string | null;
   notes_bad_text: string | null;
@@ -56,10 +63,12 @@ export type DayChange = {
   kind: "new" | "fill" | "same" | "differs";
   log: PartState;
   note: PartState;
+  /** Bara "fill" eller "none" — se TRÄNARKOMMENTAREN ovan. */
+  coach: "fill" | "none";
   /** Bara för "differs": det som finns. */
   before?: { log: string | null; note: string | null };
   /** Det PDF:en säger. */
-  after: { log: string | null; note: string | null };
+  after: { log: string | null; note: string | null; coach: string | null };
 };
 
 /** Jämförbar text: bara bokstäver och siffror, gemener. Mellanslag,
@@ -91,7 +100,7 @@ export function similarity(a: string, b: string): number {
  * Uppmätt 2026-11-24 på skolårsfilen 26/27: 14 av 31 avvikande passtexter
  * låg på 0,88–0,99 ("Uppvrämning", "Trökskelintervaller", "ängårdsbergen");
  * under 0,85 låg de där innehållet faktiskt skilde sig (mallens "Finnkamp"
- * mot "Vila, förkyld", 0,00; en tränarkommentar mot passet, 0,46). Det som
+ * mot hennes egen text, 0,00; en tränarkommentar mot passet, 0,46). Det som
  * finns behålls i båda fallen — gränsen avgör bara om dagen visas som en
  * skillnad att ta ställning till. */
 const SAME_ENOUGH = 0.85;
@@ -108,13 +117,15 @@ export function diffDiary(parsed: ParsedDiaryDay[], existing: ExistingDiaryRow[]
   const byDate = new Map(existing.map((r) => [r.entry_date, r]));
   return parsed.map((p) => {
     const row = byDate.get(p.entry_date);
+    const coach: "fill" | "none" = p.coach_notes && !normText(row?.coach_notes) ? "fill" : "none";
     if (!row || (!normText(row.session_log) && !normText(row.notes))) {
       return {
         date: p.entry_date,
         kind: "new",
         log: p.session_log ? "fill" : "none",
         note: p.notes ? "fill" : "none",
-        after: { log: p.session_log, note: p.notes },
+        coach,
+        after: { log: p.session_log, note: p.notes, coach: p.coach_notes },
       };
     }
     const log = part(row.session_log, p.session_log);
@@ -128,13 +139,19 @@ export function diffDiary(parsed: ParsedDiaryDay[], existing: ExistingDiaryRow[]
       ? part(`${row.notes_good_text ?? ""} ${row.notes_bad_text ?? ""}`, `${p.notes_good_text ?? ""} ${p.notes_bad_text ?? ""}`)
       : part(row.notes, p.notes);
     if (note === "same" && !hasTone && (p.notes_good_text || p.notes_bad_text)) note = "fill";
-    const kind = log === "differs" || note === "differs" ? "differs" : log === "fill" || note === "fill" ? "fill" : "same";
+    const kind =
+      log === "differs" || note === "differs"
+        ? "differs"
+        : log === "fill" || note === "fill" || coach === "fill"
+          ? "fill"
+          : "same";
     return {
       date: p.entry_date,
       kind,
       log,
       note,
-      after: { log: p.session_log, note: p.notes },
+      coach,
+      after: { log: p.session_log, note: p.notes, coach: p.coach_notes },
       ...(kind === "differs" ? { before: { log: row.session_log, note: row.notes } } : {}),
     };
   });
@@ -156,9 +173,13 @@ export function dayTypeFor(log: string | null, notes: string | null): "training"
 }
 
 /** Fälten som skrivs för en del. */
-export function fieldsFor(p: ParsedDiaryDay, which: { log: boolean; note: boolean }): Record<string, unknown> {
+export function fieldsFor(
+  p: ParsedDiaryDay,
+  which: { log: boolean; note: boolean; coach: boolean },
+): Record<string, unknown> {
   return {
     ...(which.log ? { session_log: p.session_log } : {}),
+    ...(which.coach ? { coach_notes: p.coach_notes } : {}),
     ...(which.note
       ? {
           notes: p.notes,

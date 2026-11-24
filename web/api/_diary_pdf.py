@@ -10,8 +10,17 @@ Dagboken följer FIG:s mall:
     svart = passet           -> session_log
     grönt = bra kommentarer  -> notes_good_text / notes_good_chars
     rosa  = mindre bra       -> notes_bad_text / notes_bad_chars
-    blått = tränarens kommentarer, läses inte
+    blått = tränarens kommentarer -> coach_notes
+    rött  = skolans markeringar ("Friidrotts-VM i A112"), läses inte
 Grönt och rosa i läsordning blir `notes`, som vid importerna för hand.
+
+TRÄNARKOMMENTARER I SVART (2026-11-24). Tränaren skriver nästan alltid i
+blått (27 kommentarer i skolårsfilen 25/26, 5 i 26/27), men en gång per fil
+i svart — överst i måndagsrutan, före passet: några meningar riktade till
+löparen, avslutade med tränarens initialer. På färgen blev den passtext. Den känns igen på att den (1) står först i rutan,
+(2) slutar med en signatur på två–tre versaler och (3) tilltalar löparen
+("du", "dig", "Alice"). Alla tre krävs: "Folksam GP Göteborg" slutar också
+på versaler, men tilltalar ingen.
 
 ÅRTALET. PDF:en har bara veckonummer. Skriptet hårdkodade årtal per filnamn;
 här räknas det fram ur veckornas ordning: veckorna står nyast först, och
@@ -32,7 +41,20 @@ from typing import Optional
 
 import fitz  # PyMuPDF
 
-GREEN, PINK, BLACK = 0x00FF00, 0xFF00FF, 0x000000
+GREEN, PINK, BLACK, BLUE = 0x00FF00, 0xFF00FF, 0x000000, 0x0000FF
+
+# Svart text först i rutan, fram till och med en signatur ("… där. MH").
+COACH_LEAD = re.compile(r"^(?P<c>.{8,600}?[.!,]?\s*\b[A-ZÅÄÖ]{2,3})(?:\s+(?P<rest>\S.*))?$", re.S)
+ADDRESSES = re.compile(r"\b(du|dig|din|dina|ditt|Alice)\b", re.I)
+
+
+def split_coach_lead(black: str) -> tuple[Optional[str], str]:
+    """(tränarkommentar, resten) ur rutans svarta text, se TRÄNARKOMMENTARER
+    I SVART överst."""
+    m = COACH_LEAD.match(black.strip())
+    if not m or not ADDRESSES.search(m.group("c")):
+        return None, black
+    return m.group("c").strip(), (m.group("rest") or "").strip()
 
 
 def _vsegs(p) -> list[tuple[int, float, float]]:
@@ -57,7 +79,7 @@ def _cells(doc) -> list[tuple[int, int, dict]]:
     sparat i `weeks`."""
     weeks: list[int] = []
     out: dict[tuple[int, int], dict] = collections.defaultdict(
-        lambda: {"black": "", "green": "", "pink": "", "note": ""}
+        lambda: {"black": "", "green": "", "pink": "", "note": "", "coach": ""}
     )
     grid = None
     for p in doc:
@@ -113,7 +135,13 @@ def _cells(doc) -> list[tuple[int, int, dict]]:
                         cur = idx
             if cur is None:
                 continue
-            kind = "green" if c == GREEN else "pink" if c == PINK else "black" if c == BLACK else None
+            kind = (
+                "green" if c == GREEN
+                else "pink" if c == PINK
+                else "black" if c == BLACK
+                else "coach" if c == BLUE
+                else None
+            )
             if not kind:
                 continue
             key = (cur, col)
@@ -167,8 +195,8 @@ def _clean(s: str) -> Optional[str]:
 
 def parse_diary_pdf(data: bytes, today: dt.date) -> list[dict]:
     """En post per datum med text, sorterad på datum:
-    {entry_date, session_log, notes, notes_good_text, notes_bad_text,
-     notes_good_chars, notes_bad_chars}."""
+    {entry_date, session_log, coach_notes, notes, notes_good_text,
+     notes_bad_text, notes_good_chars, notes_bad_chars}."""
     doc = fitz.open(stream=data, filetype="pdf")
     cells, weeks = _cells(doc)
     written = {w for w, d, v in cells if v["green"].strip() or v["pink"].strip()}
@@ -185,15 +213,18 @@ def parse_diary_pdf(data: bytes, today: dt.date) -> list[dict]:
         if key in by_date:  # samma vecka två gånger i filen: första vinner
             continue
         green, pink = _clean(v["green"]), _clean(v["pink"])
+        lead, black = split_coach_lead(_clean(v["black"]) or "")
+        coach = " ".join(x for x in (lead, _clean(v["coach"])) if x) or None
         row = {
             "entry_date": key,
-            "session_log": _clean(v["black"]),
+            "session_log": _clean(black),
+            "coach_notes": coach,
             "notes": _clean(v["note"]),
             "notes_good_text": green,
             "notes_bad_text": pink,
             "notes_good_chars": len(green or ""),
             "notes_bad_chars": len(pink or ""),
         }
-        if row["session_log"] or row["notes"]:
+        if row["session_log"] or row["notes"] or row["coach_notes"]:
             by_date[key] = row
     return [by_date[k] for k in sorted(by_date)]
