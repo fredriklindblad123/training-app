@@ -46,7 +46,7 @@ async function syncItemsIntoBlock(
   const { data: items } = await supabase
     .from("week_template_items")
     .select(
-      "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, " +
+      "weekday, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, athlete_ids, " +
         "template_rep_groups(sort_order, reps, distance_meters, duration_seconds, target_pace_seconds_per_km, target_hr_low, target_hr_high, recovery_seconds, recovery_kind, note)",
     )
     .eq("block_id", block.id);
@@ -62,8 +62,12 @@ async function syncItemsIntoBlock(
   const existingKeys = new Set((existing ?? []).map((w) => `${w.scheduled_date}|${w.slot ?? 1}`));
 
   const templateItems: TemplateItem[] = (
-    items as unknown as (TemplateItem & { template_rep_groups: RepGroupInput[] | null })[]
-  ).map((it) => ({
+    items as unknown as (TemplateItem & { template_rep_groups: RepGroupInput[] | null; athlete_ids: string[] | null })[]
+  )
+    // Bara pass som gäller den här löparen (2026-11-26): athlete_ids null =
+    // alla löpare på blocket.
+    .filter((it) => it.athlete_ids == null || it.athlete_ids.includes(userId))
+    .map((it) => ({
     weekday: it.weekday,
     slot: it.slot,
     workout_type: it.workout_type,

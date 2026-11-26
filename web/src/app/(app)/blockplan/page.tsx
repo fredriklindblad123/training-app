@@ -35,6 +35,9 @@ import {
   addTemplateRepGroup,
   deletePlannedPass,
   removePatternItem,
+  removeAdjustedForAthlete,
+  setPatternItemAthlete,
+  updatePatternItem,
   deleteTemplateRepGroup,
   removeAthleteFromPass,
   updateTemplateRepGroup,
@@ -78,6 +81,9 @@ type TemplateItemRow = {
   title: string | null;
   description: string | null;
   training_factor: string | null;
+  target_duration_seconds?: number | null;
+  /** null = alla löpare på blocket (2026-11-26). */
+  athlete_ids?: string[] | null;
   template_rep_groups?: RepGroupRow[] | null;
 };
 
@@ -102,7 +108,10 @@ function BlockWeekSection({
   blockAthletes,
   athletesById,
   athleteFilter,
+  passes = [],
 }: {
+  /** Blockets alla planerade pass (alla löpare), till veckomönstret. */
+  passes?: PlannedPassRow[];
   block: BlockRow;
   weeks: PlanWeek[];
   canEdit: boolean;
@@ -141,7 +150,16 @@ function BlockWeekSection({
         )}
       </summary>
 
-      {canEdit && <WeekPattern block={block} items={items} />}
+      {canEdit && (
+        <WeekPattern
+          block={block}
+          items={items}
+          athletes={(block.season_block_athletes ?? [])
+            .map((r) => athletesById.get(r.athlete_id))
+            .filter((a): a is AthleteOption => a != null)}
+          passes={passes}
+        />
+      )}
 
       {/* Blocket börjar på innevarande vecka (2026-11-21, begärt). Veckorna
           som redan passerat ligger hopfällda överst och går att fälla ut. */}
@@ -179,10 +197,23 @@ function BlockWeekSection({
  * fick läggas in dag för dag. */
 const WEEKDAY_NAMES = ["Måndag", "Tisdag", "Onsdag", "Torsdag", "Fredag", "Lördag", "Söndag"];
 
-function WeekPattern({ block, items }: { block: BlockRow; items: TemplateItemRow[] }) {
+function WeekPattern({
+  block,
+  items,
+  athletes,
+  passes,
+}: {
+  block: BlockRow;
+  items: TemplateItemRow[];
+  /** Alla löpare på blocket, oavsett vilken löpare vyn är filtrerad på. */
+  athletes: AthleteOption[];
+  /** Blockets planerade pass, alla löpare — för att räkna handjusterade. */
+  passes: PlannedPassRow[];
+}) {
   const today = todayKey();
   const from = today > block.start_date ? today : block.start_date;
   const ended = block.end_date < today;
+  const weekdayOfKey = (k: string) => ((new Date(`${k}T12:00:00Z`).getUTCDay() + 6) % 7) + 1;
   const input = "h-11 rounded-[10px] border border-[var(--line)] bg-[var(--surface)] px-3 text-base text-[var(--foreground)]";
   return (
     <div className="mt-3 flex flex-col gap-2.5 rounded-[12px] bg-[var(--surface-raised)] p-3">
@@ -191,34 +222,167 @@ function WeekPattern({ block, items }: { block: BlockRow; items: TemplateItemRow
         {WEEKDAY_NAMES.map((name, i) => {
           const day = items.filter((it) => it.weekday === i + 1).sort((a, b) => a.slot - b.slot);
           return (
-            <div key={name} className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-2 border-t border-[var(--line)] py-1.5 first:border-t-0">
+            <div key={name} className="grid grid-cols-[40px_minmax(0,1fr)] items-start gap-2 border-t border-[var(--line)] py-1.5 first:border-t-0">
               <span className="pt-1 text-sm text-[var(--ink-3)]">{name.slice(0, 3)}</span>
               <span className="flex flex-col gap-1">
                 {day.length === 0 ? (
                   <span className="pt-1 text-sm text-[var(--ink-3)]">vila</span>
                 ) : (
-                  day.map((it) => (
-                    <span key={it.id} className="flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-2 text-sm text-[var(--foreground)]">
-                        <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: workoutTypeColorVar(it.workout_type) ?? "var(--ink-3)" }} />
-                        <span className="truncate">{it.title || WORKOUT_LABELS[it.workout_type as WorkoutType] || it.workout_type}</span>
+                  day.map((it) => {
+                    const ids = it.athlete_ids ?? athletes.map((a) => a.id);
+                    const subset = it.athlete_ids != null;
+                    const future = passes.filter(
+                      (r) => r.slot === it.slot && r.scheduled_date >= today && weekdayOfKey(r.scheduled_date) === it.weekday,
+                    );
+                    const label = it.title || WORKOUT_LABELS[it.workout_type as WorkoutType] || it.workout_type;
+                    return (
+                      <span key={it.id} className="flex items-start justify-between gap-1">
+                        {/* Passet fälls ut (2026-11-26): vilka löpare det gäller och
+                            vad det är. Raden visar bara avvikelsen — "bara Alice,
+                            Emma" — inte alla namn varje gång. */}
+                        <details className="group/it min-w-0 flex-1">
+                          <summary className="flex min-h-9 cursor-pointer list-none flex-col justify-center text-sm [&::-webkit-details-marker]:hidden">
+                            <span className="flex min-w-0 items-center gap-2 text-[var(--foreground)]">
+                              <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: workoutTypeColorVar(it.workout_type) ?? "var(--ink-3)" }} />
+                              <span className="truncate">{label}</span>
+                              <span aria-hidden className="text-[var(--ink-3)] transition-transform group-open/it:rotate-90">›</span>
+                            </span>
+                            {subset && (
+                              <span className="pl-4 text-xs text-[var(--ink-3)]">
+                                {ids.length === 0
+                                  ? "ingen löpare"
+                                  : `bara ${athletes.filter((a) => ids.includes(a.id)).map((a) => a.fullName ?? "namnlös").join(", ")}`}
+                              </span>
+                            )}
+                          </summary>
+                          {!ended && (
+                            <div className="mt-1 mb-2 flex flex-col gap-3 rounded-[10px] bg-[var(--surface)] p-3">
+                              {athletes.length > 0 && (
+                                <div className="flex flex-col gap-1.5">
+                                  <span className="text-xs text-[var(--ink-3)]">
+                                    Löpare · tryck för att ta med eller ta bort från {formatDateShort(from)}
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {athletes.map((a) => {
+                                      const on = ids.includes(a.id);
+                                      return (
+                                        <form key={a.id} action={setPatternItemAthlete}>
+                                          <input type="hidden" name="item_id" value={it.id} />
+                                          <input type="hidden" name="athlete_id" value={a.id} />
+                                          <input type="hidden" name="include" value={on ? "0" : "1"} />
+                                          <button
+                                            type="submit"
+                                            aria-pressed={on}
+                                            className={`flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm ${
+                                              on
+                                                ? "border-[var(--foreground)] bg-[var(--surface-raised)] font-semibold text-[var(--foreground)]"
+                                                : "border-[var(--line)] text-[var(--ink-3)] line-through"
+                                            }`}
+                                          >
+                                            {a.fullName ?? "namnlös"}
+                                          </button>
+                                        </form>
+                                      );
+                                    })}
+                                  </div>
+                                  {athletes
+                                    .filter((a) => !ids.includes(a.id))
+                                    .map((a) => {
+                                      const left = future.filter((r) => r.user_id === a.id && r.status === "modified").length;
+                                      return left > 0 ? (
+                                        <form key={a.id} action={removeAdjustedForAthlete} className="flex flex-wrap items-center gap-2 text-xs text-[var(--ink-2)]">
+                                          <input type="hidden" name="item_id" value={it.id} />
+                                          <input type="hidden" name="athlete_id" value={a.id} />
+                                          <span>
+                                            {a.fullName} har {left} handjusterade {left === 1 ? "pass" : "pass"} kvar på{" "}
+                                            {WEEKDAY_NAMES[it.weekday - 1].toLowerCase()}arna.
+                                          </span>
+                                          <button type="submit" className="underline underline-offset-2">
+                                            Ta bort dem också
+                                          </button>
+                                        </form>
+                                      ) : null;
+                                    })}
+                                </div>
+                              )}
+                              <form action={updatePatternItem} className="flex flex-col gap-2.5 border-t border-[var(--line)] pt-3">
+                                <input type="hidden" name="item_id" value={it.id} />
+                                <span className="text-xs text-[var(--ink-3)]">Ändra passet från {formatDateShort(from)}</span>
+                                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_6rem]">
+                                  <label className="flex flex-col gap-1 text-sm">
+                                    Passtyp
+                                    <select name="workout_type" defaultValue={it.workout_type} className={input}>
+                                      {WORKOUT_TYPES.filter((t) => t !== "rest").map((t) => (
+                                        <option key={t} value={t}>
+                                          {WORKOUT_LABELS[t]}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="flex flex-col gap-1 text-sm">
+                                    Tid (min)
+                                    <input
+                                      name="target_duration_minutes"
+                                      type="number"
+                                      min={0}
+                                      inputMode="numeric"
+                                      defaultValue={it.target_duration_seconds ? Math.round(it.target_duration_seconds / 60) : undefined}
+                                      className={input}
+                                    />
+                                  </label>
+                                </div>
+                                <label className="flex flex-col gap-1 text-sm">
+                                  Rubrik
+                                  <input name="title" defaultValue={it.title ?? ""} className={input} />
+                                </label>
+                                <label className="flex flex-col gap-1 text-sm">
+                                  Beskrivning
+                                  <textarea
+                                    name="description"
+                                    rows={2}
+                                    defaultValue={it.description ?? ""}
+                                    className="rounded-[10px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-base text-[var(--foreground)]"
+                                  />
+                                </label>
+                                {(() => {
+                                  const adjusted = future.filter((r) => r.status === "modified" && ids.includes(r.user_id));
+                                  const who = [...new Set(adjusted.map((r) => r.user_id))]
+                                    .map((id) => athletes.find((a) => a.id === id)?.fullName ?? "namnlös")
+                                    .join(", ");
+                                  return adjusted.length > 0 ? (
+                                    <label className="flex items-start gap-2 text-sm text-[var(--ink-2)]">
+                                      <input type="checkbox" name="include_adjusted" value="1" className="mt-1 h-4 w-4" />
+                                      <span>
+                                        Ändra även {adjusted.length} handjusterade pass ({who}). Annars ändras bara pass
+                                        som följer mönstret.
+                                      </span>
+                                    </label>
+                                  ) : null;
+                                })()}
+                                <button type="submit" className="flex min-h-11 items-center justify-center rounded-[10px] bg-[var(--foreground)] px-4 font-semibold text-[var(--background)]">
+                                  Spara ändringen
+                                </button>
+                              </form>
+                            </div>
+                          )}
+                        </details>
+                        {!ended && (
+                          <form action={removePatternItem}>
+                            <input type="hidden" name="item_id" value={it.id} />
+                            <input type="hidden" name="from_date" value={from} />
+                            <button
+                              type="submit"
+                              aria-label={`Ta bort ${label} från ${WEEKDAY_NAMES[it.weekday - 1].toLowerCase()}arna från ${formatDateShort(from)}`}
+                              title="Ta bort från mönstret och från kommande veckor"
+                              className="flex h-9 w-9 items-center justify-center rounded-[8px] text-[var(--ink-3)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                            >
+                              ×
+                            </button>
+                          </form>
+                        )}
                       </span>
-                      {!ended && (
-                        <form action={removePatternItem}>
-                          <input type="hidden" name="item_id" value={it.id} />
-                          <input type="hidden" name="from_date" value={from} />
-                          <button
-                            type="submit"
-                            aria-label={`Ta bort ${it.title ?? "passet"} från ${name.toLowerCase()}arna från ${formatDateShort(from)}`}
-                            title={`Ta bort från mönstret och från kommande ${name.toLowerCase()}ar`}
-                            className="flex h-8 w-8 items-center justify-center rounded-[8px] text-[var(--ink-3)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
-                          >
-                            ×
-                          </button>
-                        </form>
-                      )}
-                    </span>
-                  ))
+                    );
+                  })
                 )}
               </span>
             </div>
@@ -259,6 +423,20 @@ function WeekPattern({ block, items }: { block: BlockRow; items: TemplateItemRow
               Rubrik
               <input name="title" placeholder="t.ex. Styrka – bål och höft" className={input} />
             </label>
+            {athletes.length > 1 && (
+              <fieldset className="flex flex-col gap-1.5 text-sm">
+                <legend className="mb-1">Löpare</legend>
+                <input type="hidden" name="athletes_chosen" value="1" />
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {athletes.map((a) => (
+                    <label key={a.id} className="flex min-h-9 items-center gap-2">
+                      <input type="checkbox" name="athlete_ids" value={a.id} defaultChecked className="h-4 w-4" />
+                      {a.fullName ?? "namnlös"}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <label className="flex flex-col gap-1 text-sm">
               Beskrivning
               <textarea name="description" rows={2} placeholder="Vad passet innehåller" className="rounded-[10px] border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-base text-[var(--foreground)]" />
@@ -277,7 +455,7 @@ function WeekPattern({ block, items }: { block: BlockRow; items: TemplateItemRow
               Lägg till i veckomönstret
             </button>
             <p className="text-xs text-[var(--ink-3)]">
-              Passet läggs in den veckodagen i alla veckor från datumet till blockets slut, för alla löpare i blocket.
+              Passet läggs in den veckodagen i alla veckor från datumet till blockets slut, för de valda löparna.
               Pass som redan ligger på samma dag och plats skrivs inte över. × tar bort ett pass ur mönstret och ur
               kommande veckor; pass som ändrats för hand eller redan gjorts blir kvar.
             </p>
@@ -787,7 +965,7 @@ async function BlockplanOverview({
       ? await supabase
           .from("season_blocks")
           .select(
-            "id, name, period, phase, start_date, end_date, week_template_items(id, weekday, slot, workout_type, title, description, training_factor), season_block_athletes(athlete_id)",
+            "id, name, period, phase, start_date, end_date, week_template_items(id, weekday, slot, workout_type, title, description, training_factor, target_duration_seconds, athlete_ids), season_block_athletes(athlete_id)",
           )
           .in("id", blockIds)
           .order("start_date")
@@ -824,6 +1002,7 @@ async function BlockplanOverview({
             blockAthletes={blockAthletes}
             athletesById={athletesById}
             athleteFilter="alla"
+            passes={passesByBlock.get(b.id) ?? []}
           />
         );
       })}
@@ -1125,6 +1304,7 @@ export default async function BlockplanPage() {
                 blockAthletes={blockAthletes}
                 athletesById={athletesById}
                 athleteFilter={scopedUserId}
+                passes={passesByBlock.get(b.id) ?? []}
               />
 
               {canEdit && repEditableItems.length > 0 && (
