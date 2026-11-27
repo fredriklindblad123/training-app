@@ -679,11 +679,23 @@ export async function updatePatternItem(formData: FormData) {
   if (!item) return;
 
   const minutes = num(formData, "target_duration_minutes");
+  /* Byts passtypen följer träningsfaktorn med (2026-11-27). Tisdagen bytte
+     från intervall till tröskel men behöll faktorn "Intervall", som sedan
+     stod på varje tisdagspass. Typer utan självklar faktor får ingen. */
+  const FACTOR_FOR_TYPE: Record<string, string | null> = {
+    easy: "endurance_aerob_distans",
+    long_run: "endurance_aerob_distans",
+    threshold: "endurance_aerob_troskel",
+    interval: "endurance_aerob_intervall",
+    cross_training: "alternativ_traning",
+    hurdles: "koordination",
+  };
   const fields = {
     workout_type: workoutType,
     title: str(formData, "title"),
     description: str(formData, "description"),
     target_duration_seconds: minutes != null ? Math.round(minutes * 60) : null,
+    ...(workoutType !== item.workout_type ? { training_factor: FACTOR_FOR_TYPE[workoutType] ?? null } : {}),
   };
   const { error } = await supabase.from("week_template_items").update(fields).eq("id", itemId);
   if (error) return;
