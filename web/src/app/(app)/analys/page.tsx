@@ -688,14 +688,8 @@ export default async function AnalysPage({
   const themes = themeTable(themeNotes, 3);
   const activeTheme = THEMES.find((t) => t.key === tema) ?? null;
   const activeType = themes.categories.find((c) => c.category === tematyp)?.category ?? null;
-  const themeQuotes =
-    activeTheme && activeType
-      ? themeNotes
-          .filter((n) => n.category === activeType && activeTheme.re.test(n.text))
-          .reverse()
-      : [];
   const themeHref = (t: string | null, c: string | null) =>
-    `${href({})}${t && c ? `&tema=${t}&tematyp=${c}` : ""}#teman`;
+    `${href({})}${t ? `&tema=${t}` : ""}${c ? `&tematyp=${c}` : ""}#teman`;
   const selThemeHref = (t: string | null) =>
     `${href({})}&kc=${selCat}&kb=${selBlock}${selTone ? `&kt=${selTone}` : ""}${t ? `&tema=${t}` : ""}#teman`;
   const toneHref = (cat: string | null, blk: "nu" | "jmf", tone: string | null) =>
@@ -1318,10 +1312,10 @@ export default async function AnalysPage({
             Vad anteckningarna tar upp{selLabel ? ` · ${selLabel}` : ""}
           </h3>
           <p className="-mt-1 text-xs text-[var(--ink-3)]">
-            En prick per anteckning som tar upp temat, i den färg temat skrevs:{" "}
+            En prick per anteckning som tar upp temat, på dagen den skrevs, i den färg temat skrevs:{" "}
             <span style={{ color: TONE_COLORS.bra }}>grönt</span> = bra,{" "}
             <span style={{ color: TONE_COLORS.mindre_bra }}>rosa</span> = mindre bra, grått = båda i samma
-            anteckning.
+            anteckning. Tryck på ett tema för att läsa, på en prick för dagen.
           </p>
           {selLabel ? (
             <table className="w-full table-fixed text-sm">
@@ -1381,80 +1375,135 @@ export default async function AnalysPage({
             <p className="text-sm text-[var(--ink-3)]">För få anteckningar i blocket ännu.</p>
           ) : (
             <>
-              <table className="w-full table-fixed text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-[var(--ink-3)]">
-                    <th className="w-[30%] pb-1 font-normal">Tema</th>
-                    {themes.categories.map((c) => (
-                      <th key={c.category} className="pb-1 font-normal">
-                        <span className="block truncate">
-                          {({ cross_training: "Alt.träning", interval: "Intervall" } as Record<string, string>)[c.category] ??
-                            CATEGORY_LABELS[c.category as ActivityCategory] ??
-                            c.category}
-                        </span>
-                        <span className="tabular">{c.notes} st</span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {THEMES.map((t) => (
-                    <tr key={t.key} className="border-t border-[var(--line)]">
-                      <td className="py-1.5 pr-2 text-[var(--ink-2)]">{t.label}</td>
-                      {themes.categories.map((c) => {
-                        const cell = themes.cells.get(`${t.key}|${c.category}`);
-                        const n = cell?.count ?? 0;
-                        const dots = themeNotes
-                          .filter((x) => x.category === c.category && (t.re.test(x.text) || (x.good && t.re.test(x.good)) || (x.bad && t.re.test(x.bad))))
-                          .map((x) => ({ date: x.date, tone: mentionTone(x, t.re) }));
-                        const active = activeTheme?.key === t.key && activeType === c.category;
-                        return (
-                          <td key={c.category} className="py-2 pr-1 align-top">
-                            {n === 0 ? (
-                              <span className="text-[var(--ink-3)]">–</span>
-                            ) : (
+              {/* Tidslinje per tema (2026-11-27, begärt): en rad per tema, en
+                  prick per anteckning på det datum den skrevs, i den färg
+                  temat skrevs. Svarar på "hur har höften utvecklats" — det
+                  tabellen per passtyp inte kunde, eftersom den lade ihop hela
+                  blocket i en ruta. Passtypen blev ett filter i stället. */}
+              {/* Scrollar i sidled på mobil — sex passtyper får inte plats på 390 px. */}
+              <div className="-mx-1 overflow-x-auto px-1">
+              <SegmentedSmall
+                label="Passtyp"
+                options={[
+                  { key: "alla", label: "Alla", href: themeHref(activeTheme?.key ?? null, null), active: activeType == null },
+                  ...themes.categories.map((c) => ({
+                    key: c.category,
+                    label:
+                      ({ cross_training: "Alt.träning", interval: "Intervall", long_run: "Långpass" } as Record<string, string>)[c.category] ??
+                      CATEGORY_LABELS[c.category as ActivityCategory] ??
+                      c.category,
+                    href: themeHref(activeTheme?.key ?? null, c.category),
+                    active: activeType === c.category,
+                  })),
+                ]}
+              />
+              </div>
+              {(() => {
+                const tlFrom = block.start_date > THEMES_FROM ? block.start_date : THEMES_FROM;
+                const tlTo = block.end_date < today ? block.end_date : today;
+                const t0 = Date.parse(`${tlFrom}T00:00:00Z`);
+                const spanMs = Math.max(Date.parse(`${tlTo}T00:00:00Z`) - t0, 86_400_000);
+                const x = (d: string) => ((Date.parse(`${d}T00:00:00Z`) - t0) / spanMs) * 100;
+                const pool = themeNotes.filter((n) => !activeType || n.category === activeType);
+                // Månadsstreck: första dagen i varje månad inom spannet.
+                const ticks: string[] = [];
+                for (let k = `${tlFrom.slice(0, 7)}-01`; k <= tlTo; ) {
+                  if (k >= tlFrom) ticks.push(k);
+                  const [yy, mm] = k.split("-").map(Number);
+                  k = mm === 12 ? `${yy + 1}-01-01` : `${yy}-${String(mm + 1).padStart(2, "0")}-01`;
+                }
+                const MON = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+                return (
+                  <div className="flex flex-col">
+                    {THEMES.map((t) => {
+                      const hits = pool
+                        .filter((n) => t.re.test(n.text) || (n.good && t.re.test(n.good)) || (n.bad && t.re.test(n.bad)))
+                        .map((n) => ({ date: n.date, tone: mentionTone(n, t.re), text: n.text }));
+                      const g = hits.filter((h) => h.tone === "bra").length;
+                      const p = hits.filter((h) => h.tone === "mindre_bra").length;
+                      const active = activeTheme?.key === t.key;
+                      return (
+                        <div key={t.key} className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2 border-t border-[var(--line)] py-1.5 sm:grid-cols-[9rem_minmax(0,1fr)]">
+                          <Link
+                            href={themeHref(active ? null : t.key, activeType)}
+                            scroll={false}
+                            className={`flex flex-col rounded px-1 py-0.5 text-sm ${active ? "bg-[var(--surface-raised)] font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)]"}`}
+                          >
+                            <span className="truncate">{t.label}</span>
+                            <span className="tabular text-[0.6875rem] font-normal text-[var(--ink-3)]">
+                              {hits.length === 0 ? "–" : `${g} grönt · ${p} rosa`}
+                            </span>
+                          </Link>
+                          <div className="relative h-6">
+                            <div className="absolute top-1/2 right-0 left-0 h-px bg-[var(--line)]" />
+                            {hits.map((h) => (
                               <Link
-                                href={active ? themeHref(null, null) : themeHref(t.key, c.category)}
-                                scroll={false}
-                                title={`${n} av ${cell?.notes} anteckningar — tryck för att läsa`}
-                                className={`inline-flex rounded-md p-1 ${active ? "bg-[var(--surface-raised)] ring-1 ring-[var(--foreground)]" : "hover:bg-[var(--surface-raised)]"}`}
+                                key={h.date}
+                                href={dayHref(h.date)}
+                                title={`${short(h.date)} · ${h.text.length > 120 ? `${h.text.slice(0, 120)}…` : h.text}`}
+                                aria-label={`${t.label} ${short(h.date)}${h.tone ? `, ${TONE_LABELS[h.tone]}` : ""}`}
+                                className="absolute top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center"
+                                style={{ left: `${x(h.date)}%` }}
                               >
-                                <ToneDots dots={dots} size={8} />
+                                <span
+                                  className="block h-2 w-2 rounded-full ring-1 ring-[var(--background)] sm:h-2.5 sm:w-2.5 sm:ring-2"
+                                  style={{ backgroundColor: h.tone ? TONE_COLORS[h.tone] : "var(--ink-3)" }}
+                                />
                               </Link>
-                            )}
-                          </td>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-2 border-t border-[var(--line)] pt-1 sm:grid-cols-[9rem_minmax(0,1fr)]">
+                      <span />
+                      <div className="relative h-4">
+                        {ticks.map((k) => (
+                          <span key={k} className="absolute text-[0.6875rem] text-[var(--ink-3)]" style={{ left: `${x(k)}%` }}>
+                            {MON[Number(k.slice(5, 7)) - 1]}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+              {activeTheme && (() => {
+                const quotes = themeNotes
+                  .filter(
+                    (n) =>
+                      (!activeType || n.category === activeType) &&
+                      (activeTheme.re.test(n.text) || (n.good && activeTheme.re.test(n.good)) || (n.bad && activeTheme.re.test(n.bad))),
+                  )
+                  .reverse();
+                return quotes.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <h4 className="text-sm font-medium text-[var(--foreground)]">
+                      {activeTheme.label}
+                      {activeType ? ` · ${CATEGORY_LABELS[activeType as ActivityCategory] ?? activeType}` : ""} ·{" "}
+                      {quotes.length} anteckningar, nyast först
+                    </h4>
+                    <ul className="flex flex-col divide-y divide-[var(--line)] rounded-lg border border-[var(--line)] bg-[var(--surface)]">
+                      {quotes.map((q) => {
+                        const tone = mentionTone(q, activeTheme.re);
+                        return (
+                          <li key={q.date}>
+                            <Link href={dayHref(q.date)} className="flex items-start gap-3 px-3 py-2 hover:bg-[var(--surface-raised)]">
+                              <span className="tabular w-12 shrink-0 text-xs text-[var(--ink-3)]">{short(q.date)}</span>
+                              <span
+                                aria-label={tone ? TONE_LABELS[tone] : "ingen färg"}
+                                className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: tone ? TONE_COLORS[tone] : "var(--ink-3)" }}
+                              />
+                              <span className="text-sm text-[var(--ink-2)]">”{quoteFor(q.text, activeTheme.re)}”</span>
+                            </Link>
+                          </li>
                         );
                       })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {activeTheme && activeType && themeQuotes.length > 0 && (
-                <div className="flex flex-col gap-2">
-                  <h4 className="text-sm font-medium text-[var(--foreground)]">
-                    {activeTheme.label} · {CATEGORY_LABELS[activeType as ActivityCategory] ?? activeType} ·{" "}
-                    {themeQuotes.length} anteckningar
-                  </h4>
-                  <ul className="flex flex-col divide-y divide-[var(--line)] rounded-lg border border-[var(--line)] bg-[var(--surface)]">
-                    {themeQuotes.map((q) => (
-                      <li key={q.date}>
-                        <Link href={dayHref(q.date)} className="flex items-start gap-3 px-3 py-2 hover:bg-[var(--surface-raised)]">
-                          <span className="tabular w-12 shrink-0 text-xs text-[var(--ink-3)]">{short(q.date)}</span>
-                          {(activeTheme ? mentionTone(q, activeTheme.re) : q.tone) && (
-                            <span
-                              aria-label={TONE_LABELS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!]}
-                              title={TONE_LABELS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!]}
-                              className="mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: TONE_COLORS[(activeTheme ? mentionTone(q, activeTheme.re) : q.tone)!] }}
-                            />
-                          )}
-                          <span className="text-sm text-[var(--ink-2)]">”{quoteFor(q.text, activeTheme.re)}”</span>
-                        </Link>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                    </ul>
+                  </div>
+                ) : null;
+              })()}
             </>
           )}
           <p className="text-xs text-[var(--ink-3)]">

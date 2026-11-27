@@ -75,7 +75,7 @@ export function Segmented({
  * (mått, visning) som ska få plats på en rad, intill det de styr. */
 export function SegmentedSmall({ options, label }: { options: SegmentOption[]; label: string }) {
   return (
-    <div role="group" aria-label={label} className="inline-flex rounded-[9px] bg-[var(--surface-raised)] p-[2px]">
+    <div role="group" aria-label={label} className="inline-flex shrink-0 rounded-[9px] bg-[var(--surface-raised)] p-[2px] whitespace-nowrap">
       {options.map((o) =>
         o.disabled ? (
           <span key={o.key} aria-disabled className="flex min-h-8 items-center rounded-[7px] px-2.5 text-xs text-[var(--ink-3)] opacity-60">
