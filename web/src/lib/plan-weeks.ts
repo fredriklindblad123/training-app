@@ -125,7 +125,13 @@ function groupPasses(
 ): Map<string, PassGroup> {
   const byKey = new Map<string, PlannedPassRow[]>();
   for (const r of rows) {
-    const key = `${r.scheduled_date}|${r.slot}`;
+    /* Dag + plats + PASSTYP (2026-11-27). Med bara dag + plats slogs olika
+       löpares olika pass ihop till ett kort: Nikes häck och Alices
+       alternativträning låg båda på måndagens plats 2, kortet hette "Häck"
+       och Alices genomförda cykelpass syntes som en bock på häcken. Samma
+       typ med olika rubrik (ett handjusterat pass) är fortfarande ett kort,
+       se `diverges`. */
+    const key = `${r.scheduled_date}|${r.slot}|${r.workout_type}`;
     byKey.set(key, [...(byKey.get(key) ?? []), r]);
   }
 

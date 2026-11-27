@@ -58,8 +58,11 @@ async function passRows(
   blockId: string,
   scheduledDate: string,
   slot: number,
+  /** Passtypen kortet gäller — två löpare kan ha olika pass på samma plats
+   * (se groupPasses i lib/plan-weeks.ts). Utan den gäller alla typer. */
+  workoutType?: string | null,
 ) {
-  const { data } = await supabase
+  let q = supabase
     .from("planned_workouts")
     .select(
       "id, user_id, workout_type, title, description, target_distance_meters, target_duration_seconds, target_pace_seconds_per_km, training_factor, status",
@@ -67,6 +70,8 @@ async function passRows(
     .eq("block_id", blockId)
     .eq("scheduled_date", scheduledDate)
     .eq("slot", slot);
+  if (workoutType) q = q.eq("workout_type", workoutType);
+  const { data } = await q;
   return data ?? [];
 }
 
@@ -90,9 +95,12 @@ export async function addAthleteToPass(formData: FormData) {
   const blockAthletes = await athletesForBlock(supabase, blockId);
   if (!blockAthletes.includes(athleteId)) return;
 
-  const rows = await passRows(supabase, blockId, scheduledDate, slot);
+  // Har hon redan ett pass på den platsen (av vilken typ som helst) läggs
+  // inget till — en löpare har ett pass per dag och plats.
+  const all = await passRows(supabase, blockId, scheduledDate, slot);
+  if (all.some((r) => r.user_id === athleteId)) return;
+  const rows = await passRows(supabase, blockId, scheduledDate, slot, str(formData, "workout_type"));
   if (rows.length === 0) return;
-  if (rows.some((r) => r.user_id === athleteId)) return; // redan taggad
 
   const src = rows[0];
   const { data: created } = await supabase
@@ -241,16 +249,20 @@ export async function deletePlannedPass(formData: FormData) {
   const blockId = str(formData, "block_id");
   const scheduledDate = str(formData, "scheduled_date");
   const slot = num(formData, "slot") ?? 1;
+  const workoutType = str(formData, "workout_type");
   if (!blockId || !scheduledDate) return;
 
-  // planned_rep_groups städas av on delete cascade.
-  await supabase
+  // planned_rep_groups städas av on delete cascade. Bara kortets passtyp —
+  // en annan löpares annorlunda pass på samma plats ska ligga kvar.
+  let del = supabase
     .from("planned_workouts")
     .delete()
     .eq("block_id", blockId)
     .eq("scheduled_date", scheduledDate)
     .eq("slot", slot)
     .eq("status", "planned");
+  if (workoutType) del = del.eq("workout_type", workoutType);
+  await del;
 
   refresh();
 }

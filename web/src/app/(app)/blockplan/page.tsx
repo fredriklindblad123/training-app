@@ -485,153 +485,143 @@ function WeekPassCard({
    * exakt de löpare man klickade i. */
   athleteFilter: string;
 }) {
+  /* Förenklat 2026-11-27 (begärt: "svårt att läsa"). Förut stod passtypen
+   * tre gånger (rubrik, titel, kategori), varje namn bar ett ×, och "olika
+   * per löpare" sa inte vem. Nu: rubriken en gång, en grå rad med typ, tid
+   * och plats, namnen, och allt som ändrar passet bakom "Ändra". */
   const tagged = new Set(pass.athleteIds);
   const untagged = blockAthletes.filter((a) => !tagged.has(a.id));
   const showChips = blockAthletes.length > 1;
   const minutes =
     pass.targetDurationSeconds != null ? Math.round(pass.targetDurationSeconds / 60) : null;
-  // Samma färgkälla som kalendern, dashboarden och graferna: --cat-*-
-  // variablerna via workoutTypeColorVar. Ingen egen palett här, så
-  // Blockplan aldrig kan visa en annan färg för "Tröskel" än resten av
-  // appen. `rest`/`test` saknar färg med flit (vila är ingen träning, ett
-  // test är ett testtillfälle, inte en kategori) och får appens etablerade
-  // "ingen färg"-behandling: streckat i stället för heldraget.
+  // Samma färgkälla som resten av appen (workoutTypeColorVar). Vila och
+  // test saknar färg med flit och ritas streckade.
   const typeColor = workoutTypeColorVar(pass.workoutType);
+  const typeLabel = WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType;
+  const heading = pass.title || typeLabel;
+  // Bara det rubriken inte redan säger: typ och träningsfaktor ("Distans")
+  // upprepade ofta rubriken ("Distans + styrka (bål)").
+  const flat = (x: string) => x.toLowerCase().replace(/\s+/g, "");
+  const said = (label: string) => flat(heading).startsWith(flat(label));
+  const factor = pass.trainingFactor
+    ? (TRAINING_FACTORS.find((f) => f.key === pass.trainingFactor)?.label ?? pass.trainingFactor)
+    : null;
+  const meta = [
+    !said(typeLabel) ? typeLabel : null,
+    minutes != null && !flat(heading).includes(`${minutes}min`) ? `${minutes} min` : null,
+    pass.slot > 1 ? SLOT_LABELS[pass.slot] : null,
+    factor && !said(factor) && factor !== typeLabel ? factor : null,
+  ].filter(Boolean);
+  // Vem som har ett ändrat innehåll: löpare vars rubrik eller tid skiljer
+  // sig från det vanligaste i kortet.
+  const sig = (r: PassGroup["rows"][number]) => `${r.title ?? ""}|${r.target_duration_seconds ?? ""}|${r.training_factor ?? ""}`;
+  const counts = new Map<string, number>();
+  for (const r of pass.rows) counts.set(sig(r), (counts.get(sig(r)) ?? 0) + 1);
+  const common = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const changedFor = pass.diverges
+    ? pass.rows
+        .filter((r) => sig(r) !== common)
+        .map((r) => blockAthletes.find((a) => a.id === r.user_id)?.fullName ?? "en löpare")
+    : [];
 
   return (
-    // `break-words`: kolumnen har fast bredd sedan table-fixed, så en lång
-    // passrubrik ska radbrytas i rutan i stället för att spilla ut över
-    // nästa dag.
     <div
-      className="rounded border-l-4 bg-[var(--surface-raised)] px-1.5 py-1 text-xs break-words"
+      lang="sv"
+      className="rounded border-l-4 bg-[var(--surface-raised)] px-2 py-1.5 text-xs break-words hyphens-auto"
       style={
         typeColor
           ? { borderLeftColor: typeColor }
           : { borderLeftStyle: "dashed", borderLeftColor: "currentColor" }
       }
     >
-      {/* Klick på själva passet öppnar alla dess löpare sida vid sida —
-          chipsens namn går till en enskild löpares dagvy, det här svarar på
-          "hur gick passet för dem som körde det, jämfört med varandra?"
-          (uttrycklig begäran 2026-08-22). */}
+      {/* Passet öppnar alla dess löpare sida vid sida. */}
       <Link
         href={`/blockplan/pass?block=${blockId}&date=${pass.scheduledDate}&slot=${pass.slot}&athlete=${athleteFilter}`}
-        className="block font-medium text-[var(--foreground)] underline-offset-2 hover:underline"
+        className="block text-[0.8125rem] leading-snug font-semibold text-[var(--foreground)] underline-offset-2 hover:underline"
       >
-        {WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType}
-        {pass.title && (
-          <span className="block font-normal text-[var(--ink-2)]">{pass.title}</span>
-        )}
+        {heading}
       </Link>
-      {pass.trainingFactor && (
-        <div className="text-[10px] text-[var(--ink-3)]">
-          {TRAINING_FACTORS.find((f) => f.key === pass.trainingFactor)?.label ?? pass.trainingFactor}
-        </div>
-      )}
-      {minutes != null && <div className="text-[10px] text-[var(--ink-3)]">{minutes} min</div>}
-      {pass.slot > 1 && (
-        <div className="text-[10px] text-[var(--ink-3)]">{SLOT_LABELS[pass.slot]}</div>
-      )}
-      {/* Skiljer sig innehållet åt mellan löparna (efter en ändring med
-          scope "bara en") får kortet inte se ut att gälla alla. */}
-      {pass.diverges && (
-        <div className="text-[10px] italic text-[var(--ink-2)]">olika per löpare</div>
+      {meta.length > 0 && <div className="text-[0.6875rem] text-[var(--ink-3)]">{meta.join(" · ")}</div>}
+      {changedFor.length > 0 && (
+        <div className="text-[0.6875rem] text-[var(--ink-2)]">ändrat för {changedFor.join(", ")}</div>
       )}
 
       {showChips && (
-        <div className="mt-1 flex flex-wrap gap-0.5">
+        <div className="mt-1 flex flex-wrap gap-x-1.5 gap-y-0.5 text-[0.6875rem]">
           {blockAthletes
             .filter((a) => tagged.has(a.id))
             .map((a) => {
               const outcome = pass.outcomeByAthlete[a.id];
               const done = outcome === "genomfört" || outcome === "avvikande typ";
               return (
-              <span
-                key={a.id}
-                className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] ${
-                  done
-                    ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100"
-                    : "bg-[var(--line)] text-[var(--ink-2)]"
-                }`}
-              >
-                {/* Ingen länk på namnet: klick på passet självt går till
-                    dagsvyn med en kolumn per löpare, vilket täcker både den
-                    enskilda och jämförelsen. Chipset bär bara VEM och
-                    HUR DET GICK. */}
                 <span
+                  key={a.id}
                   title={`${a.fullName ?? "Löparen"}${outcome ? ` — ${outcome}` : ""}`}
+                  className={done ? "font-medium text-[var(--foreground)]" : "text-[var(--ink-2)]"}
                 >
                   {a.fullName ?? "namnlös"}
-                  {done ? " ✓" : outcome === "ej genomfört" ? " ·" : ""}
+                  {/* Neutral bock (B4): genomfört är en uppgift, inget betyg. */}
+                  {done && <span aria-label="genomfört"> ✓</span>}
                 </span>
-                {canEdit && (
-                  <form action={removeAthleteFromPass} className="inline">
-                    <input type="hidden" name="block_id" value={blockId} />
-                    <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
-                    <input type="hidden" name="slot" value={pass.slot} />
-                    <input type="hidden" name="athlete_id" value={a.id} />
-                    <button
-                      type="submit"
-                      title={`Ta bort ${a.fullName ?? "löparen"} från passet`}
-                      className="text-[var(--ink-3)] hover:text-[var(--status-concern)]"
-                    >
-                      ×
-                    </button>
-                  </form>
-                )}
-              </span>
               );
             })}
         </div>
       )}
 
       {canEdit && (
-        <div className="mt-1 flex flex-wrap items-start gap-x-2 gap-y-0.5">
-          {/* "öppna" är borttaget: detaljerad planering och utfall görs i
-              kalenderns dagvy, som chipsens namn länkar till. Kvar här är
-              bara det som handlar om PASSET som helhet — vilka löpare som
-              är med, och att ta bort det. */}
-          {showChips && untagged.length > 0 && (
-            <details className="min-w-0">
-              <summary className="cursor-pointer whitespace-nowrap text-[10px] text-[var(--ink-3)] hover:text-[var(--foreground)]">
-                + löpare
-              </summary>
-              <form action={addAthleteToPass} className="mt-1 flex w-28 items-center gap-1">
+        <details className="mt-1">
+          <summary className="cursor-pointer list-none text-[0.6875rem] text-[var(--ink-3)] hover:text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
+            Ändra
+          </summary>
+          <div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--line)] pt-1.5">
+            {showChips &&
+              blockAthletes
+                .filter((a) => tagged.has(a.id))
+                .map((a) => (
+                  <form key={a.id} action={removeAthleteFromPass} className="flex items-center justify-between gap-1">
+                    <input type="hidden" name="block_id" value={blockId} />
+                    <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+                    <input type="hidden" name="slot" value={pass.slot} />
+                    <input type="hidden" name="athlete_id" value={a.id} />
+                    <span className="text-[var(--ink-2)]">{a.fullName ?? "namnlös"}</span>
+                    <button
+                      type="submit"
+                      title={`Ta bort ${a.fullName ?? "löparen"} från passet`}
+                      className="rounded px-1 text-[var(--ink-3)] hover:text-[var(--foreground)]"
+                    >
+                      ta bort
+                    </button>
+                  </form>
+                ))}
+            {showChips && untagged.length > 0 && (
+              <form action={addAthleteToPass} className="flex items-center gap-1">
                 <input type="hidden" name="block_id" value={blockId} />
                 <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
                 <input type="hidden" name="slot" value={pass.slot} />
-                <select name="athlete_id" className={`${input} w-full`} aria-label="Lägg till löpare">
+                <input type="hidden" name="workout_type" value={pass.workoutType} />
+                <select name="athlete_id" className={`${input} min-w-0 flex-1`} aria-label="Lägg till löpare">
                   {untagged.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.fullName ?? "namnlös löpare"}
                     </option>
                   ))}
                 </select>
-                <button type="submit" className="rounded bg-[var(--line)] px-1.5 py-0.5 text-[11px] hover:bg-[var(--ink-3)]">
-                  +
+                <button type="submit" className="rounded bg-[var(--line)] px-1.5 py-0.5 hover:bg-[var(--ink-3)]">
+                  + löpare
                 </button>
               </form>
-            </details>
-          )}
-          {/* Tar bort passet för alla löpare på det. Att ta bort det för EN
-              löpare görs med × på hennes chip ovan. */}
-          <form action={deletePlannedPass}>
-            <input type="hidden" name="block_id" value={blockId} />
-            <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
-            <input type="hidden" name="slot" value={pass.slot} />
-            <button
-              type="submit"
-              title={
-                pass.athleteIds.length > 1
-                  ? "Ta bort passet för alla löpare på det"
-                  : "Ta bort passet"
-              }
-              className="whitespace-nowrap text-[10px] text-[var(--ink-3)] hover:text-[var(--status-concern)]"
-            >
-              ta bort{pass.athleteIds.length > 1 ? " (alla)" : ""}
-            </button>
-          </form>
-        </div>
+            )}
+            <form action={deletePlannedPass}>
+              <input type="hidden" name="block_id" value={blockId} />
+              <input type="hidden" name="scheduled_date" value={pass.scheduledDate} />
+              <input type="hidden" name="slot" value={pass.slot} />
+              <input type="hidden" name="workout_type" value={pass.workoutType} />
+              <button type="submit" className="text-[var(--ink-3)] underline-offset-2 hover:text-[var(--foreground)] hover:underline">
+                Ta bort passet{pass.athleteIds.length > 1 ? " för alla" : ""}
+              </button>
+            </form>
+          </div>
+        </details>
       )}
     </div>
   );
