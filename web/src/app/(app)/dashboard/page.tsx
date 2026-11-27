@@ -1,3 +1,4 @@
+import { matchPlanToSessions, summarizeCompliance, type PlannedWorkout } from "@/lib/plan-matching";
 import { sessionKm } from "@/lib/block-analysis";
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
@@ -449,7 +450,7 @@ export default async function DashboardPage({
   const { data: blockPlanRows } = block
     ? await supabase
         .from("planned_workouts")
-        .select("scheduled_date, workout_type, target_distance_meters, target_duration_seconds")
+        .select("id, slot, title, scheduled_date, workout_type, target_distance_meters, target_duration_seconds")
         .eq("user_id", scopedUserId)
         .gte("scheduled_date", block.start)
         .lte("scheduled_date", block.end)
@@ -467,6 +468,29 @@ export default async function DashboardPage({
           return {
             km: ss.reduce((n, x) => n + sessionKm(x), 0),
             min: ss.reduce((n, x) => n + trainingSeconds(x), 0) / 60,
+          };
+        })()
+      : null;
+  /* Passen mot planen från blockets start (2026-11-27, begärt). Distans och
+     tid går bara att jämföra från den dag planen fick siffror (16/11 för
+     Alice — veckorna före har bara passnamn), men varje planerat pass har en
+     typ, så antalet gjorda pass går att räkna för hela blocket. Samma
+     matchning som veckobokslutet och Block (matchPlanToSessions).
+     Styrka räknas inte: den loggas sällan med klockan och hade sett ut som
+     missade pass. */
+  const blockPasses =
+    block && vsPlan
+      ? (() => {
+          const plans = ((blockPlanRows ?? []) as unknown as PlannedWorkout[]).filter(
+            (p) => p.scheduled_date >= block.start && p.scheduled_date <= vsPlan.to && p.workout_type !== "strength",
+          );
+          const ss = allSessions.filter((x) => x.date >= block.start && x.date <= vsPlan.to);
+          const matches = matchPlanToSessions(plans, ss);
+          const c = summarizeCompliance(matches);
+          return {
+            planned: c.plannedCount,
+            done: c.completedCount,
+            otherType: matches.filter((m) => m.outcome === "avvikande typ").length,
           };
         })()
       : null;
@@ -593,8 +617,14 @@ export default async function DashboardPage({
                     </span>
                   </span>
                 )}
+                {blockPasses && blockPasses.planned > 0 && (
+                  <span className="tabular text-xs text-[var(--ink-2)]">
+                    Pass: {blockPasses.done} av {blockPasses.planned} planerade
+                    {blockPasses.otherType > 0 ? ` · ${blockPasses.otherType} med annan typ` : ""} · styrka räknas inte
+                  </span>
+                )}
                 <span className="tabular text-xs text-[var(--ink-2)]">
-                  Mot planen {vsPlan.from > block.start ? `sedan ${formatDateShort(vsPlan.from)}` : ""}:{" "}
+                  Distans och tid mot planen {vsPlan.from > block.start ? `sedan ${formatDateShort(vsPlan.from)}` : ""}:{" "}
                   {formatNumber(vsPlan.doneKm, 1)} av {formatNumber(vsPlan.plannedKm, 1)} km ·{" "}
                   {formatMinutes(vsPlan.doneMin)} av {formatMinutes(vsPlan.plannedMin)}
                 </span>
@@ -616,7 +646,10 @@ export default async function DashboardPage({
             </p>
             {vsPlan && block && (
               <p>
-                Blocket hittills: {block.name}, {formatDateShort(vsPlan.from)}–{formatDateShort(vsPlan.to)}. Hela
+                Blocket hittills: {block.name}, {formatDateShort(block.start)}–{formatDateShort(vsPlan.to)}. Passen
+                räknas mot planen från blockets start: ett planerat pass är gjort när ett pass av samma typ finns den
+                dagen, och "annan typ" när det blev ett annat slags pass (till exempel cykel i stället för löpning).
+                Distans och tid jämförs bara från den dag planen har siffror. Hela
                 blocket är planerat till {formatNumber(vsPlan.blockPlannedKm, 1)} km och{" "}
                 {formatMinutes(vsPlan.blockPlannedMin)}.
                 {vsPlan.from > block.start
