@@ -608,14 +608,36 @@ export default async function DashboardPage({
                   </span>
                   <span className="text-xs text-[var(--ink-3)]">Blocket →</span>
                 </span>
-                {blockSoFar && (
+                {/* Planen har siffror från blockets start: en rad, gjort av
+                    planerat. Annars blockets volym för sig och jämförelsen
+                    från den dag planen fick siffror. */}
+                {vsPlan.from <= block.start ? (
                   <span className="tabular text-[var(--ink-2)]">
-                    <span className="font-semibold text-[var(--foreground)]">{formatNumber(blockSoFar.km, 1)} km</span> ·{" "}
-                    <span className="font-semibold text-[var(--foreground)]">{formatMinutes(blockSoFar.min)}</span>{" "}
+                    <span className="font-semibold text-[var(--foreground)]">{formatNumber(vsPlan.doneKm, 1)}</span> av{" "}
+                    {formatNumber(vsPlan.plannedKm, 1)} km ·{" "}
+                    <span className="font-semibold text-[var(--foreground)]">{formatMinutes(vsPlan.doneMin)}</span> av{" "}
+                    {formatMinutes(vsPlan.plannedMin)}{" "}
                     <span className="text-xs text-[var(--ink-3)]">
                       {formatDateShort(block.start)}–{formatDateShort(vsPlan.to)}
                     </span>
                   </span>
+                ) : (
+                  <>
+                    {blockSoFar && (
+                      <span className="tabular text-[var(--ink-2)]">
+                        <span className="font-semibold text-[var(--foreground)]">{formatNumber(blockSoFar.km, 1)} km</span> ·{" "}
+                        <span className="font-semibold text-[var(--foreground)]">{formatMinutes(blockSoFar.min)}</span>{" "}
+                        <span className="text-xs text-[var(--ink-3)]">
+                          {formatDateShort(block.start)}–{formatDateShort(vsPlan.to)}
+                        </span>
+                      </span>
+                    )}
+                    <span className="tabular text-xs text-[var(--ink-2)]">
+                      Distans och tid mot planen sedan {formatDateShort(vsPlan.from)}:{" "}
+                      {formatNumber(vsPlan.doneKm, 1)} av {formatNumber(vsPlan.plannedKm, 1)} km ·{" "}
+                      {formatMinutes(vsPlan.doneMin)} av {formatMinutes(vsPlan.plannedMin)}
+                    </span>
+                  </>
                 )}
                 {blockPasses && blockPasses.planned > 0 && (
                   <span className="tabular text-xs text-[var(--ink-2)]">
@@ -623,11 +645,6 @@ export default async function DashboardPage({
                     {blockPasses.otherType > 0 ? ` · ${blockPasses.otherType} med annan typ` : ""} · styrka räknas inte
                   </span>
                 )}
-                <span className="tabular text-xs text-[var(--ink-2)]">
-                  Distans och tid mot planen {vsPlan.from > block.start ? `sedan ${formatDateShort(vsPlan.from)}` : ""}:{" "}
-                  {formatNumber(vsPlan.doneKm, 1)} av {formatNumber(vsPlan.plannedKm, 1)} km ·{" "}
-                  {formatMinutes(vsPlan.doneMin)} av {formatMinutes(vsPlan.plannedMin)}
-                </span>
               </Link>
             )}
           </div>
