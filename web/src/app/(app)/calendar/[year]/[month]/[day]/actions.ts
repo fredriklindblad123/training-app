@@ -370,18 +370,26 @@ async function passSiblingIds(
 ): Promise<string[]> {
   const { data: row } = await supabase
     .from("planned_workouts")
-    .select("id, block_id, scheduled_date, slot")
+    .select("id, block_id, scheduled_date, slot, workout_type, status")
     .eq("id", workoutId)
     .maybeSingle();
   if (!row) return [];
-  if (!row.block_id) return [row.id as string];
+  /* Ett handjusterat pass ("modified") är just den löparens — det delar
+     inget innehåll med de andra (2026-11-27). Förut räknades alla "planned"
+     på samma plats som syskon även när man redigerade ett handjusterat pass,
+     så en ändring i Alices pass skrev över Nikes, Emmas och Signes. */
+  if (!row.block_id || row.status !== "planned") return [row.id as string];
 
+  // Syskon = samma pass för andra löpare: samma plats OCH samma passtyp. En
+  // annan löpares annorlunda pass på samma plats (Nikes häck, Alices
+  // alternativträning) är inte samma pass.
   const { data: siblings } = await supabase
     .from("planned_workouts")
     .select("id")
     .eq("block_id", row.block_id)
     .eq("scheduled_date", row.scheduled_date)
     .eq("slot", row.slot)
+    .eq("workout_type", row.workout_type)
     .eq("status", "planned");
 
   const ids = new Set<string>([row.id as string]);

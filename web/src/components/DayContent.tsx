@@ -1017,7 +1017,15 @@ export async function SharedPlannedDay({
 
   const groups = new Map<string, typeof planned>();
   for (const row of planned) {
-    const key = `${row.block_id ?? "utan-block"}|${row.slot ?? 1}`;
+    /* Samma gruppering som när ett pass sparas (passSiblingIds): pass som
+       följer mönstret delas på plats + passtyp, ett handjusterat pass är
+       löparens eget och får en egen redigerare med sina mål (2026-11-27 —
+       Alices distans, tid och fart syntes inte, formuläret visade Nikes). */
+    const status = (row as { status?: string }).status;
+    const key =
+      status && status !== "planned"
+        ? `egen|${row.id}`
+        : `${row.block_id ?? "utan-block"}|${row.slot ?? 1}|${row.workout_type}`;
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
 
@@ -1063,9 +1071,9 @@ export async function SharedPlannedDay({
                 ))}
               </div>
             )}
-            {/* En redigerare för hela gruppen. Vilken rad den utgår från
-                spelar ingen roll — updatePlannedWorkout skriver till alla
-                löpares rader för passet. */}
+            {/* En redigerare för gruppen. updatePlannedWorkout skriver till
+                gruppens rader: alla som följer mönstret, eller bara den
+                handjusterade löparens. */}
             <PlannedSessions
               planned={[group[0]] as PlannedRow[]}
               updateAction={updatePlannedWorkout}
