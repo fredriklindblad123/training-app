@@ -568,7 +568,8 @@ export async function DayContent({
                       <th className="pr-3 font-normal">Distans</th>
                       <th className="pr-3 font-normal">Tid</th>
                       <th className="pr-3 font-normal">Pace</th>
-                      <th className="font-normal">Puls</th>
+                      <th className="pr-3 font-normal">Snittpuls</th>
+                      <th className="font-normal">Slutpuls</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -609,6 +610,17 @@ export async function DayContent({
                         const dist = s.distance_meters ?? 0;
                         const dur = s.duration_seconds ?? 0;
                         const pace = dist > 0 ? dur / (dist / 1000) : null;
+                        /* Slutpuls (2026-11-27, begärt): pulsen i slutet av
+                           repet, samma mått som tröskelväxeln på Form. Ett
+                           sammanslaget rep är klockans varv i följd från
+                           split_index fram till nästa rad, så slutpulsen är
+                           det sista av dem. Bara för rep — i en vila eller
+                           uppvärmning betyder slutpulsen något annat. */
+                        const nextStart = rows[i + 1]?.split_index ?? Number.POSITIVE_INFINITY;
+                        const lastLap = ((a.activity_splits ?? []) as { split_index: number; hr_end: number | null }[])
+                          .filter((l) => l.split_index >= s.split_index && l.split_index < nextStart)
+                          .sort((x, y) => y.split_index - x.split_index)[0];
+                        const hrEnd = !s.is_rest && !edge && lastLap?.hr_end != null ? Math.round(Number(lastLap.hr_end)) : null;
                         return (
                           <tr
                             key={s.split_index}
@@ -620,7 +632,8 @@ export async function DayContent({
                             <td className="pr-3">{formatKm(dist)}</td>
                             <td className="pr-3">{formatDuration(dur)}</td>
                             <td className="pr-3">{formatPace(pace)}</td>
-                            <td>{s.avg_hr ? Math.round(s.avg_hr) : "–"}</td>
+                            <td className="pr-3">{s.avg_hr ? Math.round(s.avg_hr) : "–"}</td>
+                            <td className={hrEnd != null ? "font-semibold text-[var(--foreground)]" : ""}>{hrEnd ?? "–"}</td>
                           </tr>
                         );
                       });
