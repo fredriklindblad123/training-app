@@ -1,3 +1,4 @@
+import { sessionKm } from "@/lib/block-analysis";
 import { trainingSeconds, type TrainingSession } from "@/lib/sessions";
 
 /* Blocket mot planen (2026-11-21) — på Idag: hur ligger löparen till mot
@@ -67,7 +68,7 @@ export function blockVsPlan(
     from,
     to,
     plannedKm: km(due),
-    doneKm: done.filter((s) => s.category !== "cross_training").reduce((sum, s) => sum + s.distanceMeters, 0) / 1000,
+    doneKm: done.reduce((sum, s) => sum + sessionKm(s), 0),
     plannedMin: min(due),
     doneMin: done.reduce((sum, s) => sum + trainingSeconds(s), 0) / 60,
     blockPlannedKm: km(block),

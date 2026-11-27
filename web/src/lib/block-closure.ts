@@ -1,3 +1,4 @@
+import { sessionKm } from "@/lib/block-analysis";
 import type { createClient } from "@/lib/supabase/server";
 import {
   SESSION_ACTIVITY_COLUMNS,
@@ -100,7 +101,7 @@ export async function blockClosure(
     const days = dayCount(b.start_date, end);
     const inside = sessions.filter((s) => s.date >= b.start_date && s.date <= end);
     const minutes = inside.reduce((sum, s) => sum + trainingSeconds(s), 0) / 60;
-    const km = inside.filter((s) => s.category !== "cross_training").reduce((sum, s) => sum + s.distanceMeters, 0) / 1000;
+    const km = inside.reduce((sum, s) => sum + sessionKm(s), 0);
     const byWeek = new Map<string, number>();
     for (const s of inside) {
       const wk = toDateKey(mondayOf(s.date));

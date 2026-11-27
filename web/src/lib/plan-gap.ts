@@ -272,6 +272,8 @@ type WeekSession = {
   avgHr: number | null;
   trainingSeconds: number;
   dominantId: string;
+  /** Löpdistans i meter, utan alternativträning (sessionKm × 1000). */
+  runMeters: number;
 };
 
 export function weekGap(
@@ -294,7 +296,9 @@ export function weekGap(
   const planKm = duePlans
     .filter((p) => p.workout_type !== "cross_training")
     .reduce((s, p) => s + (p.target_distance_meters ?? 0), 0);
-  const doneKm = done.filter((s) => s.category !== "cross_training").reduce((s, d) => s + d.distanceMeters, 0);
+  // Löpdistans per aktivitet (sessionKm): en nerjogg efter crosstrainer räknas,
+  // cykelkilometer gör det inte — oavsett vilken kategori passet fick.
+  const doneKm = done.reduce((s, d) => s + d.runMeters, 0);
   if (planKm > 0)
     rows.push({
       label: "Distans",

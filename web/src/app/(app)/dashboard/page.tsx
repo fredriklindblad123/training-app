@@ -1,3 +1,4 @@
+import { sessionKm } from "@/lib/block-analysis";
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
 import { formatDateShort, formatMinutes, formatNumber } from "@/lib/format";
@@ -431,6 +432,7 @@ export default async function DashboardPage({
       avgHr: s.avgHr,
       trainingSeconds: trainingSeconds(s),
       dominantId: s.dominantActivity.id,
+      runMeters: sessionKm(s) * 1000,
     })),
     repStats,
     gapThresholds,
@@ -453,6 +455,21 @@ export default async function DashboardPage({
         .lte("scheduled_date", block.end)
     : { data: [] };
   const vsPlan = block ? blockVsPlan((blockPlanRows ?? []) as PlanRow[], allSessions, block.end, todayKey) : null;
+  /* Hela blockets volym hittills (2026-11-27). "Blocket hittills" visade
+     bara jämförelsen mot planen, som börjar först när planen fick siffror
+     (16/11 för Alice) — 108 km såg ut som hela blocket när det var elva
+     dagar av nio veckor (461 km). Samma regler som jämförelsen: löpning utan
+     alternativträning, tid utan styrka, och samma sista dag. */
+  const blockSoFar =
+    block && vsPlan
+      ? (() => {
+          const ss = allSessions.filter((x) => x.date >= block.start && x.date <= vsPlan.to);
+          return {
+            km: ss.reduce((n, x) => n + sessionKm(x), 0),
+            min: ss.reduce((n, x) => n + trainingSeconds(x), 0) / 60,
+          };
+        })()
+      : null;
 
   const labZoneSet = await loadLatestLabZoneSet(supabase, scopedUserId);
   const todayHref = `/calendar/${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}${athleteQuery}`;
@@ -567,11 +584,19 @@ export default async function DashboardPage({
                   </span>
                   <span className="text-xs text-[var(--ink-3)]">Blocket →</span>
                 </span>
-                <span className="tabular text-[var(--ink-2)]">
-                  <span className="font-semibold text-[var(--foreground)]">{formatNumber(vsPlan.doneKm, 1)}</span> av{" "}
-                  {formatNumber(vsPlan.plannedKm, 1)} km ·{" "}
-                  <span className="font-semibold text-[var(--foreground)]">{formatMinutes(vsPlan.doneMin)}</span> av{" "}
-                  {formatMinutes(vsPlan.plannedMin)}
+                {blockSoFar && (
+                  <span className="tabular text-[var(--ink-2)]">
+                    <span className="font-semibold text-[var(--foreground)]">{formatNumber(blockSoFar.km, 1)} km</span> ·{" "}
+                    <span className="font-semibold text-[var(--foreground)]">{formatMinutes(blockSoFar.min)}</span>{" "}
+                    <span className="text-xs text-[var(--ink-3)]">
+                      {formatDateShort(block.start)}–{formatDateShort(vsPlan.to)}
+                    </span>
+                  </span>
+                )}
+                <span className="tabular text-xs text-[var(--ink-2)]">
+                  Mot planen {vsPlan.from > block.start ? `sedan ${formatDateShort(vsPlan.from)}` : ""}:{" "}
+                  {formatNumber(vsPlan.doneKm, 1)} av {formatNumber(vsPlan.plannedKm, 1)} km ·{" "}
+                  {formatMinutes(vsPlan.doneMin)} av {formatMinutes(vsPlan.plannedMin)}
                 </span>
               </Link>
             )}
