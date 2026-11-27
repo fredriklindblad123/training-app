@@ -37,6 +37,7 @@ import {
   removePatternItem,
   removeAdjustedForAthlete,
   setPatternItemAthlete,
+  adoptIntoPattern,
   updatePatternItem,
   deleteTemplateRepGroup,
   removeAthleteFromPass,
@@ -225,7 +226,7 @@ function WeekPattern({
             <div key={name} className="grid grid-cols-[40px_minmax(0,1fr)] items-start gap-2 border-t border-[var(--line)] py-1.5 first:border-t-0">
               <span className="pt-1 text-sm text-[var(--ink-3)]">{name.slice(0, 3)}</span>
               <span className="flex flex-col gap-1">
-                {day.length === 0 ? (
+                {day.length === 0 && !passes.some((r) => r.scheduled_date >= today && weekdayOfKey(r.scheduled_date) === i + 1) ? (
                   <span className="pt-1 text-sm text-[var(--ink-3)]">vila</span>
                 ) : (
                   day.map((it) => {
@@ -384,6 +385,59 @@ function WeekPattern({
                     );
                   })
                 )}
+                {/* Utanför mönstret (2026-11-27, begärt): återkommande pass
+                    som lagts in direkt i löparnas kalendrar — Alices
+                    alternativträning, Nikes häck. Förut syntes de inte här
+                    alls, och mönstret såg ut att vara hela veckan. */}
+                {(() => {
+                  const extras = new Map<string, { slot: number; type: string; title: string | null; minutes: number | null; users: Set<string>; dates: Set<string> }>();
+                  for (const r of passes) {
+                    if (r.scheduled_date < today || weekdayOfKey(r.scheduled_date) !== i + 1) continue;
+                    if (day.some((it) => it.slot === r.slot && it.workout_type === r.workout_type)) continue;
+                    const k = `${r.slot}|${r.workout_type}`;
+                    const g = extras.get(k) ?? { slot: r.slot, type: r.workout_type, title: r.title, minutes: r.target_duration_seconds ? Math.round(r.target_duration_seconds / 60) : null, users: new Set<string>(), dates: new Set<string>() };
+                    g.users.add(r.user_id);
+                    g.dates.add(r.scheduled_date);
+                    extras.set(k, g);
+                  }
+                  return [...extras.values()].map((g) => {
+                    const names = athletes.filter((a) => g.users.has(a.id)).map((a) => a.fullName ?? "namnlös").join(", ");
+                    // "I stället för" bara när mönsterpasset på platsen gäller
+                    // samma löpare — annars är det ett eget pass för andra.
+                    const replaces = day.find(
+                      (it) => it.slot === g.slot && (it.athlete_ids == null || it.athlete_ids.some((a) => g.users.has(a))),
+                    );
+                    return (
+                      <span key={`${g.slot}|${g.type}`} className="flex flex-col gap-1 py-0.5 text-sm">
+                        <span className="flex min-w-0 items-center gap-2 text-[var(--ink-2)]">
+                          <span aria-hidden className="h-2 w-2 shrink-0 rounded-full border" style={{ borderColor: workoutTypeColorVar(g.type) ?? "var(--ink-3)" }} />
+                          <span className="truncate">{g.title || WORKOUT_LABELS[g.type as WorkoutType] || g.type}</span>
+                        </span>
+                        <span className="pl-4 text-xs text-[var(--ink-3)]">
+                          {replaces
+                            ? `bara ${names}, i stället för ${(replaces.title || WORKOUT_LABELS[replaces.workout_type as WorkoutType] || "mönstrets pass").toLowerCase()} · inlagt utanför mönstret`
+                            : `bara ${names} · ${g.dates.size} kommande ${g.dates.size === 1 ? "vecka" : "veckor"} · inlagt utanför mönstret`}
+                        </span>
+                        {!replaces && !ended && (
+                          <form action={adoptIntoPattern} className="pl-4">
+                            <input type="hidden" name="block_id" value={block.id} />
+                            <input type="hidden" name="weekday" value={i + 1} />
+                            <input type="hidden" name="slot" value={g.slot} />
+                            <input type="hidden" name="workout_type" value={g.type} />
+                            <input type="hidden" name="title" value={g.title ?? ""} />
+                            {g.minutes != null && <input type="hidden" name="target_duration_minutes" value={g.minutes} />}
+                            {[...g.users].map((u) => (
+                              <input key={u} type="hidden" name="athlete_ids" value={u} />
+                            ))}
+                            <button type="submit" className="text-xs text-[var(--ink-2)] underline underline-offset-2 hover:text-[var(--foreground)]">
+                              Lägg in i mönstret
+                            </button>
+                          </form>
+                        )}
+                      </span>
+                    );
+                  });
+                })()}
               </span>
             </div>
           );

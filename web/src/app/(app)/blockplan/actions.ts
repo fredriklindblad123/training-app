@@ -695,3 +695,79 @@ export async function updatePatternItem(formData: FormData) {
     await supabase.from("planned_workouts").update(fields).in("id", ids.slice(i, i + 200));
   refresh();
 }
+
+/** Gör ett återkommande pass som ligger utanför veckomönstret till en del av
+ * det (2026-11-27). Typfallet: Alices alternativträning på måndagar och
+ * Nikes häck, inlagda direkt i deras kalendrar — de syntes inte i mönstret
+ * och gick inte att styra därifrån. Passet blir ett mönsterpass för just de
+ * löparna; befintliga pass rörs inte, saknade veckor fylls i. */
+export async function adoptIntoPattern(formData: FormData) {
+  const auth = await requireUser();
+  if (!auth) return;
+  const { supabase } = auth;
+  const blockId = str(formData, "block_id");
+  const weekday = num(formData, "weekday");
+  const slot = num(formData, "slot");
+  const workoutType = str(formData, "workout_type");
+  if (!blockId || !weekday || !slot || !workoutType) return;
+  const blockAthletes = await athletesForBlock(supabase, blockId);
+  const athletes = formData.getAll("athlete_ids").map(String).filter((a) => blockAthletes.includes(a));
+  if (athletes.length === 0) return;
+
+  /* Mönstret har ett pass per dag och plats (unikt index). Är platsen tagen
+     — Nikes häck och Alices alternativträning ligger båda på måndagens
+     eftermiddag — läggs passet på nästa lediga plats, och löparnas kommande
+     pass flyttas dit så att mönster och kalender stämmer. */
+  const { data: dayItems } = await supabase
+    .from("week_template_items")
+    .select("slot, athlete_ids")
+    .eq("block_id", blockId)
+    .eq("weekday", weekday);
+  const usedSlots = new Set((dayItems ?? []).map((r) => r.slot as number));
+  const clash = (dayItems ?? []).find((r) => r.slot === slot);
+  // Gäller mönsterpasset på platsen någon av löparna är det deras ordinarie
+  // pass som ersatts — det ska inte bli ett eget mönsterpass.
+  if (clash && (clash.athlete_ids == null || (clash.athlete_ids as string[]).some((a) => athletes.includes(a)))) return;
+  const newSlot = clash ? [1, 2, 3].find((x) => !usedSlots.has(x)) : slot;
+  if (newSlot == null) return;
+  if (newSlot !== slot) {
+    const { data: rows } = await supabase
+      .from("planned_workouts")
+      .select("id, user_id, scheduled_date")
+      .eq("block_id", blockId)
+      .eq("slot", slot)
+      .eq("workout_type", workoutType)
+      .in("user_id", athletes)
+      .gte("scheduled_date", stockholmToday());
+    for (const r of (rows ?? []).filter((x) => weekdayOf(x.scheduled_date as string) === weekday)) {
+      const { data: occupied } = await supabase
+        .from("planned_workouts")
+        .select("id")
+        .eq("user_id", r.user_id)
+        .eq("scheduled_date", r.scheduled_date)
+        .eq("slot", newSlot);
+      if ((occupied ?? []).length === 0)
+        await supabase.from("planned_workouts").update({ slot: newSlot }).eq("id", r.id);
+    }
+  }
+
+  const minutes = num(formData, "target_duration_minutes");
+  const { data: created } = await supabase
+    .from("week_template_items")
+    .insert({
+      block_id: blockId,
+      weekday,
+      slot: newSlot,
+      workout_type: workoutType,
+      title: str(formData, "title"),
+      description: null,
+      target_duration_seconds: minutes != null ? Math.round(minutes * 60) : null,
+      target_distance_meters: null,
+      training_factor: null,
+      athlete_ids: blockAthletes.every((a) => athletes.includes(a)) ? null : athletes,
+    })
+    .select(ITEM_COLUMNS)
+    .single();
+  if (created) for (const a of athletes) await rollOutItemForAthlete(supabase, created as ItemRow, a);
+  refresh();
+}
