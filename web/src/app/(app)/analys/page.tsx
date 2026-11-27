@@ -6,7 +6,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { ToneDots } from "@/components/ToneDots";
 import { blockClosure, closureLines } from "@/lib/block-closure";
 import { formatDateShort, formatNumber } from "@/lib/format";
-import { PHASE_LABELS, type PhaseType } from "@/lib/planning";
+import { PHASE_LABELS, QUALITY_WORKOUT_TYPES, type PhaseType } from "@/lib/planning";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
 import { getViewMode } from "@/lib/view-mode";
@@ -237,7 +237,10 @@ export default async function AnalysPage({
   // vilket annat påbörjat block som helst (t.ex. vårens uppbyggnad).
   const defaultComparison = findComparisonBlock(blocks, block);
   const comparisonOptions = started.filter((b) => b.id !== block.id);
-  const comparison = comparisonOptions.find((b) => b.id === jmf) ?? defaultComparison;
+  /* "Planen" som jämförelse (2026-11-27, begärt). Då jämförs rutorna och
+     grafen med blockets planerade pass i stället för med ett annat block. */
+  const planChosen = jmf === "plan";
+  const comparison = planChosen ? null : (comparisonOptions.find((b) => b.id === jmf) ?? defaultComparison);
   const isLastYear = comparison != null && comparison.id === defaultComparison?.id;
   // "ht 2026", "vår 2026" — kort nog för etiketter i 390 px.
   const shortName = (b: AnalysisBlock) =>
@@ -251,7 +254,7 @@ export default async function AnalysPage({
      (ht 2026 mot Tävlingsperiod 2026 Aug) skrivs med blockets fulla namn. */
   const blockLabel = (b: AnalysisBlock) => (sameShort ? b.name : shortName(b));
   const nowName = blockLabel(block);
-  const cmpName = comparison ? blockLabel(comparison) : "jämförelsen";
+  const cmpName = planChosen ? "planen" : comparison ? blockLabel(comparison) : "jämförelsen";
   const nowLower = nowName;
   const cmpLower = cmpName;
   const length = blockLength(block);
@@ -361,9 +364,27 @@ export default async function AnalysPage({
   // ett eget styrkepass där som träningsdag; minuter finns inte i dagboken.
   const chosenDiaryStrength = include.has("strength") ? diaryStrength : [];
   const now: BlockTotals = totalsUpToDay(chosenVolume, block, daysSoFar, chosenDiaryStrength);
-  const before: BlockTotals | null = comparison
-    ? totalsUpToDay(chosenVolume, comparison, daysSoFar, chosenDiaryStrength)
-    : null;
+  /* Planens summor fram till samma dag, i samma form som ett blocks. Bara
+     dagar som passerat — framtida planerade pass räknas inte. Minuter utan
+     styrka och distans utan alternativträning, samma regler som utfallet. */
+  const planTotals = (filterTypes: boolean): BlockTotals => {
+    const due = planned.filter((p) => {
+      const i = dayIndex(p.scheduled_date, block.start_date);
+      return i >= 0 && i < daysSoFar && p.workout_type !== "rest" && (!filterTypes || include.has(p.workout_type));
+    });
+    return {
+      trainingDays: new Set(due.map((p) => p.scheduled_date)).size,
+      minutes: due.filter((p) => p.workout_type !== "strength").reduce((a, p) => a + (p.target_duration_seconds ?? 0) / 60, 0),
+      km: due.filter((p) => p.workout_type !== "cross_training").reduce((a, p) => a + (p.target_distance_meters ?? 0) / 1000, 0),
+      qualitySessions: due.filter((p) => (QUALITY_WORKOUT_TYPES as readonly string[]).includes(p.workout_type)).length,
+      strengthSessions: new Set(due.filter((p) => p.workout_type === "strength").map((p) => p.scheduled_date)).size,
+    };
+  };
+  const before: BlockTotals | null = planChosen
+    ? planTotals(true)
+    : comparison
+      ? totalsUpToDay(chosenVolume, comparison, daysSoFar, chosenDiaryStrength)
+      : null;
   // Alternativ träning räknas aldrig i distans, bara i tid (sessionKm), så
   // Distans är löpdistansen och alternativ träning visas i minuter.
   const kmMain = now.km;
@@ -371,27 +392,54 @@ export default async function AnalysPage({
   const crossOnly = sessions.filter((s) => s.category === "cross_training");
   const showCross = include.has("cross_training");
   const cross = totalsUpToDay(crossOnly, block, daysSoFar);
-  const crossBefore = comparison ? totalsUpToDay(crossOnly, comparison, daysSoFar) : null;
+  const crossBefore = planChosen
+    ? {
+        minutes: planned
+          .filter((p) => p.workout_type === "cross_training" && dayIndex(p.scheduled_date, block.start_date) < daysSoFar && p.scheduled_date >= block.start_date)
+          .reduce((a, p) => a + (p.target_duration_seconds ?? 0) / 60, 0),
+      }
+    : comparison
+      ? totalsUpToDay(crossOnly, comparison, daysSoFar)
+      : null;
   // Snitt per vecka: delat med antalet veckor som passerat (dagar / 7).
   // Jämförelseblocket delas med sina egna dagar om det är kortare.
   const per = perWeek ? 7 / daysSoFar : 1;
-  const perBefore = perWeek && comparison ? 7 / Math.min(daysSoFar, blockLength(comparison)) : 1;
+  const perBefore = perWeek && planChosen ? 7 / daysSoFar : perWeek && comparison ? 7 / Math.min(daysSoFar, blockLength(comparison)) : 1;
   const scaled = (v: number) => v * per;
   const scaledOrNull = (v: number | null | undefined) => (v == null ? null : v * perBefore);
   // Kvalitets- och styrkepass räknas alltid, oavsett valda typer.
   const nowAll = totalsUpToDay(sessions, block, daysSoFar, diaryStrength);
-  const beforeAll = comparison
-    ? totalsUpToDay(sessions, comparison, daysSoFar, diaryStrength)
-    : null;
+  const beforeAll = planChosen
+    ? planTotals(false)
+    : comparison
+      ? totalsUpToDay(sessions, comparison, daysSoFar, diaryStrength)
+      : null;
 
   // --- Grafen: ett mått, en jämförelse, en vy -----------------------------
-  // Planen har ingen tid eller distans (målminuter finns på 8 av ~650 pass),
-  // så mot planen jämförs alltid antal pass.
+  /* Mot planen jämfördes först bara antal pass: planen hade ingen tid eller
+     distans (2026-11-21). Sedan 2026-11-27 har Alices plan siffror för hela
+     höstblocket, så tid och distans går att jämföra när planen har dem. */
   const hasPlan = planned.some((p) => p.workout_type !== "rest");
+  const planHasNumbers = planned.some(
+    (p) => (p.target_duration_seconds ?? 0) > 0 || (p.target_distance_meters ?? 0) > 0,
+  );
   const mot: "fjol" | "plan" =
     (motParam === "plan" && hasPlan) || (!comparison && hasPlan) ? "plan" : "fjol";
   const graf: "minuter" | "distans" | "pass" =
-    mot === "plan" ? "pass" : grafParam === "distans" || grafParam === "pass" ? grafParam : "minuter";
+    mot === "plan" && !planHasNumbers
+      ? "pass"
+      : grafParam === "distans" || grafParam === "pass"
+        ? grafParam
+        : "minuter";
+  // Planens värde per dag i blocket, för grafen (tid eller distans).
+  const planDaily = Array.from({ length }, () => 0);
+  if (mot === "plan" && graf !== "pass")
+    for (const p of planned) {
+      const i = dayIndex(p.scheduled_date, block.start_date);
+      if (i < 0 || i >= length || !include.has(p.workout_type)) continue;
+      if (graf === "minuter" && p.workout_type !== "strength") planDaily[i] += (p.target_duration_seconds ?? 0) / 60;
+      if (graf === "distans" && p.workout_type !== "cross_training") planDaily[i] += (p.target_distance_meters ?? 0) / 1000;
+    }
   const vy: "vecka" | "ack" = vyParam === "ack" ? "ack" : "vecka";
   const unit = graf === "minuter" ? "min" : graf === "distans" ? "km" : "pass";
 
@@ -480,7 +528,7 @@ export default async function AnalysPage({
       (g !== "minuter" ? `&graf=${g}` : "") +
       (m === "plan" ? "&mot=plan" : "") +
       (y === "ack" ? "&vy=ack" : "") +
-      (o.jmf !== undefined ? (o.jmf ? `&jmf=${o.jmf}` : "") : jmf && !isLastYear ? `&jmf=${comparison?.id}` : "")
+      (o.jmf !== undefined ? (o.jmf ? `&jmf=${o.jmf}` : "") : jmf && !isLastYear ? `&jmf=${planChosen ? "plan" : comparison?.id}` : "")
     );
   };
   const typeHref = (t: string) => {
@@ -741,11 +789,24 @@ export default async function AnalysPage({
                 {
                   key: "jmf",
                   label: "Jämför med",
-                  value: comparison
-                    ? `${comparison.name}${blockLength(comparison) < daysSoFar ? " (hela)" : ", samma dag"}`
-                    : "inget block",
+                  value: planChosen
+                    ? "Planen, samma dag"
+                    : comparison
+                      ? `${comparison.name}${blockLength(comparison) < daysSoFar ? " (hela)" : ", samma dag"}`
+                      : "inget block",
                   body: (
                     <div className="flex flex-col">
+                      {hasPlan && (
+                        <Link
+                          href={href({ jmf: "plan" })}
+                          scroll={false}
+                          aria-current={planChosen ? "true" : undefined}
+                          className={`flex min-h-10 items-center justify-between gap-2 ${planChosen ? "font-semibold text-[var(--foreground)]" : "text-[var(--ink-2)]"}`}
+                        >
+                          Planen
+                          <span className="text-xs text-[var(--ink-3)]">blockets planerade pass</span>
+                        </Link>
+                      )}
                       {[...comparisonOptions].reverse().map((b) => (
                         <Link
                           key={b.id}
@@ -874,7 +935,7 @@ export default async function AnalysPage({
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
-            {comparison ? `Mot ${cmpLower}` : ongoing ? "Hittills i blocket" : "Hela blocket"}
+            {planChosen ? "Mot planen" : comparison ? `Mot ${cmpLower}` : ongoing ? "Hittills i blocket" : "Hela blocket"}
           </h2>
           <SegmentedSmall
             label="Summering"
@@ -921,7 +982,7 @@ export default async function AnalysPage({
         <p >
           {perWeek
             ? `Snitt per vecka över ${(daysSoFar / 7).toLocaleString("sv-SE", { maximumFractionDigits: 1 })} veckor${
-                comparison ? `, samma antal dagar ${cmpLower}` : ""
+                planChosen ? ", mot planen för samma dagar" : comparison ? `, samma antal dagar ${cmpLower}` : ""
               }. `
             : ""}
           Alternativ träning (cykel, crosstrainer, vattenlöpning) räknas i tid men aldrig i
@@ -962,7 +1023,9 @@ export default async function AnalysPage({
             {mot === "plan" ? " mot planen" : comparison ? ` mot ${cmpLower}` : ""}
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">
-            {mot === "plan"
+            {mot === "plan" && graf !== "pass"
+              ? `${graf === "minuter" ? "Träningstiden" : "Sträckan"} mot planens ${graf === "minuter" ? "planerade tid" : "planerade distans"} för de valda passtyperna${vy === "vecka" ? ", per blockvecka" : ", dag för dag"}. Planen visas för hela blocket, det gjorda fram till idag.`
+              : mot === "plan"
               ? "Kvalitet, distans och styrka räknas inom veckan, inte dag för dag. Bara dagar som passerat räknas. Ett planerat pass på en sjuk- eller skaddag som inte blev av räknas inte" +
                 (blockStats.excusedCount > 0 ? ` (${blockStats.excusedCount} i blocket).` : ".")
               : `${graf === "minuter" ? "Träningstiden" : graf === "distans" ? "Sträckan" : "Antal pass"} för de valda passtyperna${
@@ -980,7 +1043,7 @@ export default async function AnalysPage({
                 label: g === "minuter" ? "Tid" : GRAF_LABELS[g],
                 href: href({ graf: g }),
                 active: graf === g,
-                disabled: mot === "plan" && g !== "pass",
+                disabled: mot === "plan" && g !== "pass" && !planHasNumbers,
               }))}
             />
             <SegmentedSmall
@@ -1006,7 +1069,7 @@ export default async function AnalysPage({
           </div>
           <p className="text-xs text-[var(--ink-3)]">
             Valen gäller bara den här grafen. Vilket block som jämförs väljer du under Jämför med i toppen.
-            {mot === "plan" ? " Planen jämförs i antal pass." : ""}
+            {mot === "plan" && !planHasNumbers ? " Planen har ingen tid eller distans och jämförs i antal pass." : ""}
           </p>
         </div>
 
@@ -1019,7 +1082,21 @@ export default async function AnalysPage({
             unit={unit}
             ariaLabel={`${GRAF_LABELS[graf]} per blockvecka`}
             series={
-              mot === "plan"
+              mot === "plan" && graf !== "pass"
+                ? [
+                    { label: "Planerat", short: "plan", values: weeklySums(planDaily), color: "var(--ink-2)", style: "outline" as const },
+                    {
+                      label: "Gjort",
+                      short: "gjort",
+                      values: Array.from({ length: weeks }, (_, w) => {
+                        const ws = weeklySums(dailyNow);
+                        return w < ws.length ? ws[w] : null;
+                      }),
+                      color: THIS_YEAR,
+                      style: "fill" as const,
+                    },
+                  ]
+                : mot === "plan"
                 ? [
                     { label: "Planerat", short: "plan", values: weekStats.map((x) => (x ? x.due : null)), color: "var(--ink-2)", style: "outline" as const },
                     { label: "Gjort", short: "gjort", values: weekStats.map((x) => (x ? x.done : null)), color: THIS_YEAR, style: "fill" as const },
@@ -1060,7 +1137,12 @@ export default async function AnalysPage({
             dayLabels={dayLabels}
             markRows={mot === "plan" ? markRows.slice(0, 1) : markRows}
             series={
-              mot === "plan" && planCumulative
+              mot === "plan" && graf !== "pass"
+                ? [
+                    { label: "Planerat", values: cumulative(planDaily), color: "var(--ink-2)", dashed: true },
+                    { label: "Gjort", values: cumulative(dailyNow), color: THIS_YEAR },
+                  ]
+                : mot === "plan" && planCumulative
                 ? [
                     { label: "Planerat", values: planCumulative.map((x) => x.due), color: "var(--ink-2)", dashed: true },
                     { label: "Gjort", values: planCumulative.map((x) => x.done), color: THIS_YEAR },
