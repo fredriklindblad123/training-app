@@ -30,3 +30,24 @@ export function PlanGapTable({ gap, title = "Plan mot utfall" }: { gap: PlanGap;
     </div>
   );
 }
+
+/* Samma jämförelse som rutor (2026-11-27, begärt: veckan mot planen var
+ * "för busy på telefonen"). Det gjorda står stort; planen och skillnaden på
+ * en rad under. Två i bredd på telefon, tre på bred skärm. */
+export function PlanGapTiles({ gap }: { gap: PlanGap }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[10px] bg-[var(--line)] sm:grid-cols-3">
+        {gap.rows.map((r) => (
+          <div key={r.label} className="flex flex-col gap-0.5 bg-[var(--surface)] p-2.5">
+            <span className="text-xs text-[var(--ink-3)]">{r.label}</span>
+            <span className="display tabular text-xl leading-tight font-bold text-[var(--foreground)]">{r.done}</span>
+            <span className="tabular text-xs text-[var(--ink-3)]">plan {r.plan}</span>
+            <span className="tabular text-xs text-[var(--ink-2)]">{r.diff}</span>
+          </div>
+        ))}
+      </div>
+      {gap.note && <p className="text-xs text-[var(--ink-3)]">{gap.note}</p>}
+    </div>
+  );
+}

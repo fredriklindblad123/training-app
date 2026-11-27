@@ -1,6 +1,6 @@
 import { fetchEasyParts } from "@/lib/quality-split";
 import Link from "next/link";
-import { formatDateShort, formatNumber } from "@/lib/format";
+import { formatDateShort, formatMinutes, formatNumber } from "@/lib/format";
 import { PageHeader } from "@/components/ui/Page";
 import { Eyebrow, HowCalculated } from "@/components/ui/Explain";
 import { blockVsPlan, type PlanRow } from "@/lib/block-vs-plan";
@@ -21,7 +21,7 @@ import {
 } from "@/lib/sessions";
 import { toDateKey } from "@/lib/week-series";
 import { fetchRepStats, weekGap, type GapThresholds, type WeekPlanRow } from "@/lib/plan-gap";
-import { PlanGapTable } from "@/components/PlanGapTable";
+import { PlanGapTiles } from "@/components/PlanGapTable";
 import { getViewMode } from "@/lib/view-mode";
 import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
 import { reviewSession, type ReviewRep, type SessionReview } from "@/lib/session-review";
@@ -550,7 +550,12 @@ export default async function DashboardPage({
           </div>
           <div className="flex flex-col gap-3 rounded-[14px] border border-[var(--line)] bg-[var(--surface)] p-3.5">
             {vsWeek ? (
-              <PlanGapTable gap={vsWeek} title={`${formatDateShort(vsWeek.from)}–${formatDateShort(vsWeek.to)}`} />
+              <>
+                <span className="text-xs text-[var(--ink-3)]">
+                  {formatDateShort(vsWeek.from, true)}–{formatDateShort(vsWeek.to, true)}
+                </span>
+                <PlanGapTiles gap={vsWeek} />
+              </>
             ) : (
               <p className="text-sm text-[var(--ink-3)]">Inget planerat pass har passerat än den här veckan.</p>
             )}
@@ -563,14 +568,10 @@ export default async function DashboardPage({
                   <span className="text-xs text-[var(--ink-3)]">Blocket →</span>
                 </span>
                 <span className="tabular text-[var(--ink-2)]">
-                  <span className="font-semibold text-[var(--foreground)]">{formatNumber(vsPlan.doneKm, 1)} km</span> av{" "}
-                  {formatNumber(vsPlan.plannedKm, 1)} planerade ·{" "}
-                  <span className="font-semibold text-[var(--foreground)]">{formatNumber(vsPlan.doneMin, 0)} min</span> av{" "}
-                  {formatNumber(vsPlan.plannedMin, 0)}
-                </span>
-                <span className="text-xs text-[var(--ink-3)]">
-                  {block.name}, {formatDateShort(vsPlan.from)}–{formatDateShort(vsPlan.to)} · hela blocket{" "}
-                  {formatNumber(vsPlan.blockPlannedKm, 1)} km, {formatNumber(vsPlan.blockPlannedMin, 0)} min
+                  <span className="font-semibold text-[var(--foreground)]">{formatNumber(vsPlan.doneKm, 1)}</span> av{" "}
+                  {formatNumber(vsPlan.plannedKm, 1)} km ·{" "}
+                  <span className="font-semibold text-[var(--foreground)]">{formatMinutes(vsPlan.doneMin)}</span> av{" "}
+                  {formatMinutes(vsPlan.plannedMin)}
                 </span>
               </Link>
             )}
@@ -588,10 +589,14 @@ export default async function DashboardPage({
               slutpuls per rep mot bandet LT1–LT2 för tröskel, högsta puls mot LT2 för intervall — samma mått som på
               Form.
             </p>
-            {vsPlan && block && vsPlan.from > block.start && (
+            {vsPlan && block && (
               <p>
-                Blocket räknas från {formatDateShort(vsPlan.from)}, då planen började ha distans och tid — dagarna
-                före har inget att jämföra med.
+                Blocket hittills: {block.name}, {formatDateShort(vsPlan.from)}–{formatDateShort(vsPlan.to)}. Hela
+                blocket är planerat till {formatNumber(vsPlan.blockPlannedKm, 1)} km och{" "}
+                {formatMinutes(vsPlan.blockPlannedMin)}.
+                {vsPlan.from > block.start
+                  ? ` Blocket räknas från ${formatDateShort(vsPlan.from)}, då planen började ha distans och tid — dagarna före har inget att jämföra med.`
+                  : ""}
               </p>
             )}
           </HowCalculated>
