@@ -28,6 +28,9 @@ export type PlannedPassRow = {
    * själv — hämtas därför alltid med i samma fråga. */
   target_distance_meters: number | null;
   target_duration_seconds: number | null;
+  /** Fartmålet (s/km) — visas på Block-kortet (2026-11-27). Valfritt så
+   * att andra frågor mot samma typ inte måste hämta det. */
+  target_pace_seconds_per_km?: number | null;
   training_factor: string | null;
   status: string;
 };

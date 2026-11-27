@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/Page";
 import { HowCalculated } from "@/components/ui/Explain";
-import { formatDateShort } from "@/lib/format";
+import { formatDateShort, formatKm, formatPace } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import {
   canEditPlanning,
@@ -546,37 +546,51 @@ function WeekPassCard({
   const tagged = new Set(pass.athleteIds);
   const untagged = blockAthletes.filter((a) => !tagged.has(a.id));
   const showChips = blockAthletes.length > 1;
-  const minutes =
-    pass.targetDurationSeconds != null ? Math.round(pass.targetDurationSeconds / 60) : null;
   // Samma färgkälla som resten av appen (workoutTypeColorVar). Vila och
   // test saknar färg med flit och ritas streckade.
   const typeColor = workoutTypeColorVar(pass.workoutType);
   const typeLabel = WORKOUT_LABELS[pass.workoutType as keyof typeof WORKOUT_LABELS] ?? pass.workoutType;
-  const heading = pass.title || typeLabel;
-  // Bara det rubriken inte redan säger: typ och träningsfaktor ("Distans")
-  // upprepade ofta rubriken ("Distans + styrka (bål)").
-  const flat = (x: string) => x.toLowerCase().replace(/\s+/g, "");
-  const said = (label: string) => flat(heading).startsWith(flat(label));
-  const factor = pass.trainingFactor
-    ? (TRAINING_FACTORS.find((f) => f.key === pass.trainingFactor)?.label ?? pass.trainingFactor)
-    : null;
-  const meta = [
-    !said(typeLabel) ? typeLabel : null,
-    minutes != null && !flat(heading).includes(`${minutes}min`) ? `${minutes} min` : null,
-    pass.slot > 1 ? SLOT_LABELS[pass.slot] : null,
-    factor && !said(factor) && factor !== typeLabel ? factor : null,
-  ].filter(Boolean);
-  // Vem som har ett ändrat innehåll: löpare vars rubrik eller tid skiljer
-  // sig från det vanligaste i kortet.
-  const sig = (r: PassGroup["rows"][number]) => `${r.title ?? ""}|${r.target_duration_seconds ?? ""}|${r.training_factor ?? ""}`;
+
+  /* Innehållet per löpare (2026-11-27). Kortet visar det vanligaste
+   * innehållet; löpare med ett eget innehåll — Alices handjusterade pass med
+   * distans, tid och fart — får en egen rad med just sitt. Förut visades
+   * bara första radens tid, och Alices mål syntes inte alls. */
+  type Row = PassGroup["rows"][number];
+  const sig = (r: Row) =>
+    `${r.title ?? ""}|${r.target_distance_meters ?? ""}|${r.target_duration_seconds ?? ""}|${r.target_pace_seconds_per_km ?? ""}|${r.training_factor ?? ""}`;
   const counts = new Map<string, number>();
   for (const r of pass.rows) counts.set(sig(r), (counts.get(sig(r)) ?? 0) + 1);
   const common = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const changedFor = pass.diverges
-    ? pass.rows
-        .filter((r) => sig(r) !== common)
-        .map((r) => blockAthletes.find((a) => a.id === r.user_id)?.fullName ?? "en löpare")
-    : [];
+  const base = pass.rows.find((r) => sig(r) === common) ?? pass.rows[0];
+  const heading = base.title || typeLabel;
+  const flat = (x: string) => x.toLowerCase().replace(/\s+/g, "");
+  const targets = (r: Row, title: string) => {
+    const min = r.target_duration_seconds != null ? Math.round(r.target_duration_seconds / 60) : null;
+    return [
+      r.target_distance_meters ? formatKm(r.target_distance_meters) : null,
+      min != null && !flat(title).includes(`${min}min`) ? `${min} min` : null,
+      r.target_pace_seconds_per_km ? formatPace(r.target_pace_seconds_per_km) : null,
+    ].filter(Boolean) as string[];
+  };
+  // Bara det rubriken inte redan säger: typ och träningsfaktor ("Distans")
+  // upprepade ofta rubriken ("Distans + styrka (bål)").
+  const said = (label: string) => flat(heading).startsWith(flat(label));
+  const factor = base.training_factor
+    ? (TRAINING_FACTORS.find((f) => f.key === base.training_factor)?.label ?? base.training_factor)
+    : null;
+  const meta = [
+    !said(typeLabel) ? typeLabel : null,
+    ...targets(base, heading),
+    pass.slot > 1 ? SLOT_LABELS[pass.slot] : null,
+    factor && !said(factor) && factor !== typeLabel ? factor : null,
+  ].filter(Boolean);
+  const own = pass.rows
+    .filter((r) => sig(r) !== common)
+    .map((r) => {
+      const name = blockAthletes.find((a) => a.id === r.user_id)?.fullName ?? "en löpare";
+      const title = r.title && r.title !== base.title ? r.title : null;
+      return { id: r.user_id, name, parts: [title, ...targets(r, r.title ?? "")].filter(Boolean) as string[] };
+    });
 
   return (
     <div
@@ -596,9 +610,12 @@ function WeekPassCard({
         {heading}
       </Link>
       {meta.length > 0 && <div className="text-[0.6875rem] text-[var(--ink-3)]">{meta.join(" · ")}</div>}
-      {changedFor.length > 0 && (
-        <div className="text-[0.6875rem] text-[var(--ink-2)]">ändrat för {changedFor.join(", ")}</div>
-      )}
+      {own.map((o) => (
+        <div key={o.id} className="mt-0.5 text-[0.6875rem] leading-snug text-[var(--ink-2)]">
+          <span className="font-semibold text-[var(--foreground)]">{o.name}:</span>{" "}
+          {o.parts.length > 0 ? o.parts.join(" · ") : "eget innehåll"}
+        </div>
+      ))}
 
       {showChips && (
         <div className="mt-1 flex flex-wrap gap-x-1.5 gap-y-0.5 text-[0.6875rem]">
@@ -1091,7 +1108,7 @@ async function loadWeekData(
       supabase
         .from("planned_workouts")
         .select(
-          "id, user_id, scheduled_date, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, training_factor, status, block_id",
+          "id, user_id, scheduled_date, slot, workout_type, title, description, target_distance_meters, target_duration_seconds, target_pace_seconds_per_km, training_factor, status, block_id",
         )
         .in("block_id", blockIds)
         .in("user_id", allAthleteIds),
