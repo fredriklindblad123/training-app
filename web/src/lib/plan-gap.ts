@@ -58,7 +58,32 @@ export type RepStats = {
 
 export type GapThresholds = { lt1: number | null; lt2: number | null; measured: boolean };
 
-export type GapRow = { label: string; plan: string; done: string; diff: string };
+/** Över, under eller på planen (2026-11-27, begärt: "en liten symbol").
+ * Neutral riktning, inget betyg — se dirOf. */
+export type GapDir = "over" | "under" | "on";
+export type GapRow = { label: string; plan: string; done: string; diff: string; dir?: GapDir };
+
+/** Volym (distans, tid): inom 3 % av planen räknas som på planen — en
+ * kilometer hit eller dit på en vecka om 40 km är ingen avvikelse. */
+function volDir(done: number, plan: number): GapDir {
+  if (plan <= 0) return "on";
+  const r = done / plan;
+  return r > 1.03 ? "over" : r < 0.97 ? "under" : "on";
+}
+
+/** Riktningen för fart och puls, ur samma ord som skillnaden skrivs med.
+ * Fart: snabbare = över. Puls: inom den planerade zonen = på planen —
+ * distanspassets plan är "under LT1", så under LT1 är på planen. */
+export function dirOf(row: GapRow): GapDir {
+  if (row.dir) return row.dir;
+  const d = row.diff;
+  if (/snabbare/.test(d)) return "over";
+  if (/långsammare/.test(d)) return "under";
+  if (/under LT1|vid LT1|inom bandet|över LT2/.test(d)) return "on";
+  if (/över LT1|över bandet/.test(d)) return "over";
+  if (/under bandet|under LT2/.test(d)) return "under";
+  return "on";
+}
 
 export type PlanGap = { rows: GapRow[]; note: string | null };
 
@@ -94,6 +119,7 @@ export function planGap(
       done: formatKm(done.distanceMeters),
       // Avrundat till en decimal FÖRE tecknet: 13 008 mot 13 000 m gav "+0,0 km".
       diff: signed(Math.round((done.distanceMeters - pd) / 100) / 10, (x) => formatKm(x * 1000)),
+      dir: volDir(done.distanceMeters, pd),
     });
   }
 
@@ -106,6 +132,7 @@ export function planGap(
       plan: formatMinutes(pMin),
       done: formatMinutes(dMin),
       diff: signed(dMin - pMin, (x) => formatMinutes(x)),
+      dir: volDir(dMin, pMin),
     });
   }
 
@@ -274,6 +301,7 @@ export function weekGap(
       plan: formatKm(planKm),
       done: formatKm(doneKm),
       diff: signed(Math.round((doneKm - planKm) / 100) / 10, (x) => formatKm(x * 1000)),
+      dir: volDir(doneKm, planKm),
     });
   const planSec = duePlans
     .filter((p) => p.workout_type !== "strength")
@@ -282,7 +310,7 @@ export function weekGap(
   if (planSec > 0) {
     const pm = Math.round(planSec / 60);
     const dm = Math.round(doneSec / 60);
-    rows.push({ label: "Tid", plan: formatMinutes(pm), done: formatMinutes(dm), diff: signed(dm - pm, (x) => formatMinutes(x)) });
+    rows.push({ label: "Tid", plan: formatMinutes(pm), done: formatMinutes(dm), diff: signed(dm - pm, (x) => formatMinutes(x)), dir: volDir(dm, pm) });
   }
 
   // Para dag för dag.
