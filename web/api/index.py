@@ -568,10 +568,17 @@ def _sync_splits(client: Garmin, user_id: str, activities: list[dict]) -> int:
 # blir summan av varven. Steget är idempotent — det räknar från tid och
 # kommentar, aldrig från tidigare rättade värden — så det kan köras vid
 # varje synk, också när kommentaren skrivs först efter passet.
-PACE_NOTE_LINE = re.compile(
-    r"(\d+)\s*(sek|s\b|sekund|min|minut)\w*\s*[:=]?\s*(\d{1,2})[.:,](\d{2})"
-    r"(?:\s*[-–]\s*(\d{1,2})[.:,](\d{2}))?",
-    re.IGNORECASE,
+# Löparens fartkommentar på ett löpbandspass, rad för rad. Replängd och fart
+# känns igen var för sig och paras i den ordning de står, så att båda
+# skrivsätten fungerar (2026-11-27):
+#   "30sek: 3.10" / "3min 3.40-3.35"        (längd först, 21/11)
+#   "4.02 på 8minutraren" / "4.00-3.55 på 4minutrarna"   (fart först, 26/11)
+# Den första versionen krävde längd följd av fart. På 26/11 parade den därför
+# 8-minutersrepet med raden under (4-minutersrepens fart) och missade
+# 4-minutersrepen helt.
+REP_LENGTH = re.compile(r"(\d+)\s*(sek|s\b|sekund|min|minut)\w*", re.IGNORECASE)
+PACE_VALUE = re.compile(
+    r"(?<![\d.,:])(\d{1,2})[.:,](\d{2})(?![\d])(?:\s*[-–]\s*(\d{1,2})[.:,](\d{2}))?"
 )
 TREADMILL_TYPES = {"treadmill_running"}
 
@@ -579,13 +586,22 @@ TREADMILL_TYPES = {"treadmill_running"}
 def _parse_pace_notes(description: Optional[str]) -> list[tuple[int, int, int]]:
     """[(replängd i s, första repets fart, sista repets fart)], fart i s/km."""
     out = []
-    for m in PACE_NOTE_LINE.finditer(description or ""):
-        n = int(m.group(1))
-        rep = n if m.group(2).lower().startswith("s") else n * 60
-        first = int(m.group(3)) * 60 + int(m.group(4))
-        last = int(m.group(5)) * 60 + int(m.group(6)) if m.group(5) else first
-        # Rimlighetsspärr: 2:30–9:00/km. Allt annat är troligen inte en fart.
-        if 150 <= first <= 540 and 150 <= last <= 540:
+    for line in re.split(r"[\n;]+", description or ""):
+        lengths = [
+            int(m.group(1)) * (1 if m.group(2).lower().startswith("s") else 60)
+            for m in REP_LENGTH.finditer(line)
+        ]
+        paces = []
+        for m in PACE_VALUE.finditer(line):
+            first = int(m.group(1)) * 60 + int(m.group(2))
+            last = int(m.group(3)) * 60 + int(m.group(4)) if m.group(3) else first
+            # Rimlighetsspärr: 2:30–9:00/km. Allt annat är troligen inte en fart.
+            if 150 <= first <= 540 and 150 <= last <= 540:
+                paces.append((first, last))
+        # Lika många längder som farter: para i ordning. En längd och flera
+        # farter (eller tvärtom) är tvetydigt — då tas bara första paret.
+        pairs = zip(lengths, paces) if len(lengths) == len(paces) else zip(lengths[:1], paces[:1])
+        for rep, (first, last) in pairs:
             out.append((rep, first, last))
     return out
 

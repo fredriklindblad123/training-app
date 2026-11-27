@@ -59,13 +59,20 @@ export function nameKey(name: string | null | undefined): string | null {
     .replace(/[\s,.]+/g, "");
 }
 
-/** Samma tolkning av fartkommentaren som synken gör (api/index.py). Här
- * räcker det att veta OM kommentaren innehåller farter. */
-const PACE_NOTE = /(\d+)\s*(sek|s\b|sekund|min|minut)\w*\s*[:=]?\s*(\d{1,2})[.:,](\d{2})/i;
+/** Samma tolkning av fartkommentaren som synken gör (api/index.py,
+ * REP_LENGTH och PACE_VALUE): en rad med både en replängd och en fart, i
+ * vilken ordning som helst ("3min: 3.40" och "4.02 på 8minutraren", 2026-11-27).
+ * Här räcker det att veta OM kommentaren innehåller farter. */
+const REP_LENGTH = /(\d+)\s*(sek|s\b|sekund|min|minut)/i;
+const PACE_VALUE = /(?<![\d.,:])(\d{1,2})[.:,](\d{2})(?!\d)/;
+
+function hasPaceNote(description: string | null): boolean {
+  return (description ?? "").split(/[\n;]+/).some((line) => REP_LENGTH.test(line) && PACE_VALUE.test(line));
+}
 
 function usable(a: Act): boolean {
   if (a.activity_type === "running") return true;
-  if (a.activity_type === "treadmill_running") return PACE_NOTE.test(a.description ?? "");
+  if (a.activity_type === "treadmill_running") return hasPaceNote(a.description);
   return false;
 }
 
