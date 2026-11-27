@@ -35,15 +35,38 @@ export const MIN_NOTES = 20;
 
 export type Theme = { key: string; label: string; re: RegExp };
 
+/* Orden per tema, genomgångna mot Alices 341 anteckningar 2026-11-27 (begärt
+ * efter att 24/10 hamnade under Fart på "kände snabbt att"):
+ *   - "snabbt" betyder oftast fart ("öppnade lite snabbt") men ibland fort i
+ *     tiden: "blev snabbt värre", "återhämtade mig snabbt efter", "kände
+ *     snabbt att". Följt av värre/bättre/att/efter räknas det inte.
+ *     "Snabbverkande" (medicin) räknas inte.
+ *   - "Pulsband" är utrustning, inte puls.
+ *   - Knät saknades som tema — 11 omnämnanden, de flesta hösten 2025.
+ *   - Väder och underlag saknade lerigt, underlag, asfalt, blött, kylan,
+ *     grader och stekande.
+ *   - Benen: "stumnar" och "syra" är hur hon beskriver benen i slutet av ett
+ *     lopp. "Benövning" (styrka) räknas inte — \b håller den ute.
+ * En anteckning kan ta upp flera teman och visas då under alla: 24/10 står
+ * under både Höften (höften) och Väder och underlag (gräs). */
 export const THEMES: Theme[] = [
   { key: "kontroll", label: "Kontroll", re: /kontroll/i },
-  { key: "fart", label: "Fart och tempo", re: /\b(tempo|farten|fart|snabb\w*|långsam\w*)\b/i },
-  { key: "puls", label: "Puls", re: /puls/i },
-  { key: "andning", label: "Andning", re: /\b(andas|andning\w*|astma\w*|inhalator\w*|pip\w*)\b/i },
-  { key: "benen", label: "Benen", re: /\b(ben|benen|lår\w*|vaden|vader)\b/i },
+  {
+    key: "fart",
+    label: "Fart och tempo",
+    re: /\b(tempo|farten|fart|snabbare|snabbaste|snabbhet\w*|snabba|snabb|snabbt(?!\s+(?:värre|bättre|att|efter))|långsam\w*)\b/i,
+  },
+  { key: "puls", label: "Puls", re: /puls(?!band)/i },
+  { key: "andning", label: "Andning", re: /\b(andas|andning\w*|astma\w*|inhalator\w*|pip\w*|flås\w*)\b/i },
+  { key: "benen", label: "Benen", re: /\b(ben|benen|lår\w*|vaden|vader|stum\w*|syra|mjölksyra)\b/i },
   { key: "hoft", label: "Höften", re: /höft/i },
-  { key: "fot", label: "Foten", re: /\b(fot|foten|fötter\w*|tå|tån|tårna|häl\w*)\b/i },
-  { key: "vader", label: "Väder och underlag", re: /\b(vind\w*|blåst\w*|blås\w*|regn\w*|kallt|kyla|varmt|värme\w*|halt|storm\w*|snö\w*|motvind|medvind|gräs\w*|is)\b/i },
+  { key: "kna", label: "Knät", re: /\b(knä|knät|knäet|knän|knäna)\b/i },
+  { key: "fot", label: "Foten", re: /\b(fot|foten|fötter\w*|tå|tån|tårna|häl|hälen|hälsena\w*)\b/i },
+  {
+    key: "vader",
+    label: "Väder och underlag",
+    re: /\b(vind\w*|blåst\w*|blås\w*|regn\w*|kallt|kyla|kylan|varmt|värme\w*|grader|stekande|halt|storm\w*|snö\w*|motvind|medvind|gräs\w*|is|lerig\w*|lera|underlag\w*|asfalt\w*|blöt\w*)\b/i,
+  },
 ];
 
 export type ThemeNote = {
