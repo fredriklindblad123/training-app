@@ -648,7 +648,7 @@ export default async function DashboardPage({
               <p>
                 Blocket hittills: {block.name}, {formatDateShort(block.start)}–{formatDateShort(vsPlan.to)}. Passen
                 räknas mot planen från blockets start: ett planerat pass är gjort när ett pass av samma typ finns den
-                dagen, och "annan typ" när det blev ett annat slags pass (till exempel cykel i stället för löpning).
+                dagen, och ”annan typ” när det blev ett annat slags pass (till exempel cykel i stället för löpning).
                 Distans och tid jämförs bara från den dag planen har siffror. Hela
                 blocket är planerat till {formatNumber(vsPlan.blockPlannedKm, 1)} km och{" "}
                 {formatMinutes(vsPlan.blockPlannedMin)}.
