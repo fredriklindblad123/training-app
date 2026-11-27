@@ -97,7 +97,7 @@ export function TodaySession({
   thresholds = null,
   children,
 }: {
-  /** Visas i samma ram under passet — veckoremsan på Idag. */
+  /** Visas i samma ram ovanför passet — veckoremsan på Idag. */
   children?: React.ReactNode;
   /** Löparens trösklar, för pulsraden i plan mot utfall. */
   thresholds?: GapThresholds | null;
@@ -117,7 +117,15 @@ export function TodaySession({
        rubriker: en fristående ovanför ett rutnät och en inbakad i en ruta.
        Samma sektionsskal som Status och nyckeltalen redan använder. */
     <section className="flex flex-col gap-3">
-      <h2 className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">
+      {/* Med veckan i ramen (Idag) står rubriken inne i kortet, ovanför
+          passet — utanför hade den stått ovanför veckan. */}
+      <h2
+        className={
+          children
+            ? "sr-only"
+            : "display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase"
+        }
+      >
         Dagens pass
       </h2>
 
@@ -127,15 +135,22 @@ export function TodaySession({
           Kulören kommer ur samma --cat-*-token som resten av appen och blandas
           mot ytan med color-mix, så den följer med i mörkt läge automatiskt i
           stället för att lysa. */}
-      {/* En ram för dagen och veckan (2026-11-24, begärt): passkortet och
-          veckoremsan är två länkar under varandra i samma kort. */}
+      {/* En ram för veckan och dagen (2026-11-24, begärt): veckoremsan och
+          passkortet är två länkar i samma kort — veckan överst sedan
+          2026-11-27 (begärt), så att dagen läses i sin vecka. */}
       <div className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--surface)]">
+      {children && <div className="border-b border-[var(--line)]">{children}</div>}
       <Link
         href={href}
         /* Platt kort sedan 2026-11-21 (ny UX): passtypen bärs av en prick
            vid rubriken, inte av en färgad toning över kortet. */
         className="relative flex flex-col gap-3 p-4 transition-colors hover:bg-[var(--surface-raised)]"
       >
+        {children && (
+          <span aria-hidden className="display text-xs font-semibold tracking-[0.08em] text-[var(--ink-3)] uppercase">
+            Dagens pass
+          </span>
+        )}
         {/* Tomt läge sägs rakt ut. En vilodag är ett giltigt svar på "vad ska
             jag göra idag", och ska inte se ut som att något saknas. */}
         {empty && (
@@ -254,7 +269,6 @@ export function TodaySession({
           <LinkPending />
         </span>
       </Link>
-      {children && <div className="border-t border-[var(--line)]">{children}</div>}
       </div>
     </section>
   );
