@@ -47,6 +47,34 @@ function lastInterruption(rows: DiaryRow[]): { kind: "sick" | "injured"; from: s
   return { kind: last.day_type as "sick" | "injured", from, to: last.entry_date, days };
 }
 
+/* Löparens sidor, i samma ordning som löparens egen meny (BottomNav):
+ * Idag, Kalender, Form, Lopp, Blocket. Lopp saknades (2026-11-27), och
+ * kortet för en löpare utan klocka hade inga länkar alls — planen och
+ * tävlingarna finns ju ändå. */
+const ATHLETE_PAGES = [
+  { l: "Idag", h: "/dashboard" },
+  { l: "Kalender", h: "/calendar" },
+  { l: "Form", h: "/trender" },
+  { l: "Lopp", h: "/tavlingsresultat" },
+  { l: "Blocket", h: "/analys" },
+];
+
+function athleteNav(athlete: { id: string; fullName: string | null }) {
+  return (
+    <nav aria-label={`${athlete.fullName ?? "Löparen"}s sidor`} className="grid grid-cols-5 gap-1.5">
+      {ATHLETE_PAGES.map((x) => (
+        <Link
+          key={x.h}
+          href={`${x.h}?athlete=${athlete.id}`}
+          className="flex min-h-10 items-center justify-center rounded-[10px] bg-[var(--surface-raised)] px-1 text-[0.8125rem] text-[var(--foreground)] hover:opacity-80 sm:text-sm"
+        >
+          {x.l}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 export default async function GruppenPage() {
   const supabase = await createClient();
   const scoped = await getScopedProfile(supabase);
@@ -150,22 +178,7 @@ export default async function GruppenPage() {
                   <div className="font-semibold text-[var(--foreground)]">{c.todayLabel}</div>
                 </div>
               </div>
-              <nav aria-label={`${c.athlete.fullName ?? "Löparen"}s sidor`} className="grid grid-cols-4 gap-1.5">
-                {[
-                  { l: "Idag", h: "/dashboard" },
-                  { l: "Kalender", h: "/calendar" },
-                  { l: "Form", h: "/trender" },
-                  { l: "Blocket", h: "/analys" },
-                ].map((x) => (
-                  <Link
-                    key={x.h}
-                    href={`${x.h}?athlete=${c.athlete.id}`}
-                    className="flex min-h-10 items-center justify-center rounded-[10px] bg-[var(--surface-raised)] text-sm text-[var(--foreground)] hover:opacity-80"
-                  >
-                    {x.l}
-                  </Link>
-                ))}
-              </nav>
+              {athleteNav(c.athlete)}
               {(c.interruption || c.lastDiary) && (
                 <ul className="flex list-disc flex-col gap-1 border-t border-[var(--line)] pt-2.5 pl-4 text-sm text-[var(--ink-2)]">
                   {c.interruption && (
@@ -188,6 +201,7 @@ export default async function GruppenPage() {
                 <span className="text-sm text-[var(--ink-2)]">{c.plannedCount} pass planerade i veckan</span>
               </div>
               <EmptyState title="Ingen klocka kopplad">Planen syns, men inte vad som blev gjort.</EmptyState>
+              {athleteNav(c.athlete)}
             </article>
           ),
         )}
