@@ -109,19 +109,46 @@ export type SameTime = {
 };
 export type SameSessionGroup = { key: string; name: string; times: SameTime[] };
 
+/* Ett ENSAMT långt uppvärmnings- eller nerjoggsvarv (2026-11-28). Samma
+ * regel som merged_splits i databasen (migration
+ * 20261128120000_merged_splits_edge_laps): passets första eller sista varv
+ * är uppvärmning/nerjogg och inget rep när det är minst 800 m och minst 1,15
+ * gånger långsammare än medianen av de övriga arbetsvarven. 31/10 blev
+ * annars "4x4 min" sex rep — uppvärmningen på 3,1 km i 5:07/km gick under
+ * 6:00-gränsen nedan. Mätt mot passnamnen: 17 pass fick rätt antal rep,
+ * inget blev fel. */
+export function withoutEdgeLaps<L extends { split_index: number; distance_meters: number | null; duration_seconds: number | null }>(
+  work: L[],
+  allLaps: { split_index: number }[],
+): L[] {
+  if (work.length < 3 || allLaps.length === 0) return work;
+  const first = Math.min(...allLaps.map((l) => l.split_index));
+  const last = Math.max(...allLaps.map((l) => l.split_index));
+  const pace = (l: L) => (l.duration_seconds as number) / ((l.distance_meters as number) / 1000);
+  const inner = work.filter((l) => l.split_index !== first && l.split_index !== last).map(pace);
+  if (inner.length === 0) return work;
+  const med = median(inner);
+  return work.filter(
+    (l) => !((l.split_index === first || l.split_index === last) && (l.distance_meters ?? 0) >= 800 && pace(l) >= med * 1.15),
+  );
+}
+
 /** Ett pass delat i arbetsvarv per replängd, i den ordning delarna kom. */
 function partsOf(laps: Lap[]): { key: string; parts: SamePart[] } | null {
   // Ett kvalitetspass har vila mellan repen. Utan vilovarv är det ett
   // distanspass med automatiska varv (fel kategori i databasen) — 9/11 2026
   // hamnade annars som "8×5 min" i 4:55/km.
   if (laps.filter((l) => l.split_type === "rest").length < 2) return null;
-  const work = laps.filter(
-    (l) =>
-      l.split_type === "active" &&
-      (l.duration_seconds ?? 0) >= 25 &&
-      (l.distance_meters ?? 0) > 0 &&
-      // Joggvila som råkat bli ett aktivt varv: långsammare än 6:00/km.
-      (l.duration_seconds as number) / ((l.distance_meters as number) / 1000) < 360,
+  const work = withoutEdgeLaps(
+    laps.filter(
+      (l) =>
+        l.split_type === "active" &&
+        (l.duration_seconds ?? 0) >= 25 &&
+        (l.distance_meters ?? 0) > 0 &&
+        // Joggvila som råkat bli ett aktivt varv: långsammare än 6:00/km.
+        (l.duration_seconds as number) / ((l.distance_meters as number) / 1000) < 360,
+    ),
+    laps,
   );
   if (work.length < 3) return null;
   const order: number[] = [];

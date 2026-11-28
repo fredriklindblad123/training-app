@@ -1,6 +1,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { formatKm, formatMinutes, formatPace } from "@/lib/format";
 import { pairPlanDone } from "@/lib/pair-plan";
+import { withoutEdgeLaps } from "@/lib/same-session";
 
 /* Plan mot utfall (2026-11-24) — skillnaden mellan det planerade och det
  * genomförda passet i distans, tid, fart och puls, på Idag och i dagvyn.
@@ -189,6 +190,7 @@ export function planGap(
 
 type Lap = {
   activity_id: string;
+  split_index: number;
   split_type: string | null;
   distance_meters: number | null;
   duration_seconds: number | null;
@@ -214,18 +216,22 @@ export async function fetchRepStats(
   if (activityIds.length === 0) return out;
   const { data } = await supabase
     .from("activity_splits")
-    .select("activity_id, split_type, distance_meters, duration_seconds, hr_end, max_hr")
+    .select("activity_id, split_index, split_type, distance_meters, duration_seconds, hr_end, max_hr")
     .in("activity_id", activityIds);
   const by = new Map<string, Lap[]>();
   for (const l of (data ?? []) as Lap[]) by.set(l.activity_id, [...(by.get(l.activity_id) ?? []), l]);
   for (const [id, laps] of by) {
     const maxes = laps.map((l) => l.max_hr).filter((h): h is number => h != null).map(Number);
-    const work = laps.filter(
-      (l) =>
-        l.split_type === "active" &&
-        (l.duration_seconds ?? 0) >= 25 &&
-        (l.distance_meters ?? 0) > 0 &&
-        (l.duration_seconds as number) / ((l.distance_meters as number) / 1000) < 360,
+    // Ensamt uppvärmnings-/nerjoggsvarv bort, se withoutEdgeLaps.
+    const work = withoutEdgeLaps(
+      laps.filter(
+        (l) =>
+          l.split_type === "active" &&
+          (l.duration_seconds ?? 0) >= 25 &&
+          (l.distance_meters ?? 0) > 0 &&
+          (l.duration_seconds as number) / ((l.distance_meters as number) / 1000) < 360,
+      ),
+      laps,
     );
     // Ett kvalitetspass har vila mellan repen; utan vilovarv är det ett
     // distanspass med automatiska kilometervarv.
