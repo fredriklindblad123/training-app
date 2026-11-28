@@ -27,7 +27,7 @@ import { buttonClass, primaryButtonClass } from "@/components/ui/controls";
  * dåligt ljus sänker telefonen den själv. Bildfrekvensen visas därför, och
  * under 20 bilder/s varnar vyn. */
 
-const MIN_SECONDS = 20;
+const MIN_SECONDS = 30;
 const MIN_REVS = 15;
 
 export function BeltCounter({
