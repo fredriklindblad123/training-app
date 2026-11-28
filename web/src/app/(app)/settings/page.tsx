@@ -138,6 +138,18 @@ export default async function SettingsPage({
 
       <section className="flex flex-col gap-3">
         <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
+          Löpband
+        </h2>
+        <p className="max-w-3xl text-sm text-[var(--ink-2)]">
+          Mät bandets verkliga fart med kameran eller genom att knacka, så att tröskelfarten på bandet blir rätt.
+        </p>
+        <Link href="/lopband" className={buttonClass}>
+          Mät och välj band
+        </Link>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 className="display text-xl leading-tight font-semibold text-[var(--foreground)]">
           Garmin-koppling
         </h2>
         <p className="mt-1 max-w-3xl text-sm text-[var(--ink-2)]">

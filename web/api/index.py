@@ -606,8 +606,43 @@ def _parse_pace_notes(description: Optional[str]) -> list[tuple[int, int, int]]:
     return out
 
 
+def _treadmill_calibration(user_id: str) -> Optional[tuple[float, float, float]]:
+    """(slope, intercept, faktor med löpare) för löparens band, eller None.
+
+    Fartkommentaren är vad BANDET visade. Har löparen ett mätt band
+    (/lopband, web/src/lib/treadmill.ts) räknas den om till verklig fart:
+    verklig km/h = (slope * visad km/h + intercept) * faktor. Utan mätt band,
+    eller före migrationen 20261128140000_treadmills.sql, används bandets fart
+    som förut."""
+    try:
+        prof = _sb_select("profiles", "treadmill_id", {"id": f"eq.{user_id}"})
+        band = (prof or [{}])[0].get("treadmill_id")
+        if not band:
+            return None
+        cal = _sb_select(
+            "treadmill_calibrations", "slope,intercept,loaded_factor",
+            {"treadmill_id": f"eq.{band}", "order": "created_at.desc", "limit": "1"},
+        )
+    except Exception:
+        return None
+    if not cal:
+        return None
+    c = cal[0]
+    return float(c["slope"]), float(c["intercept"]), float(c.get("loaded_factor") or 1)
+
+
+def _true_pace(pace: float, cal: Optional[tuple[float, float, float]]) -> float:
+    """Bandets visade fart (s/km) som verklig fart (s/km)."""
+    if not cal:
+        return pace
+    slope, intercept, factor = cal
+    kmh = (slope * (3600 / pace) + intercept) * factor
+    return 3600 / kmh if kmh > 0 else pace
+
+
 def _apply_treadmill_pace_notes(user_id: str, activities: list[dict]) -> int:
     """Rättar löpbandspassens varv och distans efter löparens angivna fart."""
+    cal = None
     targets = [
         a for a in activities
         if ((a.get("activityType") or {}).get("typeKey") in TREADMILL_TYPES)
@@ -630,6 +665,8 @@ def _apply_treadmill_pace_notes(user_id: str, activities: list[dict]) -> int:
         )
         if not laps:
             continue
+        if cal is None:
+            cal = _treadmill_calibration(user_id) or ()
         new_distance: dict[int, float] = {}
         for rep, first, last in _parse_pace_notes(a.get("description")):
             tol = max(3, 0.1 * rep)
@@ -641,6 +678,7 @@ def _apply_treadmill_pace_notes(user_id: str, activities: list[dict]) -> int:
             ]
             for i, lap in enumerate(group):
                 pace = first if len(group) == 1 else first + (last - first) * i / (len(group) - 1)
+                pace = _true_pace(pace, cal or None)
                 new_distance[lap["split_index"]] = float(lap["duration_seconds"]) / pace * 1000
         if not new_distance:
             continue

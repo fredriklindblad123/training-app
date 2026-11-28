@@ -25,7 +25,7 @@ import { toDateKey } from "@/lib/week-series";
 import { fetchRepStats, weekGap, type GapThresholds, type WeekPlanRow } from "@/lib/plan-gap";
 import { PlanGapTiles } from "@/components/PlanGapTable";
 import { getViewMode } from "@/lib/view-mode";
-import { TodaySession, dayAccent, type TodayPlanned } from "@/components/TodaySession";
+import { TodaySession, dayAccent, type TodayPlanned, type TodayTreadmill } from "@/components/TodaySession";
 import { reviewSession, type ReviewRep, type SessionReview } from "@/lib/session-review";
 import type { PhaseType } from "@/lib/planning";
 import { RecordCard } from "@/components/RecordCard";
@@ -418,6 +418,10 @@ export default async function DashboardPage({
     fetchRepStats(supabase, [...new Set([...weekSessions, ...sessions].map((s) => s.dominantActivity.id))]),
     supabase.from("profiles").select("lt1_hr, lt2_hr, lt2_source").eq("id", scopedUserId).maybeSingle(),
   ]);
+  /* Löparens band (lib/treadmill.ts), för "ställ bandet på" i dagens pass.
+     En egen fråga: kolumnen kom med en senare migration, och ett fel här ska
+     inte ta pulsraden i plan mot utfall med sig. */
+  const treadmill = await fetchTreadmill(supabase, scopedUserId);
   const gapThresholds: GapThresholds = {
     lt1: gapProfile?.lt1_hr ?? null,
     lt2: gapProfile?.lt2_hr ?? null,
@@ -526,6 +530,7 @@ export default async function DashboardPage({
           Hela kortet länkar till dagen i kalendern, där passet loggas och
           rättas. --------------------------------------------------------- */}
       <TodaySession
+        treadmill={treadmill}
         planned={(todayPlannedRows ?? []) as unknown as TodayPlanned[]}
         /* Varven hör till EN aktivitet, och funktionen svarar bara för den
            allra senaste. De hängs därför bara på det pass de faktiskt kommer
@@ -786,4 +791,31 @@ export default async function DashboardPage({
 
     </div>
   );
+}
+
+async function fetchTreadmill(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+): Promise<TodayTreadmill | null> {
+  const { data: p, error } = await supabase.from("profiles").select("treadmill_id").eq("id", userId).maybeSingle();
+  if (error || !p?.treadmill_id) return null;
+  const [{ data: band }, { data: cal }] = await Promise.all([
+    supabase.from("treadmills").select("name").eq("id", p.treadmill_id).maybeSingle(),
+    supabase
+      .from("treadmill_calibrations")
+      .select("slope, intercept, loaded_factor")
+      .eq("treadmill_id", p.treadmill_id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (!band || !cal) return null;
+  return {
+    name: band.name as string,
+    calibration: {
+      slope: Number(cal.slope),
+      intercept: Number(cal.intercept),
+      loadedFactor: cal.loaded_factor != null ? Number(cal.loaded_factor) : null,
+    },
+  };
 }

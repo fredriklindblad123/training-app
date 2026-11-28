@@ -1,4 +1,5 @@
-import { formatKm } from "@/lib/format";
+import { formatKm, formatPace } from "@/lib/format";
+import { kmhToPace, paceToKmh, setKmhFor, type Calibration } from "@/lib/treadmill";
 import Link from "next/link";
 import { pairPlanDone } from "@/lib/pair-plan";
 import { planGap, type GapThresholds, type RepStats } from "@/lib/plan-gap";
@@ -45,6 +46,9 @@ export type TodayPlanned = {
    * människa till just den här personen — därför står den framme. */
   description: string | null;
 };
+
+/** Löparens kalibrerade löpband, för "ställ bandet på" (lib/treadmill.ts). */
+export type TodayTreadmill = { name: string; calibration: Calibration };
 
 export type TodayDone = {
   id: string;
@@ -95,8 +99,10 @@ export function TodaySession({
   labSet = null,
   compact = false,
   thresholds = null,
+  treadmill = null,
   children,
 }: {
+  treadmill?: TodayTreadmill | null;
   /** Visas i samma ram ovanför passet — veckoremsan på Idag. */
   children?: React.ReactNode;
   /** Löparens trösklar, för pulsraden i plan mot utfall. */
@@ -221,6 +227,13 @@ export function TodaySession({
                     {[p.title ? pLabel : null, detail].filter(Boolean).join(" · ")}
                   </span>
                   {comment && <p className="line-clamp-3 text-sm leading-snug text-[var(--ink-2)]">{comment}</p>}
+                  {treadmill && p.target_pace_seconds_per_km ? (
+                    <span className="tabular text-sm text-[var(--ink-2)]">
+                      På löpbandet ({treadmill.name}): ställ in{" "}
+                      {beltSetting(treadmill.calibration, p.target_pace_seconds_per_km)} för{" "}
+                      {formatPace(p.target_pace_seconds_per_km).replace(" /km", "/km")}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-[var(--ink-3)]">
                     {p.workout_type === "strength" ? "Planerat · inte loggat med klockan" : "Planerat · inte gjort ännu"}
                   </span>
@@ -272,4 +285,10 @@ export function TodaySession({
       </div>
     </section>
   );
+}
+
+/** Vad bandet ska ställas på för planens fart: "3:54/km (15,4 km/h)". */
+function beltSetting(c: Calibration, targetSecondsPerKm: number): string {
+  const set = setKmhFor(c, paceToKmh(targetSecondsPerKm));
+  return `${formatPace(kmhToPace(set)).replace(" /km", "/km")} (${set.toFixed(1).replace(".", ",")} km/h)`;
 }
