@@ -4,7 +4,12 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BeltCounter } from "@/components/BeltCounter";
 import { buttonClass, fieldClass, primaryButtonClass } from "@/components/ui/controls";
+import { CalibrationCurve } from "@/components/CalibrationCurve";
+import { MIN_TEST_SECONDS } from "@/components/BeltCounter";
 import {
+  MIN_SPEEDS,
+  pointProblem,
+  revolutionsProblem,
   fitCalibration,
   kmhFrom,
   kmhToPace,
@@ -49,50 +54,78 @@ export function TreadmillCalibrator({ mode, athlete, onClose }: { mode: Mode; at
   const lengthOk = length >= 100 && length <= 1000;
   const [points, setPoints] = useState<CalibrationPoint[]>([]);
   const [speedText, setSpeedText] = useState("");
+  const [secondsText, setSecondsText] = useState(String(MIN_TEST_SECONDS));
+  const seconds = Math.round(Number(secondsText.replace(",", ".")));
+  const secondsOk = Number.isFinite(seconds) && seconds >= MIN_TEST_SECONDS && seconds <= 600;
   const [measuring, setMeasuring] = useState<null | "kamera" | "knack">(null);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [treadmillId, setTreadmillId] = useState<string | null>(mode.kind === "again" ? mode.treadmillId : null);
+  const [calibrationId, setCalibrationId] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const speed = parseBeltSpeed(speedText);
   const fit = fitCalibration(points);
   const single = mode.kind === "loaded";
+  const speeds = new Set(points.map((p) => p.setKmh.toFixed(1))).size;
 
-  function finish(times: number[], method: "kamera" | "knack") {
-    setMeasuring(null);
-    const r = revolutionsFrom(times);
-    if (!r || !speed) {
-      setError("Varven gick inte att räkna ut. Mät den farten igen.");
-      return;
-    }
-    setError(null);
-    setPoints((prev) => [
-      ...prev,
-      { setKmh: speed.kmh, actualKmh: kmhFrom(length, r.period), revs: r.revs, seconds: r.seconds, method },
-    ]);
-    setSpeedText("");
-  }
-
-  function save() {
-    setError(null);
+  /* Sparar automatiskt: kontrollen med löpare direkt, kalibreringen så fort
+     tre farter är mätta, och sedan på nytt för varje fart som läggs till
+     eller tas bort (samma rad uppdateras). */
+  function persist(next: CalibrationPoint[]) {
+    if (!single && new Set(next.map((p) => p.setKmh.toFixed(1))).size < MIN_SPEEDS) return;
     start(async () => {
-      const res =
-        mode.kind === "loaded"
-          ? await saveLoadedCheck({ calibrationId: mode.calibrationId, point: points[0] })
-          : await saveCalibration({
-              treadmillId: mode.kind === "again" ? mode.treadmillId : null,
-              newBand: mode.kind === "new" ? { name, beltLengthCm: length } : null,
-              beltLengthCm: length,
-              points,
-              athlete,
-            });
-      if (!res.ok) setError(res.error);
-      else {
+      if (mode.kind === "loaded") {
+        const res = await saveLoadedCheck({ calibrationId: mode.calibrationId, point: next[0] });
+        if (!res.ok) return setError(res.error);
         router.refresh();
         onClose();
+        return;
       }
+      const res = await saveCalibration({
+        treadmillId,
+        calibrationId,
+        newBand: treadmillId ? null : { name, beltLengthCm: length },
+        beltLengthCm: length,
+        points: next,
+        athlete,
+      });
+      if (!res.ok) return setError(res.error);
+      setTreadmillId(res.treadmillId);
+      setCalibrationId(res.calibrationId);
+      setSaved(`Sparat med ${new Set(next.map((p) => p.setKmh.toFixed(1))).size} farter.`);
+      router.refresh();
     });
   }
 
-  const canMeasure = lengthOk && speed != null && (!single || points.length === 0);
+  function finish(times: number[], method: "kamera" | "knack") {
+    setMeasuring(null);
+    const problem = revolutionsProblem(times);
+    const r = revolutionsFrom(times);
+    if (problem || !r || !speed) {
+      setError(`${problem ?? "Varven gick inte att räkna ut."} Mät den farten igen.`);
+      return;
+    }
+    const actual = kmhFrom(length, r.period);
+    const off = pointProblem(speed.kmh, actual);
+    if (off) {
+      setError(`${off} Mät den farten igen.`);
+      return;
+    }
+    setError(null);
+    const next = [...points, { setKmh: speed.kmh, actualKmh: actual, revs: r.revs, seconds: r.seconds, method }];
+    setPoints(next);
+    setSpeedText("");
+    persist(next);
+  }
+
+  function remove(i: number) {
+    const next = points.filter((_, j) => j !== i);
+    setPoints(next);
+    persist(next);
+  }
+
+  const canMeasure =
+    lengthOk && speed != null && secondsOk && (mode.kind !== "new" || name.trim() !== "") && (!single || points.length === 0);
 
   return (
     <div className="flex flex-col gap-5 rounded-[14px] border border-[var(--line)] p-4">
@@ -159,7 +192,7 @@ export function TreadmillCalibrator({ mode, athlete, onClose }: { mode: Mode; at
                     {p.revs} på {Math.round(p.seconds)} s
                   </td>
                   <td className="py-1.5 text-right">
-                    <button type="button" className="text-xs text-[var(--ink-2)] underline" onClick={() => setPoints(points.filter((_, j) => j !== i))}>
+                    <button type="button" className="text-xs text-[var(--ink-2)] underline" onClick={() => remove(i)}>
                       Ta bort
                     </button>
                   </td>
@@ -174,7 +207,7 @@ export function TreadmillCalibrator({ mode, athlete, onClose }: { mode: Mode; at
             <p className="text-sm font-semibold text-[var(--foreground)]">
               Bandet på {speed ? `${pace(speed.kmh)}/km (${kmhLabel(speed.kmh)} km/h)` : speedText}
             </p>
-            <BeltCounter method={measuring} onDone={finish} onCancel={() => setMeasuring(null)} />
+            <BeltCounter method={measuring} seconds={seconds} onDone={finish} onCancel={() => setMeasuring(null)} />
           </>
         ) : (
           (!single || points.length === 0) && (
@@ -186,7 +219,16 @@ export function TreadmillCalibrator({ mode, athlete, onClose }: { mode: Mode; at
                   {speed ? `${pace(speed.kmh)}/km · ${kmhLabel(speed.kmh)} km/h` : "min/km eller km/h, som bandet visar"}
                 </span>
               </label>
-              {!lengthOk && mode.kind === "new" && <p className="text-xs text-[var(--ink-3)]">Fyll i bandets längd först.</p>}
+              <label className="flex flex-col gap-1 text-sm">
+                Testtid, sekunder
+                <input value={secondsText} onChange={(e) => setSecondsText(e.target.value)} inputMode="numeric" className={`${fieldClass} w-24`} />
+                <span className="text-xs text-[var(--ink-3)]">
+                  {secondsOk ? "Testet slutar och sparas av sig självt när tiden är ute." : `Minst ${MIN_TEST_SECONDS} sekunder.`}
+                </span>
+              </label>
+              {mode.kind === "new" && (!lengthOk || !name.trim()) && (
+                <p className="text-xs text-[var(--ink-3)]">Fyll i bandets namn och längd först.</p>
+              )}
               <div className="flex flex-wrap gap-2">
                 <button type="button" className={buttonClass} disabled={!canMeasure} style={{ opacity: canMeasure ? 1 : 0.4 }} onClick={() => setMeasuring("kamera")}>
                   Mät med kameran
@@ -200,33 +242,34 @@ export function TreadmillCalibrator({ mode, athlete, onClose }: { mode: Mode; at
         )}
       </div>
 
-      {!single && fit && points.length >= 1 && !measuring && (
-        <div className="flex flex-col gap-1 text-sm text-[var(--ink-2)]">
-          <p>{deviationText(fit.slope * 15 + fit.intercept, 15)}</p>
-          {points.length < 3 && <p className="text-xs text-[var(--ink-3)]">Med färre än tre farter går det inte att se om linjen passar alla farter.</p>}
-          {fit.maxResidualKmh != null && fit.maxResidualKmh > 0.15 && (
-            <p className="text-xs text-[var(--ink-3)]">
-              En fart ligger {kmhLabel(fit.maxResidualKmh)} km/h från linjen. Mät den gärna igen.
-            </p>
+      {!single && !measuring && (
+        <div className="flex flex-col gap-2 text-sm text-[var(--ink-2)]">
+          <p className="tabular">
+            {speeds} av minst {MIN_SPEEDS} farter mätta
+            {speeds < MIN_SPEEDS ? ". Kalibreringen sparas när tre farter är mätta." : "."}
+          </p>
+          {fit && points.length >= 2 && (
+            <>
+              <p>{deviationText(fit.slope * 15 + fit.intercept, 15)}</p>
+              <CalibrationCurve calibration={{ slope: fit.slope, intercept: fit.intercept, loadedFactor: null }} points={points} />
+              {fit.maxResidualKmh != null && fit.maxResidualKmh > 0.15 && (
+                <p className="text-xs text-[var(--ink-3)]">
+                  En fart ligger {kmhLabel(fit.maxResidualKmh)} km/h från linjen. Mät den gärna igen.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
 
       {error && <p className="text-sm text-[var(--foreground)]">{error}</p>}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={primaryButtonClass}
-          disabled={pending || points.length === 0 || (mode.kind === "new" && !name.trim())}
-          style={{ opacity: pending || points.length === 0 ? 0.4 : 1 }}
-          onClick={save}
-        >
-          {pending ? "Sparar…" : "Spara"}
+      {pending && <p className="text-sm text-[var(--ink-2)]">Sparar…</p>}
+      {saved && !pending && <p className="text-sm text-[var(--foreground)]">{saved} Lägg gärna till fler farter.</p>}
+      {!measuring && (
+        <button type="button" className={saved ? primaryButtonClass : buttonClass} onClick={onClose}>
+          {saved ? "Klar" : "Avbryt"}
         </button>
-        <button type="button" className={buttonClass} onClick={onClose}>
-          Avbryt
-        </button>
-      </div>
+      )}
     </div>
   );
 }

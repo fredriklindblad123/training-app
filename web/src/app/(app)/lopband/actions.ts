@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getScopedProfile, resolveScopedUserId } from "@/lib/auth-scope";
-import { actualKmh, fitCalibration, type CalibrationPoint } from "@/lib/treadmill";
+import { MIN_SPEEDS, actualKmh, calibrationProblem, fitCalibration, pointProblem, type CalibrationPoint } from "@/lib/treadmill";
 
 type Result = { ok: true; id: string } | { ok: false; error: string };
+type SaveResult = { ok: true; treadmillId: string; calibrationId: string } | { ok: false; error: string };
 
 function validPoint(p: CalibrationPoint): boolean {
   return (
@@ -15,22 +16,31 @@ function validPoint(p: CalibrationPoint): boolean {
   );
 }
 
-/** Sparar en mätning på tomt band. Med `newBand` skapas bandet först. */
+/** Sparar en mätning på tomt band. Med `newBand` skapas bandet först, och
+ * med `calibrationId` uppdateras en mätning som redan sparats (fler farter
+ * lades till efter de första tre). */
 export async function saveCalibration(input: {
   treadmillId: string | null;
+  calibrationId: string | null;
   newBand: { name: string; beltLengthCm: number } | null;
   beltLengthCm: number;
   points: CalibrationPoint[];
   /** Löparen vars band det blir, när bandet är nytt (coachen kan mäta åt en löpare). */
   athlete: string | null;
-}): Promise<Result> {
+}): Promise<SaveResult> {
   const supabase = await createClient();
   const scoped = await getScopedProfile(supabase);
   if (!scoped) return { ok: false, error: "Inte inloggad." };
   const points = input.points.filter(validPoint);
-  if (points.length === 0) return { ok: false, error: "Ingen giltig mätning att spara." };
+  if (new Set(points.map((p) => p.setKmh.toFixed(1))).size < MIN_SPEEDS) {
+    return { ok: false, error: `Mät minst ${MIN_SPEEDS} olika farter.` };
+  }
+  const bad = points.map((p) => pointProblem(p.setKmh, p.actualKmh)).find(Boolean);
+  if (bad) return { ok: false, error: bad };
   const fit = fitCalibration(points);
   if (!fit) return { ok: false, error: "Kunde inte räkna fram bandets linje." };
+  const off = calibrationProblem(fit);
+  if (off) return { ok: false, error: off };
 
   let treadmillId = input.treadmillId;
   if (!treadmillId) {
@@ -51,16 +61,20 @@ export async function saveCalibration(input: {
     await supabase.from("profiles").update({ treadmill_id: treadmillId }).eq("id", userId);
   }
 
-  const { error } = await supabase.from("treadmill_calibrations").insert({
+  const row = {
     treadmill_id: treadmillId,
     belt_length_cm: input.beltLengthCm,
     points,
     slope: fit.slope,
     intercept: fit.intercept,
-  });
-  if (error) return { ok: false, error: "Kunde inte spara mätningen." };
+  };
+  const { data, error } = input.calibrationId
+    ? await supabase.from("treadmill_calibrations").update(row).eq("id", input.calibrationId).select("id").single()
+    : await supabase.from("treadmill_calibrations").insert(row).select("id").single();
+  if (error || !data) return { ok: false, error: "Kunde inte spara mätningen." };
   revalidatePath("/lopband");
-  return { ok: true, id: treadmillId };
+  revalidatePath("/dashboard");
+  return { ok: true, treadmillId, calibrationId: data.id as string };
 }
 
 /** Kontrollmätningen med löpare: en fart, jämförd med linjen för tomt band. */
@@ -89,6 +103,17 @@ export async function saveLoadedCheck(input: { calibrationId: string; point: Cal
   if (error) return { ok: false, error: "Bara den som mätte bandet kan lägga till kontrollen." };
   revalidatePath("/lopband");
   return { ok: true, id: input.calibrationId };
+}
+
+/** Tar bort ett band med alla mätningar. Bara den som skapade bandet (RLS).
+ * Löpare som hade bandet valt blir utan band (on delete set null). */
+export async function deleteTreadmill(formData: FormData) {
+  const supabase = await createClient();
+  const id = formData.get("treadmill_id") as string;
+  if (!id) return;
+  await supabase.from("treadmills").delete().eq("id", id);
+  revalidatePath("/lopband");
+  revalidatePath("/dashboard");
 }
 
 export async function chooseTreadmill(formData: FormData) {

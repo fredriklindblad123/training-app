@@ -27,49 +27,74 @@ import { buttonClass, primaryButtonClass } from "@/components/ui/controls";
  * dåligt ljus sänker telefonen den själv. Bildfrekvensen visas därför, och
  * under 20 bilder/s varnar vyn. */
 
-const MIN_SECONDS = 30;
-const MIN_REVS = 15;
+/** Kortaste testtid. Kortare än så och knackningens ojämnhet börjar synas. */
+export const MIN_TEST_SECONDS = 30;
 
 export function BeltCounter({
   onDone,
   onCancel,
   method,
+  seconds,
 }: {
+  /** Anropas en gång, när testtiden är ute, med passagerna inom den. */
   onDone: (times: number[], method: "kamera" | "knack") => void;
   onCancel: () => void;
   method: "kamera" | "knack";
+  /** Testets längd i sekunder. Mätningen avslutas av sig själv. */
+  seconds: number;
 }) {
   return method === "knack" ? (
-    <TapCounter onDone={(t) => onDone(t, "knack")} onCancel={onCancel} />
+    <TapCounter seconds={seconds} onDone={(t) => onDone(t, "knack")} onCancel={onCancel} />
   ) : (
-    <CameraCounter onDone={(t) => onDone(t, "kamera")} onCancel={onCancel} />
+    <CameraCounter seconds={seconds} onDone={(t) => onDone(t, "kamera")} onCancel={onCancel} />
   );
 }
 
-function Progress({ times }: { times: number[] }) {
+/** Avslutar testet när tiden är ute: räknar från `start` (sekunder, samma
+ * klocka som passagerna) och lämnar över passagerna inom testtiden. */
+function useTimedEnd(start: number | null, seconds: number, times: number[], onDone: (t: number[]) => void) {
+  const [left, setLeft] = useState(seconds);
+  const latest = useRef({ times, onDone });
+  useEffect(() => {
+    latest.current = { times, onDone };
+  });
+  useEffect(() => {
+    if (start == null) return;
+    let done = false;
+    const id = window.setInterval(() => {
+      const elapsed = performance.now() / 1000 - start;
+      setLeft(Math.max(0, Math.ceil(seconds - elapsed)));
+      if (!done && elapsed >= seconds) {
+        done = true;
+        window.clearInterval(id);
+        latest.current.onDone(latest.current.times.filter((t) => t >= start && t <= start + seconds));
+      }
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [start, seconds]);
+  return left;
+}
+
+function Progress({ times, left }: { times: number[]; left: number }) {
   const r = revolutionsFrom(times);
-  const secs = times.length > 1 ? times[times.length - 1] - times[0] : 0;
   return (
     <div className="tabular flex justify-between text-sm text-[var(--ink-2)]">
-      <span>{r ? `${r.revs} varv` : `${Math.max(0, times.length - 1)} varv`}</span>
-      <span>{Math.round(secs)} s</span>
+      <span>{r ? `${r.revs} varv` : `${times.length} passager`}</span>
+      <span className="font-semibold text-[var(--foreground)]">{left} s kvar</span>
       <span>{r ? `${r.period.toFixed(2).replace(".", ",")} s/varv` : "–"}</span>
     </div>
   );
 }
 
-function ready(times: number[]) {
-  const r = revolutionsFrom(times);
-  return r != null && r.revs >= MIN_REVS && r.seconds >= MIN_SECONDS;
-}
-
-function TapCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; onCancel: () => void }) {
+function TapCounter({ seconds, onDone, onCancel }: { seconds: number; onDone: (t: number[]) => void; onCancel: () => void }) {
   const [times, setTimes] = useState<number[]>([]);
+  const start = times.length > 0 ? times[0] : null;
+  const left = useTimedEnd(start, seconds, times, onDone);
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-[var(--ink-2)]">
-        Knacka varje gång strecket passerar samma ställe, till exempel bandets bakkant. Fortsätt i minst{" "}
-        {MIN_SECONDS} sekunder.
+        Knacka varje gång strecket passerar samma ställe, till exempel bandets bakkant. Tiden startar vid första
+        knacken och testet slutar av sig självt efter {seconds} sekunder.
       </p>
       <button
         type="button"
@@ -84,14 +109,8 @@ function TapCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; onCan
       >
         {times.length === 0 ? "Knacka här" : times.length}
       </button>
-      <Progress times={times} />
+      <Progress times={times} left={left} />
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={primaryButtonClass} disabled={!ready(times)} onClick={() => onDone(times)} style={{ opacity: ready(times) ? 1 : 0.4 }}>
-          Klar
-        </button>
-        <button type="button" className={buttonClass} onClick={() => setTimes([])}>
-          Börja om
-        </button>
         <button type="button" className={buttonClass} onClick={onCancel}>
           Avbryt
         </button>
@@ -102,7 +121,7 @@ function TapCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; onCan
 
 type Dir = "vertical" | "horizontal";
 
-function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; onCancel: () => void }) {
+function CameraCounter({ seconds, onDone, onCancel }: { seconds: number; onDone: (t: number[]) => void; onCancel: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const plotRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,7 +129,9 @@ function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; on
   const [dir, setDir] = useState<Dir>("vertical");
   const [times, setTimes] = useState<number[]>([]);
   const [fps, setFps] = useState<number | null>(null);
-  const [running, setRunning] = useState(false);
+  const [start, setStart] = useState<number | null>(null);
+  const running = start != null;
+  const left = useTimedEnd(start, seconds, times, onDone);
 
   // Kameran.
   useEffect(() => {
@@ -138,10 +159,12 @@ function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; on
     };
   }, []);
 
-  // Avläsningen, när en punkt är vald och mätningen startad.
+  // Avläsningen, så fort en punkt är vald: kurvan syns redan innan testet
+  // startas, så att man ser att strecket fångas. Passagerna före start
+  // räknas inte.
   useEffect(() => {
     const v = videoRef.current;
-    if (!v || !point || !running) return;
+    if (!v || !point) return;
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
@@ -258,7 +281,7 @@ function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; on
       if (rvfc && cancel) cancel.call(v, handle);
       else cancelAnimationFrame(handle);
     };
-  }, [point, dir, running]);
+  }, [point, dir]);
 
   const strip =
     point &&
@@ -280,6 +303,7 @@ function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; on
             className="relative w-full overflow-hidden rounded-[14px] bg-black"
             onPointerDown={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
+              if (running) return;
               setPoint({ x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
               setTimes([]);
             }}
@@ -301,6 +325,7 @@ function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; on
                 key={o.k}
                 type="button"
                 aria-pressed={dir === o.k}
+                disabled={running}
                 onClick={() => {
                   setDir(o.k);
                   setTimes([]);
@@ -312,7 +337,7 @@ function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; on
             ))}
           </div>
           <canvas ref={plotRef} width={600} height={80} className="h-16 w-full rounded-md bg-[var(--surface-raised)] text-[var(--foreground)]" aria-label="Signalen i remsan, en topp per varv" />
-          <Progress times={times} />
+          {running ? <Progress times={times} left={left} /> : point && <p className="tabular text-sm text-[var(--ink-2)]">{times.length} passager hittills. Starta när kurvan visar en topp per varv.</p>}
           {fps != null && fps < 20 && (
             <p className="text-sm text-[var(--ink-2)]">
               Kameran ger bara {fps} bilder per sekund. Mer ljus hjälper, annars går det bra att knacka i stället.
@@ -326,18 +351,17 @@ function CameraCounter({ onDone, onCancel }: { onDone: (t: number[]) => void; on
       )}
       <div className="flex flex-wrap gap-2">
         {!error && !running && (
-          <button type="button" className={primaryButtonClass} disabled={!point} style={{ opacity: point ? 1 : 0.4 }} onClick={() => setRunning(true)}>
-            Starta mätningen
-          </button>
-        )}
-        {!error && running && (
-          <button type="button" className={primaryButtonClass} disabled={!ready(times)} style={{ opacity: ready(times) ? 1 : 0.4 }} onClick={() => onDone(times)}>
-            Klar
-          </button>
-        )}
-        {!error && running && (
-          <button type="button" className={buttonClass} onClick={() => setTimes([])}>
-            Börja om
+          <button
+            type="button"
+            className={primaryButtonClass}
+            disabled={!point}
+            style={{ opacity: point ? 1 : 0.4 }}
+            onClick={() => {
+              setTimes([]);
+              setStart(performance.now() / 1000);
+            }}
+          >
+            Starta {seconds} sekunder
           </button>
         )}
         <button type="button" className={buttonClass} onClick={onCancel}>

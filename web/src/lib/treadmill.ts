@@ -80,6 +80,44 @@ export function revolutionsFrom(times: number[]): Revolutions | null {
   };
 }
 
+/** Minsta antal farter för en kalibrering. Med två går det alltid att dra en
+ * linje, men inte att se om den stämmer; med tre syns en felmätning. */
+export const MIN_SPEEDS = 3;
+
+/** Största rimliga fel på ett band. Ett band som går mer än 15 % fel är
+ * nästan alltid en felmätning: fel längd, fel fart inskriven, eller ett
+ * streck som räknats två gånger per varv. */
+export const MAX_BELT_ERROR = 0.15;
+
+/** Varför en uppmätt fart inte är rimlig, i klartext. null = den är det. */
+export function pointProblem(setKmh: number, actualKmh: number): string | null {
+  const err = actualKmh / setKmh - 1;
+  if (Math.abs(err) <= MAX_BELT_ERROR) return null;
+  return `Uppmätt ${(Math.abs(err) * 100).toFixed(0)} % ${err < 0 ? "långsammare" : "fortare"} än inställt. Kontrollera bandets längd och att bandet står på farten du skrev in.`;
+}
+
+/** Om linjen är rimlig: lutningen nära 1 och ingen fart mellan 5:30 och
+ * 3:00/km som hamnar mer än 15 % fel. null = den är det. */
+export function calibrationProblem(c: { slope: number; intercept: number }): string | null {
+  for (const k of [10.9, 15, 20]) {
+    if (Math.abs((c.slope * k + c.intercept) / k - 1) > MAX_BELT_ERROR) {
+      return "Farterna passar inte på en linje. Någon av dem är troligen felmätt eller har fel inställd fart.";
+    }
+  }
+  return null;
+}
+
+/** Varför en mätning inte gick att räkna, i klartext. null = den gick. */
+export function revolutionsProblem(times: number[]): string | null {
+  if (times.length < 6) {
+    return times.length === 0
+      ? "Inga passager registrerades."
+      : `Bara ${times.length} passager registrerades. Det behövs fler för att räkna varvtiden.`;
+  }
+  if (!revolutionsFrom(times)) return "Passagerna kom för ojämnt för att avgöra vad som är ett varv.";
+  return null;
+}
+
 export type CalibrationPoint = {
   /** Farten bandet var inställt på, km/h. */
   setKmh: number;

@@ -20,7 +20,7 @@ export default async function LopbandPage({ searchParams }: { searchParams: Prom
   const athleteName = athletes.find((a) => a.id === userId)?.fullName?.split(" ")[0] ?? "Löparens";
 
   const [{ data: bandRows }, { data: calRows }, { data: profile }] = await Promise.all([
-    supabase.from("treadmills").select("id, name, belt_length_cm").order("name"),
+    supabase.from("treadmills").select("id, name, belt_length_cm, created_by").order("name"),
     supabase
       .from("treadmill_calibrations")
       .select("id, treadmill_id, measured_on, measured_by, points, slope, intercept, loaded_factor, created_at")
@@ -41,12 +41,13 @@ export default async function LopbandPage({ searchParams }: { searchParams: Prom
   const latest = new Map<string, CalRow>();
   for (const c of (calRows ?? []) as CalRow[]) if (!latest.has(c.treadmill_id)) latest.set(c.treadmill_id, c);
 
-  const bands: BandView[] = ((bandRows ?? []) as { id: string; name: string; belt_length_cm: number }[]).map((b) => {
+  const bands: BandView[] = ((bandRows ?? []) as { id: string; name: string; belt_length_cm: number; created_by: string }[]).map((b) => {
     const c = latest.get(b.id);
     return {
       id: b.id,
       name: b.name,
       beltLengthCm: Number(b.belt_length_cm),
+      mine: b.created_by === scoped.userId,
       calibration: c
         ? {
             id: c.id,

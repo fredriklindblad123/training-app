@@ -1,16 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import { CalibrationCurve } from "@/components/CalibrationCurve";
 import { TreadmillCalibrator, deviationText, kmhLabel, pace } from "@/components/TreadmillCalibrator";
 import { buttonClass, primaryButtonClass, smallButtonClass } from "@/components/ui/controls";
 import { actualKmh, paceToKmh, setKmhFor, type Calibration, type CalibrationPoint } from "@/lib/treadmill";
-import { chooseTreadmill } from "@/app/(app)/lopband/actions";
+import { chooseTreadmill, deleteTreadmill } from "@/app/(app)/lopband/actions";
 import { formatDateShort } from "@/lib/format";
 
 export type BandView = {
   id: string;
   name: string;
   beltLengthCm: number;
+  /** Den inloggade skapade bandet och kan ta bort det. */
+  mine: boolean;
   calibration: {
     id: string;
     measuredOn: string;
@@ -83,6 +86,7 @@ export function TreadmillPanel({
                     ? `Med löpare på bandet går det ${kmhLabel(Math.abs(1 - c.loadedFactor) * 100)} % ${c.loadedFactor < 1 ? "långsammare" : "fortare"} än tomt. Tabellen räknar med löpare.`
                     : "Mätt på tomt band. Med en löpare på bandet går det oftast lite långsammare, och det är inte med i tabellen."}
                 </p>
+                <CalibrationCurve calibration={c} points={b.calibration.points} />
                 <table className="tabular w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-[var(--ink-3)]">
@@ -128,6 +132,19 @@ export function TreadmillPanel({
                 <button type="button" className={smallButtonClass} onClick={() => setOpen({ kind: "loaded", band: b })}>
                   {c?.loadedFactor != null ? "Kontrollmät med löpare igen" : "Kontrollmät med löpare"}
                 </button>
+              )}
+              {b.mine && (
+                <form
+                  action={deleteTreadmill}
+                  onSubmit={(e) => {
+                    if (!window.confirm(`Ta bort ${b.name} med alla mätningar? Det går inte att ångra.`)) e.preventDefault();
+                  }}
+                >
+                  <input type="hidden" name="treadmill_id" value={b.id} />
+                  <button type="submit" className={smallButtonClass}>
+                    Ta bort bandet
+                  </button>
+                </form>
               )}
               {chosen && (
                 <form action={chooseTreadmill}>
