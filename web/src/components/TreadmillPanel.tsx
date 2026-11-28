@@ -86,9 +86,9 @@ export function TreadmillPanel({
                 <table className="tabular w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-[var(--ink-3)]">
-                      <th className="pb-1 font-normal">Fart</th>
-                      <th className="pb-1 font-normal">Visar bandet den, springer du</th>
-                      <th className="pb-1 font-normal">För att springa den, ställ in</th>
+                      <th className="w-[22%] pr-3 pb-1 align-bottom font-normal">Fart</th>
+                      <th className="w-[30%] pr-3 pb-1 align-bottom font-normal">Bandet visar den: du springer</th>
+                      <th className="pb-1 align-bottom font-normal">Du vill springa den: ställ in</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -97,8 +97,8 @@ export function TreadmillPanel({
                       const set = setKmhFor(c, k);
                       return (
                         <tr key={p} className="border-t border-[var(--line)]">
-                          <td className="py-1.5 font-semibold text-[var(--foreground)]">{pace(k)}</td>
-                          <td className="py-1.5 text-[var(--ink-2)]">{pace(actualKmh(c, k))}</td>
+                          <td className="py-1.5 pr-3 font-semibold text-[var(--foreground)]">{pace(k)}</td>
+                          <td className="py-1.5 pr-3 text-[var(--ink-2)]">{pace(actualKmh(c, k))}</td>
                           <td className="py-1.5 text-[var(--ink-2)]">
                             {pace(set)} <span className="text-xs text-[var(--ink-3)]">({kmhLabel(set)} km/h)</span>
                           </td>
